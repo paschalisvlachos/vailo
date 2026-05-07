@@ -1,73 +1,102 @@
-# React + TypeScript + Vite
+# 🏢 Vailo Admin Platform - Technical Documentation
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## 📖 1. Project Overview
+Vailo is a modern, single-page application (SPA) built to serve as an AI Concierge and Property Management Admin Panel. It allows administrators to securely log in, manage short-term rental properties, and maintain a robust CRM of property owners and agents.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ 2. Tech Stack & Dependencies
+The project utilizes a highly modern, lightweight, and fast stack:
 
-## React Compiler
+* **Core Framework:** React v19.2.5
+* **Build Tool:** Vite (React + TypeScript template)
+* **Routing:** React Router DOM v7.15.0 for seamless, reload-free page transitions.
+* **Styling:** Tailwind CSS v4.2.4 (utilizing the `@tailwindcss/vite` plugin for lightning-fast compilation).
+* **Backend / Database:** Firebase v12.13.0 (Firebase Authentication & Cloud Firestore).
+* **Icons:** Lucide React v1.14.0 for clean, scalable SVG dashboard icons.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 📂 3. Project Structure
+The source code (`/src`) is organized logically to separate concerns between UI components, page layouts, and backend services:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+```text
+src/
+├── components/
+│   ├── Layout.tsx         # Main application shell (Sidebar & Header)
+│   └── Login.tsx          # Firebase authentication UI
+├── lib/
+│   └── firebase.ts        # Firebase initialization & exports (auth, db)
+├── pages/
+│   ├── AddOwner.tsx       # Form to create new CRM contacts
+│   ├── AddProperty.tsx    # Form to add new rental properties
+│   ├── OwnersPage.tsx     # Real-time list view of CRM contacts
+│   └── PropertiesPage.tsx # Real-time list view of properties
+├── App.tsx                # Auth state listener and Route definitions
+└── index.css              # Global styles & Tailwind import
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## ✨ 4. Core Features & Modules
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 🔐 A. Authentication & Security
+* **Firebase Auth Integration:** Utilizes `signInWithEmailAndPassword` to authenticate administrators securely.
+* **Session Management:** App leverages `onAuthStateChanged` to listen for session states.
+* **Protected Routing:** Users cannot view the Layout or any nested routes until securely authenticated. Unauthenticated users are strictly served the Login screen.
+* **Global Logout:** Integrated directly into the top header of the Layout component.
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 🖥️ B. Global Layout
+* **Fixed Sidebar Navigation:** Uses React Router's `<Link>` components and `useLocation` hook to instantly navigate between pages and highlight the active route.
+* **Responsive Shell:** Designed with a fixed left sidebar and a flexible right content area to ensure data tables and forms scroll independently of the navigation.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 🏠 C. Property Management
+* **Real-time Database:** The Properties list uses Firestore's `onSnapshot` to render new properties or removals instantly without needing a page refresh.
+* **Smart Form Features:**
+    * **Auto-generated Internal Codes:** Generates unique tracking IDs (e.g., `VLO-X7Y8Z9`) upon form load.
+    * **Live Slug Generator:** Listens to the Property Name and Type fields to dynamically create a URL-friendly slug (e.g., `villa-paschalis/double`) unless manually overridden.
+    * **Custom Country Code Selector:** A native, Tailwind-styled compound input field for International Phone numbers.
+* **Data Structure:** Stores comprehensive listing URLs, Google Map links, GPS coordinates, WiFi credentials, and owner references.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 👥 D. Owners CRM
+* **Status Indicators:** Visual badge system highlighting user states (Active in green, Trial in blue, Deactive in red).
+* **Comprehensive Data Capture:** Collects standard CRM data alongside VAT numbers, Billing Addresses, and Internal Notes.
+* **Access Control Preparations:** Captures intended Roles (admin, agent, owner) and an initial temporary password, laying the groundwork for individual portal access.
+
+---
+
+## 🗄️ 5. Firestore Database Schema
+
+The application relies on two main root collections:
+
+### 📄 `properties` collection
+* **Description:** Documents representing individual rental units.
+* **Fields:** `propertyName`, `propertyTypeName`, `urlSlug`, `latitude`, `longitude`, `hostPhoneCode`, `hostPhone`, `ownerFullName`, `internalRefCode`, `createdAt`.
+
+### 📄 `owners` collection
+* **Description:** Documents representing CRM contacts.
+* **Fields:** `fullName`, `email`, `phone`, `company`, `role`, `status`, `propertiesCount`, `password` (temporary), `createdAt`.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+* Node.js (v20.19+ or v22.12+)
+* npm
+
+### Installation
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/your-username/vailo.git](https://github.com/your-username/vailo.git)
+    cd vailo
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Configure Firebase:**
+    Update `src/lib/firebase.ts` with your project's configuration keys from the Firebase Console.
+4.  **Run the development server:**
+    ```bash
+    npm run dev
+    ```

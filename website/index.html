@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vailo AI | The Future of Hospitality</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-dark: #021a1f; 
+            --accent-teal: #00a8b5;
+            --accent-gold: #c5a059;
+            --soft-gold: #e2d1b0;
+            --bg-cream: #f9f9f7;
+            --white: #ffffff;
+            --text-gray: #555;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
+        body { background-color: var(--bg-cream); color: #222; line-height: 1.6; }
+        a { text-decoration: none; transition: 0.3s; }
+
+        /* --- NAVIGATION --- */
+        nav {
+            background: var(--primary-dark);
+            padding: 15px 8%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .nav-logo img { height: 35px; }
+        .nav-links a { color: var(--white); margin-left: 25px; font-size: 0.9rem; font-weight: 500; }
+        .nav-links a:hover { color: var(--accent-gold); }
+
+        /* --- HERO: THE GLOWING CENTERPIECE --- */
+        .hero {
+            background: radial-gradient(circle at center, #053a44 0%, #021a1f 100%);
+            padding: 100px 5% 120px;
+            text-align: center;
+            color: var(--white);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .logo-aura {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 30px;
+        }
+        /* This creates the glow you loved in the design */
+        .logo-aura::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 350px; height: 350px;
+            background: radial-gradient(circle, rgba(197, 160, 89, 0.25) 0%, transparent 70%);
+            z-index: 1;
+        }
+        .main-logo-img {
+            height: 180px; 
+            position: relative;
+            z-index: 2;
+            filter: drop-shadow(0 0 20px rgba(0, 168, 181, 0.3));
+        }
+
+        .hero h1 { font-size: 4rem; font-weight: 700; margin-bottom: 15px; }
+        .hero h1 span { color: var(--accent-gold); }
+        .hero p { max-width: 700px; margin: 0 auto 40px; font-size: 1.2rem; opacity: 0.8; }
+        
+        .hero-btns .btn {
+            padding: 14px 40px;
+            border-radius: 4px;
+            font-weight: 600;
+            display: inline-block;
+            margin: 10px;
+        }
+        .btn-gold { background: var(--accent-gold); color: white; border: none; cursor: pointer; }
+        .btn-outline { border: 2px solid var(--white); color: white; }
+
+        /* --- SECTION HEADERS --- */
+        .section-header { text-align: center; padding: 80px 10% 40px; }
+        .section-header h2 { font-size: 2.2rem; margin-bottom: 10px; }
+
+        /* --- FEATURES TOP --- */
+        .features-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; padding: 0 8%; }
+        .feat-box { background: white; padding: 40px 20px; text-align: center; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.03); }
+        .feat-box i { font-size: 2rem; color: var(--accent-gold); margin-bottom: 15px; }
+
+        /* --- PLATFORM GRID --- */
+        .platform-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 0 8% 80px; }
+        .platform-item { display: flex; align-items: center; background: white; padding: 20px; border-radius: 8px; border-left: 4px solid var(--accent-gold); }
+        .platform-item i { margin-right: 15px; color: var(--accent-teal); }
+
+        /* --- PRICING --- */
+        .pricing-wrap { display: flex; justify-content: center; gap: 25px; padding: 0 8% 80px; }
+        .p-card { background: white; padding: 40px; border-radius: 15px; width: 320px; text-align: center; border: 1px solid #eee; }
+        .p-card.popular { border: 2px solid var(--accent-gold); transform: scale(1.05); box-shadow: 0 20px 40px rgba(0,0,0,0.05); }
+        .price-val { font-size: 2.8rem; font-weight: 700; color: var(--primary-dark); margin: 20px 0; }
+        .p-card ul { list-style: none; text-align: left; margin-bottom: 30px; font-size: 0.9rem; }
+        .p-card ul li { padding: 8px 0; border-bottom: 1px solid #fafafa; }
+
+        /* --- FUNCTIONAL FAQ --- */
+        .faq-section { max-width: 800px; margin: 0 auto 100px; padding: 0 20px; }
+        .faq-item { background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .faq-question { 
+            padding: 20px; 
+            cursor: pointer; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            font-weight: 600; 
+            transition: background 0.3s;
+        }
+        .faq-question:hover { background: #fcfcfc; }
+        .faq-answer { 
+            max-height: 0; 
+            overflow: hidden; 
+            transition: max-height 0.3s ease-out; 
+            padding: 0 20px; 
+            color: var(--text-gray);
+            font-size: 0.95rem;
+        }
+        .faq-item.active .faq-answer { max-height: 200px; padding-bottom: 20px; }
+        .faq-item.active i { transform: rotate(45deg); color: var(--accent-teal); }
+        .faq-question i { transition: transform 0.3s; color: var(--accent-gold); }
+
+        /* --- FOOTER --- */
+        footer { background: var(--primary-dark); color: white; padding: 80px 8% 40px; text-align: center; }
+        .footer-logo img { height: 50px; margin-bottom: 20px; }
+
+        @media (max-width: 900px) {
+            .platform-grid, .pricing-wrap { grid-template-columns: 1fr; flex-direction: column; align-items: center; }
+            .hero h1 { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="nav-logo"><img src="LdbkF.jpg" alt="Vailo"></div>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#platform">Platform</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#" class="btn-gold" style="padding: 8px 20px; border-radius: 4px;">Get Started</a>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="logo-aura">
+            <img src="LdbkF.jpg" class="main-logo-img" alt="Vailo AI Logo">
+        </div>
+        <h1>Vailo <span>AI</span></h1>
+        <p>The AI Solution for your business needs. Elevate guest experiences with an intelligent concierge that never sleeps.</p>
+        <div class="hero-btns">
+            <a href="#" class="btn btn-gold">Try it Free</a>
+            <a href="#" class="btn btn-outline">Watch Demo</a>
+        </div>
+    </header>
+
+    <section id="features" class="section-header">
+        <h2>What Your Guests Need</h2>
+    </section>
+
+    <div class="features-top">
+        <div class="feat-box"><i class="fa-solid fa-comments"></i><h3>AI Concierge</h3><p>Instant answers to guest queries.</p></div>
+        <div class="feat-box"><i class="fa-solid fa-car"></i><h3>Rent a Car</h3><p>Integrated vehicle booking services.</p></div>
+        <div class="feat-box"><i class="fa-solid fa-utensils"></i><h3>Smart Guide</h3><p>Personalized local recommendations.</p></div>
+        <div class="feat-box"><i class="fa-solid fa-hotel"></i><h3>e-Reception</h3><p>Digital check-in and house rules.</p></div>
+    </div>
+
+    <section id="platform" class="section-header">
+        <h2>A Complete Platform</h2>
+    </section>
+
+    <div class="platform-grid">
+        <div class="platform-item"><i class="fa-solid fa-check"></i> 24/7 Support</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> Multilingual AI</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> CRM Integration</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> Real-time Analytics</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> Custom Branding</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> WhatsApp Support</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> Automated Tasks</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> Guest Insights</div>
+        <div class="platform-item"><i class="fa-solid fa-check"></i> Multi-Property Sync</div>
+    </div>
+
+    <div class="faq-section">
+        <h2 style="text-align: center; margin-bottom: 40px; font-size: 2.2rem;">Frequently Asked Questions</h2>
+        
+        <div class="faq-item">
+            <div class="faq-question">How does the AI learn about my property? <i class="fa-solid fa-plus"></i></div>
+            <div class="faq-answer">Vailo AI scans your existing property guides, website content, and house rules. You can also manually upload PDF guides or link your booking platform for real-time data sync.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">Can I integrate it with my current PMS? <i class="fa-solid fa-plus"></i></div>
+            <div class="faq-answer">Yes! Vailo supports major Property Management Systems. This allows the AI to know exactly who is checking in, their booking dates, and specific guest requirements.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">Is there a free trial? <i class="fa-solid fa-plus"></i></div>
+            <div class="faq-answer">Absolutely. Our Starter plan is free forever for 1 property, so you can test the AI concierge features before scaling to our Basic or Pro plans.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-question">Does it support multiple languages? <i class="fa-solid fa-plus"></i></div>
+            <div class="faq-answer">Yes, Vailo is fluent in over 25 languages. It automatically detects the guest's language and responds naturally in their native tongue.</div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="footer-logo"><img src="LdbkF.jpg" alt="Vailo"></div>
+        <p>&copy; 2026 Vailo AI Solutions. All rights reserved.</p>
+    </footer>
+
+    <script>
+        document.querySelectorAll('.faq-question').forEach(item => {
+            item.addEventListener('click', event => {
+                const parent = item.parentElement;
+                parent.classList.toggle('active');
+                
+                // Optional: Close other open FAQ items when one is clicked
+                document.querySelectorAll('.faq-item').forEach(child => {
+                    if (child !== parent) {
+                        child.classList.remove('active');
+                    }
+                });
+            });
+        });
+    </script>
+
+</body>
+</html>

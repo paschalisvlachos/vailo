@@ -34,6 +34,7 @@ src/
 │   └── PropertiesPage.tsx # Real-time list view of properties
 ├── App.tsx                # Auth state listener and Route definitions
 └── index.css              # Global styles & Tailwind import
+```
 
 ---
 

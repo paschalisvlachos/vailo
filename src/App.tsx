@@ -4,10 +4,17 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import Layout from "./components/Layout";
 import Login from "./components/Login";
-import PropertiesPage from "./pages/PropertiesPage";
-import AddProperty from "./pages/AddProperty";
+import PropertiesPage from "./pages/properties/PropertiesPage";
+import AddProperty from "./pages/properties/AddProperty";
 import OwnersPage from "./pages/OwnersPage";
 import AddOwner from "./pages/AddOwner";
+import PropertyLayout from "./pages/properties/PropertyLayout";
+import Overview from "./pages/properties/Overview";
+import PropertyTypes from "./pages/properties/PropertyTypes";
+import LocalGems from "./pages/properties/LocalGems";
+import GreenScore from "./pages/properties/GreenScore";
+import Calendar from "./pages/properties/Calendar";
+import Reservations from "./pages/properties/Reservations";
 
 // A quick placeholder for the Dashboard page
 function DashboardPage() {
@@ -51,6 +58,14 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/add-property" element={<AddProperty />} />
+          <Route path="/properties/:id" element={<PropertyLayout />}>
+            <Route index element={<Overview />} />
+            <Route path="types" element={<PropertyTypes />} />
+            <Route path="local-gems" element={<LocalGems />} />
+            <Route path="green-score" element={<GreenScore />} />
+            <Route path="calendar" element={<Calendar />} />
+            <Route path="reservations" element={<Reservations />} />
+          </Route>
           <Route path="/owners" element={<OwnersPage />} />
           <Route path="/add-owner" element={<AddOwner />} />
         </Routes>

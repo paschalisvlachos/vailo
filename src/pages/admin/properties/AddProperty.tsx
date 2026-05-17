@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { collection, addDoc, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../../lib/firebase';
 import { Link2, MapPin, Wand2, ArrowLeft } from 'lucide-react';
 
 // NEW: We define the blueprint so TypeScript knows what fields exist

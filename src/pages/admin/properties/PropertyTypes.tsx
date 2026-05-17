@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync } from 'lucide-react';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db } from '../../../lib/firebase';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud } from 'lucide-react';
 
 export default function PropertyTypes() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
@@ -15,10 +16,16 @@ export default function PropertyTypes() {
   const [isSubmittingType, setIsSubmittingType] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
   
+  // Photo upload state
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  
+  // UPDATED: Added city field and split from area
   const initialFormState = {
     listingUrl: '', googleMapsUrl: '', propertyTypeName: '', urlSlug: '', 
     latitude: '', longitude: '', wifiName: '', wifiPassword: '', internalRefCode: '',
-    ownerId: '', iCalUrl: '' // NEW: iCal URL field added
+    ownerId: '', iCalUrl: '', 
+    photoUrl: '', addressLine: '', area: '', city: '', postCode: '', country: ''
   };
   const [typeFormData, setTypeFormData] = useState(initialFormState);
 
@@ -70,10 +77,29 @@ export default function PropertyTypes() {
     }
   };
 
+  // Handle photo selection
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  // NEW: Handle photo removal
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview(null);
+    // Erase it from the form data so it deletes from Firebase when saved
+    setTypeFormData(prev => ({ ...prev, photoUrl: '' }));
+  };
+
   // --- CRUD OPERATIONS --- //
   const handleEditClick = (typeData: any) => {
-    setTypeFormData(typeData);
+    setTypeFormData({ ...initialFormState, ...typeData });
     setEditingTypeId(typeData.id);
+    setPhotoFile(null);
+    setPhotoPreview(typeData.photoUrl || null);
     setIsFormOpen(true);
   };
 
@@ -93,21 +119,30 @@ export default function PropertyTypes() {
     setIsSubmittingType(true);
     
     try {
+      let finalPhotoUrl = typeFormData.photoUrl;
+
+      // Upload new photo if selected
+      if (photoFile) {
+        const storage = getStorage();
+        const fileRef = ref(storage, `propertyTypes/${propertyId}/${Date.now()}_${photoFile.name}`);
+        await uploadBytes(fileRef, photoFile);
+        finalPhotoUrl = await getDownloadURL(fileRef);
+      }
+
+      const payload = { ...typeFormData, photoUrl: finalPhotoUrl };
+
       if (editingTypeId) {
         const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', editingTypeId);
-        await updateDoc(typeRef, { ...typeFormData, updatedAt: new Date().toISOString() });
+        await updateDoc(typeRef, { ...payload, updatedAt: new Date().toISOString() });
       } else {
         await addDoc(collection(db, 'properties', propertyId, 'propertyTypes'), {
-          ...typeFormData, createdAt: new Date().toISOString()
+          ...payload, createdAt: new Date().toISOString()
         });
       }
       
-      setIsFormOpen(false);
-      setEditingTypeId(null);
-      setTypeFormData(initialFormState);
-      setIsSlugManuallyEdited(false);
-      
+      cancelForm();
     } catch (error) {
+      console.error(error);
       alert("Failed to save property type.");
     } finally {
       setIsSubmittingType(false);
@@ -118,9 +153,10 @@ export default function PropertyTypes() {
     setIsFormOpen(false);
     setEditingTypeId(null);
     setTypeFormData(initialFormState);
+    setPhotoFile(null);
+    setPhotoPreview(null);
   };
 
-  // NEW: Mock iCal Sync Action
   const handleICalSync = () => {
     if (!typeFormData.iCalUrl) {
       alert("Please enter a valid iCal URL first.");
@@ -155,37 +191,59 @@ export default function PropertyTypes() {
               const assignedOwner = owners.find(o => o.id === type.ownerId);
               
               return (
-                <div key={type.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow group bg-white flex flex-col">
-                  <div className="flex justify-between items-start mb-3">
-                    <h4 className="font-bold text-gray-900">{type.propertyTypeName}</h4>
-                    <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{type.internalRefCode}</span>
-                  </div>
-                  <p className="text-sm text-gray-500 mb-3 truncate">/{type.urlSlug}</p>
-                  
-                  {type.iCalUrl && (
-                    <div className="mb-3 flex items-center text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded w-max border border-green-100">
-                      <CalendarSync size={12} className="mr-1.5" /> iCal Synced
+                <div key={type.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow group bg-white flex flex-col">
+                  {type.photoUrl ? (
+                    <div className="h-32 w-full bg-gray-100 relative">
+                      <img src={type.photoUrl} alt={type.propertyTypeName} className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="h-16 w-full bg-gray-50 flex items-center justify-center border-b border-gray-100">
+                      <ImageIcon size={24} className="text-gray-300" />
                     </div>
                   )}
-                  
-                  <div className="flex-1">
-                    {assignedOwner ? (
-                      <p className="text-sm text-gray-700 flex items-center bg-gray-50 p-2 rounded-lg border border-gray-100 mb-4 w-max">
-                        <User size={14} className="mr-2 text-gray-400" />
-                        {assignedOwner.fullName}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-gray-400 italic mb-4">No owner assigned</p>
+
+                  <div className="p-5 flex flex-col flex-1">
+                    <div className="flex justify-between items-start mb-3">
+                      <h4 className="font-bold text-gray-900">{type.propertyTypeName}</h4>
+                      <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{type.internalRefCode}</span>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-3 truncate">/{type.urlSlug}</p>
+                    
+                    {type.iCalUrl && (
+                      <div className="mb-3 flex items-center text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded w-max border border-green-100">
+                        <CalendarSync size={12} className="mr-1.5" /> iCal Synced
+                      </div>
                     )}
-                  </div>
-                  
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
-                    <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
-                      <Pencil size={14} className="mr-1.5" /> Edit
-                    </button>
-                    <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="flex items-center text-sm font-medium text-gray-400 hover:text-red-600 transition-colors">
-                      <Trash2 size={16} />
-                    </button>
+                    
+                    <div className="flex-1">
+                      {assignedOwner ? (
+                        <p className="text-sm text-gray-700 flex items-center bg-gray-50 p-2 rounded-lg border border-gray-100 mb-4 w-max">
+                          <User size={14} className="mr-2 text-gray-400" />
+                          {assignedOwner.fullName}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic mb-4">No owner assigned</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
+                      <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
+                        <Pencil size={14} className="mr-1.5" /> Edit
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const safeTypeSlug = type.typeSlug || type.propertyTypeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                          window.open(`/${property.urlSlug}/${safeTypeSlug}`, '_blank');
+                        }}
+                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Preview Guest Portal"
+                      >
+                        <ExternalLink size={18} />
+                      </button>
+                      <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="flex items-center text-sm font-medium text-gray-400 hover:text-red-600 transition-colors">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -198,7 +256,7 @@ export default function PropertyTypes() {
 
   // --- RENDER FORM VIEW --- //
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto pb-10">
       <div className="flex items-center mb-6">
         <button onClick={cancelForm} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
@@ -209,13 +267,14 @@ export default function PropertyTypes() {
       </div>
       <form onSubmit={submitPropertyType} className="border border-gray-200 rounded-xl shadow-sm overflow-hidden bg-white">
         
+        {/* URL Scraping / Auto-fill Section */}
         <div className="p-6 border-b border-gray-100 bg-gray-50 space-y-6">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Listing URL (Airbnb or Booking)</label>
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
               </div>
               <button type="button" onClick={() => alert('OTA Scraper coming soon')} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
                 <Wand2 size={16} className="mr-2 text-blue-600" /> Auto-fill
@@ -227,7 +286,7 @@ export default function PropertyTypes() {
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="googleMapsUrl" value={typeFormData.googleMapsUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="url" name="googleMapsUrl" value={typeFormData.googleMapsUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
               </div>
               <button type="button" onClick={handleAutoFillMaps} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors">
                 <Wand2 size={16} className="mr-2 text-blue-600" /> Auto-calc
@@ -236,7 +295,39 @@ export default function PropertyTypes() {
           </div>
         </div>
 
-        {/* NEW: iCal Sync Section */}
+        {/* Photo Upload Section */}
+        <div className="p-6 border-b border-gray-100">
+          <h4 className="text-sm font-bold text-gray-900 flex items-center mb-4">
+            <ImageIcon size={18} className="mr-2 text-gray-500" /> Cover Photo
+          </h4>
+          <div className="flex items-center gap-6">
+            <div className="flex-1">
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <UploadCloud className="w-8 h-8 mb-2 text-gray-400" />
+                  <p className="text-sm text-gray-500 font-medium">Click to upload photo</p>
+                </div>
+                <input type="file" accept="image/*" onChange={handlePhotoSelect} className="hidden" />
+              </label>
+            </div>
+            {/* UPDATED: Added Delete Button inside the preview */}
+            {photoPreview && (
+              <div className="h-32 w-48 shrink-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm relative group">
+                <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded-md hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                  title="Remove photo"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* iCal Sync Section */}
         <div className="p-6 border-b border-gray-100 bg-blue-50/30">
           <h4 className="text-sm font-bold text-gray-900 flex items-center mb-3">
             <CalendarSync size={18} className="mr-2 text-blue-600" /> Calendar Sync (iCal)
@@ -262,7 +353,9 @@ export default function PropertyTypes() {
           <p className="text-xs text-gray-500 mt-2">Paste the iCal export link from Airbnb, Booking.com, or your Channel Manager to sync reservations automatically.</p>
         </div>
 
-        <div className="p-6 space-y-6">
+        {/* General Details & Coordinates */}
+        <div className="p-6 border-b border-gray-100 space-y-6">
+          <h4 className="text-sm font-bold text-gray-900 border-b border-gray-100 pb-2 mb-4">General Details</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Property Type Name *</label>
@@ -270,7 +363,7 @@ export default function PropertyTypes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">URL Slug *</label>
-              <input type="text" name="urlSlug" value={typeFormData.urlSlug} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50" />
+              <input type="text" required name="urlSlug" value={typeFormData.urlSlug} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50" />
             </div>
             
             <div className="md:col-span-2">
@@ -304,9 +397,36 @@ export default function PropertyTypes() {
               <label className="block text-sm font-medium text-gray-700 mb-1">WiFi Password</label>
               <input type="text" name="wifiPassword" value={typeFormData.wifiPassword} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Internal Reference Code *</label>
               <input type="text" required name="internalRefCode" value={typeFormData.internalRefCode} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 bg-gray-50 text-gray-600 rounded-lg outline-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* UPDATED: Address Details Section with required fields */}
+        <div className="p-6 space-y-6">
+          <h4 className="text-sm font-bold text-gray-900 border-b border-gray-100 pb-2 mb-4">Address Details</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
+              <input type="text" required name="addressLine" value={typeFormData.addressLine} onChange={handleTypeChange} placeholder="e.g., 123 Main St, Apt 4B" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Area *</label>
+              <input type="text" required name="area" value={typeFormData.area} onChange={handleTypeChange} placeholder="e.g., Akrotiri" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+              <input type="text" required name="city" value={typeFormData.city} onChange={handleTypeChange} placeholder="e.g., Chania" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+              <input type="text" name="postCode" value={typeFormData.postCode} onChange={handleTypeChange} placeholder="e.g., 73100" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
+              <input type="text" required name="country" value={typeFormData.country} onChange={handleTypeChange} placeholder="e.g., Greece" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
           </div>
         </div>

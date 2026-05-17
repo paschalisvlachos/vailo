@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../../lib/firebase';
 import { 
   Leaf, Building, Zap, Recycle, Droplet, Sun, CheckCircle2, Loader2, 
   Thermometer, Lightbulb, Ban, Car, Bike, Sprout, CloudRain, Waves, 

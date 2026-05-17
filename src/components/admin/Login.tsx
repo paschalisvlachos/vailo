@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth } from '../../lib/firebase';
 import { Building2, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
 
 export default function Login() {

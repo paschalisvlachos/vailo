@@ -2,21 +2,24 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
-import Layout from "./components/Layout";
-import Login from "./components/Login";
-import PropertiesPage from "./pages/properties/PropertiesPage";
-import AddProperty from "./pages/properties/AddProperty";
-import OwnersPage from "./pages/OwnersPage";
-import AddOwner from "./pages/AddOwner";
-import PropertyLayout from "./pages/properties/PropertyLayout";
-import Overview from "./pages/properties/Overview";
-import PropertyTypes from "./pages/properties/PropertyTypes";
-import LocalGems from "./pages/properties/LocalGems";
-import GreenScore from "./pages/properties/GreenScore";
-import Calendar from "./pages/properties/Calendar";
-import Reservations from "./pages/properties/Reservations";
+import Layout from "./components/admin/Layout";
+import Login from "./components/admin/Login";
+import PropertiesPage from "./pages/admin/properties/PropertiesPage";
+import AddProperty from "./pages/admin/properties/AddProperty";
+import OwnersPage from "./pages/admin/OwnersPage";
+import AddOwner from "./pages/admin/AddOwner";
+import PropertyLayout from "./pages/admin/properties/PropertyLayout";
+import Overview from "./pages/admin/properties/Overview";
+import PropertyTypes from "./pages/admin/properties/PropertyTypes";
+import LocalGems from "./pages/admin/properties/LocalGems";
+import GreenScore from "./pages/admin/properties/GreenScore";
+import Calendar from "./pages/admin/properties/Calendar";
+import Reservations from "./pages/admin/properties/Reservations";
+import HouseGuide from "./pages/admin/properties/HouseGuide";
+import Features from "./pages/admin/properties/Features";
 
-// A quick placeholder for the Dashboard page
+import GuestPortal from "./pages/guest/GuestPortal";
+
 function DashboardPage() {
   return (
     <div>
@@ -47,29 +50,42 @@ export default function App() {
     return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">Loading Vailo...</div>;
   }
 
-  if (!user) {
-    return <Login />;
-  }
+  // NEW: A clean wrapper to protect admin routes while keeping them flat
+  const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+    if (!user) return <Login />;
+    return <Layout>{children}</Layout>;
+  };
 
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/properties" element={<PropertiesPage />} />
-          <Route path="/add-property" element={<AddProperty />} />
-          <Route path="/properties/:id" element={<PropertyLayout />}>
-            <Route index element={<Overview />} />
-            <Route path="types" element={<PropertyTypes />} />
-            <Route path="local-gems" element={<LocalGems />} />
-            <Route path="green-score" element={<GreenScore />} />
-            <Route path="calendar" element={<Calendar />} />
-            <Route path="reservations" element={<Reservations />} />
-          </Route>
-          <Route path="/owners" element={<OwnersPage />} />
-          <Route path="/add-owner" element={<AddOwner />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        {/* ======================================= */}
+        {/* PUBLIC ROUTES                           */}
+        {/* ======================================= */}
+        <Route path="/:propertySlug/:typeSlug" element={<GuestPortal />} />
+
+        {/* ======================================= */}
+        {/* FLATTENED ADMIN ROUTES                  */}
+        {/* ======================================= */}
+        <Route path="/" element={<AdminRoute><DashboardPage /></AdminRoute>} />
+        <Route path="/properties" element={<AdminRoute><PropertiesPage /></AdminRoute>} />
+        <Route path="/add-property" element={<AdminRoute><AddProperty /></AdminRoute>} />
+        
+        {/* React Router now knows this takes priority over the GuestPortal route! */}
+        <Route path="/properties/:id" element={<AdminRoute><PropertyLayout /></AdminRoute>}>
+          <Route index element={<Overview />} />
+          <Route path="types" element={<PropertyTypes />} />
+          <Route path="local-gems" element={<LocalGems />} />
+          <Route path="green-score" element={<GreenScore />} />
+          <Route path="calendar" element={<Calendar />} />
+          <Route path="reservations" element={<Reservations />} />
+          <Route path="house-guide" element={<HouseGuide />} />
+          <Route path="features" element={<Features />} />
+        </Route>
+
+        <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />
+        <Route path="/add-owner" element={<AdminRoute><AddOwner /></AdminRoute>} />
+      </Routes>
     </BrowserRouter>
   );
 }

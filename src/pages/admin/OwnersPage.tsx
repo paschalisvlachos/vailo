@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../../lib/firebase';
 
 interface Owner {
   id: string;

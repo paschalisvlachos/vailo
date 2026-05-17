@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../../lib/firebase';
 import { Calendar as CalendarIcon, Plus, Mail, Link2, Check, ArrowLeft, Building, Trash2, Loader2, AlertCircle } from 'lucide-react';
 
 export default function Reservations() {

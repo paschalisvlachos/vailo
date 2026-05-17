@@ -2,17 +2,11 @@ import {
   LayoutDashboard, 
   Building2, 
   Users, 
-  UserSquare2, 
-  Megaphone, 
-  MessageSquare, 
-  Wallet, 
-  CalendarDays, 
-  Server,
   LogOut
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { auth } from '../../lib/firebase';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   
@@ -41,12 +35,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" to="/" />
           <NavItem icon={<Building2 size={20} />} label="Properties" to="/properties" />          
           <NavItem icon={<Users size={20} />} label="Owners CRM" to="/owners" />
-          <NavItem icon={<UserSquare2 size={20} />} label="Guests / CRM" to="#" />
-          <NavItem icon={<Megaphone size={20} />} label="Campaigns" to="#" />
-          <NavItem icon={<MessageSquare size={20} />} label="AI Conversations" to="#" />
-          <NavItem icon={<Wallet size={20} />} label="Οικονομικά" to="#" />
-          <NavItem icon={<CalendarDays size={20} />} label="Ημερολόγιο" to="#" />
-          <NavItem icon={<Server size={20} />} label="MCP Server" to="#" />
         </nav>
       </aside>
 

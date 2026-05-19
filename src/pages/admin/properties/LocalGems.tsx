@@ -3,18 +3,38 @@ import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
-import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building } from 'lucide-react';
+import { getGenerativeModel } from "firebase/ai";
+import { ai } from '../../../lib/firebase';
+import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles } from 'lucide-react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
-// --- FREE MATH HELPERS ---
-const calculateHaversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371; 
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+// --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
+const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
+  try {
+    // OSRM expects coordinates in Lon,Lat format
+    const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=false`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Routing failed");
+    
+    const data = await response.json();
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      
+      // OSRM returns distance in meters -> convert to kilometers
+      const distanceKm = (route.distance / 1000).toFixed(1);
+      
+      // OSRM returns duration in seconds -> convert to minutes
+      const durationMins = Math.round(route.duration / 60);
+      
+      return {
+        distanceKm,
+        distanceTime: `${durationMins} min`
+      };
+    }
+  } catch (error) {
+    console.error("OSRM Global Routing Error:", error);
+  }
+  return null;
 };
 
 export default function LocalGems() {
@@ -32,14 +52,111 @@ export default function LocalGems() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   const initialFormState = {
-    name: '', category: 'restaurant', description: '', rating: '5',
+    name: '', category: '', description: '', rating: '',
     googleMapsUrl: '', distanceKm: '', distanceTime: '',
+    latitude: '', longitude: '',
     isLegitPick: false, isDailyTrip: false, photoUrl: ''
   };
   
   const [formData, setFormData] = useState(initialFormState);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [suggestedPhotos, setSuggestedPhotos] = useState<string[]>([]);
+
+  // Add this near your other state variables
+  const [isMagicFilling, setIsMagicFilling] = useState(false);
+
+  const handleMagicFill = async () => {
+    const url = formData.googleMapsUrl;
+    if (!url) return alert("Please paste a Google Maps URL first.");
+    setIsMagicFilling(true);
+
+    try {
+      // 1. EXTRACT NAME FROM URL to use as our Search Query
+      const nameMatch = url.match(/\/place\/([^\/]+)\//);
+      let placeName = "";
+      
+      if (nameMatch && nameMatch[1]) {
+        placeName = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
+        const searchQuery = `${placeName} Crete`; 
+
+        // 2. CALL OUR SECURE FIREBASE BOUNCER (Google Places API)
+        const functions = getFunctions();
+        const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+        
+        const result = await getGooglePlaceDetails({ searchQuery });
+        const googleData: any = result.data;
+
+        // 3. MAP GOOGLE'S CATEGORIES TO YOUR UI DROPDOWN
+        let uiCategory = "sightseeing"; 
+        const gType = googleData.category?.toLowerCase() || "";
+        if (gType.includes("restaurant") || gType.includes("cafe") || gType.includes("food")) uiCategory = "restaurant";
+        if (gType.includes("bar") || gType.includes("night_club")) uiCategory = "bar/nightlife";
+        if (gType.includes("shopping") || gType.includes("store")) uiCategory = "shopping";
+
+        // 4. SMART DESCRIPTION FALLBACK (Gemini AI)
+        let finalDescription = googleData.description;
+        
+        // If Google doesn't have an editorial summary, Gemini writes a beautiful one instantly!
+        if (!finalDescription) {
+          try {
+            const prompt = `Act as a luxury travel concierge for Crete. Write a short, engaging 2-sentence description for a local ${uiCategory} called "${googleData.name || placeName}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
+            const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+            const aiResult = await model.generateContent(prompt);
+            finalDescription = aiResult.response.text().trim();
+          } catch (e) {
+            console.log("Gemini description fallback failed.", e);
+          }
+        }
+
+        // 5. CALCULATE DRIVING DISTANCE (100% Free via OSRM)
+        let distance = "";
+        let time = "";
+        
+        if (googleData.latitude && googleData.longitude) {
+          const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
+          const refLat = selectedTypeData?.latitude || property?.latitude;
+          const refLng = selectedTypeData?.longitude || property?.longitude;
+
+          if (refLat && refLng) {
+            const routeData = await fetchGlobalDrivingRoute(refLat, refLng, googleData.latitude.toString(), googleData.longitude.toString());
+            if (routeData) {
+              distance = routeData.distanceKm;
+              time = routeData.distanceTime;
+            }
+          }
+        }
+
+        // 6. UPDATE ALL STATE AT ONCE
+        setFormData(prev => ({
+          ...prev,
+          name: googleData.name || placeName,
+          category: uiCategory,
+          rating: googleData.rating ? googleData.rating.toString() : prev.rating,
+          description: finalDescription || prev.description, // Uses Google's OR Gemini's!
+          latitude: googleData.latitude?.toString() || prev.latitude,
+          longitude: googleData.longitude?.toString() || prev.longitude,
+          distanceKm: distance,
+          distanceTime: time,
+          photoUrl: googleData.photoUrl || ''
+        }));
+
+        if (googleData.photoUrl) {
+          setImagePreview(googleData.photoUrl);
+          setImageFile(null);
+        }
+
+      } else {
+        alert("Could not extract the Place Name. Ensure you paste the FULL web URL.");
+      }
+
+    } catch (error) {
+      console.error("Magic Fill Error:", error);
+      alert("Something went wrong while asking Google for the data.");
+    } finally {
+      setIsMagicFilling(false);
+    }
+  };
 
   // 1. Fetch Property Types so we can populate the dropdown
   useEffect(() => {
@@ -76,31 +193,6 @@ export default function LocalGems() {
       setFormData({ ...formData, [name]: checked });
     } else {
       setFormData({ ...formData, [name]: value });
-    }
-  };
-
-  const handleSmartImport = () => {
-    if (!formData.googleMapsUrl) return alert("Please paste a Google Maps link in the URL field below first.");
-    const regex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-    const match = formData.googleMapsUrl.match(regex);
-    
-    // We get the selected property type to check ITS coordinates
-    const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
-    
-    if (match && selectedTypeData?.latitude && selectedTypeData?.longitude) {
-      const gemLat = parseFloat(match[1]);
-      const gemLng = parseFloat(match[2]);
-      const propLat = parseFloat(selectedTypeData.latitude);
-      const propLng = parseFloat(selectedTypeData.longitude);
-
-      const distance = calculateHaversineDistance(propLat, propLng, gemLat, gemLng);
-      const timeInMins = Math.round((distance / 40) * 60);
-      
-      setFormData(prev => ({ 
-        ...prev, distanceKm: distance.toFixed(1), distanceTime: `${timeInMins} min` 
-      }));
-    } else {
-      alert("Could not extract coordinates. Ensure the selected Property Type has Lat/Lng set, and the Google Maps URL contains '@lat,lng'.");
     }
   };
 
@@ -162,6 +254,7 @@ export default function LocalGems() {
     setImagePreview(gemData.photoUrl || null);
     setImageFile(null);
     setEditingGemId(gemData.id);
+    setSuggestedPhotos([]);
     setIsFormOpen(true);
   };
 
@@ -304,41 +397,47 @@ export default function LocalGems() {
             <Wand2 size={16} className="mr-2" /> Free Smart Import Tool
           </h4>
           <p className="text-xs text-blue-700 max-w-2xl">
-            Paste a Google Maps link below and click Auto-calculate. We will extract the GPS coordinates and calculate the driving distance and time from this specific Property Type!
+            Paste a Google Maps link below and click AI Magic Fill. We will extract the GPS coordinates and calculate the driving distance and time from this specific Property Type!
           </p>
         </div>
 
         <div className="p-6 space-y-6 bg-white">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Maps Link & Smart Calc */}
+            {/* 1. Maps Link & Smart Calc (WIDER: md:col-span-2) */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Google Maps URL</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Google Maps Location Link *</label>
               <div className="flex gap-3">
-                <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://goo.gl/maps/..." />
-                <button type="button" onClick={handleSmartImport} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors">
-                  Auto-calculate distance
+                <div className="relative flex-1">
+                  <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input type="url" required name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="https://www.google.com/maps/place/..." className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                </div>
+                <button 
+                  type="button" 
+                  onClick={handleMagicFill} 
+                  disabled={isMagicFilling}
+                  className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 border border-transparent rounded-lg text-white hover:opacity-90 font-medium transition-all shadow-sm disabled:opacity-50"
+                >
+                  {isMagicFilling ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}
+                  {isMagicFilling ? 'Filling...' : 'AI Magic Fill'}
                 </button>
               </div>
-              {(formData.distanceKm || formData.distanceTime) && (
-                <div className="mt-3 flex items-center text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200 w-max">
-                  <MapPin size={16} className="mr-2" />
-                  Calculated: {formData.distanceKm} km • ~{formData.distanceTime} driving from {propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName}
-                </div>
-              )}
+              <p className="text-xs text-gray-500 mt-1.5 italic">Paste the FULL web URL to magically extract the name, distance, description, and rating.</p>
             </div>
 
             <hr className="md:col-span-2 border-gray-100" />
 
-            {/* Basic Info */}
+            {/* 2. Basic Info */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Gem Name *</label>
               <input type="text" required name="name" value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
             
+            {/* 3. ESSENTIAL CATEGORY WITH PRESELECT */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-              <select name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <select required name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                <option value="" disabled>Please select</option>
                 <option value="restaurant">Restaurant</option>
                 <option value="beach">Beach</option>
                 <option value="sightseeing">Sightseeing</option>
@@ -349,9 +448,36 @@ export default function LocalGems() {
               </select>
             </div>
 
+            {/* 4. EMPTY 1-5 GOOGLE RATING */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Google Rating (1-5)</label>
-              <input type="number" min="1" max="5" step="0.1" name="rating" value={formData.rating} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="number" min="1" max="5" step="0.1" name="rating" value={formData.rating} onChange={handleChange} placeholder="e.g. 4.8" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+
+            {/* 5. VISIBLE DISTANCE FIELDS */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Distance from {propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName || 'Property'} (km) *
+              </label>
+              <input type="text" required name="distanceKm" value={formData.distanceKm} onChange={handleChange} placeholder="e.g. 5.2" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Distance from {propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName || 'Property'} (time) *
+              </label>
+              <input type="text" required name="distanceTime" value={formData.distanceTime} onChange={handleChange} placeholder="e.g. 15 min" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+
+            {/* 6. VISIBLE LATITUDE & LONGITUDE */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
+              <input type="text" name="latitude" value={formData.latitude || ''} onChange={handleChange} placeholder="e.g. 35.5138" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
+              <input type="text" name="longitude" value={formData.longitude || ''} onChange={handleChange} placeholder="e.g. 24.0180" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
 
             <div className="md:col-span-2">
@@ -359,40 +485,75 @@ export default function LocalGems() {
               <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="Why do you recommend this place?"></textarea>
             </div>
 
-            {/* Photo Upload */}
+            {/* NEW: Smart Photo Selection & Upload */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Photo (Max 5MB)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Photo * (Select one or upload)</label>
               
-              {imagePreview ? (
-                <div className="relative inline-block">
-                  <img src={imagePreview} alt="Preview" className="h-40 w-auto rounded-lg object-cover border border-gray-200 shadow-sm" />
-                  <button 
-                    type="button" 
-                    onClick={() => { setImageFile(null); setImagePreview(null); setFormData(prev => ({...prev, photoUrl: ''})); }}
-                    className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors">
-                  <div className="space-y-1 text-center">
-                    <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="flex text-sm text-gray-600 justify-center">
-                      <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
-                        <span>Upload from device</span>
-                        <input type="file" className="sr-only" accept="image/*" onChange={handleImageSelect} />
-                      </label>
-                    </div>
-                    <p className="text-xs text-gray-500">PNG, JPG up to 5MB</p>
+              {/* The AI Suggested Photo Gallery */}
+              {suggestedPhotos.length > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center">
+                    <Sparkles size={12} className="mr-1.5 text-blue-600" /> AI Found Photos (Click to select)
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                    {suggestedPhotos.map((url, i) => (
+                      <img 
+                        key={i} 
+                        src={url} 
+                        alt="Suggested" 
+                        // NEW: If the image is broken/blocked by Google, hide it instantly!
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        onClick={() => { 
+                          setFormData(prev => ({...prev, photoUrl: url})); 
+                          setImageFile(null); 
+                          setImagePreview(url); 
+                        }}
+                        className={`h-24 w-32 shrink-0 object-cover rounded-lg cursor-pointer transition-all border-[3px] ${
+                          formData.photoUrl === url && !imageFile 
+                            ? 'border-blue-600 shadow-md scale-[1.02]' 
+                            : 'border-transparent hover:border-gray-300'
+                        }`}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
-            </div>
 
-            <div className="hidden">
-              <input type="text" name="distanceKm" value={formData.distanceKm} onChange={handleChange} />
-              <input type="text" name="distanceTime" value={formData.distanceTime} onChange={handleChange} />
+              {/* The Selected Preview & Upload Box */}
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                
+                {(imagePreview || formData.photoUrl) && (
+                  <div className="relative inline-block shrink-0">
+                    <img src={imagePreview || formData.photoUrl} alt="Preview" className="h-32 w-48 rounded-xl object-cover border-2 border-blue-600 shadow-sm" />
+                    <div className="absolute top-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-md shadow-sm uppercase tracking-wider">
+                      Selected
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => { setImageFile(null); setImagePreview(null); setFormData(prev => ({...prev, photoUrl: ''})); }}
+                      className="absolute -top-2 -right-2 bg-white text-red-500 border border-red-100 p-1.5 rounded-full hover:bg-red-50 shadow-md transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+
+                <div className={`flex-1 w-full flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors ${imagePreview || formData.photoUrl ? 'opacity-70 hover:opacity-100' : ''}`}>
+                  <div className="space-y-1 text-center">
+                    <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
+                    <div className="flex text-sm text-gray-600 justify-center mt-2">
+                      <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
+                        <span>Upload your own file</span>
+                        <input type="file" className="sr-only" accept="image/*" onChange={(e) => {
+                          handleImageSelect(e);
+                          setFormData(prev => ({...prev, photoUrl: ''})); // Clear gallery selection if they upload
+                        }} />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Toggles */}
@@ -422,7 +583,7 @@ export default function LocalGems() {
         </div>
 
         <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
-          <button type="button" onClick={() => { setIsFormOpen(false); setEditingGemId(null); setFormData(initialFormState); setImagePreview(null); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
+          <button type="button" onClick={() => { setIsFormOpen(false); setEditingGemId(null); setFormData(initialFormState); setImagePreview(null); setSuggestedPhotos([]); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>          
           
           <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm">
             {(isSubmitting || isUploadingImage) && <Loader2 size={16} className="mr-2 animate-spin" />}

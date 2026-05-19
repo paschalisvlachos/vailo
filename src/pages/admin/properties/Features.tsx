@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../../lib/firebase';
-import { ArrowLeft, Plus, Image as ImageIcon, Pencil, Trash2, Building, Loader2, Star, Link as LinkIcon, Phone } from 'lucide-react';
+import { getGenerativeModel } from "firebase/ai";
+import { ai, db, storage } from '../../../lib/firebase';
+import { ArrowLeft, Plus, Image as ImageIcon, Pencil, Trash2, Building, Loader2, Star, Link as LinkIcon, Phone, Sparkles, Wand2 } from 'lucide-react';
 
 const CATEGORY_OPTIONS = [
   "Rent a Car", "Private Chef", "Massage & Spa", "Tours & Activities", 
@@ -38,6 +39,7 @@ export default function Features() {
     whatsapp: '',
     email: '',
     website: '',
+    sourceUrl: '',
     photoUrl: '',
     categories: [] as string[],
     showOnMain: true,
@@ -51,6 +53,128 @@ export default function Features() {
   const [formData, setFormData] = useState(initialFormState);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  // NEW: AI States
+  const [suggestedPhotos, setSuggestedPhotos] = useState<string[]>([]);
+  const [isMagicFilling, setIsMagicFilling] = useState(false);
+
+  const handleMagicFill = async () => {
+    const url = formData.sourceUrl;
+    if (!url) return alert("Please paste a Google Maps URL first.");
+    setIsMagicFilling(true);
+
+    try {
+      // 1. EXTRACT NAME
+      const nameMatch = url.match(/\/place\/([^\/]+)\//);
+      let placeName = formData.businessName;
+      
+      if (nameMatch && nameMatch[1]) {
+        placeName = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
+        setFormData(prev => ({ ...prev, businessName: placeName }));
+      } else if (!placeName) {
+        alert("Could not extract name from URL. Please ensure it is a full Google Maps /place/ link.");
+        setIsMagicFilling(false);
+        return;
+      }
+
+      // 2. USE GEMINI FOR DESCRIPTION, CONTACT INFO, & CATEGORY
+      const prompt = `
+        Act as a luxury travel concierge for Crete, Greece. I am adding a partner/service called "${placeName}".
+        Determine its generic business category.
+        Return ONLY a strict JSON object with:
+        {
+          "description": "An engaging, 2-sentence description of why guests should use this specific service.",
+          "phone": "The official public phone number if known (e.g. '+30...'), else empty string.",
+          "whatsapp": "The official WhatsApp number ONLY IF it is explicitly advertised as a WhatsApp contact, else empty string.",
+          "email": "The official public email if known, else empty string.",
+          "website": "The official website URL if known, else empty string.",
+          "genericCategory": "A 1-3 word descriptive category for finding photos (e.g., 'car rental', 'horse riding', 'boat tour', 'massage'). DO NOT include location names like 'Crete'."
+        }
+      `;
+
+      const model = getGenerativeModel(ai, { 
+        model: "gemini-2.5-flash", 
+        generationConfig: { responseMimeType: "application/json" }
+      });
+
+      const result = await model.generateContent(prompt);
+      const cleanResponse = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+      const aiData = JSON.parse(cleanResponse);
+
+      // Instantly populate Description and Contact Info!
+      setFormData(prev => ({ 
+        ...prev, 
+        description: aiData.description || prev.description,
+        phone: aiData.phone || prev.phone,
+        whatsapp: aiData.whatsapp || prev.whatsapp,
+        email: aiData.email || prev.email,
+        website: aiData.website || prev.website
+      }));
+
+      // 3. THE CLEVER PHOTO HACKS ($0 MVP)
+      let newPhotos: string[] = [];
+      
+      // Strategy A: Google Maps Cover Photo Bypass & Phone Scrape
+      try {
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
+        
+        if (data.contents) {
+          const metaMatch = data.contents.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i);
+          if (metaMatch && metaMatch[1] && !metaMatch[1].includes('maps/vt')) {
+            newPhotos.push(metaMatch[1].replace(/=w\d+-h\d+-k-no-p?/, '=w1000-h1000-k-no'));
+          }
+
+          if (!aiData.phone) {
+            const phoneMatch = data.contents.match(/tel:([+0-9\- ]+)/);
+            if (phoneMatch && phoneMatch[1]) {
+              const cleanPhone = phoneMatch[1].replace(/\\u002B/g, '+').trim();
+              setFormData(prev => ({ ...prev, phone: cleanPhone })); 
+            }
+          }
+        }
+      } catch (e) { console.log("Google placeholder bypass failed."); }
+
+      // Strategy B: Fetch 5 Gorgeous Stock Photos via Pixabay API using ENV
+      try {
+        const searchTerm = encodeURIComponent(aiData.genericCategory || 'travel');
+        
+        // SECURE ENV CALL: Checks for Vite first, falls back to Create React App
+        const PIXABAY_KEY = import.meta.env?.VITE_PIXABAY_API_KEY;
+        
+        if (!PIXABAY_KEY) {
+          console.warn("Pixabay API key is missing from the .env file!");
+        } else {
+          const pixabayUrl = `https://pixabay.com/api/?key=${PIXABAY_KEY}&q=${searchTerm}&image_type=photo&orientation=horizontal&per_page=5&safesearch=true`;
+          
+          const pixabayRes = await fetch(pixabayUrl);
+          const pixabayData = await pixabayRes.json();
+          
+          if (pixabayData.hits && pixabayData.hits.length > 0) {
+            const stockUrls = pixabayData.hits.map((hit: any) => hit.webformatURL);
+            newPhotos = [...newPhotos, ...stockUrls];
+          }
+        }
+      } catch (e) { console.log("Pixabay stock photo fetch failed."); }
+
+      // Update Photo State
+      if (newPhotos.length > 0) {
+        const filteredPhotos = Array.from(new Set(newPhotos));
+        setSuggestedPhotos(filteredPhotos);
+        if (!imageFile && !formData.photoUrl) {
+          setFormData(prev => ({ ...prev, photoUrl: filteredPhotos[0] }));
+          setImagePreview(filteredPhotos[0]);
+        }
+      }
+
+    } catch (error) {
+      console.error("Magic Fill Error:", error);
+      alert("Something went wrong during the Magic Fill.");
+    } finally {
+      setIsMagicFilling(false);
+    }
+  };
 
   // Fetch Features Sub-collection
   useEffect(() => {
@@ -148,6 +272,7 @@ export default function Features() {
     setFormData(featureData);
     setImagePreview(featureData.photoUrl || null);
     setImageFile(null);
+    setSuggestedPhotos([]);
     setEditingFeatureId(featureData.id);
     setIsFormOpen(true);
   };
@@ -295,7 +420,7 @@ export default function Features() {
   return (
     <div className="max-w-4xl mx-auto pb-8">
       <div className="flex items-center mb-6">
-        <button onClick={() => { setIsFormOpen(false); setEditingFeatureId(null); setFormData(initialFormState); setImagePreview(null); }} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        <button onClick={() => { setIsFormOpen(false); setEditingFeatureId(null); setFormData(initialFormState); setImagePreview(null); setSuggestedPhotos([]); }} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
         </button>
         <div>
@@ -315,6 +440,31 @@ export default function Features() {
               <PillSelector label="Categories *" options={CATEGORY_OPTIONS} arrayName="categories" colorClass="blue" />
             </div>
 
+            {/* Smart Import Header */}
+            <div className="md:col-span-2 bg-blue-50/50 border border-blue-100 rounded-xl p-6">
+              <h4 className="text-sm font-bold text-blue-900 flex items-center mb-2">
+                <Wand2 size={16} className="mr-2" /> Free AI Magic Fill
+              </h4>
+              <p className="text-xs text-blue-700 max-w-2xl mb-4">
+                Paste a Google Maps link below to magically extract the business name, generate an engaging description, and find beautiful cover photos!
+              </p>
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <LinkIcon className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                  <input type="url" name="sourceUrl" value={formData.sourceUrl || ''} onChange={handleChange} placeholder="http://googleusercontent.com/maps.google.com/..." className="w-full pl-10 pr-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm" />
+                </div>
+                <button 
+                  type="button" 
+                  onClick={handleMagicFill} 
+                  disabled={isMagicFilling}
+                  className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 border border-transparent rounded-lg text-white hover:opacity-90 font-medium transition-all shadow-sm disabled:opacity-50"
+                >
+                  {isMagicFilling ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}
+                  {isMagicFilling ? 'Filling...' : 'AI Magic Fill'}
+                </button>
+              </div>
+            </div>
+
             <div className="md:col-span-2">
               <label className="block text-sm font-bold text-gray-700 mb-1">Business Name *</label>
               <input type="text" required name="businessName" value={formData.businessName} onChange={handleChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -325,29 +475,75 @@ export default function Features() {
               <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="What makes this partner/service special?"></textarea>
             </div>
 
-            {/* Photo Upload */}
+            {/* NEW: Smart Photo Selection & Upload */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-bold text-gray-700 mb-1">Photo (Max 5MB)</label>
-              {imagePreview ? (
-                <div className="relative inline-block mt-2">
-                  <img src={imagePreview} alt="Preview" className="h-48 w-auto rounded-xl object-cover border border-gray-200 shadow-sm" />
-                  <button type="button" onClick={() => { setImageFile(null); setImagePreview(null); setFormData(prev => ({...prev, photoUrl: ''})); }} className="absolute -top-3 -right-3 bg-red-100 text-red-600 p-2 rounded-full hover:bg-red-200 shadow-sm">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-2 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors">
-                  <div className="space-y-1 text-center">
-                    <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="flex text-sm text-gray-600 justify-center mt-2">
-                      <label className="relative cursor-pointer bg-transparent rounded-md font-bold text-blue-600 hover:text-blue-500 focus-within:outline-none">
-                        <span>Upload from device</span>
-                        <input type="file" className="sr-only" accept="image/*" onChange={handleImageSelect} />
-                      </label>
-                    </div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Photo * (Select one or upload)</label>
+              
+              {/* The AI Suggested Photo Gallery */}
+              {suggestedPhotos.length > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center">
+                    <Sparkles size={12} className="mr-1.5 text-blue-600" /> AI Found Photos (Click to select)
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
+                    {suggestedPhotos.map((url, i) => (
+                      <img 
+                        key={i} 
+                        src={url} 
+                        alt="Suggested" 
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        onClick={() => { 
+                          setFormData(prev => ({...prev, photoUrl: url})); 
+                          setImageFile(null); 
+                          setImagePreview(url); 
+                        }}
+                        className={`h-24 w-32 shrink-0 object-cover rounded-lg cursor-pointer transition-all border-[3px] ${
+                          formData.photoUrl === url && !imageFile 
+                            ? 'border-blue-600 shadow-md scale-[1.02]' 
+                            : 'border-transparent hover:border-gray-300'
+                        }`}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
+
+              {/* The Selected Preview & Upload Box */}
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                {(imagePreview || formData.photoUrl) && (
+                  <div className="relative inline-block shrink-0">
+                    <img src={imagePreview || formData.photoUrl} alt="Preview" className="h-32 w-48 rounded-xl object-cover border-2 border-blue-600 shadow-sm" />
+                    <div className="absolute top-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-md shadow-sm uppercase tracking-wider">
+                      Selected
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => { setImageFile(null); setImagePreview(null); setFormData(prev => ({...prev, photoUrl: ''})); }}
+                      className="absolute -top-2 -right-2 bg-white text-red-500 border border-red-100 p-1.5 rounded-full hover:bg-red-50 shadow-md transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+
+                <div className={`flex-1 w-full flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors ${imagePreview || formData.photoUrl ? 'opacity-70 hover:opacity-100' : ''}`}>
+                  <div className="space-y-1 text-center">
+                    <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
+                    <div className="flex text-sm text-gray-600 justify-center mt-2">
+                      <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
+                        <span>Upload your own file</span>
+                        <input type="file" className="sr-only" accept="image/*" onChange={(e) => {
+                          handleImageSelect(e);
+                          setFormData(prev => ({...prev, photoUrl: ''}));
+                        }} />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -410,9 +606,9 @@ export default function Features() {
 
         {/* Submit */}
         <div className="flex justify-end pt-4">
-          <button type="button" onClick={() => { setIsFormOpen(false); setEditingFeatureId(null); setFormData(initialFormState); setImagePreview(null); }} className="px-6 py-3 mr-4 text-sm font-bold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
+          <button type="button" onClick={() => { setIsFormOpen(false); setEditingFeatureId(null); setFormData(initialFormState); setImagePreview(null); setSuggestedPhotos([]); }} className="px-6 py-3 mr-4 text-sm font-bold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
             Cancel
-          </button>
+        </button>
           <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-8 py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50 transition-colors shadow-md hover:shadow-lg">
             {(isSubmitting || isUploadingImage) && <Loader2 size={18} className="mr-2 animate-spin" />}
             {isUploadingImage ? 'Uploading Photo...' : isSubmitting ? 'Saving...' : 'Save Feature'}

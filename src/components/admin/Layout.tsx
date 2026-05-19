@@ -2,7 +2,8 @@ import {
   LayoutDashboard, 
   Building2, 
   Users, 
-  LogOut
+  LogOut,
+  CreditCard // <-- 1. Added the CreditCard icon
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -35,6 +36,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" to="/" />
           <NavItem icon={<Building2 size={20} />} label="Properties" to="/properties" />          
           <NavItem icon={<Users size={20} />} label="Owners CRM" to="/owners" />
+          
+          {/* 2. Added the Billing NavItem here */}
+          <NavItem icon={<CreditCard size={20} />} label="Billing & Usage" to="/billing" />
         </nav>
       </aside>
 

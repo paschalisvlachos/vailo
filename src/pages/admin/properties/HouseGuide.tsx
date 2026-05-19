@@ -4,7 +4,7 @@ import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { 
   Building, BookOpen, Key, ScrollText, Wrench, Coffee, ShieldAlert, Loader2, Save, 
-  Plus, Trash2, MapPin, Phone, Tag, MonitorSpeaker, Pencil, Check
+  Plus, Trash2, MapPin, Tag, MonitorSpeaker, Pencil, Check
 } from 'lucide-react';
 
 // Type definitions for our dynamic arrays

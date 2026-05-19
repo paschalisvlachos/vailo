@@ -17,6 +17,7 @@ import Calendar from "./pages/admin/properties/Calendar";
 import Reservations from "./pages/admin/properties/Reservations";
 import HouseGuide from "./pages/admin/properties/HouseGuide";
 import Features from "./pages/admin/properties/Features";
+import Billing from "./pages/admin/Billing";
 
 import GuestPortal from "./pages/guest/GuestPortal";
 
@@ -85,6 +86,7 @@ export default function App() {
 
         <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />
         <Route path="/add-owner" element={<AdminRoute><AddOwner /></AdminRoute>} />
+        <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
       </Routes>
     </BrowserRouter>
   );

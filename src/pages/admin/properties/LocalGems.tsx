@@ -72,87 +72,89 @@ export default function LocalGems() {
     setIsMagicFilling(true);
 
     try {
-      // 1. EXTRACT NAME FROM URL to use as our Search Query
-      const nameMatch = url.match(/\/place\/([^\/]+)\//);
-      let placeName = "";
+      let searchQuery = "";
+      let placeNameFallback = ""; 
       
+      const nameMatch = url.match(/\/place\/([^\/]+)\//);
       if (nameMatch && nameMatch[1]) {
-        placeName = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
-        const searchQuery = `${placeName} Crete`; 
-
-        // 2. CALL OUR SECURE FIREBASE BOUNCER (Google Places API)
-        const functions = getFunctions();
-        const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+        // It's a standard long URL, format it directly
+        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
         
-        const result = await getGooglePlaceDetails({ searchQuery });
-        const googleData: any = result.data;
-
-        // 3. MAP GOOGLE'S CATEGORIES TO YOUR UI DROPDOWN
-        let uiCategory = "sightseeing"; 
-        const gType = googleData.category?.toLowerCase() || "";
-        if (gType.includes("restaurant") || gType.includes("cafe") || gType.includes("food")) uiCategory = "restaurant";
-        if (gType.includes("bar") || gType.includes("night_club")) uiCategory = "bar/nightlife";
-        if (gType.includes("shopping") || gType.includes("store")) uiCategory = "shopping";
-
-        // 4. SMART DESCRIPTION FALLBACK (Gemini AI)
-        let finalDescription = googleData.description;
-        
-        // If Google doesn't have an editorial summary, Gemini writes a beautiful one instantly!
-        if (!finalDescription) {
-          try {
-            const prompt = `Act as a luxury travel concierge for Crete. Write a short, engaging 2-sentence description for a local ${uiCategory} called "${googleData.name || placeName}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
-            const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
-            const aiResult = await model.generateContent(prompt);
-            finalDescription = aiResult.response.text().trim();
-          } catch (e) {
-            console.log("Gemini description fallback failed.", e);
-          }
-        }
-
-        // 5. CALCULATE DRIVING DISTANCE (100% Free via OSRM)
-        let distance = "";
-        let time = "";
-        
-        if (googleData.latitude && googleData.longitude) {
-          const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
-          const refLat = selectedTypeData?.latitude || property?.latitude;
-          const refLng = selectedTypeData?.longitude || property?.longitude;
-
-          if (refLat && refLng) {
-            const routeData = await fetchGlobalDrivingRoute(refLat, refLng, googleData.latitude.toString(), googleData.longitude.toString());
-            if (routeData) {
-              distance = routeData.distanceKm;
-              time = routeData.distanceTime;
-            }
-          }
-        }
-
-        // 6. UPDATE ALL STATE AT ONCE
-        setFormData(prev => ({
-          ...prev,
-          name: googleData.name || placeName,
-          category: uiCategory,
-          rating: googleData.rating ? googleData.rating.toString() : prev.rating,
-          description: finalDescription || prev.description, // Uses Google's OR Gemini's!
-          latitude: googleData.latitude?.toString() || prev.latitude,
-          longitude: googleData.longitude?.toString() || prev.longitude,
-          distanceKm: distance,
-          distanceTime: time,
-          photoUrl: googleData.photoUrl || ''
-        }));
-
-        if (googleData.photoUrl) {
-          setImagePreview(googleData.photoUrl);
-          setImageFile(null);
-        }
-
+        // Note: You originally had 'Crete' here for property-level accuracy
+        searchQuery = `${placeNameFallback} Crete`; 
       } else {
-        alert("Could not extract the Place Name. Ensure you paste the FULL web URL.");
+        // 🔥 THE FIX: It's a short link! We pass the raw URL directly to the backend.
+        searchQuery = url;
+      }
+
+      // CALL OUR SECURE FIREBASE BOUNCER
+      const functions = getFunctions();
+      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+      
+      const result = await getGooglePlaceDetails({ searchQuery });
+      const googleData: any = result.data;
+
+      // CALCULATE DRIVING DISTANCE (100% Free via OSRM)
+      let distance = "";
+      let time = "";
+      
+      if (googleData.latitude && googleData.longitude) {
+        const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
+        const refLat = selectedTypeData?.latitude || property?.latitude;
+        const refLng = selectedTypeData?.longitude || property?.longitude;
+
+        if (refLat && refLng) {
+          const routeData = await fetchGlobalDrivingRoute(refLat, refLng, googleData.latitude.toString(), googleData.longitude.toString());
+          if (routeData) {
+            distance = routeData.distanceKm;
+            time = routeData.distanceTime;
+          }
+        }
+      }
+
+      // MAP GOOGLE'S CATEGORIES TO YOUR UI DROPDOWN
+      let uiCategory = "sightseeing"; // Default
+      const gType = googleData.category?.toLowerCase() || "";
+      if (gType.includes("restaurant") || gType.includes("cafe") || gType.includes("food")) uiCategory = "restaurant";
+      if (gType.includes("bar") || gType.includes("night_club")) uiCategory = "bar/nightlife";
+      if (gType.includes("shopping") || gType.includes("store")) uiCategory = "shopping";
+
+      // SMART DESCRIPTION FALLBACK (Gemini AI)
+      let finalDescription = googleData.description;
+      
+      if (!finalDescription) {
+        try {
+          const prompt = `Act as a luxury travel concierge for Crete. Write a short, engaging 2-sentence description for a local ${uiCategory} called "${googleData.name || placeNameFallback}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
+          const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+          const aiResult = await model.generateContent(prompt);
+          finalDescription = aiResult.response.text().trim();
+        } catch (e) {
+          console.log("Gemini description fallback failed.", e);
+        }
+      }
+
+      // UPDATE ALL STATE AT ONCE
+      setFormData(prev => ({
+        ...prev,
+        name: googleData.name || placeNameFallback,
+        category: uiCategory,
+        rating: googleData.rating ? googleData.rating.toString() : prev.rating,
+        description: finalDescription || prev.description,
+        latitude: googleData.latitude?.toString() || prev.latitude,
+        longitude: googleData.longitude?.toString() || prev.longitude,
+        distanceKm: distance,
+        distanceTime: time,
+        photoUrl: googleData.photoUrl || ''
+      }));
+
+      if (googleData.photoUrl) {
+        setImagePreview(googleData.photoUrl);
+        setImageFile(null);
       }
 
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      alert("Something went wrong while asking Google for the data.");
+      alert("Something went wrong while asking Google for the data. Make sure it's a valid link!");
     } finally {
       setIsMagicFilling(false);
     }

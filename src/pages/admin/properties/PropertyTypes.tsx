@@ -19,8 +19,11 @@ export default function PropertyTypes() {
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // Master Area Database States
+  const [countries, setCountries] = useState<string[]>([]);
+  const [dbAreas, setDbAreas] = useState<string[]>([]);
   
-  // UPDATED: Added city field and split from area
   const initialFormState = {
     listingUrl: '', googleMapsUrl: '', propertyTypeName: '', urlSlug: '', 
     latitude: '', longitude: '', wifiName: '', wifiPassword: '', internalRefCode: '',
@@ -28,6 +31,33 @@ export default function PropertyTypes() {
     photoUrl: '', addressLine: '', area: '', city: '', postCode: '', country: ''
   };
   const [typeFormData, setTypeFormData] = useState(initialFormState);
+
+  // 1. Fetch Global Countries
+  useEffect(() => {
+    fetch('https://restcountries.com/v3.1/all?fields=name')
+      .then(res => res.json())
+      .then(data => {
+        const countryNames = data
+          .map((c: any) => c.name.common)
+          .sort((a: string, b: string) => a.localeCompare(b));
+        setCountries(countryNames);
+      })
+      .catch(err => console.error("Failed to fetch countries:", err));
+  }, []);
+
+  // 2. Fetch Master Areas for selected Country
+  useEffect(() => {
+    if (!typeFormData.country) {
+      setDbAreas([]);
+      return;
+    }
+    const unsubscribe = onSnapshot(collection(db, 'countries', typeFormData.country, 'areas'), (snapshot) => {
+      const areasData = snapshot.docs.map(doc => doc.data().name);
+      areasData.sort((a, b) => a.localeCompare(b));
+      setDbAreas(areasData);
+    });
+    return () => unsubscribe();
+  }, [typeFormData.country]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -53,18 +83,29 @@ export default function PropertyTypes() {
     }
   }, [isFormOpen, editingTypeId]);
 
-  useEffect(() => {
-    if (!isSlugManuallyEdited && property?.urlSlug && !editingTypeId) {
-      const formattedType = typeFormData.propertyTypeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
-      if (formattedType) {
-        setTypeFormData(prev => ({ ...prev, urlSlug: `${property.urlSlug}/${formattedType}` }));
-      }
-    }
-  }, [typeFormData.propertyTypeName, isSlugManuallyEdited, property, editingTypeId]);
-
   const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (e.target.name === 'urlSlug') setIsSlugManuallyEdited(true);
-    setTypeFormData({ ...typeFormData, [e.target.name]: e.target.value });
+    
+    setTypeFormData(prev => {
+      const newData = { ...prev, [e.target.name]: e.target.value };
+      
+      // Force city reset if country changes
+      if (e.target.name === 'country') {
+        newData.city = ''; 
+      }
+
+      // Auto-generate ONLY the child slug when typing the property name
+      if (e.target.name === 'propertyTypeName' && !isSlugManuallyEdited) {
+        newData.urlSlug = e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      }
+
+      return newData;
+    });
+  };
+
+  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setIsSlugManuallyEdited(true);
+    setTypeFormData({ ...typeFormData, urlSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') });
   };
 
   const handleAutoFillMaps = () => {
@@ -77,7 +118,6 @@ export default function PropertyTypes() {
     }
   };
 
-  // Handle photo selection
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -86,18 +126,24 @@ export default function PropertyTypes() {
     }
   };
 
-  // NEW: Handle photo removal
   const handleRemovePhoto = () => {
     setPhotoFile(null);
     setPhotoPreview(null);
-    // Erase it from the form data so it deletes from Firebase when saved
     setTypeFormData(prev => ({ ...prev, photoUrl: '' }));
   };
 
   // --- CRUD OPERATIONS --- //
   const handleEditClick = (typeData: any) => {
-    setTypeFormData({ ...initialFormState, ...typeData });
+    // Safety check: If the old broken slug logic saved "parent-slug/child-slug", 
+    // this cleans it up instantly so the user only edits the child slug.
+    let cleanSlug = typeData.urlSlug || '';
+    if (property?.urlSlug && cleanSlug.startsWith(`${property.urlSlug}/`)) {
+      cleanSlug = cleanSlug.replace(`${property.urlSlug}/`, '');
+    }
+
+    setTypeFormData({ ...initialFormState, ...typeData, urlSlug: cleanSlug });
     setEditingTypeId(typeData.id);
+    setIsSlugManuallyEdited(true);
     setPhotoFile(null);
     setPhotoPreview(typeData.photoUrl || null);
     setIsFormOpen(true);
@@ -121,7 +167,6 @@ export default function PropertyTypes() {
     try {
       let finalPhotoUrl = typeFormData.photoUrl;
 
-      // Upload new photo if selected
       if (photoFile) {
         const storage = getStorage();
         const fileRef = ref(storage, `propertyTypes/${propertyId}/${Date.now()}_${photoFile.name}`);
@@ -155,6 +200,7 @@ export default function PropertyTypes() {
     setTypeFormData(initialFormState);
     setPhotoFile(null);
     setPhotoPreview(null);
+    setIsSlugManuallyEdited(false);
   };
 
   const handleICalSync = () => {
@@ -310,7 +356,6 @@ export default function PropertyTypes() {
                 <input type="file" accept="image/*" onChange={handlePhotoSelect} className="hidden" />
               </label>
             </div>
-            {/* UPDATED: Added Delete Button inside the preview */}
             {photoPreview && (
               <div className="h-32 w-48 shrink-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm relative group">
                 <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
@@ -361,9 +406,24 @@ export default function PropertyTypes() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Property Type Name *</label>
               <input type="text" required name="propertyTypeName" value={typeFormData.propertyTypeName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
+            
+            {/* 🔥 FIXED SLUG INPUT 🔥 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">URL Slug *</label>
-              <input type="text" required name="urlSlug" value={typeFormData.urlSlug} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50" />
+              <div className="flex">
+                <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm whitespace-nowrap overflow-hidden">
+                  vailo.com/{property?.urlSlug || 'property'}/
+                </span>
+                <input 
+                  type="text" 
+                  required 
+                  name="urlSlug" 
+                  value={typeFormData.urlSlug} 
+                  onChange={handleSlugChange} 
+                  placeholder="e.g., grand-villa" 
+                  className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none" 
+                />
+              </div>
             </div>
             
             <div className="md:col-span-2">
@@ -404,7 +464,7 @@ export default function PropertyTypes() {
           </div>
         </div>
 
-        {/* UPDATED: Address Details Section with required fields */}
+        {/* Address Details Section with Master Area Selectors */}
         <div className="p-6 space-y-6">
           <h4 className="text-sm font-bold text-gray-900 border-b border-gray-100 pb-2 mb-4">Address Details</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -412,21 +472,34 @@ export default function PropertyTypes() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
               <input type="text" required name="addressLine" value={typeFormData.addressLine} onChange={handleTypeChange} placeholder="e.g., 123 Main St, Apt 4B" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Area *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
+              <select required name="country" value={typeFormData.country} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                <option value="" disabled>Select Country</option>
+                {countries.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">City / Master Area *</label>
+              <select required name="city" value={typeFormData.city} onChange={handleTypeChange} disabled={!typeFormData.country} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:opacity-50">
+                <option value="" disabled>{dbAreas.length === 0 ? 'No areas setup for this country' : 'Select City/Area'}</option>
+                {dbAreas.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+              {typeFormData.country && dbAreas.length === 0 && (
+                <p className="text-xs text-red-500 mt-1">Please add areas in Area Functionality first.</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Neighborhood / Area *</label>
               <input type="text" required name="area" value={typeFormData.area} onChange={handleTypeChange} placeholder="e.g., Akrotiri" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-              <input type="text" required name="city" value={typeFormData.city} onChange={handleTypeChange} placeholder="e.g., Chania" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
               <input type="text" name="postCode" value={typeFormData.postCode} onChange={handleTypeChange} placeholder="e.g., 73100" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
-              <input type="text" required name="country" value={typeFormData.country} onChange={handleTypeChange} placeholder="e.g., Greece" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
           </div>
         </div>

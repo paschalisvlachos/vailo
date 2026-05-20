@@ -18,6 +18,13 @@ import Reservations from "./pages/admin/properties/Reservations";
 import HouseGuide from "./pages/admin/properties/HouseGuide";
 import Features from "./pages/admin/properties/Features";
 import Billing from "./pages/admin/Billing";
+import AreaSelector from "./pages/admin/area/AreaSelector";
+import AiCategories from "./pages/admin/area/AiCategories";
+import LocalGemsCategories from "./pages/admin/area/LocalGemsCategories";
+import FeaturesCategories from "./pages/admin/area/FeaturesCategories";
+import FeaturesPhotos from "./pages/admin/area/FeaturesPhotos";
+import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
+import AreaFeatures from "./pages/admin/area/AreaFeatures";
 
 import GuestPortal from "./pages/guest/GuestPortal";
 
@@ -87,6 +94,13 @@ export default function App() {
         <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />
         <Route path="/add-owner" element={<AdminRoute><AddOwner /></AdminRoute>} />
         <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
+        <Route path="/area" element={<AdminRoute><AreaSelector /></AdminRoute>} />
+        <Route path="/area/:country/:area/ai-categories" element={<AdminRoute><AiCategories /></AdminRoute>} />
+        <Route path="/area/:country/:area/local-gems-categories" element={<AdminRoute><LocalGemsCategories /></AdminRoute>} />
+        <Route path="/area/:country/:area/features-categories" element={<AdminRoute><FeaturesCategories /></AdminRoute>} />
+        <Route path="/area/:country/:area/features-photos" element={<AdminRoute><FeaturesPhotos /></AdminRoute>} />
+        <Route path="/area/:country/:area/local-gems" element={<AdminRoute><AreaLocalGems /></AdminRoute>} />
+        <Route path="/area/:country/:area/features" element={<AdminRoute><AreaFeatures /></AdminRoute>} />
       </Routes>
     </BrowserRouter>
   );

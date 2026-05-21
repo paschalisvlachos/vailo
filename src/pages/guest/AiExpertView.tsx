@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { getGenerativeModel } from "firebase/ai";
 import { ai, db } from '../../lib/firebase';
-import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, User, Bot, Map as MapIcon, Car } from 'lucide-react';
+import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Bot, Map as MapIcon, Car } from 'lucide-react';
 
 interface AiExpertViewProps {
   onClose: () => void;

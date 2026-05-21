@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Sparkles, ArrowLeft, Navigation, Clock, Star, Map, X } from 'lucide-react';
+import { collection, getDocs } from 'firebase/firestore';
 import { getGenerativeModel } from "firebase/ai";
-import { ai } from '../../lib/firebase';
+import { ai, db } from '../../lib/firebase';
+import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, User, Bot, Map as MapIcon, Car } from 'lucide-react';
 
 interface AiExpertViewProps {
   onClose: () => void;
@@ -11,497 +12,593 @@ interface AiExpertViewProps {
   gems: any[];
 }
 
-interface ChatMessage {
+interface Message {
   id: string;
-  sender: 'ai' | 'user';
-  text: string;
-  isOptions?: boolean;
-  options?: string[];
-  multi?: boolean;
-  isTimeSelector?: boolean;
+  role: 'ai' | 'user';
+  type: 'text' | 'plan';
+  text?: string;
+  data?: any;
 }
 
+type Step = 'LOCATION' | 'DISTANCE' | 'TRANSPORT' | 'CATEGORIES' | 'TIME' | 'DONE';
+
 export default function AiExpertView({ onClose, property, propertyType, features, gems }: AiExpertViewProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [itineraryData, setItineraryData] = useState<any | null>(null);
+  // Chat & Flow State
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [step, setStep] = useState<Step>('LOCATION');
+  const [chatInput, setChatInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [startVal, setStartVal] = useState<number | ''>('');
-  const [returnVal, setReturnVal] = useState<number | ''>('');
+  // Data & Dynamic States
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [dynamicDistances, setDynamicDistances] = useState<string[]>([]);
+  
+  // User Preferences
+  const [preferences, setPreferences] = useState({
+    location: '',
+    distance: '',
+    transport: '',
+    categories: [] as string[],
+    timeFrame: ''
+  });
 
-  const script = [
-    { key: 'transport', text: "Hello! I'm your Vailo AI Travel Expert. Let's craft the perfect local experience to avoid touristic traps and live like a local. First, How will you be getting around?", options: ['Car', 'Public Transport / Walking'], multi: false },
-    { key: 'distance', text: "How far are you willing to travel?", options: ['up to 10km', 'up to 30km', 'up to 50km', 'Flexible'], multi: false },
-    { key: 'pace', text: "Got it. And how should we pace the day?", options: ['Relaxed', 'Normal', 'Active'], multi: false },
-    { key: 'vibe', text: "What kind of experience are you looking for? (Select up to 3)", options: ['Beach', 'Culture', 'Nature', 'Hiking', 'Dining', 'Events & Festivals', 'Horse Riding', 'Jeep Safari', 'Boat Tours', 'Water Sports', 'Playground', 'Fitness & Sports', 'Nightlife'], multi: true },
-    { key: 'timeframe', text: "Finally, let's set the exact timeframe. When do you want to head out, and when do you want to return?", isTimeSelector: true }
-  ];
+  // UI Temp States
+  const [customLoc, setCustomLoc] = useState('');
+  const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
 
-  const [currentStep, setCurrentStep] = useState(0);
-  const [multiSelection, setMultiSelection] = useState<string[]>([]);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
-
+  // 1. Initial Greeting & Category Fetching
   useEffect(() => {
-    if (messages.length === 0) {
-      setTimeout(() => {
-        setMessages([{ id: `msg-0-${Date.now()}`, sender: 'ai', text: script[0].text, isOptions: true, options: script[0].options, multi: script[0].multi }]);
-      }, 500);
-    }
-  }, []);
+    setMessages([
+      { id: Date.now().toString(), role: 'ai', type: 'text', text: `Welcome to ${property?.propertyName || 'our property'}! I am your personal Vailo AI Concierge. Let's avoid the tourist traps and plan the perfect local experience for you.` }
+    ]);
 
+    const fetchCategories = async () => {
+      const country = propertyType?.country || property?.country || 'Greece';
+      const areaName = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
+      const areaId = areaName.toLowerCase().replace(/\s+/g, '-');
+
+      if (areaId && country) {
+        try {
+          const aiRef = collection(db, 'countries', country, 'areas', areaId, 'aiCategories');
+          const gemsRef = collection(db, 'countries', country, 'areas', areaId, 'localGemsCategories');
+          
+          const [aiSnap, gemsSnap] = await Promise.all([getDocs(aiRef), getDocs(gemsRef)]);
+          const aiCats = aiSnap.docs.map(d => d.data().name).filter(Boolean);
+          const gemCats = gemsSnap.docs.map(d => d.data().name).filter(Boolean);
+
+          const cats = new Set([...aiCats, ...gemCats]);
+          setAvailableCategories(Array.from(cats).sort());
+        } catch (error) {
+          console.error("Failed to fetch Master Categories:", error);
+        }
+      }
+    };
+    fetchCategories();
+  }, [property, propertyType]);
+
+  // Auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, step, dynamicDistances]);
 
-  const handleReset = () => {
-    setItineraryData(null);
-    setCurrentStep(0);
-    setAnswers({});
-    setMultiSelection([]);
-    setStartVal('');
-    setReturnVal('');
-    setMessages([{ id: `msg-0-${Date.now()}`, sender: 'ai', text: script[0].text, isOptions: true, options: script[0].options, multi: script[0].multi }]);
-  };
+  // --- DATABASE HELPER (Now Includes Photos and Map URLs) ---
+  const getDbSummary = () => ({
+    gems: gems?.map(g => ({ name: g.name, category: g.category, description: g.description, distance: g.distanceKm ? `${g.distanceKm}km` : 'Local', photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })) || [],
+    features: features?.map(f => ({ name: f.name, category: f.categories?.join(', '), description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' })) || []
+  });
 
-  const handleOptionClick = (option: string) => {
-    if (option === 'Try different settings') {
-      handleReset();
-      return;
-    }
-    const stepData = script[currentStep];
-    if (stepData.multi) {
-      setMultiSelection(prev => 
-        prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option].slice(0, 3)
-      );
-    } else {
-      submitAnswer([option]);
+  // --- STATE MACHINE LOGIC ---
+  const advanceStep = async (currentStep: Step, value: any, displayText: string) => {
+    setPreferences(prev => ({ ...prev, [currentStep.toLowerCase()]: value }));
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: displayText }]);
+
+    if (currentStep === 'LOCATION') {
+      setStep('DISTANCE');
+      await generateCleverDistances(value);
+    } else if (currentStep === 'DISTANCE') {
+      setStep('TRANSPORT');
+    } else if (currentStep === 'TRANSPORT') {
+      setStep('CATEGORIES');
+    } else if (currentStep === 'CATEGORIES') {
+      setStep('TIME');
     }
   };
 
-  const getLabelFromValue = (val: number) => {
-    const h = Math.floor(val) % 12 || 12;
-    const m = val % 1 === 0.5 ? '30' : '00';
-    const isNextDay = val >= 24;
-    const ampm = (val % 24) < 12 ? 'AM' : 'PM';
-    return `${h}:${m} ${ampm}${isNextDay ? ' (Next Day)' : ''}`;
-  };
-
-  const submitTimeframe = () => {
-    const startStr = getLabelFromValue(Number(startVal));
-    const returnStr = getLabelFromValue(Number(returnVal));
-    submitAnswer([`From ${startStr} to ${returnStr}`], { startStr, returnStr });
-  };
-
-  const submitAnswer = (selectedAnswers: string[], payload?: any) => {
-    const stepData = script[currentStep];
-    const answerText = selectedAnswers.join(', ');
-
-    setMessages(prev => prev.map(m => m.id === `msg-${currentStep}` ? { ...m, isOptions: false, isTimeSelector: false } : m));
-    setMessages(prev => [...prev, { id: `ans-${currentStep}-${Date.now()}`, sender: 'user', text: answerText }]);
-    setAnswers(prev => ({ ...prev, [stepData.key]: selectedAnswers }));
-    setMultiSelection([]);
-
-    if (currentStep < script.length - 1) {
-      setCurrentStep(prev => prev + 1);
-      setTimeout(() => {
-        setMessages(prev => [...prev, { 
-          id: `msg-${currentStep + 1}`, 
-          sender: 'ai', 
-          text: script[currentStep + 1].text, 
-          isOptions: script[currentStep + 1].options ? true : false, 
-          options: script[currentStep + 1].options,
-          multi: script[currentStep + 1].multi,
-          isTimeSelector: script[currentStep + 1].isTimeSelector
-        }]);
-      }, 600);
-    } else {
-      setTimeout(() => {
-        setMessages(prev => [...prev, { id: 'final', sender: 'ai', text: "Understood. I’m diving into our local database to pull the best options for you. My goal is to bypass the typical tourist spots and give you an authentic local experience." }]);
-        startAI(payload.startStr, payload.returnStr); 
-      }, 600);
+  const generateCleverDistances = async (loc: string) => {
+    setIsThinking(true);
+    try {
+      const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" }); 
+      const prompt = `The user wants to start a day trip from "${loc}" in ${property?.city || property?.country || 'Greece'}. 
+      Propose 3 realistic, clever travel radius options (e.g. Walking, Short Drive, Island Exploration). 
+      Return ONLY a JSON array of 3 strings. Example: ["Walking distance (2km)", "Short drive (15km)", "Full day tour (50km+)"]`;
+      
+      const result = await model.generateContent(prompt);
+      
+      let text = result.response.text();
+      const firstBracket = text.indexOf('[');
+      const lastBracket = text.lastIndexOf(']');
+      if (firstBracket !== -1 && lastBracket !== -1) {
+        text = text.slice(firstBracket, lastBracket + 1);
+      }
+      
+      setDynamicDistances(JSON.parse(text));
+    } catch (e) {
+      setDynamicDistances(["Walking distance only", "Short trip (up to 30 mins)", "Explore the region (1+ hours)"]);
+    } finally {
+      setIsThinking(false);
     }
   };
 
-  const deg2rad = (deg: number) => deg * (Math.PI/180);
-  const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    if (!lat1 || !lon1 || !lat2 || !lon2) return 999; 
-    const R = 6371; 
-    const dLat = deg2rad(lat2-lat1);
-    const dLon = deg2rad(lon2-lon1);
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; 
-  };
-
-  // SMART GOOGLE MAPS URL BUILDER
-  const getMapUrl = (item: any, type: 'view' | 'navigate') => {
-    const baseUrl = type === 'view' 
-      ? 'https://www.google.com/maps/search/?api=1&query=' 
-      : 'https://www.google.com/maps/dir/?api=1&destination=';
+  // --- THE BUTTON-CLICK ORCHESTRATOR ---
+  const executePlan = async (timeFrameStr: string) => {
+    setPreferences(prev => ({ ...prev, timeFrame: timeFrameStr }));
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: timeFrameStr ? `Time: ${timeFrameStr}` : 'Flexible timing' }]);
     
-    // If it has real database coordinates (and isn't the AI's fallback "0")
-    if (item.latitude && item.longitude && item.latitude !== 0 && item.longitude !== 0) {
-      return `${baseUrl}${item.latitude},${item.longitude}`;
-    }
-    
-    // If it's an AI-generated place, use a smart text search query so Google resolves it perfectly!
-    const region = property?.area || property?.city || '';
-    const searchName = encodeURIComponent(`${item.title}, ${region}`);
-    return `${baseUrl}${searchName}`;
-  };
-
-  const startAI = async (parsedStart: string, parsedReturn: string) => {
-    setIsGenerating(true);
+    setStep('DONE');
+    setIsThinking(true);
     
     try {
-      const distanceChoice = answers.distance?.[0] || '';
-      let maxDist = 999; 
-      if (distanceChoice.includes('10')) maxDist = 10;
-      else if (distanceChoice.includes('30')) maxDist = 30;
-      else if (distanceChoice.includes('50')) maxDist = 50;
+      const model = getGenerativeModel(ai, { model: "gemini-2.5-pro" });
 
-      const baseName = propertyType?.propertyTypeName || property?.propertyName || "The Property";
-      const baseImage = propertyType?.photoUrl || property?.photoUrl || '';
-      
-      const baseLat = parseFloat(property?.latitude);
-      const baseLng = parseFloat(property?.longitude);
-      const baseAddress = [property?.addressLine, property?.area, property?.city, property?.country].filter(Boolean).join(', ');
+      let promptText = `
+        You are an elite, local luxury concierge for ${propertyType?.city || property?.city || 'Greece'}. 
+        Plan a day starting from: ${preferences.location}.
+        Max Distance: ${preferences.distance}. 
+        Transport method: ${preferences.transport}.
+        Requested Categories: ${preferences.categories.join(', ')}.
 
-      let validPartners = features.filter(f => f.liveLikeLocal);
-      let validGems = [...gems];
+        VAILO DATABASE (Use these first!):
+        ${JSON.stringify(getDbSummary())}
 
-      if (maxDist < 999 && !isNaN(baseLat) && !isNaN(baseLng)) {
-        validPartners = validPartners.filter(f => getDistanceFromLatLonInKm(baseLat, baseLng, parseFloat(f.latitude), parseFloat(f.longitude)) <= maxDist);
-        validGems = validGems.filter(g => getDistanceFromLatLonInKm(baseLat, baseLng, parseFloat(g.latitude), parseFloat(g.longitude)) <= maxDist);
-      }
-
-      const availableItems = [
-        ...validPartners.map(f => ({ title: f.businessName, categories: f.categories || [], desc: f.description, lat: f.latitude, lng: f.longitude, img: f.photoUrl, isPartner: true })),
-        ...validGems.map(g => ({ title: g.name, categories: [g.category], desc: g.description, lat: g.latitude, lng: g.longitude, img: g.photoUrl, isPartner: false }))
-      ];
-
-      const isPublicTransport = answers.transport?.[0].includes('Public Transport');
-
-      // THE "PROPER NOUNS & GRACEFUL ALTERNATIVE" CONCIERGE PROMPT
-      const prompt = `
-        Act as an elite local travel concierge creating a JSON timeline. You are an expert in finding non-touristy, hidden gems. Write rich descriptions, but be CLINICALLY PRECISE with your location names.
-        User profile: Transport: ${answers.transport?.[0]}, Pace: ${answers.pace?.[0]}, Vibes: ${answers.vibe?.join(', ')}, Distance limit: ${maxDist}km. Timeframe: ${parsedStart} to ${parsedReturn}.
-        Base Property: ${baseName} at ${baseAddress} (Lat ${baseLat}, Lng ${baseLng}). Base Image: ${baseImage}.
-        Available Database items: ${JSON.stringify(availableItems)}
-
-        CRITICAL RULES:
-        1. NO GENERIC TITLES (ABSOLUTE PRIORITY): The 'title' field for any destination MUST be the exact Proper Noun of a real, specific business, restaurant, or geographical landmark that exists on Google Maps. 
-           - CORRECT TITLES: "Zoraida Horse Riding", "Kalyvaki Beach", "Taverna Leonidas", "Lake Kournas".
-           - BANNED TITLES: "Morning Horse Riding", "Hidden Beach Cove", "A Taste of Local Flavors", "Azure Boat Tour". 
-           If you use a descriptive or generic title, the Google Maps routing will fail. You MUST provide a specific proper noun.
-        2. GEOGRAPHIC LEASH & THE GRACEFUL ALTERNATIVE: Try to stay strictly within the ${maxDist}km limit. However, if it is impossible to find a real, named place that matches the exact requested vibe within this range, you MUST propose a similar/related alternative experience instead. If you do this, you MUST naturally inform the guest in the 'introMessage' (e.g., "While there isn't a horse riding stable exactly within your requested distance, I have arranged a beautiful coastal nature hike for you instead...").
-        3. THE "MAIN VIBE" DOMINANCE: The user explicitly requested: ${answers.vibe?.join(', ')}. This MUST take up 80% of their day. If they asked for 'Beach', give them a massive 4 to 6 hour stay at the beach! DO NOT hijack the itinerary with unrelated database items.
-        4. THE ONE MEAL EXCEPTION: If the timeframe is over 5 hours and they didn't select 'Dining', you are allowed to add EXACTLY ONE specific, named local lunch/dining spot. Keep it focused on the main vibe.
-        5. PERFECT TIMING & MATH: The first item MUST depart the Base at exactly ${parsedStart}. The last item MUST return to the Base at exactly ${parsedReturn}. Adjust the 'stayDuration' of the main destination to ensure the math perfectly fills the time window.
-        6. SEAMLESS CONCIERGE: Scan the Database items first for vibe matches. If they lack matching vibes, seamlessly blend in your expert knowledge. NEVER mention "databases", "algorithms", or "missing items". Speak purely as a human concierge.
-        7. ACTION TYPES: The JSON array MUST use EXACTLY these actionTypes: "depart" for the first item, "return" for the last item, and "stay" for all intermediate destinations.
-        8. COORDINATES FOR EXPERT PLACES: If you invent an expert knowledge place that is not in the database, you MUST set its latitude to 0 and longitude to 0 so our system can search it via name instead.
-
-        Return ONLY a strict JSON object:
-        {
-          "introMessage": "A warm, engaging welcome message introducing the beautifully paced, curated itinerary. If you had to swap the requested vibe for a similar alternative due to distance limits, explain it naturally here.",
-          "timeline": [
-            { 
-              "actionTime": "${parsedStart}",
-              "actionType": "depart",
-              "title": "Departure from ${baseName}", 
-              "description": "Begin your tailored local day...",
-              "latitude": ${isNaN(baseLat) ? 0 : baseLat},
-              "longitude": ${isNaN(baseLng) ? 0 : baseLng},
-              "isPartner": false,
-              "img": "${baseImage}",
-              "distanceFromPreviousKm": 0,
-              "stayDuration": "",
-              "leaveAtTime": "${parsedStart}",
-              "transitText": "Enjoy a scenic, short drive of roughly 5km (~10 mins) towards the coast."
-            },
-            { 
-              "actionTime": "TIME_CALCULATED",
-              "actionType": "stay",
-              "title": "Kalyvaki Beach", 
-              "description": "Rich description of enjoying the main vibe...",
-              "latitude": 35.1,
-              "longitude": 24.1,
-              "isPartner": true,
-              "img": "URL or empty",
-              "distanceFromPreviousKm": 5,
-              "stayDuration": "5 hours",
-              "leaveAtTime": "TIME_CALCULATED",
-              "transitText": "Leave and head to your next stop."
-            },
-            { 
-              "actionTime": "${parsedReturn}",
-              "actionType": "return",
-              "title": "Return to ${baseName}", 
-              "description": "End of your local experience.",
-              "latitude": ${isNaN(baseLat) ? 0 : baseLat},
-              "longitude": ${isNaN(baseLng) ? 0 : baseLng},
-              "isPartner": false,
-              "img": "${baseImage}",
-              "distanceFromPreviousKm": 5,
-              "stayDuration": "",
-              "leaveAtTime": "${parsedReturn}",
-              "transitText": ""
-            }
-          ]
-        }
+        CONCIERGE RULES:
+        1. PRIORITIZE DATABASE: You MUST try to use the items from the VAILO DATABASE above if they match the categories. Aim for a 60% database / 40% AI knowledge split.
+        2. SPECIFIC PLACES ONLY: NEVER recommend generic areas, concepts, or neighborhoods. You MUST recommend specific, named businesses, restaurants, beaches, museums, or landmarks.
+        3. SMART CLUSTERING: Group activities by geography. Do not make the guest travel back and forth across long distances.
+        4. NO TOURIST TRAPS: When using your own AI knowledge, suggest hidden, authentic, highly-rated local spots.
       `;
 
-      const model = getGenerativeModel(ai, { 
-        model: "gemini-2.5-flash", 
-        generationConfig: { responseMimeType: "application/json" }
-      });
+      if (timeFrameStr) {
+        promptText += `
+        5. TIMEFLOW: The guest selected this timeframe: "${timeFrameStr}".
+        6. LOGICAL ORDERING: Order activities chronologically and logically.
+        
+        You MUST return ONLY a valid JSON object matching this exact schema, with absolutely no markdown formatting or extra text:
+        {
+          "type": "timeline",
+          "plan": [
+            {
+              "time": "e.g., 10:00 AM",
+              "title": "Specific Name of Activity/Place",
+              "description": "Engaging 2-sentence description of why they will love it.",
+              "transportToNext": "e.g., 15 mins by Car",
+              "source": "database or ai",
+              "photoUrl": "Exact URL from database or empty string if AI",
+              "googleMapsUrl": "Exact URL from database or empty string if AI"
+            }
+          ]
+        }`;
+      } else {
+        promptText += `
+        5. NO TIMEFRAME: The guest did not specify a timeframe.
+        6. TOP 4 PICKS: For EACH of the requested categories (${preferences.categories.join(', ')}), provide EXACTLY 4 recommendations.
 
-      const result = await model.generateContent(prompt);
-      const cleanResponse = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsedData = JSON.parse(cleanResponse);
+        You MUST return ONLY a valid JSON object matching this exact schema, with absolutely no markdown formatting or extra text:
+        {
+          "type": "picks",
+          "categories": [
+            {
+              "categoryName": "Name of Category",
+              "items": [
+                {
+                  "title": "Specific Name of Place/Activity",
+                  "description": "Engaging 2-sentence description.",
+                  "estimatedDistance": "e.g., 10 mins away",
+                  "source": "database or ai",
+                  "photoUrl": "Exact URL from database or empty string if AI",
+                  "googleMapsUrl": "Exact URL from database or empty string if AI"
+                }
+              ]
+            }
+          ]
+        }`;
+      }
+
+      const result = await model.generateContent(promptText);
+      let rawText = result.response.text();
       
-      const finalTimeline = parsedData.timeline.map((item: any) => {
-        let travelTime = "";
-        let transportIcon = "car";
-        if (item.distanceFromPreviousKm) {
-          if (isPublicTransport) {
-            travelTime = `~${Math.round(item.distanceFromPreviousKm * 12)} mins`;
-            transportIcon = "walk";
-          } else {
-            travelTime = `~${Math.round(item.distanceFromPreviousKm * 2)} mins drive`;
-            transportIcon = "car";
-          }
-        }
-        return { ...item, travelTime, transportIcon, isPublicTransport };
-      });
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1) throw new Error("AI did not return a recognizable JSON object.");
+      
+      const cleanJsonString = rawText.substring(firstBrace, lastBrace + 1);
+      const parsedData = JSON.parse(cleanJsonString);
+      
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'plan', data: parsedData }]);
 
-      setItineraryData({ ...parsedData, timeline: finalTimeline });
-    } catch (error) {
-      console.error("AI Generation Error:", error);
-      setMessages(prev => [...prev, { id: 'error', sender: 'ai', text: "I had trouble calculating the route. Please try again." }]);
+    } catch (error: any) {
+      console.error("Critical AI Itinerary Error:", error);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: `I apologize, but I encountered an error while generating your plan. Error Details: ${error.message}. Please try asking a custom question below.` }]);
     } finally {
-      setIsGenerating(false);
+      setIsThinking(false);
     }
   };
 
-  const startOptions: { val: number; label: string }[] = [];
-  for (let i = 6; i <= 18; i += 0.5) {
-    startOptions.push({ val: i, label: getLabelFromValue(i) });
-  }
+  // --- THE UNIFIED CHAT ORCHESTRATOR ---
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
 
-  const returnOptions: { val: number; label: string }[] = [];
-  if (startVal !== '') {
-    for (let i = Number(startVal) + 3; i <= 30; i += 0.5) {
-      returnOptions.push({ val: i, label: getLabelFromValue(i) });
+    const userText = chatInput;
+    setChatInput('');
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: userText }]);
+    
+    if (step !== 'DONE') setStep('DONE');
+    
+    setIsThinking(true);
+
+    try {
+      const model = getGenerativeModel(ai, { model: "gemini-2.5-pro" });
+      
+      const conversationHistory = messages.map(m => {
+        if (m.type === 'plan') return `AI generated this plan on screen: ${JSON.stringify(m.data)}`;
+        return `${m.role === 'ai' ? 'AI Concierge' : 'Guest'}: ${m.text}`;
+      }).join('\n\n');
+
+      const prompt = `
+        You are the elite Vailo AI Concierge for ${property?.propertyName} in ${propertyType?.city || property?.city || 'Greece'}.
+        Current itinerary preferences (may be empty if user bypassed steps): ${JSON.stringify(preferences)}.
+        
+        CONVERSATION HISTORY (What is currently on the screen):
+        ${conversationHistory}
+        
+        VAILO DATABASE (Use these first!):
+        ${JSON.stringify(getDbSummary())}
+
+        STRICT RULES:
+        1. ONLY answer questions related to local travel, day planning, itineraries, and "live like a local" advice. Decline off-topic/personal questions politely.
+        2. ULTRA CLEVER LOCAL EXPERT: 100% prioritize the VAILO DATABASE. If the user asks for recommendations, explicitly select the best matches from the database. 
+        3. SPECIFIC PLACES ONLY: NEVER recommend generic areas. You MUST recommend specific, named businesses, restaurants, beaches, museums, or landmarks.
+        4. PRESENTATION IS EVERYTHING: If the user asks for recommendations, filters previous results, asks for top choices, or asks to plan their day via chat, you MUST return a beautiful plan using the JSON 'plan' object (either 'picks' or 'timeline'). DO NOT list recommendations in plain text.
+
+        YOUR OUTPUT FORMAT:
+        You MUST return ONLY a valid JSON object matching this exact schema (no markdown formatting):
+        {
+          "replyText": "Your conversational response. Keep it brief and luxurious. (Can be empty if the plan speaks for itself)",
+          "hasPlan": true/false, // True if you are providing recommendations/itineraries, false if just chatting
+          "plan": null OR { // MUST match this schema if hasPlan is true!
+            "type": "picks" OR "timeline",
+            "plan": [ { "time": "...", "title": "Specific Place Name", "description": "...", "transportToNext": "...", "source": "database or ai", "photoUrl": "URL or empty", "googleMapsUrl": "URL or empty" } ],
+            "categories": [ { "categoryName": "...", "items": [ { "title": "Specific Place Name", "description": "...", "estimatedDistance": "...", "source": "database or ai", "photoUrl": "URL or empty", "googleMapsUrl": "URL or empty" } ] } ]
+          }
+        }
+
+        User Query: ${userText}
+      `;
+
+      const result = await model.generateContent(prompt);
+      let rawText = result.response.text();
+      
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1) throw new Error("JSON Parse failed.");
+      
+      const parsedData = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
+      
+      if (parsedData.replyText) {
+        setMessages(prev => [...prev, { id: Date.now().toString() + 'text', role: 'ai', type: 'text', text: parsedData.replyText }]);
+      }
+      
+      if (parsedData.hasPlan && parsedData.plan) {
+        setMessages(prev => [...prev, { id: Date.now().toString() + 'plan', role: 'ai', type: 'plan', data: parsedData.plan }]);
+      }
+
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: "I'm having trouble connecting right now. Please try again in a moment." }]);
+    } finally {
+      setIsThinking(false);
     }
-  }
+  };
 
-  return (
-    <div className="min-h-full w-full bg-[#F3F4F6] animate-in fade-in slide-in-from-right-8 duration-500 flex flex-col font-sans">
-      <div className="p-4 flex items-center justify-between bg-white border-b border-gray-200 sticky top-0 z-20 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button onClick={onClose} className="h-8 w-8 bg-gray-50 hover:bg-gray-100 rounded-full flex items-center justify-center text-gray-500 transition-colors">
-            <ArrowLeft size={16} />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-[#0B4F5C] rounded-full flex items-center justify-center">
-              <Sparkles size={14} className="text-[#C5A059]" />
-            </div>
-            <div>
-              <h2 className="font-luxury text-[15px] text-[#051F26] leading-none font-medium">AI Travel Expert</h2>
-              <p className="text-[9px] uppercase tracking-[0.1em] font-bold text-[#C5A059] mt-0.5">Live like a local</p>
-            </div>
+  const planAnotherDay = () => {
+    setStep('LOCATION');
+    setPreferences({ location: '', distance: '', transport: '', categories: [], timeFrame: '' });
+    setSelectedCats([]);
+    setCustomLoc('');
+    setStartTime('');
+    setEndTime('');
+    setMessages([
+      { id: Date.now().toString(), role: 'ai', type: 'text', text: "Let's plan another exciting day! Where are we starting from?" }
+    ]);
+  };
+
+  // --- RENDERERS ---
+  const renderMessage = (msg: Message) => {
+    if (msg.role === 'user') {
+      return (
+        <div key={msg.id} className="flex justify-end mb-4 animate-in fade-in slide-in-from-bottom-2">
+          <div className="max-w-[80%] bg-[#0B4F5C] text-white p-3 rounded-2xl rounded-tr-sm shadow-sm text-sm whitespace-pre-wrap">
+            {msg.text}
           </div>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-          <X size={20} />
-        </button>
-      </div>
+      );
+    }
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-6">
-        
-        {!itineraryData && (
-          <div className="flex flex-col gap-6 max-w-2xl mx-auto w-full pb-20">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                {msg.sender === 'ai' && (
-                  <div className="h-6 w-6 rounded-full bg-[#0B4F5C] flex items-center justify-center shrink-0 mr-2 mt-1 shadow-sm">
-                    <Sparkles size={10} className="text-[#C5A059]" />
-                  </div>
-                )}
-                <div className={`max-w-[85%] flex flex-col gap-3`}>
-                  <div className={`p-4 rounded-[1.25rem] text-[13px] leading-relaxed ${
-                    msg.sender === 'user' ? 'bg-[#C5A059] text-white rounded-tr-sm shadow-md' : 'bg-white text-[#051F26] rounded-tl-sm shadow-sm border border-gray-100 font-medium'
-                  }`}>
-                    {msg.text}
-                  </div>
-
-                  {msg.isOptions && msg.options && (
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {msg.options.map(opt => {
-                        const isSelected = msg.multi ? multiSelection.includes(opt) : false;
-                        return (
-                          <button
-                            key={opt}
-                            onClick={() => handleOptionClick(opt)}
-                            className={`px-4 py-2.5 rounded-xl text-[11px] uppercase tracking-wider font-bold text-left transition-all border ${
-                              isSelected ? 'bg-[#0B4F5C] border-[#0B4F5C] text-white shadow-md' : 'bg-white border-gray-200 text-gray-600 hover:border-[#C5A059] hover:text-[#0B4F5C]'
-                            }`}
-                          >
-                            {opt}
-                          </button>
-                        );
-                      })}
-                      {msg.multi && multiSelection.length > 0 && (
-                        <button onClick={() => submitAnswer(multiSelection)} className="mt-2 w-full py-3.5 bg-[#C5A059] text-white rounded-xl text-[11px] font-bold uppercase tracking-[0.15em] flex justify-center items-center shadow-md animate-in fade-in">
-                          Confirm Selection
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {msg.isTimeSelector && (
-                    <div className="bg-white p-5 rounded-[1.25rem] border border-gray-200 shadow-sm mt-1">
-                      <div className="flex gap-4">
-                        <div className="flex-1">
-                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Start Time</label>
-                          <select value={startVal} onChange={(e) => { setStartVal(Number(e.target.value)); setReturnVal(''); }} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-[#051F26] focus:outline-none focus:border-[#C5A059]">
-                            <option value="" disabled>Select...</option>
-                            {startOptions.map(opt => <option key={`start-${opt.val}`} value={opt.val}>{opt.label}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex-1">
-                          <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Return Time</label>
-                          <select value={returnVal} disabled={startVal === ''} onChange={(e) => setReturnVal(Number(e.target.value))} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-[#051F26] focus:outline-none focus:border-[#C5A059] disabled:opacity-50">
-                            <option value="" disabled>Select...</option>
-                            {returnOptions.map(opt => <option key={`end-${opt.val}`} value={opt.val}>{opt.label}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <button disabled={startVal === '' || returnVal === ''} onClick={submitTimeframe} className={`mt-5 w-full py-3.5 text-white rounded-xl text-[11px] font-bold uppercase tracking-[0.15em] flex justify-center items-center shadow-md transition-all ${startVal === '' || returnVal === '' ? 'bg-gray-300 cursor-not-allowed' : 'bg-[#C5A059] hover:bg-[#b08d4a]'}`}>
-                        Confirm Timeframe
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            
-            {isGenerating && (
-              <div className="flex justify-start animate-in fade-in duration-300">
-                <div className="h-6 w-6 rounded-full bg-[#0B4F5C] flex items-center justify-center shrink-0 mr-2 mt-1">
-                  <Sparkles size={10} className="text-[#C5A059]" />
-                </div>
-                <div className="bg-white p-4 rounded-[1.25rem] rounded-tl-sm shadow-sm border border-gray-100 flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                  <div className="w-1.5 h-1.5 bg-[#C5A059] rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-
-        {itineraryData && !isGenerating && (
-          <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-10">
-            
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 text-center">
-              <Sparkles className="mx-auto text-[#C5A059] mb-3" size={24} />
-              <p className="text-[#051F26] font-medium leading-relaxed">{itineraryData.introMessage}</p>
+    if (msg.type === 'plan' && msg.data) {
+      return (
+        <div key={msg.id} className="mb-6 animate-in fade-in slide-in-from-bottom-2">
+          <div className="bg-white border border-[#C5A059]/30 rounded-2xl p-5 shadow-md">
+            <div className="flex items-center text-[#C5A059] mb-4 border-b border-gray-100 pb-3">
+              <Sparkles size={20} className="mr-2" />
+              <h3 className="font-bold uppercase tracking-widest text-sm">Your Curated Local Experience</h3>
             </div>
 
-            <div className="relative border-l-2 border-[#0B4F5C]/20 ml-4 md:ml-6 pl-8 md:pl-10 space-y-2">
-              
-              {itineraryData.timeline.map((item: any, i: number) => (
-                <div key={i} className="relative mb-6">
-                  <div className="absolute -left-[45px] md:-left-[53px] top-0 h-7 w-7 bg-white border-[3px] border-[#C5A059] rounded-full flex items-center justify-center shadow-md z-10">
-                    <div className="h-2 w-2 bg-[#0B4F5C] rounded-full"></div>
-                  </div>
-                  
-                  <div className="flex flex-col gap-1 mb-3 pt-0.5">
-                    <span className="text-[11px] font-bold text-[#0B4F5C] uppercase tracking-[0.15em] flex items-center">
-                      <Clock size={12} className="mr-1.5 text-[#C5A059]" /> {item.actionTime}
-                    </span>
-                  </div>
-
-                  {(item.actionType === 'depart' || item.actionType === 'return') ? (
-                    <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden group">
-                      {item.img && (
-                        <div className="relative h-24 bg-gray-100 overflow-hidden">
-                          <img src={item.img} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-80" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/60 via-transparent to-transparent pointer-events-none"></div>
-                          <div className="absolute bottom-3 left-4 flex gap-2">
-                            <span className="text-white text-[10px] uppercase font-bold tracking-[0.15em] drop-shadow-md">
-                              {item.actionType === 'depart' ? 'Starting Point' : 'Ending Point'}
-                            </span>
-                          </div>
-                        </div>
+            {/* TIMELINE RENDERER */}
+            {msg.data.type === 'timeline' && (
+              <div className="space-y-6 pt-2">
+                {msg.data.plan?.map((item: any, idx: number) => (
+                  <div key={idx} className="relative pl-6 pb-6 border-l-2 border-[#0B4F5C]/20 last:border-0 last:pb-0">
+                    <div className="absolute w-3 h-3 bg-[#C5A059] rounded-full -left-[7px] top-1 shadow-sm" />
+                    <p className="font-bold text-[#0B4F5C] text-sm mb-1">{item.time}</p>
+                    
+                    <div className="bg-gray-50 border border-gray-100 rounded-xl overflow-hidden mt-2">
+                      {item.photoUrl && (
+                        <img src={item.photoUrl} alt={item.title} className="w-full h-32 object-cover" />
                       )}
-                      <div className="p-5">
-                        <h3 className="font-bold text-[#051F26] text-lg">{item.title}</h3>
-                        <p className="text-[13px] text-gray-500 mt-1">{item.description}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden group">
-                      {item.img && (
-                        <div className="relative h-48 bg-gray-100 overflow-hidden">
-                          <img src={item.img} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/80 via-transparent to-transparent pointer-events-none"></div>
-                          
-                          <div className="absolute top-4 left-4 flex gap-2">
-                            {item.isPartner && (
-                              <span className="bg-white/95 text-[#0B4F5C] text-[9px] uppercase tracking-[0.15em] font-bold px-3 py-1.5 rounded-full shadow-md flex items-center">
-                                <Star size={10} className="mr-1.5 text-[#C5A059] fill-[#C5A059]" /> Host Partner
-                              </span>
-                            )}
-                            {item.stayDuration && (
-                              <span className="bg-[#051F26]/80 backdrop-blur-md text-white border border-white/20 text-[9px] uppercase tracking-[0.15em] font-bold px-3 py-1.5 rounded-full flex items-center">
-                                <Clock size={10} className="mr-1.5 text-[#C5A059]" /> Stay ~{item.stayDuration}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="p-6">
-                        <h3 className="font-luxury text-[22px] text-[#051F26] mb-3">{item.title}</h3>
-                        <p className="text-[14px] text-gray-500 font-light leading-relaxed mb-6">{item.description}</p>
+                      <div className="p-4">
+                        <h4 className="font-bold text-gray-900 text-base flex items-center gap-2 mb-2">
+                          {item.title}
+                          {item.source === 'database' && <span className="bg-[#C5A059]/10 text-[#C5A059] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">Vailo Curated</span>}
+                        </h4>
+                        <p className="text-gray-600 text-sm leading-relaxed mb-4">{item.description}</p>
                         
-                        <div className="flex gap-2 border-t border-gray-100 pt-5">
-                          <a href={getMapUrl(item, 'view')} target="_blank" rel="noopener noreferrer" className="flex-1 py-3 bg-gray-50 hover:bg-gray-100 text-[#0B4F5C] rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center border border-gray-200 transition-colors">
-                            <Map size={14} className="mr-1.5" /> View on Map
+                        <div className="flex gap-2 pt-4 border-t border-gray-200/60">
+                          <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
+                            <MapIcon size={14} className="mr-1.5" /> Map
                           </a>
-                          <a href={getMapUrl(item, 'navigate')} target="_blank" rel="noopener noreferrer" className="flex-1 py-3 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center shadow-md transition-all">
+                          <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
                             <Navigation size={14} className="mr-1.5" /> Navigate
                           </a>
                         </div>
                       </div>
                     </div>
-                  )}
 
-                  {item.transitText && (
-                    <div className="mt-6 mb-2 pl-4 border-l-2 border-dashed border-[#C5A059]/50">
-                      <p className="text-[13px] text-gray-500 italic font-medium flex items-center">
-                        <Navigation size={12} className="mr-2 text-[#C5A059]" /> {item.transitText}
-                      </p>
+                    {item.transportToNext && (
+                      <div className="mt-4 inline-flex items-center text-xs font-medium text-gray-500 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm relative -left-3">
+                        <Navigation size={12} className="mr-2 text-[#0B4F5C]" /> {item.transportToNext}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* TOP PICKS RENDERER */}
+            {msg.data.type === 'picks' && (
+              <div className="space-y-8 pt-2">
+                {msg.data.categories?.map((cat: any, idx: number) => (
+                  <div key={idx}>
+                    <h4 className="font-bold text-[#0B4F5C] text-base mb-3 flex items-center">
+                      <MapPin size={16} className="mr-2 text-[#C5A059]"/> {cat.categoryName}
+                    </h4>
+                    <div className="grid gap-4">
+                      {cat.items?.map((item: any, i: number) => (
+                        <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl overflow-hidden flex flex-col">
+                          {item.photoUrl && (
+                            <img src={item.photoUrl} alt={item.title} className="w-full h-32 object-cover" />
+                          )}
+                          <div className="p-4 flex flex-col flex-1">
+                            <div className="flex justify-between items-start mb-1.5">
+                              <h5 className="font-bold text-gray-900">{item.title}</h5>
+                              {item.source === 'database' && <span className="bg-[#C5A059]/10 text-[#C5A059] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ml-2">Curated</span>}
+                            </div>
+                            <p className="text-sm text-gray-600 leading-relaxed mb-4 flex-1">{item.description}</p>
+                            <p className="text-[11px] font-bold text-[#0B4F5C] uppercase tracking-wider flex items-center mb-4">
+                              <Car size={12} className="mr-1.5"/> {item.estimatedDistance}
+                            </p>
+                            <div className="flex gap-2 mt-auto pt-4 border-t border-gray-200/60">
+                              <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
+                                <MapIcon size={14} className="mr-1.5" /> Map
+                              </a>
+                              <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
+                                <Navigation size={14} className="mr-1.5" /> Navigate
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button onClick={planAnotherDay} className="w-full mt-6 py-3.5 bg-gray-50 hover:bg-gray-100 text-[#0B4F5C] font-bold text-xs uppercase tracking-widest rounded-xl transition-colors border border-gray-200">
+              Plan Another Day
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Standard Conversational Bubble (No Plan Another Day button here)
+    return (
+      <div key={msg.id} className="flex justify-start mb-4 animate-in fade-in slide-in-from-bottom-2">
+        <Bot size={28} className="shrink-0 mr-3 mt-1 text-[#C5A059]" />
+        <div className="max-w-[85%] bg-white border border-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-sm shadow-sm text-sm leading-relaxed whitespace-pre-wrap">
+          {msg.text}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl">
+      
+      {/* Header */}
+      <div className="bg-[#0B4F5C] text-white p-4 shrink-0 flex items-center justify-between shadow-md relative z-10">
+        <div className="flex items-center gap-3">
+          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h2 className="font-bold text-lg tracking-wide flex items-center">
+              <Sparkles size={16} className="text-[#C5A059] mr-2" />
+              Live Like a Local
+            </h2>
+            <p className="text-[10px] text-white/70 uppercase tracking-widest">AI Concierge</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Scrollable Chat Area */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar flex flex-col">
+        {messages.map(renderMessage)}
+
+        {/* --- DYNAMIC STEP UI INJECTED AT BOTTOM OF CHAT --- */}
+        {!isThinking && step !== 'DONE' && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 mt-2">
+            
+            {step === 'LOCATION' && (
+              <div className="ml-10 max-w-[85%]">
+                <p className="text-sm text-gray-600 font-medium mb-3">Where are we starting from?</p>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => advanceStep('LOCATION', `Near ${property.propertyName}`, `Near ${property.propertyName}`)} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] px-4 py-3 rounded-xl text-sm font-bold text-left hover:bg-[#C5A059]/5 transition-colors shadow-sm">
+                    📍 Near {property.propertyName}
+                  </button>
+                  <div className="flex gap-2">
+                    <input type="text" value={customLoc} onChange={e => setCustomLoc(e.target.value)} placeholder="Or enter custom location..." className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#C5A059] shadow-sm" />
+                    <button disabled={!customLoc.trim()} onClick={() => advanceStep('LOCATION', customLoc, customLoc)} className="px-5 bg-[#0B4F5C] text-white font-bold rounded-xl disabled:opacity-50 shadow-sm">Set</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {step === 'DISTANCE' && (
+              <div className="ml-10 max-w-[85%]">
+                <p className="text-sm text-gray-600 font-medium mb-3">How far from <span className="font-bold">{preferences.location}</span> are you willing to travel?</p>
+                <div className="flex flex-col gap-2">
+                  {dynamicDistances.length > 0 ? dynamicDistances.map((dist, i) => (
+                    <button key={i} onClick={() => advanceStep('DISTANCE', dist, dist)} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] px-4 py-3 rounded-xl text-sm font-bold text-left hover:bg-[#C5A059]/5 transition-colors shadow-sm">
+                      {dist}
+                    </button>
+                  )) : (
+                    <div className="flex items-center text-sm text-gray-400 p-4"><Loader2 size={16} className="animate-spin mr-2"/> AI analyzing area geography...</div>
                   )}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
 
-            <div className="pt-6 border-t border-gray-200">
-              <button onClick={handleReset} className="w-full py-4 bg-white border border-gray-200 text-[#0B4F5C] rounded-2xl text-[11px] font-bold uppercase tracking-[0.2em] shadow-sm hover:bg-gray-50 transition-colors">
-                Plan another day
-              </button>
-            </div>
+            {step === 'TRANSPORT' && (
+              <div className="ml-10 max-w-[85%]">
+                <p className="text-sm text-gray-600 font-medium mb-3">How will you be getting around?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => advanceStep('TRANSPORT', 'Car / Taxi', 'Car / Taxi')} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] p-4 rounded-xl text-sm font-bold hover:bg-[#C5A059]/5 transition-colors shadow-sm flex flex-col items-center gap-2">
+                    <Car size={24} /> Car / Taxi
+                  </button>
+                  <button onClick={() => advanceStep('TRANSPORT', 'Public Transport / Walk', 'Public Transport / Walk')} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] p-4 rounded-xl text-sm font-bold hover:bg-[#C5A059]/5 transition-colors shadow-sm flex flex-col items-center gap-2 text-center">
+                    <MapIcon size={24} /> Transit / Walk
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 'CATEGORIES' && (
+              <div className="ml-10 max-w-[85%] bg-white border border-[#C5A059]/20 p-4 rounded-2xl shadow-sm">
+                <p className="text-sm text-gray-800 font-bold mb-3">What are you in the mood for? (Select up to 3)</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {availableCategories.length > 0 ? availableCategories.map(cat => (
+                    <button 
+                      key={cat}
+                      onClick={() => setSelectedCats(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : (prev.length < 3 ? [...prev, cat] : prev))}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${selectedCats.includes(cat) ? 'bg-[#0B4F5C] text-white border-[#0B4F5C] shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-[#C5A059]/50'}`}
+                    >
+                      {cat}
+                    </button>
+                  )) : (
+                    <p className="text-xs text-gray-400">Loading local categories...</p>
+                  )}
+                </div>
+                <button 
+                  disabled={selectedCats.length === 0} 
+                  onClick={() => advanceStep('CATEGORIES', selectedCats, selectedCats.join(', '))} 
+                  className="w-full py-3 bg-[#C5A059] text-white rounded-xl text-sm font-bold disabled:opacity-50 shadow-sm"
+                >
+                  Continue with {selectedCats.length} selected
+                </button>
+              </div>
+            )}
+
+            {step === 'TIME' && (
+              <div className="ml-10 max-w-[85%] bg-white border border-[#C5A059]/20 p-4 rounded-2xl shadow-sm">
+                <p className="text-sm text-gray-800 font-bold mb-4">When are you planning to go?</p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Leave At</label>
+                    <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0B4F5C]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-gray-400 ml-1">Return By</label>
+                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full mt-1 p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#0B4F5C]" />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-gray-100">
+                  <button 
+                    disabled={!startTime || !endTime} 
+                    onClick={() => executePlan(`${startTime} to ${endTime}`)} 
+                    className="w-full py-3 bg-[#0B4F5C] text-white rounded-xl text-sm font-bold disabled:opacity-50 shadow-sm flex items-center justify-center"
+                  >
+                    <Clock size={16} className="mr-2"/> Create Timeline
+                  </button>
+                  <button 
+                    onClick={() => executePlan('')} 
+                    className="w-full py-3 bg-gray-100 text-gray-600 hover:text-[#0B4F5C] rounded-xl text-sm font-bold transition-colors"
+                  >
+                    Skip / Keep it flexible
+                  </button>
+                </div>
+              </div>
+            )}
+            
           </div>
         )}
+
+        {isThinking && (
+          <div className="flex items-center text-sm text-[#C5A059] font-medium ml-4 mt-4 bg-white/50 p-3 rounded-2xl w-max border border-[#C5A059]/20 shadow-sm">
+            <Loader2 size={16} className="animate-spin mr-2" /> AI is crafting your plan...
+          </div>
+        )}
+        
+        <div ref={messagesEndRef} />
       </div>
+
+      {/* Persistent Chat Input Box */}
+      <div className="bg-white p-3 md:p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] border-t border-gray-100 z-20 relative">
+        <form onSubmit={handleChatSubmit} className="flex gap-2">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            disabled={isThinking}
+            placeholder="Ask a question or modify the plan..."
+            className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#C5A059]/50 transition-shadow disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!chatInput.trim() || isThinking}
+            className="bg-[#0B4F5C] text-white p-3 rounded-xl hover:bg-[#0B4F5C]/90 disabled:opacity-50 transition-colors shadow-md flex items-center justify-center"
+          >
+            <Send size={18} className={isThinking ? "opacity-50" : ""} />
+          </button>
+        </form>
+        <p className="text-center text-[9px] text-gray-400 mt-2 font-medium tracking-wide">
+          Vailo AI may occasionally provide inaccurate travel times. Always double-check live routes.
+        </p>
+      </div>
+
     </div>
   );
 }

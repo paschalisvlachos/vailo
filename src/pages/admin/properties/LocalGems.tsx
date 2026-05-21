@@ -1,17 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../../lib/firebase';
+import { db, storage, ai } from '../../../lib/firebase';
 import { getGenerativeModel } from "firebase/ai";
-import { ai } from '../../../lib/firebase';
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
   try {
-    // OSRM expects coordinates in Lon,Lat format
     const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=false`;
     const response = await fetch(url);
     if (!response.ok) throw new Error("Routing failed");
@@ -19,17 +17,9 @@ const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLa
     const data = await response.json();
     if (data.routes && data.routes.length > 0) {
       const route = data.routes[0];
-      
-      // OSRM returns distance in meters -> convert to kilometers
       const distanceKm = (route.distance / 1000).toFixed(1);
-      
-      // OSRM returns duration in seconds -> convert to minutes
       const durationMins = Math.round(route.duration / 60);
-      
-      return {
-        distanceKm,
-        distanceTime: `${durationMins} min`
-      };
+      return { distanceKm, distanceTime: `${durationMins} min` };
     }
   } catch (error) {
     console.error("OSRM Global Routing Error:", error);
@@ -40,17 +30,27 @@ const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLa
 export default function LocalGems() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
   
-  // NEW: State for Property Types and Selected Type
+  // Context States
+  const [propertyAreaContext, setPropertyAreaContext] = useState<{country: string, areaId: string, areaName: string} | null>(null);
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   
+  // Database States
   const [gems, setGems] = useState<any[]>([]);
+  const [localGemsCategories, setLocalGemsCategories] = useState<string[]>([]);
+  
+  // UI States
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingGemId, setEditingGemId] = useState<string | null>(null);
-  
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isMagicFilling, setIsMagicFilling] = useState(false);
   
+  // Photo Memory States
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [googlePhoto, setGooglePhoto] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   const initialFormState = {
     name: '', category: '', description: '', rating: '',
     googleMapsUrl: '', distanceKm: '', distanceTime: '',
@@ -59,133 +59,72 @@ export default function LocalGems() {
   };
   
   const [formData, setFormData] = useState(initialFormState);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [suggestedPhotos, setSuggestedPhotos] = useState<string[]>([]);
 
-  // Add this near your other state variables
-  const [isMagicFilling, setIsMagicFilling] = useState(false);
-
-  const handleMagicFill = async () => {
-    const url = formData.googleMapsUrl;
-    if (!url) return alert("Please paste a Google Maps URL first.");
-    setIsMagicFilling(true);
-
-    try {
-      let searchQuery = "";
-      let placeNameFallback = ""; 
-      
-      const nameMatch = url.match(/\/place\/([^\/]+)\//);
-      if (nameMatch && nameMatch[1]) {
-        // It's a standard long URL, format it directly
-        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
-        
-        // Note: You originally had 'Crete' here for property-level accuracy
-        searchQuery = `${placeNameFallback} Crete`; 
-      } else {
-        // 🔥 THE FIX: It's a short link! We pass the raw URL directly to the backend.
-        searchQuery = url;
-      }
-
-      // CALL OUR SECURE FIREBASE BOUNCER
-      const functions = getFunctions();
-      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      
-      const result = await getGooglePlaceDetails({ searchQuery });
-      const googleData: any = result.data;
-
-      // CALCULATE DRIVING DISTANCE (100% Free via OSRM)
-      let distance = "";
-      let time = "";
-      
-      if (googleData.latitude && googleData.longitude) {
-        const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
-        const refLat = selectedTypeData?.latitude || property?.latitude;
-        const refLng = selectedTypeData?.longitude || property?.longitude;
-
-        if (refLat && refLng) {
-          const routeData = await fetchGlobalDrivingRoute(refLat, refLng, googleData.latitude.toString(), googleData.longitude.toString());
-          if (routeData) {
-            distance = routeData.distanceKm;
-            time = routeData.distanceTime;
-          }
-        }
-      }
-
-      // MAP GOOGLE'S CATEGORIES TO YOUR UI DROPDOWN
-      let uiCategory = "sightseeing"; // Default
-      const gType = googleData.category?.toLowerCase() || "";
-      if (gType.includes("restaurant") || gType.includes("cafe") || gType.includes("food")) uiCategory = "restaurant";
-      if (gType.includes("bar") || gType.includes("night_club")) uiCategory = "bar/nightlife";
-      if (gType.includes("shopping") || gType.includes("store")) uiCategory = "shopping";
-
-      // SMART DESCRIPTION FALLBACK (Gemini AI)
-      let finalDescription = googleData.description;
-      
-      if (!finalDescription) {
-        try {
-          const prompt = `Act as a luxury travel concierge for Crete. Write a short, engaging 2-sentence description for a local ${uiCategory} called "${googleData.name || placeNameFallback}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
-          const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
-          const aiResult = await model.generateContent(prompt);
-          finalDescription = aiResult.response.text().trim();
-        } catch (e) {
-          console.log("Gemini description fallback failed.", e);
-        }
-      }
-
-      // UPDATE ALL STATE AT ONCE
-      setFormData(prev => ({
-        ...prev,
-        name: googleData.name || placeNameFallback,
-        category: uiCategory,
-        rating: googleData.rating ? googleData.rating.toString() : prev.rating,
-        description: finalDescription || prev.description,
-        latitude: googleData.latitude?.toString() || prev.latitude,
-        longitude: googleData.longitude?.toString() || prev.longitude,
-        distanceKm: distance,
-        distanceTime: time,
-        photoUrl: googleData.photoUrl || ''
-      }));
-
-      if (googleData.photoUrl) {
-        setImagePreview(googleData.photoUrl);
-        setImageFile(null);
-      }
-
-    } catch (error) {
-      console.error("Magic Fill Error:", error);
-      alert("Something went wrong while asking Google for the data. Make sure it's a valid link!");
-    } finally {
-      setIsMagicFilling(false);
-    }
-  };
-
-  // 1. Fetch Property Types so we can populate the dropdown
+  // 1. Fetch Area Context (from Parent or Types)
   useEffect(() => {
     if (!propertyId) return;
-    const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
+    const fetchAreaContext = async () => {
+      let country = property?.country || 'Greece';
+      let areaName = property?.city || property?.area || '';
+
+      if (!areaName) {
+        const typesSnap = await getDocs(collection(db, 'properties', propertyId, 'propertyTypes'));
+        if (!typesSnap.empty) {
+          const firstType = typesSnap.docs[0].data();
+          areaName = firstType.city || firstType.area || '';
+          if (firstType.country) country = firstType.country;
+        }
+      }
+
+      if (areaName) {
+        setPropertyAreaContext({
+          country: country,
+          areaName: areaName,
+          areaId: areaName.toLowerCase().replace(/\s+/g, '-')
+        });
+      }
+    };
+    fetchAreaContext();
+  }, [property, propertyId]);
+
+  // 2. Fetch Master Categories & Property Types
+  useEffect(() => {
+    if (!propertyAreaContext) return;
+    const { country, areaId } = propertyAreaContext;
+
+    // Fetch Global Categories
+    const unsubCats = onSnapshot(collection(db, 'countries', country, 'areas', areaId, 'localGemsCategories'), (snapshot) => {
+      const fetchedCats = snapshot.docs.map(doc => doc.data().name);
+      fetchedCats.sort((a, b) => a.localeCompare(b));
+      setLocalGemsCategories(fetchedCats);
+    });
+
+    return () => unsubCats();
+  }, [propertyAreaContext]);
+
+  useEffect(() => {
+    if (!propertyId) return;
+    const unsubTypes = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
       const typesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPropertyTypes(typesData);
-      
-      // Auto-select the first property type if none is selected yet
       if (typesData.length > 0 && !selectedTypeId) {
         setSelectedTypeId(typesData[0].id);
       }
     });
-    return () => unsubscribe();
+    return () => unsubTypes();
   }, [propertyId, selectedTypeId]);
 
-  // 2. Fetch Gems SUB-COLLECTION based on the SELECTED Property Type
+  // 3. Fetch Local Gems for selected Type
   useEffect(() => {
     if (!propertyId || !selectedTypeId) {
       setGems([]);
       return;
     }
-    const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems'), (snapshot) => {
+    const unsubGems = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems'), (snapshot) => {
       const gemsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setGems(gemsData);
     });
-    return () => unsubscribe();
+    return () => unsubGems();
   }, [propertyId, selectedTypeId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -201,8 +140,113 @@ export default function LocalGems() {
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      const url = URL.createObjectURL(file);
       setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+      setImagePreview(url);
+      setFormData(prev => ({ ...prev, photoUrl: url }));
+    }
+  };
+
+  // --- SUPERCHARGED AI MAGIC FILL ---
+  const handleMagicFill = async () => {
+    const url = formData.googleMapsUrl;
+    if (!url) return alert("Please paste a Google Maps URL first.");
+    if (!propertyAreaContext) return alert("Area data missing. Ensure your property has a City/Area set.");
+    setIsMagicFilling(true);
+
+    try {
+      let searchQuery = "";
+      let placeNameFallback = ""; 
+      
+      const nameMatch = url.match(/\/place\/([^\/]+)\//);
+      if (nameMatch && nameMatch[1]) {
+        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
+        searchQuery = `${placeNameFallback} ${propertyAreaContext.areaName}`; 
+      } else {
+        searchQuery = url;
+      }
+
+      const functions = getFunctions();
+      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+      const result = await getGooglePlaceDetails({ searchQuery, area: propertyAreaContext.areaName });
+      const googleData: any = result.data;
+
+      // 1. Calculate Driving Distance
+      let distanceKm = "";
+      let distanceTime = "";
+      if (googleData.latitude && googleData.longitude) {
+        const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
+        const refLat = selectedTypeData?.latitude || property?.latitude;
+        const refLng = selectedTypeData?.longitude || property?.longitude;
+
+        if (refLat && refLng) {
+          const routeData = await fetchGlobalDrivingRoute(refLat, refLng, googleData.latitude.toString(), googleData.longitude.toString());
+          if (routeData) {
+            distanceKm = routeData.distanceKm;
+            distanceTime = routeData.distanceTime;
+          }
+        }
+      }
+
+      // 2. AI Category Matching (JSON Prompt)
+      let matchedCategory = "";
+      let finalDescription = googleData.description;
+
+      try {
+        const categoryNames = localGemsCategories.join(', ');
+        const gType = googleData.category?.replace(/_/g, ' ') || "local spot";
+
+        const prompt = `Act as a travel concierge for ${propertyAreaContext.areaName}. We are adding "${googleData.name || placeNameFallback}" (Google classification: ${gType}).
+        1. Pick the single most accurate category from our exact database list: [${categoryNames}]. If none fit perfectly, return an empty string "".
+        2. Write a short, engaging 2-sentence description explaining why guests should visit this gem.
+        Return ONLY a valid JSON object in this exact format:
+        {"category": "Exact Category Name", "description": "Your 2 sentence description"}`;
+
+        const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+        const aiResult = await model.generateContent(prompt);
+        const rawText = aiResult.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(rawText);
+
+        if (parsed.category && localGemsCategories.includes(parsed.category)) {
+          matchedCategory = parsed.category;
+        }
+        if (parsed.description && !googleData.description) {
+          finalDescription = parsed.description;
+        }
+      } catch (e) {
+        console.log("AI JSON mapping failed, falling back to simple match.", e);
+        const gTypeLower = googleData.category?.toLowerCase().replace(/_/g, ' ') || "";
+        const possibleMatch = localGemsCategories.find(c => 
+          gTypeLower.includes(c.toLowerCase()) || c.toLowerCase().includes(gTypeLower)
+        );
+        if (possibleMatch) matchedCategory = possibleMatch;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        name: googleData.name || placeNameFallback,
+        category: matchedCategory || prev.category,
+        rating: googleData.rating ? googleData.rating.toString() : prev.rating,
+        description: finalDescription || prev.description,
+        latitude: googleData.latitude?.toString() || prev.latitude,
+        longitude: googleData.longitude?.toString() || prev.longitude,
+        distanceKm: distanceKm,
+        distanceTime: distanceTime,
+        photoUrl: googleData.photoUrl || ''
+      }));
+
+      // 3. Save Google Photo to Memory
+      if (googleData.photoUrl) {
+        setGooglePhoto(googleData.photoUrl);
+        setImagePreview(null);
+        setImageFile(null);
+      }
+
+    } catch (error) {
+      console.error("Magic Fill Error:", error);
+      alert("Something went wrong. Make sure it's a valid link!");
+    } finally {
+      setIsMagicFilling(false);
     }
   };
 
@@ -214,18 +258,16 @@ export default function LocalGems() {
     try {
       let finalPhotoUrl = formData.photoUrl;
 
-      // Notice how the image path is now scoped to the specific type!
-      if (imageFile) {
+      // Only upload if the actively selected photo is the custom one they uploaded
+      if (imageFile && formData.photoUrl === imagePreview) {
         setIsUploadingImage(true);
         const fileRef = ref(storage, `properties/${propertyId}/types/${selectedTypeId}/gems/${Date.now()}_${imageFile.name}`);
         await uploadBytes(fileRef, imageFile);
         finalPhotoUrl = await getDownloadURL(fileRef);
-        setIsUploadingImage(false);
       }
 
       const payload = { ...formData, photoUrl: finalPhotoUrl };
 
-      // Save to Firestore under the specific Property Type
       if (editingGemId) {
         await updateDoc(doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems', editingGemId), {
           ...payload, updatedAt: new Date().toISOString()
@@ -236,27 +278,22 @@ export default function LocalGems() {
         });
       }
 
-      setIsFormOpen(false);
-      setEditingGemId(null);
-      setFormData(initialFormState);
-      setImageFile(null);
-      setImagePreview(null);
-
+      closeAndResetForm();
     } catch (error) {
       console.error("Error saving gem:", error);
       alert("Failed to save local gem.");
-      setIsUploadingImage(false);
     } finally {
       setIsSubmitting(false);
+      setIsUploadingImage(false);
     }
   };
 
   const handleEditClick = (gemData: any) => {
     setFormData(gemData);
-    setImagePreview(gemData.photoUrl || null);
+    setGooglePhoto(null);
+    setImagePreview(null);
     setImageFile(null);
     setEditingGemId(gemData.id);
-    setSuggestedPhotos([]);
     setIsFormOpen(true);
   };
 
@@ -268,6 +305,15 @@ export default function LocalGems() {
         alert("Failed to delete gem.");
       }
     }
+  };
+
+  const closeAndResetForm = () => {
+    setIsFormOpen(false);
+    setEditingGemId(null);
+    setFormData(initialFormState);
+    setImagePreview(null);
+    setImageFile(null);
+    setGooglePhoto(null);
   };
 
   // --- EDGE CASE: No Property Types Exist ---
@@ -287,7 +333,6 @@ export default function LocalGems() {
   if (!isFormOpen) {
     return (
       <div>
-        {/* NEW: Property Type Selector */}
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h4 className="text-sm font-bold text-blue-900">Select Unit Level</h4>
@@ -307,7 +352,10 @@ export default function LocalGems() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Local Gems</h3>
-            <p className="text-sm text-gray-500">Curated recommendations for your guests.</p>
+            <p className="text-sm text-gray-500">
+              Curated recommendations for your guests. 
+              {propertyAreaContext && <span className="ml-1 font-medium text-blue-600">(Area: {propertyAreaContext.areaName})</span>}
+            </p>
           </div>
           <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Custom Gem
@@ -382,7 +430,7 @@ export default function LocalGems() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center mb-6">
-        <button onClick={() => { setIsFormOpen(false); setEditingGemId(null); setFormData(initialFormState); setImagePreview(null); }} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        <button onClick={closeAndResetForm} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
         </button>
         <div>
@@ -406,10 +454,10 @@ export default function LocalGems() {
         <div className="p-6 space-y-6 bg-white">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* 1. Maps Link & Smart Calc (WIDER: md:col-span-2) */}
+            {/* 1. Maps Link & Smart Calc */}
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-1">Google Maps Location Link *</label>
-              <div className="flex gap-3">
+              <div className="flex gap-3 items-end">
                 <div className="relative flex-1">
                   <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
                   <input type="url" required name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="https://www.google.com/maps/place/..." className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
@@ -417,8 +465,8 @@ export default function LocalGems() {
                 <button 
                   type="button" 
                   onClick={handleMagicFill} 
-                  disabled={isMagicFilling}
-                  className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 border border-transparent rounded-lg text-white hover:opacity-90 font-medium transition-all shadow-sm disabled:opacity-50"
+                  disabled={isMagicFilling || !propertyAreaContext}
+                  className="flex items-center justify-center h-[42px] px-6 bg-gradient-to-r from-blue-600 to-indigo-600 border border-transparent rounded-lg text-white hover:opacity-90 font-medium transition-all shadow-sm disabled:opacity-50"
                 >
                   {isMagicFilling ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}
                   {isMagicFilling ? 'Filling...' : 'AI Magic Fill'}
@@ -435,22 +483,20 @@ export default function LocalGems() {
               <input type="text" required name="name" value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
             
-            {/* 3. ESSENTIAL CATEGORY WITH PRESELECT */}
+            {/* 3. DYNAMIC CATEGORY DROPDOWN */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
               <select required name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                <option value="" disabled>Please select</option>
-                <option value="restaurant">Restaurant</option>
-                <option value="beach">Beach</option>
-                <option value="sightseeing">Sightseeing</option>
-                <option value="shopping">Shopping</option>
-                <option value="bar/nightlife">Bar / Nightlife</option>
-                <option value="delivery">Delivery</option>
-                <option value="host's favorite">Host's Favorite</option>
+                <option value="" disabled>
+                  {localGemsCategories.length === 0 ? "No Area Categories Found" : "Please select"}
+                </option>
+                {localGemsCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
               </select>
             </div>
 
-            {/* 4. EMPTY 1-5 GOOGLE RATING */}
+            {/* 4. GOOGLE RATING */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Google Rating (1-5)</label>
               <input type="number" min="1" max="5" step="0.1" name="rating" value={formData.rating} onChange={handleChange} placeholder="e.g. 4.8" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -487,73 +533,57 @@ export default function LocalGems() {
               <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="Why do you recommend this place?"></textarea>
             </div>
 
-            {/* NEW: Smart Photo Selection & Upload */}
+            {/* 7. PERFECTED PHOTO GALLERY WITH GOOGLE MEMORY */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Photo * (Select one or upload)</label>
               
-              {/* The AI Suggested Photo Gallery */}
-              {suggestedPhotos.length > 0 && (
-                <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center">
-                    <Sparkles size={12} className="mr-1.5 text-blue-600" /> AI Found Photos (Click to select)
-                  </p>
-                  <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                    {suggestedPhotos.map((url, i) => (
-                      <img 
-                        key={i} 
-                        src={url} 
-                        alt="Suggested" 
-                        // NEW: If the image is broken/blocked by Google, hide it instantly!
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        onClick={() => { 
-                          setFormData(prev => ({...prev, photoUrl: url})); 
-                          setImageFile(null); 
-                          setImagePreview(url); 
-                        }}
-                        className={`h-24 w-32 shrink-0 object-cover rounded-lg cursor-pointer transition-all border-[3px] ${
-                          formData.photoUrl === url && !imageFile 
-                            ? 'border-blue-600 shadow-md scale-[1.02]' 
-                            : 'border-transparent hover:border-gray-300'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* The Selected Preview & Upload Box */}
-              <div className="flex flex-col sm:flex-row gap-4 items-start">
+              <div className="flex flex-col sm:flex-row gap-6 items-start p-4 bg-gray-50 border border-gray-200 rounded-xl">
                 
-                {(imagePreview || formData.photoUrl) && (
-                  <div className="relative inline-block shrink-0">
-                    <img src={imagePreview || formData.photoUrl} alt="Preview" className="h-32 w-48 rounded-xl object-cover border-2 border-blue-600 shadow-sm" />
-                    <div className="absolute top-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-md shadow-sm uppercase tracking-wider">
-                      Selected
-                    </div>
-                    <button 
-                      type="button" 
-                      onClick={() => { setImageFile(null); setImagePreview(null); setFormData(prev => ({...prev, photoUrl: ''})); }}
-                      className="absolute -top-2 -right-2 bg-white text-red-500 border border-red-100 p-1.5 rounded-full hover:bg-red-50 shadow-md transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
+                {/* Active Photo Display */}
+                <div className="w-40 h-28 rounded-lg bg-white border-2 border-gray-300 overflow-hidden flex items-center justify-center shrink-0">
+                  {formData.photoUrl ? (
+                    <img src={formData.photoUrl} className="w-full h-full object-cover block" />
+                  ) : (
+                    <ImageIcon className="text-gray-400" />
+                  )}
+                </div>
 
-                <div className={`flex-1 w-full flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors ${imagePreview || formData.photoUrl ? 'opacity-70 hover:opacity-100' : ''}`}>
-                  <div className="space-y-1 text-center">
-                    <ImageIcon className="mx-auto h-8 w-8 text-gray-400" />
-                    <div className="flex text-sm text-gray-600 justify-center mt-2">
-                      <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none">
-                        <span>Upload your own file</span>
-                        <input type="file" className="sr-only" accept="image/*" onChange={(e) => {
-                          handleImageSelect(e);
-                          setFormData(prev => ({...prev, photoUrl: ''})); // Clear gallery selection if they upload
-                        }} />
-                      </label>
+                <div className="flex-1 w-full">
+                  <p className="text-sm font-bold text-gray-700 mb-2">Upload Custom Image</p>
+                  <input type="file" accept="image/*" onChange={handleImageSelect} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer mb-4" />
+                  
+                  {/* Selectable Thumbnail Gallery (Uploads & Google Data) */}
+                  {(imagePreview || googlePhoto) && (
+                    <div className="border-t border-gray-200 pt-3">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Or select from source</p>
+                      <div className="flex gap-3 overflow-x-auto pb-2 items-center">
+                        
+                        {/* Uploaded Thumbnail */}
+                        {imagePreview && (
+                          <div className="relative shrink-0 mt-1">
+                            <img 
+                              src={imagePreview} 
+                              onClick={() => setFormData({...formData, photoUrl: imagePreview})} 
+                              className={`w-16 h-16 object-cover rounded-lg cursor-pointer border-[3px] hover:opacity-80 transition-all ${formData.photoUrl === imagePreview ? 'border-blue-600 shadow-md scale-105' : 'border-transparent'}`} 
+                            />
+                            <div className="absolute top-1 left-1 bg-white/90 backdrop-blur-sm text-gray-800 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm leading-none">Upload</div>
+                          </div>
+                        )}
+
+                        {/* Google Memory Thumbnail */}
+                        {googlePhoto && (
+                          <div className="relative shrink-0 mt-1">
+                            <img 
+                              src={googlePhoto} 
+                              onClick={() => setFormData({...formData, photoUrl: googlePhoto})} 
+                              className={`w-16 h-16 object-cover rounded-lg cursor-pointer border-[3px] hover:opacity-80 transition-all ${formData.photoUrl === googlePhoto ? 'border-blue-600 shadow-md scale-105' : 'border-transparent'}`} 
+                            />
+                            <div className="absolute top-1 left-1 bg-white/90 backdrop-blur-sm text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm leading-none">Google</div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -585,7 +615,7 @@ export default function LocalGems() {
         </div>
 
         <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
-          <button type="button" onClick={() => { setIsFormOpen(false); setEditingGemId(null); setFormData(initialFormState); setImagePreview(null); setSuggestedPhotos([]); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>          
+          <button type="button" onClick={closeAndResetForm} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>          
           
           <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm">
             {(isSubmitting || isUploadingImage) && <Loader2 size={16} className="mr-2 animate-spin" />}

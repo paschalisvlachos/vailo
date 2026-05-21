@@ -5,7 +5,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ai, db, storage } from '../../../lib/firebase';
-import { ArrowLeft, Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle } from 'lucide-react';
+import { Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle } from 'lucide-react';
 
 export default function Features() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();

@@ -25,6 +25,7 @@ import FeaturesCategories from "./pages/admin/area/FeaturesCategories";
 import FeaturesPhotos from "./pages/admin/area/FeaturesPhotos";
 import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
 import AreaFeatures from "./pages/admin/area/AreaFeatures";
+import AiGaps from "./pages/admin/properties/AiGaps";
 
 import GuestPortal from "./pages/guest/GuestPortal";
 
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="reservations" element={<Reservations />} />
           <Route path="house-guide" element={<HouseGuide />} />
           <Route path="features" element={<Features />} />
+          <Route path="ai-gaps" element={<AiGaps />} />
         </Route>
 
         <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />

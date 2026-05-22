@@ -7,7 +7,7 @@ import { getAI } from "firebase/ai";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDhstHwkEktxVNsMcYjoPnLVRJ8pDfF69E",
+  apiKey: "AIzaSyD3WPLAlPchKOQKNNsmw1rDmC2-I1ZvcY4",
   authDomain: "vailo-6dd55.firebaseapp.com",
   projectId: "vailo-6dd55",
   storageBucket: "vailo-6dd55.firebasestorage.app",

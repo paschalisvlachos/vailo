@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { getGenerativeModel } from "firebase/ai";
 import { ai, db } from '../../lib/firebase';
-import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Bot, Map as MapIcon, Car } from 'lucide-react';
+import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Bot, Map as MapIcon, Car, Image as ImageIcon } from 'lucide-react';
 
 interface AiExpertViewProps {
   onClose: () => void;
@@ -56,6 +56,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
     ]);
 
     const fetchCategories = async () => {
+      // Prioritize the unit's location data
       const country = propertyType?.country || property?.country || 'Greece';
       const areaName = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
       const areaId = areaName.toLowerCase().replace(/\s+/g, '-');
@@ -84,7 +85,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, step, dynamicDistances]);
 
-  // --- DATABASE HELPER (Now Includes Photos and Map URLs) ---
+  // --- DATABASE HELPER (Includes Photos and Map URLs) ---
   const getDbSummary = () => ({
     gems: gems?.map(g => ({ name: g.name, category: g.category, description: g.description, distance: g.distanceKm ? `${g.distanceKm}km` : 'Local', photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })) || [],
     features: features?.map(f => ({ name: f.name, category: f.categories?.join(', '), description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' })) || []
@@ -111,8 +112,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
     setIsThinking(true);
     try {
       const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" }); 
-      const prompt = `The user wants to start a day trip from "${loc}" in ${property?.city || property?.country || 'Greece'}. 
-      Propose 3 realistic, clever travel radius options (e.g. Walking, Short Drive, Island Exploration). 
+      
+      // 🔥 THE FIX: Guardrail for locations that are too far 🔥
+      const prompt = `The user wants to start a day trip from "${loc}". The property they are staying at is in ${property?.city || property?.country || 'Greece'}. 
+      FIRST, determine if "${loc}" is reasonably close (within a 2-3 hour drive/ferry maximum) to ${property?.city || 'the property'}. 
+      If it is too far (e.g., a different country, or an island far away like Santorini when the property is in Chania), return ONLY a JSON array with the exact single string: ["TOO_FAR"].
+      If it is close enough for a day trip, propose 3 realistic, clever travel radius options (e.g. Walking, Short Drive, Island Exploration). 
       Return ONLY a JSON array of 3 strings. Example: ["Walking distance (2km)", "Short drive (15km)", "Full day tour (50km+)"]`;
       
       const result = await model.generateContent(prompt);
@@ -124,7 +129,15 @@ export default function AiExpertView({ onClose, property, propertyType, features
         text = text.slice(firstBracket, lastBracket + 1);
       }
       
-      setDynamicDistances(JSON.parse(text));
+      const parsedData = JSON.parse(text);
+      
+      if (parsedData.length > 0 && parsedData[0] === "TOO_FAR") {
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: `I apologize, but "${loc}" is too far from ${property?.city || 'our location'} for a reasonable day trip. My expertise is focused on the local area and nearby regions. Could you please select a closer starting point?` }]);
+        setStep('LOCATION'); // Reset them to the location step
+        return;
+      }
+
+      setDynamicDistances(parsedData);
     } catch (e) {
       setDynamicDistances(["Walking distance only", "Short trip (up to 30 mins)", "Explore the region (1+ hours)"]);
     } finally {
@@ -155,7 +168,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
 
         CONCIERGE RULES:
         1. PRIORITIZE DATABASE: You MUST try to use the items from the VAILO DATABASE above if they match the categories. Aim for a 60% database / 40% AI knowledge split.
-        2. SPECIFIC PLACES ONLY: NEVER recommend generic areas, concepts, or neighborhoods. You MUST recommend specific, named businesses, restaurants, beaches, museums, or landmarks.
+        2. SPECIFIC BUSINESSES ONLY: NEVER recommend generic areas, concepts, or broad nature spots without specific businesses attached. You MUST recommend specific, real, named businesses, restaurants, named cafes, or explicitly named local attractions.
         3. SMART CLUSTERING: Group activities by geography. Do not make the guest travel back and forth across long distances.
         4. NO TOURIST TRAPS: When using your own AI knowledge, suggest hidden, authentic, highly-rated local spots.
       `;
@@ -163,7 +176,8 @@ export default function AiExpertView({ onClose, property, propertyType, features
       if (timeFrameStr) {
         promptText += `
         5. TIMEFLOW: The guest selected this timeframe: "${timeFrameStr}".
-        6. LOGICAL ORDERING: Order activities chronologically and logically.
+        6. START & END POINTS: The FIRST item in the timeline MUST be departing from "${preferences.location}" and the LAST item MUST be returning to "${preferences.location}".
+        7. LOGICAL ORDERING: Order activities chronologically and logically.
         
         You MUST return ONLY a valid JSON object matching this exact schema, with absolutely no markdown formatting or extra text:
         {
@@ -193,7 +207,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
               "categoryName": "Name of Category",
               "items": [
                 {
-                  "title": "Specific Name of Place/Activity",
+                  "title": "Specific Name of Place/Business",
                   "description": "Engaging 2-sentence description.",
                   "estimatedDistance": "e.g., 10 mins away",
                   "source": "database or ai",
@@ -260,7 +274,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
         STRICT RULES:
         1. ONLY answer questions related to local travel, day planning, itineraries, and "live like a local" advice. Decline off-topic/personal questions politely.
         2. ULTRA CLEVER LOCAL EXPERT: 100% prioritize the VAILO DATABASE. If the user asks for recommendations, explicitly select the best matches from the database. 
-        3. SPECIFIC PLACES ONLY: NEVER recommend generic areas. You MUST recommend specific, named businesses, restaurants, beaches, museums, or landmarks.
+        3. SPECIFIC BUSINESSES ONLY: NEVER recommend generic areas or general nature categories. You MUST recommend specific, real, named businesses, restaurants, cafes, or named local attractions.
         4. PRESENTATION IS EVERYTHING: If the user asks for recommendations, filters previous results, asks for top choices, or asks to plan their day via chat, you MUST return a beautiful plan using the JSON 'plan' object (either 'picks' or 'timeline'). DO NOT list recommendations in plain text.
 
         YOUR OUTPUT FORMAT:
@@ -345,8 +359,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
                     <p className="font-bold text-[#0B4F5C] text-sm mb-1">{item.time}</p>
                     
                     <div className="bg-gray-50 border border-gray-100 rounded-xl overflow-hidden mt-2">
-                      {item.photoUrl && (
+                      {item.photoUrl ? (
                         <img src={item.photoUrl} alt={item.title} className="w-full h-32 object-cover" />
+                      ) : (
+                        <div className="w-full h-32 bg-gray-200 flex items-center justify-center text-gray-400">
+                          <ImageIcon size={32} />
+                        </div>
                       )}
                       <div className="p-4">
                         <h4 className="font-bold text-gray-900 text-base flex items-center gap-2 mb-2">
@@ -356,10 +374,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
                         <p className="text-gray-600 text-sm leading-relaxed mb-4">{item.description}</p>
                         
                         <div className="flex gap-2 pt-4 border-t border-gray-200/60">
-                          <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
+                          <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
                             <MapIcon size={14} className="mr-1.5" /> Map
                           </a>
-                          <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
+                          <a href={`https://www.google.com/maps/dir/?api=1&destination=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
                             <Navigation size={14} className="mr-1.5" /> Navigate
                           </a>
                         </div>
@@ -387,8 +405,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
                     <div className="grid gap-4">
                       {cat.items?.map((item: any, i: number) => (
                         <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl overflow-hidden flex flex-col">
-                          {item.photoUrl && (
+                          {item.photoUrl ? (
                             <img src={item.photoUrl} alt={item.title} className="w-full h-32 object-cover" />
+                          ) : (
+                            <div className="w-full h-32 bg-gray-200 flex items-center justify-center text-gray-400">
+                              <ImageIcon size={32} />
+                            </div>
                           )}
                           <div className="p-4 flex flex-col flex-1">
                             <div className="flex justify-between items-start mb-1.5">
@@ -400,10 +422,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
                               <Car size={12} className="mr-1.5"/> {item.estimatedDistance}
                             </p>
                             <div className="flex gap-2 mt-auto pt-4 border-t border-gray-200/60">
-                              <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
+                              <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
                                 <MapIcon size={14} className="mr-1.5" /> Map
                               </a>
-                              <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
+                              <a href={`https://www.google.com/maps/dir/?api=1&destination=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
                                 <Navigation size={14} className="mr-1.5" /> Navigate
                               </a>
                             </div>

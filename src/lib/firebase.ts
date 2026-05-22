@@ -7,13 +7,13 @@ import { getAI } from "firebase/ai";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD3WPLAlPchKOQKNNsmw1rDmC2-I1ZvcY4",
-  authDomain: "vailo-6dd55.firebaseapp.com",
-  projectId: "vailo-6dd55",
-  storageBucket: "vailo-6dd55.firebasestorage.app",
-  messagingSenderId: "108487807738",
-  appId: "1:108487807738:web:135ea0df2c8877678bef43",
-  measurementId: "G-5TRC2HHEBL"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: "vailoapp-497113.firebaseapp.com",
+  projectId: "vailoapp-497113",
+  storageBucket: "vailoapp-497113.firebasestorage.app",
+  messagingSenderId: "1023597244475",
+  appId: "1:1023597244475:web:d93a069968cda7531bac1e",
+  measurementId: "G-1XJ4P63WBQ"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -22,7 +22,7 @@ const app = initializeApp(firebaseConfig);
 if (typeof window !== "undefined") {
   initializeAppCheck(app, {
     // PASTE YOUR SITE KEY RIGHT HERE 👇
-    provider: new ReCaptchaEnterpriseProvider("6LdHl-gsAAAAAGR6_18QYDwExs7qKgr2KQEAWMUB"),
+    provider: new ReCaptchaEnterpriseProvider("6Lcpg_csAAAAALbY_wG78s4Ij1IU2MhUIUDbzaN5"),
     isTokenAutoRefreshEnabled: true
   });
 }

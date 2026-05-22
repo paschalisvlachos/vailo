@@ -1,22 +1,29 @@
-const functions = require('firebase-functions');
+const { setGlobalOptions } = require("firebase-functions/v2");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const logger = require("firebase-functions/logger");
 const axios = require('axios');
 
-exports.getGooglePlaceDetails = functions.https.onCall(async (request, context) => {
-  const payload = request.data ? request.data : request;
+// Enforce modern v2 global optimizations for rapid execution speeds
+setGlobalOptions({ 
+  maxInstances: 10,
+  region: "us-central1"
+});
+
+exports.getGooglePlaceDetails = onCall(async (request) => {
+  // v2 safely unpacks parameters directly inside request.data
+  const payload = request.data || {};
   let searchQuery = payload.searchQuery;
   const area = payload.area || "";
 
   if (!searchQuery) {
-    throw new functions.https.HttpsError('invalid-argument', 'The search query is missing.');
+    throw new HttpsError('invalid-argument', 'The search query is missing.');
   }
 
-  // 🔥 THE FIX: NATIVE FETCH + iPHONE SPOOFING 🔥
+  // --- NATIVE FETCH + iPHONE SPOOFING INTERCEPTOR ---
   if (searchQuery.startsWith('http')) {
     try {
-      // 1. Use Native Node.js Fetch (bypasses Axios bot-signatures)
-      // 2. Spoof an iPhone User-Agent to trick Google's anti-bot system
       const res = await fetch(searchQuery, {
-        redirect: 'follow', // Automatically follow all redirects natively
+        redirect: 'follow',
         headers: {
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
           'Accept-Language': 'en-US,en;q=0.9',
@@ -27,22 +34,18 @@ exports.getGooglePlaceDetails = functions.https.onCall(async (request, context) 
       let html = await res.text();
       let placeName = "";
 
-      // 3. Crack the EU Cookie Consent Wall if Google redirects us there
       if (finalUrl.includes('consent.google.com') && finalUrl.includes('continue=')) {
         try {
           const urlObj = new URL(finalUrl);
           finalUrl = urlObj.searchParams.get('continue') || finalUrl;
-        } catch (e) { console.log("Consent URL parse error ignored."); }
+        } catch (e) { logger.info("Consent URL parse error ignored."); }
       }
 
-      // 4. Extract the exact name from the expanded URL 
-      // (Matches: /place/Kiani+Beach+Resort/)
       const urlMatch = finalUrl.match(/\/(?:place|search)\/([^\/?@]+)/);
       if (urlMatch && urlMatch[1]) {
         placeName = decodeURIComponent(urlMatch[1].replace(/\+/g, ' ')).trim();
       }
 
-      // 5. Fallback: Extract from the hidden HTML meta tags
       if (!placeName && html) {
          const ogMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
                          html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
@@ -56,22 +59,26 @@ exports.getGooglePlaceDetails = functions.https.onCall(async (request, context) 
          }
       }
 
-      // 6. Validate and assemble the final query for the API
       if (placeName && !placeName.includes("Google Maps") && !placeName.includes("302 Moved")) {
          searchQuery = area ? `${placeName} ${area}` : placeName;
-         console.log("Successfully intercepted place name:", searchQuery);
+         logger.info("Successfully intercepted place name:", { searchQuery });
       } else {
          throw new Error("Extracted invalid name from URL/HTML.");
       }
 
     } catch (e) {
-      console.error("CRITICAL: Link resolution completely blocked by Google:", e);
-      throw new functions.https.HttpsError('invalid-argument', 'Google blocked the short link. Please use a full URL.');
+      logger.error("CRITICAL: Link resolution blocked:", e);
+      throw new HttpsError('invalid-argument', 'Google blocked the short link. Please use a full URL.');
     }
   }
 
   // --- STANDARD PLACES API REQUEST ---
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!apiKey) {
+      logger.error("Missing GOOGLE_MAPS_API_KEY environment variable.");
+      throw new HttpsError('internal', 'Server configuration error.');
+  }
 
   try {
     const response = await axios.post(
@@ -81,14 +88,13 @@ exports.getGooglePlaceDetails = functions.https.onCall(async (request, context) 
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': apiKey,
-          // 🔥 ADDED phone and websiteUri to the FieldMask 🔥
           'X-Goog-FieldMask': 'places.displayName,places.rating,places.editorialSummary,places.location,places.photos,places.primaryType,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri'
         }
       }
     );
 
     if (!response.data.places || response.data.places.length === 0) {
-      throw new functions.https.HttpsError('not-found', 'Place not found on Google.');
+      throw new HttpsError('not-found', 'Place not found on Google.');
     }
 
     const place = response.data.places[0];
@@ -105,14 +111,13 @@ exports.getGooglePlaceDetails = functions.https.onCall(async (request, context) 
       category: place.primaryType || '',
       latitude: place.location?.latitude || null,
       longitude: place.location?.longitude || null,
-      // 🔥 Extract the new fields 🔥
       phoneNumber: place.internationalPhoneNumber || place.nationalPhoneNumber || '',
       websiteUri: place.websiteUri || '',
       photoUrl: photoUrl
     };
 
   } catch (error) {
-    console.error("Google API Error:", error.response?.data || error.message);
-    throw new functions.https.HttpsError('internal', 'Failed to fetch Google Place data.');
+    logger.error("Google API Error:", error.response?.data || error.message);
+    throw new HttpsError('internal', 'Failed to fetch Google Place data.');
   }
 });

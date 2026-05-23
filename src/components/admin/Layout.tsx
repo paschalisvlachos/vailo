@@ -9,8 +9,10 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const newDiscoveredCount = useNewDiscoveredPlacesCount();
   
   const handleLogout = async () => {
     try {
@@ -37,7 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" to="/" />
           <NavItem icon={<Building2 size={20} />} label="Properties" to="/properties" />          
           <NavItem icon={<Users size={20} />} label="Owners CRM" to="/owners" />
-          <NavItem icon={<Globe size={20} />} label="Area Functionality" to="/area" />
+          <NavItem icon={<Globe size={20} />} label="Area Functionality" to="/area" badge={newDiscoveredCount} />
           <NavItem icon={<CreditCard size={20} />} label="Billing & Usage" to="/billing" />
         </nav>
       </aside>
@@ -65,7 +67,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 }
 
 // Small helper component for the sidebar items
-function NavItem({ icon, label, to, className = "" }: { icon: React.ReactNode, label: string, to: string, className?: string }) {
+function NavItem({ icon, label, to, className = "", badge = 0 }: { icon: React.ReactNode, label: string, to: string, className?: string, badge?: number }) {
   const location = useLocation();
   // Check if the current URL matches the link's destination to highlight it
   const active = location.pathname === to;
@@ -80,7 +82,12 @@ function NavItem({ icon, label, to, className = "" }: { icon: React.ReactNode, l
       }`}
     >
       <span className="mr-3">{icon}</span>
-      {label}
+      <span className="flex-1">{label}</span>
+      {badge > 0 && (
+        <span className="ml-2 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   );
 }

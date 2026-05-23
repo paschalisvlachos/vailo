@@ -25,17 +25,41 @@ import FeaturesCategories from "./pages/admin/area/FeaturesCategories";
 import FeaturesPhotos from "./pages/admin/area/FeaturesPhotos";
 import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
 import AreaFeatures from "./pages/admin/area/AreaFeatures";
+import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
 import AiGaps from "./pages/admin/properties/AiGaps";
+import { useNewDiscoveredPlacesCount } from "./hooks/useNewDiscoveredPlacesCount";
+import { Link } from "react-router-dom";
+import { AlertCircle } from "lucide-react";
 
 import GuestPortal from "./pages/guest/GuestPortal";
 
 function DashboardPage() {
+  const newDiscoveredCount = useNewDiscoveredPlacesCount();
+
   return (
     <div>
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
         <p className="text-gray-500 mt-1">Overview of your platform</p>
       </div>
+
+      {newDiscoveredCount > 0 && (
+        <Link
+          to="/area"
+          className="flex items-start gap-4 p-5 mb-6 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100/80 transition-colors"
+        >
+          <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={24} />
+          <div>
+            <p className="font-bold text-amber-900">
+              {newDiscoveredCount} discovered place{newDiscoveredCount === 1 ? '' : 's'} need review
+            </p>
+            <p className="text-sm text-amber-800/90 mt-1">
+              Guest AI imported new venues from Google. Open Area Functionality → Discovered Places to verify coordinates, photos, and promote to Local Gems.
+            </p>
+          </div>
+        </Link>
+      )}
+
       <div className="p-8 border-4 border-dashed border-gray-200 rounded-xl bg-gray-50 text-center text-gray-400">
         Dashboard Data Cards Go Here.
       </div>
@@ -103,6 +127,7 @@ export default function App() {
         <Route path="/area/:country/:area/features-photos" element={<AdminRoute><FeaturesPhotos /></AdminRoute>} />
         <Route path="/area/:country/:area/local-gems" element={<AdminRoute><AreaLocalGems /></AdminRoute>} />
         <Route path="/area/:country/:area/features" element={<AdminRoute><AreaFeatures /></AdminRoute>} />
+        <Route path="/area/:country/:area/discovered-places" element={<AdminRoute><AreaDiscoveredPlaces /></AdminRoute>} />
       </Routes>
     </BrowserRouter>
   );

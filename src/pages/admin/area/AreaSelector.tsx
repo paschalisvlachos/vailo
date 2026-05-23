@@ -4,7 +4,7 @@ import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { 
   Globe, MapPin, Sparkles, Grid, Layers, 
-  Map as MapIcon, Briefcase, Image as ImageIcon, ArrowRight, Plus, Loader2
+  Map as MapIcon, Briefcase, Image as ImageIcon, ArrowRight, Plus, Loader2, Radar
 } from 'lucide-react';
 
 export default function AreaSelector() {
@@ -116,6 +116,7 @@ export default function AreaSelector() {
     { id: 'ai-categories', title: 'AI Categories', icon: <Sparkles size={24} className="text-purple-600" />, desc: 'Manage AI prompt rules for this area', color: 'bg-purple-50 border-purple-200' },
     { id: 'local-gems-categories', title: 'Local Gems Categories', icon: <Grid size={24} className="text-blue-600" />, desc: 'Category structure for local recommendations', color: 'bg-blue-50 border-blue-200' },
     { id: 'local-gems', title: 'Local Gems', icon: <MapIcon size={24} className="text-orange-600" />, desc: 'Add restaurants, beaches, etc. for this area', color: 'bg-orange-50 border-orange-200' },
+    { id: 'discovered-places', title: 'Discovered Places', icon: <Radar size={24} className="text-amber-600" />, desc: 'Review AI-imported venues from guest plans', color: 'bg-amber-50 border-amber-200' },
     { id: 'features-categories', title: 'Features Categories', icon: <Layers size={24} className="text-emerald-600" />, desc: 'Category structure for local features', color: 'bg-emerald-50 border-emerald-200' },
     { id: 'features', title: 'Master Features', icon: <Briefcase size={24} className="text-indigo-600" />, desc: 'Add car rentals, chefs, transfers, etc.', color: 'bg-indigo-50 border-indigo-200' },
     { id: 'features-photos', title: 'Features Photos', icon: <ImageIcon size={24} className="text-pink-600" />, desc: 'Manage default stock photos for features', color: 'bg-pink-50 border-pink-200' },

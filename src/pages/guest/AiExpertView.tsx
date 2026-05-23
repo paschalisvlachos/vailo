@@ -20,43 +20,79 @@ interface Message {
   data?: any;
 }
 
-type Step = 'LOCATION' | 'DISTANCE' | 'TRANSPORT' | 'CATEGORIES' | 'TIME' | 'DONE';
+type Step = 'LOCATION' | 'CATEGORIES' | 'DISTANCE' | 'TIME' | 'DONE';
+
+// --- BULLETPROOF COORDINATE EXTRACTOR ---
+const extractCoords = (obj: any) => {
+  if (!obj) return null;
+  
+  let lat = obj.latitude ?? obj.lat ?? obj.coords?.latitude ?? obj.coords?.lat ?? obj.location?.latitude ?? obj.location?.lat;
+  let lng = obj.longitude ?? obj.lng ?? obj.coords?.longitude ?? obj.coords?.lng ?? obj.location?.longitude ?? obj.location?.lng;
+  
+  if (typeof obj.coordinates === 'string' && obj.coordinates.includes(',')) {
+    const parts = obj.coordinates.split(',');
+    lat = parts[0].trim();
+    lng = parts[1].trim();
+  }
+
+  if (obj.coordinates && typeof obj.coordinates.latitude === 'number') {
+    lat = obj.coordinates.latitude;
+    lng = obj.coordinates.longitude;
+  }
+
+  const parsedLat = parseFloat(lat);
+  const parsedLng = parseFloat(lng);
+  
+  if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+    return { lat: parsedLat, lng: parsedLng };
+  }
+  return null;
+};
+
+// --- ZERO-COST MATHEMATICAL ROUTING ---
+const calculateRealisticDrivingDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; 
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+  const straightLineDistance = R * c; 
+  return straightLineDistance * 1.35; 
+};
 
 export default function AiExpertView({ onClose, property, propertyType, features, gems }: AiExpertViewProps) {
-  // Chat & Flow State
   const [messages, setMessages] = useState<Message[]>([]);
   const [step, setStep] = useState<Step>('LOCATION');
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Data & Dynamic States
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [dynamicDistances, setDynamicDistances] = useState<string[]>([]);
   
-  // User Preferences
+  // 🌟 NEW: State to hold the dynamically fetched Village/Municipality name
+  const [richLocationName, setRichLocationName] = useState<string>('');
+
   const [preferences, setPreferences] = useState({
     location: '',
-    distance: '',
-    transport: '',
     categories: [] as string[],
+    distance: '',
     timeFrame: ''
   });
 
-  // UI Temp States
   const [customLoc, setCustomLoc] = useState('');
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
 
-  // 1. Initial Greeting & Category Fetching
   useEffect(() => {
     setMessages([
       { id: Date.now().toString(), role: 'ai', type: 'text', text: `Welcome to ${property?.propertyName || 'our property'}! I am your personal Vailo AI Concierge. Let's avoid the tourist traps and plan the perfect local experience for you.` }
     ]);
 
     const fetchCategories = async () => {
-      // Prioritize the unit's location data
       const country = propertyType?.country || property?.country || 'Greece';
       const areaName = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
       const areaId = areaName.toLowerCase().replace(/\s+/g, '-');
@@ -77,75 +113,153 @@ export default function AiExpertView({ onClose, property, propertyType, features
         }
       }
     };
+
+    // 🌟 NEW: Zero-Cost Reverse Geocoding via OpenStreetMap
+    const fetchRichLocation = async () => {
+      const coords = extractCoords(property) || extractCoords(propertyType);
+      if (!coords) return;
+      
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lng}&zoom=14&addressdetails=1`, {
+          headers: { 'Accept-Language': 'en' }
+        });
+        const data = await res.json();
+        
+        if (data && data.address) {
+          // Extracts "Maza", "Apokoronas", etc.
+          const village = data.address.village || data.address.town || data.address.city_district || '';
+          const municipality = data.address.municipality || data.address.county || '';
+          
+          const richName = [village, municipality].filter(Boolean).join(', ');
+          setRichLocationName(richName);
+          console.log("📍 Reverse Geocoder Found:", richName);
+        }
+      } catch (error) {
+        console.error("Free Geocoding failed:", error);
+      }
+    };
+
     fetchCategories();
+    fetchRichLocation();
   }, [property, propertyType]);
 
-  // Auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, step, dynamicDistances]);
 
-  // --- DATABASE HELPER (Includes Photos and Map URLs) ---
-  const getDbSummary = () => ({
-    gems: gems?.map(g => ({ name: g.name, category: g.category, description: g.description, distance: g.distanceKm ? `${g.distanceKm}km` : 'Local', photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })) || [],
-    features: features?.map(f => ({ name: f.name, category: f.categories?.join(', '), description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' })) || []
-  });
+  const getLocationContext = () => {
+    const propName = property?.propertyName || 'our property';
+    const typeName = propertyType?.name || propertyType?.propertyName || '';
+    const address = property?.address || propertyType?.address || '';
+    const cityArea = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
+    const pc = property?.postalCode || property?.pc || property?.zip || propertyType?.postalCode || propertyType?.pc || propertyType?.zip || ''; 
+    const country = propertyType?.country || property?.country || '';
 
-  // --- STATE MACHINE LOGIC ---
+    const coords = extractCoords(property) || extractCoords(propertyType);
+    const gpsString = coords ? `GPS Coordinates: ${coords.lat}, ${coords.lng}` : '';
+
+    // 🌟 NEW: Inject the richLocationName directly into the AI's Location Context string!
+    const fullLocationContext = [propName, typeName, richLocationName, address, cityArea, pc, country, gpsString]
+      .filter(Boolean)
+      .join(', ');
+
+    return { propName, fullLocationContext, cityArea, country, coords };
+  };
+
+  const getFilteredDbSummary = (maxKmLimit: number) => {
+    const { coords: propCoords } = getLocationContext();
+
+    if (!propCoords || isNaN(maxKmLimit)) {
+      return {
+        gems: gems?.map(g => ({ name: g.name, category: g.category, distance: g.distanceKm ? `${g.distanceKm}km` : 'Local', description: g.description, photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })) || [],
+        features: features?.map(f => ({ name: f.name, category: f.categories?.join(', '), distance: 'Local', description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' })) || []
+      };
+    }
+
+    const filterItems = (items: any[]) => {
+      return items?.map(item => {
+        const coords = extractCoords(item);
+        if (!coords) return { ...item, calculatedKm: null };
+        return { ...item, calculatedKm: calculateRealisticDrivingDistance(propCoords.lat, propCoords.lng, coords.lat, coords.lng) };
+      }).filter(item => item.calculatedKm === null || item.calculatedKm <= maxKmLimit) || [];
+    };
+
+    const filteredGems = filterItems(gems);
+    const filteredFeatures = filterItems(features);
+
+    return {
+      gems: filteredGems.map(g => ({ name: g.name, category: g.category, distance: g.calculatedKm !== null ? `${g.calculatedKm.toFixed(1)}km` : (g.distanceKm ? `${g.distanceKm}km` : 'Local'), description: g.description, photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })),
+      features: filteredFeatures.map(f => ({ name: f.name, category: f.categories?.join(', '), distance: f.calculatedKm !== null ? `${f.calculatedKm.toFixed(1)}km` : 'Local', description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' }))
+    };
+  };
+
   const advanceStep = async (currentStep: Step, value: any, displayText: string) => {
     setPreferences(prev => ({ ...prev, [currentStep.toLowerCase()]: value }));
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: displayText }]);
 
     if (currentStep === 'LOCATION') {
-      setStep('DISTANCE');
-      await generateCleverDistances(value);
-    } else if (currentStep === 'DISTANCE') {
-      setStep('TRANSPORT');
-    } else if (currentStep === 'TRANSPORT') {
       setStep('CATEGORIES');
     } else if (currentStep === 'CATEGORIES') {
+      setStep('DISTANCE');
+      await generateCleverDistances(preferences.location, value);
+    } else if (currentStep === 'DISTANCE') {
       setStep('TIME');
     }
   };
 
-  const generateCleverDistances = async (loc: string) => {
+  const generateCleverDistances = async (loc: string, cats: string[]) => {
     setIsThinking(true);
     try {
-      const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" }); 
+      const model = getGenerativeModel(ai, { model: "gemini-3.1-flash-lite" }); 
+      const { propName, fullLocationContext, coords } = getLocationContext();
       
-      // 🔥 THE FIX: Guardrail for locations that are too far 🔥
-      const prompt = `The user wants to start a day trip from "${loc}". The property they are staying at is in ${property?.city || property?.country || 'Greece'}. 
-      FIRST, determine if "${loc}" is reasonably close (within a 2-3 hour drive/ferry maximum) to ${property?.city || 'the property'}. 
-      If it is too far (e.g., a different country, or an island far away like Santorini when the property is in Chania), return ONLY a JSON array with the exact single string: ["TOO_FAR"].
-      If it is close enough for a day trip, propose 3 realistic, clever travel radius options (e.g. Walking, Short Drive, Island Exploration). 
-      Return ONLY a JSON array of 3 strings. Example: ["Walking distance (2km)", "Short drive (15km)", "Full day tour (50km+)"]`;
-      
-      const result = await model.generateContent(prompt);
-      
-      let text = result.response.text();
-      const firstBracket = text.indexOf('[');
-      const lastBracket = text.lastIndexOf(']');
-      if (firstBracket !== -1 && lastBracket !== -1) {
-        text = text.slice(firstBracket, lastBracket + 1);
-      }
-      
-      const parsedData = JSON.parse(text);
-      
-      if (parsedData.length > 0 && parsedData[0] === "TOO_FAR") {
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: `I apologize, but "${loc}" is too far from ${property?.city || 'our location'} for a reasonable day trip. My expertise is focused on the local area and nearby regions. Could you please select a closer starting point?` }]);
-        setStep('LOCATION'); // Reset them to the location step
-        return;
+      const relevantItems = [
+        ...(gems || []).filter(g => cats.includes(g.category)),
+        ...(features || []).filter(f => f.categories?.some((c: string) => cats.includes(c)))
+      ];
+
+      const actualDistances = relevantItems.map(item => {
+        const itemCoords = extractCoords(item);
+        if (coords && itemCoords) {
+          return calculateRealisticDrivingDistance(coords.lat, coords.lng, itemCoords.lat, itemCoords.lng);
+        }
+        return null;
+      }).filter(d => d !== null) as number[];
+
+      let distanceOptions: string[] = [];
+      if (actualDistances.length === 0) {
+        distanceOptions = ["10km (Local Area)", "25km (Region)", "50km (Day Trip)"];
+      } else {
+        const minD = Math.min(...actualDistances);
+        distanceOptions = [
+          `${Math.ceil(minD + 2)}km`,
+          `${Math.ceil(minD + 10)}km`,
+          `${Math.ceil(minD + 25)}km`
+        ];
       }
 
-      setDynamicDistances(parsedData);
+      const prompt = `The user is staying at a property named "${propName}" located exactly at: ${fullLocationContext}. 
+      Starting point: "${loc}". 
+      If this location is geographically impossible to reach from the property for a day trip, return ["TOO_FAR"]. 
+      Otherwise, return the proposed distances: ${JSON.stringify(distanceOptions)}`;
+      
+      const result = await model.generateContent(prompt);
+      let text = result.response.text();
+      
+      if (text.includes("TOO_FAR")) {
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: `I apologize, but "${loc}" is too far for a day trip. Please select a starting point closer to the property.` }]);
+        setStep('LOCATION');
+        return;
+      }
+      
+      setDynamicDistances(distanceOptions);
     } catch (e) {
-      setDynamicDistances(["Walking distance only", "Short trip (up to 30 mins)", "Explore the region (1+ hours)"]);
+      setDynamicDistances(["10km", "25km", "50km"]);
     } finally {
       setIsThinking(false);
     }
   };
 
-  // --- THE BUTTON-CLICK ORCHESTRATOR ---
   const executePlan = async (timeFrameStr: string) => {
     setPreferences(prev => ({ ...prev, timeFrame: timeFrameStr }));
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: timeFrameStr ? `Time: ${timeFrameStr}` : 'Flexible timing' }]);
@@ -154,40 +268,60 @@ export default function AiExpertView({ onClose, property, propertyType, features
     setIsThinking(true);
     
     try {
-      const model = getGenerativeModel(ai, { model: "gemini-2.5-pro" });
+      const model = getGenerativeModel(ai, { model: "gemini-3.1-pro-preview" });
+
+
+
+      const { fullLocationContext, coords } = getLocationContext();
+
+      let distanceLimitNum = 9999;
+      if (preferences.distance) {
+        const match = preferences.distance.match(/\d+(\.\d+)?/);
+        if (match) {
+          distanceLimitNum = parseFloat(match[0]);
+        } else if (preferences.distance.toLowerCase().includes('walk')) {
+          distanceLimitNum = 2; 
+        }
+      }
+
+      const filteredDatabase = getFilteredDbSummary(distanceLimitNum);
 
       let promptText = `
-        You are an elite, local luxury concierge for ${propertyType?.city || property?.city || 'Greece'}. 
-        Plan a day starting from: ${preferences.location}.
-        Max Distance: ${preferences.distance}. 
-        Transport method: ${preferences.transport}.
+        You are an elite, local luxury concierge. 
+        
+        CRITICAL ROUTING INSTRUCTION (POINT A):
+        The user is located EXACTLY at GPS Coordinates: ${coords ? `${coords.lat}, ${coords.lng}` : fullLocationContext}.
+        Location Context: ${fullLocationContext}
+        Max Distance Radius requested by user: ${distanceLimitNum}km. 
         Requested Categories: ${preferences.categories.join(', ')}.
 
-        VAILO DATABASE (Use these first!):
-        ${JSON.stringify(getDbSummary())}
+        VAILO DATABASE (ALREADY PRE-FILTERED TO BE STRICTLY WITHIN ${distanceLimitNum}KM):
+        ${JSON.stringify(filteredDatabase)}
 
-        CONCIERGE RULES:
-        1. PRIORITIZE DATABASE: You MUST try to use the items from the VAILO DATABASE above if they match the categories. Aim for a 60% database / 40% AI knowledge split.
-        2. SPECIFIC BUSINESSES ONLY: NEVER recommend generic areas, concepts, or broad nature spots without specific businesses attached. You MUST recommend specific, real, named businesses, restaurants, named cafes, or explicitly named local attractions.
-        3. SMART CLUSTERING: Group activities by geography. Do not make the guest travel back and forth across long distances.
-        4. NO TOURIST TRAPS: When using your own AI knowledge, suggest hidden, authentic, highly-rated local spots.
+        CONCIERGE RULES (STRICT ANTI-HALLUCINATION PROTOCOL):
+        1. DATABASE FIRST (60/40 RULE): You MUST use items from the VAILO DATABASE above. They are mathematically proven to be within the distance limit.
+        2. ZERO-TOLERANCE GEOGRAPHICAL FENCING: As an AI, you lack a live routing engine and frequently hallucinate distances in rural/coastal regions. Because the user requested a strict limit of ${distanceLimitNum}km:
+           - If you suggest a place NOT in the VAILO DATABASE, you must be 1000% mathematically certain it is within ${distanceLimitNum}km of GPS ${coords ? `${coords.lat}, ${coords.lng}` : fullLocationContext}.
+           - NEVER suggest famous beaches or towns from neighboring municipalities or regions.
+           - If you do not know a true local, neighborhood spot, DO NOT invent one. It is better to return ONLY database items or an empty list than to hallucinate a distance.
+        3. NO FAKE MATH: For AI-generated places, you are STRICTLY FORBIDDEN from writing fake "km" distances. You MUST write the actual Town/Village name instead (e.g., "Located in [Village Name] - Short Drive"). For Database items, use the exact distance string provided.
+        4. SPECIFIC BUSINESSES ONLY: Recommend specific, real, named businesses or attractions.
       `;
 
       if (timeFrameStr) {
         promptText += `
         5. TIMEFLOW: The guest selected this timeframe: "${timeFrameStr}".
         6. START & END POINTS: The FIRST item in the timeline MUST be departing from "${preferences.location}" and the LAST item MUST be returning to "${preferences.location}".
-        7. LOGICAL ORDERING: Order activities chronologically and logically.
         
-        You MUST return ONLY a valid JSON object matching this exact schema, with absolutely no markdown formatting or extra text:
+        You MUST return ONLY a valid JSON object matching this exact schema (NO markdown formatting):
         {
           "type": "timeline",
           "plan": [
             {
               "time": "e.g., 10:00 AM",
               "title": "Specific Name of Activity/Place",
-              "description": "Engaging 2-sentence description of why they will love it.",
-              "transportToNext": "e.g., 15 mins by Car",
+              "description": "Engaging 2-sentence description.",
+              "transportToNext": "For DB items: use provided distance. For AI items: Output Neighborhood name & estimated drive time (e.g., 'Located in Platanias - 15 mins drive') - NO KM ALLOWED",
               "source": "database or ai",
               "photoUrl": "Exact URL from database or empty string if AI",
               "googleMapsUrl": "Exact URL from database or empty string if AI"
@@ -196,10 +330,9 @@ export default function AiExpertView({ onClose, property, propertyType, features
         }`;
       } else {
         promptText += `
-        5. NO TIMEFRAME: The guest did not specify a timeframe.
-        6. TOP 4 PICKS: For EACH of the requested categories (${preferences.categories.join(', ')}), provide EXACTLY 4 recommendations.
+        5. CATEGORY FOCUS: For EACH requested category (${preferences.categories.join(', ')}), list ONLY the perfectly matching recommendations based on the strict rules above.
 
-        You MUST return ONLY a valid JSON object matching this exact schema, with absolutely no markdown formatting or extra text:
+        You MUST return ONLY a valid JSON object matching this exact schema (NO markdown formatting):
         {
           "type": "picks",
           "categories": [
@@ -209,7 +342,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
                 {
                   "title": "Specific Name of Place/Business",
                   "description": "Engaging 2-sentence description.",
-                  "estimatedDistance": "e.g., 10 mins away",
+                  "estimatedDistance": "For DB items: use provided distance. For AI items: Output Neighborhood name & estimated drive time (e.g., 'Located in Platanias - 15 mins drive') - NO KM ALLOWED",
                   "source": "database or ai",
                   "photoUrl": "Exact URL from database or empty string if AI",
                   "googleMapsUrl": "Exact URL from database or empty string if AI"
@@ -219,6 +352,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
           ]
         }`;
       }
+
+      console.log("--- AI PROMPT START (executePlan) ---");
+      console.log(promptText);
+      console.log("--- AI PROMPT END ---");
 
       const result = await model.generateContent(promptText);
       let rawText = result.response.text();
@@ -240,7 +377,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
     }
   };
 
-  // --- THE UNIFIED CHAT ORCHESTRATOR ---
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -254,43 +390,64 @@ export default function AiExpertView({ onClose, property, propertyType, features
     setIsThinking(true);
 
     try {
-      const model = getGenerativeModel(ai, { model: "gemini-2.5-pro" });
+      const model = getGenerativeModel(ai, { model: "gemini-3.1-pro-preview" });
+
+
+
+      const { fullLocationContext, coords } = getLocationContext();
       
       const conversationHistory = messages.map(m => {
         if (m.type === 'plan') return `AI generated this plan on screen: ${JSON.stringify(m.data)}`;
         return `${m.role === 'ai' ? 'AI Concierge' : 'Guest'}: ${m.text}`;
       }).join('\n\n');
 
+      let distanceLimitNum = 9999;
+      if (preferences.distance) {
+        const match = preferences.distance.match(/\d+(\.\d+)?/);
+        if (match) {
+          distanceLimitNum = parseFloat(match[0]);
+        } else if (preferences.distance.toLowerCase().includes('walk')) {
+          distanceLimitNum = 2; 
+        }
+      }
+      const filteredDatabase = getFilteredDbSummary(distanceLimitNum);
+
       const prompt = `
-        You are the elite Vailo AI Concierge for ${property?.propertyName} in ${propertyType?.city || property?.city || 'Greece'}.
-        Current itinerary preferences (may be empty if user bypassed steps): ${JSON.stringify(preferences)}.
+        You are the elite Vailo AI Concierge located exactly at GPS: ${coords ? `${coords.lat}, ${coords.lng}` : fullLocationContext}.
+        Location Context: ${fullLocationContext}
+        Current itinerary preferences: ${JSON.stringify(preferences)}.
         
         CONVERSATION HISTORY (What is currently on the screen):
         ${conversationHistory}
         
-        VAILO DATABASE (Use these first!):
-        ${JSON.stringify(getDbSummary())}
+        VAILO DATABASE (ALREADY PRE-FILTERED BY SYSTEM TO FIT DISTANCE RULES):
+        ${JSON.stringify(filteredDatabase)}
 
         STRICT RULES:
-        1. ONLY answer questions related to local travel, day planning, itineraries, and "live like a local" advice. Decline off-topic/personal questions politely.
-        2. ULTRA CLEVER LOCAL EXPERT: 100% prioritize the VAILO DATABASE. If the user asks for recommendations, explicitly select the best matches from the database. 
-        3. SPECIFIC BUSINESSES ONLY: NEVER recommend generic areas or general nature categories. You MUST recommend specific, real, named businesses, restaurants, cafes, or named local attractions.
-        4. PRESENTATION IS EVERYTHING: If the user asks for recommendations, filters previous results, asks for top choices, or asks to plan their day via chat, you MUST return a beautiful plan using the JSON 'plan' object (either 'picks' or 'timeline'). DO NOT list recommendations in plain text.
+        1. ONLY answer questions related to local travel, day planning, itineraries, and "live like a local" advice.
+        2. ULTRA CLEVER LOCAL EXPERT: 100% prioritize the VAILO DATABASE. It is already mathematically filtered to fit the user's distance limits.
+        3. GEOGRAPHICAL FENCING FOR AI IDEAS: You do not have a live map routing engine. You CANNOT calculate precise point-to-point kilometers for places outside the database. NEVER invent fake kilometer numbers. Use Neighborhood names instead.
+        4. SPECIFIC BUSINESSES ONLY: NEVER recommend generic areas. You MUST recommend specific, real, named businesses or attractions.
+        5. PRESENTATION IS EVERYTHING: If providing recommendations, return the JSON 'plan' object (either 'picks' or 'timeline'). DO NOT list recommendations in plain text.
 
         YOUR OUTPUT FORMAT:
         You MUST return ONLY a valid JSON object matching this exact schema (no markdown formatting):
         {
-          "replyText": "Your conversational response. Keep it brief and luxurious. (Can be empty if the plan speaks for itself)",
-          "hasPlan": true/false, // True if you are providing recommendations/itineraries, false if just chatting
-          "plan": null OR { // MUST match this schema if hasPlan is true!
+          "replyText": "Your conversational response.",
+          "hasPlan": true/false,
+          "plan": null OR { 
             "type": "picks" OR "timeline",
-            "plan": [ { "time": "...", "title": "Specific Place Name", "description": "...", "transportToNext": "...", "source": "database or ai", "photoUrl": "URL or empty", "googleMapsUrl": "URL or empty" } ],
-            "categories": [ { "categoryName": "...", "items": [ { "title": "Specific Place Name", "description": "...", "estimatedDistance": "...", "source": "database or ai", "photoUrl": "URL or empty", "googleMapsUrl": "URL or empty" } ] } ]
+            "plan": [ { "time": "...", "title": "...", "description": "...", "transportToNext": "...", "source": "database or ai", "photoUrl": "", "googleMapsUrl": "" } ],
+            "categories": [ { "categoryName": "...", "items": [ { "title": "...", "description": "...", "estimatedDistance": "Output Neighborhood Name instead of fake km if not from DB", "source": "database or ai", "photoUrl": "", "googleMapsUrl": "" } ] } ]
           }
         }
 
         User Query: ${userText}
       `;
+
+      console.log("--- AI PROMPT START (handleChatSubmit) ---");
+      console.log(prompt);
+      console.log("--- AI PROMPT END ---");
 
       const result = await model.generateContent(prompt);
       let rawText = result.response.text();
@@ -319,7 +476,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
 
   const planAnotherDay = () => {
     setStep('LOCATION');
-    setPreferences({ location: '', distance: '', transport: '', categories: [], timeFrame: '' });
+    setPreferences({ location: '', categories: [], distance: '', timeFrame: '' });
     setSelectedCats([]);
     setCustomLoc('');
     setStartTime('');
@@ -329,7 +486,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
     ]);
   };
 
-  // --- RENDERERS ---
   const renderMessage = (msg: Message) => {
     if (msg.role === 'user') {
       return (
@@ -350,7 +506,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
               <h3 className="font-bold uppercase tracking-widest text-sm">Your Curated Local Experience</h3>
             </div>
 
-            {/* TIMELINE RENDERER */}
             {msg.data.type === 'timeline' && (
               <div className="space-y-6 pt-2">
                 {msg.data.plan?.map((item: any, idx: number) => (
@@ -374,10 +529,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
                         <p className="text-gray-600 text-sm leading-relaxed mb-4">{item.description}</p>
                         
                         <div className="flex gap-2 pt-4 border-t border-gray-200/60">
-                          <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
+                          <a href={item.googleMapsUrl || `https://maps.google.com/?q=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
                             <MapIcon size={14} className="mr-1.5" /> Map
                           </a>
-                          <a href={`https://www.google.com/maps/dir/?api=1&destination=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
+                          <a href={`https://maps.google.com/?daddr=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
                             <Navigation size={14} className="mr-1.5" /> Navigate
                           </a>
                         </div>
@@ -394,7 +549,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
               </div>
             )}
 
-            {/* TOP PICKS RENDERER */}
             {msg.data.type === 'picks' && (
               <div className="space-y-8 pt-2">
                 {msg.data.categories?.map((cat: any, idx: number) => (
@@ -422,10 +576,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
                               <Car size={12} className="mr-1.5"/> {item.estimatedDistance}
                             </p>
                             <div className="flex gap-2 mt-auto pt-4 border-t border-gray-200/60">
-                              <a href={item.googleMapsUrl || `https://www.google.com/maps/search/?api=1&query=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
+                              <a href={item.googleMapsUrl || `https://maps.google.com/?q=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-white border border-gray-200 hover:border-[#0B4F5C] text-[#0B4F5C] rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors">
                                 <MapIcon size={14} className="mr-1.5" /> Map
                               </a>
-                              <a href={`https://www.google.com/maps/dir/?api=1&destination=$${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
+                              <a href={`https://maps.google.com/?daddr=${encodeURIComponent(item.title)}`} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center justify-center transition-colors shadow-sm">
                                 <Navigation size={14} className="mr-1.5" /> Navigate
                               </a>
                             </div>
@@ -446,7 +600,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
       );
     }
 
-    // Standard Conversational Bubble (No Plan Another Day button here)
     return (
       <div key={msg.id} className="flex justify-start mb-4 animate-in fade-in slide-in-from-bottom-2">
         <Bot size={28} className="shrink-0 mr-3 mt-1 text-[#C5A059]" />
@@ -460,7 +613,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl">
       
-      {/* Header */}
       <div className="bg-[#0B4F5C] text-white p-4 shrink-0 flex items-center justify-between shadow-md relative z-10">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
@@ -476,11 +628,9 @@ export default function AiExpertView({ onClose, property, propertyType, features
         </div>
       </div>
 
-      {/* Scrollable Chat Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar flex flex-col">
         {messages.map(renderMessage)}
 
-        {/* --- DYNAMIC STEP UI INJECTED AT BOTTOM OF CHAT --- */}
         {!isThinking && step !== 'DONE' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 mt-2">
             
@@ -495,35 +645,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
                     <input type="text" value={customLoc} onChange={e => setCustomLoc(e.target.value)} placeholder="Or enter custom location..." className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#C5A059] shadow-sm" />
                     <button disabled={!customLoc.trim()} onClick={() => advanceStep('LOCATION', customLoc, customLoc)} className="px-5 bg-[#0B4F5C] text-white font-bold rounded-xl disabled:opacity-50 shadow-sm">Set</button>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {step === 'DISTANCE' && (
-              <div className="ml-10 max-w-[85%]">
-                <p className="text-sm text-gray-600 font-medium mb-3">How far from <span className="font-bold">{preferences.location}</span> are you willing to travel?</p>
-                <div className="flex flex-col gap-2">
-                  {dynamicDistances.length > 0 ? dynamicDistances.map((dist, i) => (
-                    <button key={i} onClick={() => advanceStep('DISTANCE', dist, dist)} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] px-4 py-3 rounded-xl text-sm font-bold text-left hover:bg-[#C5A059]/5 transition-colors shadow-sm">
-                      {dist}
-                    </button>
-                  )) : (
-                    <div className="flex items-center text-sm text-gray-400 p-4"><Loader2 size={16} className="animate-spin mr-2"/> AI analyzing area geography...</div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {step === 'TRANSPORT' && (
-              <div className="ml-10 max-w-[85%]">
-                <p className="text-sm text-gray-600 font-medium mb-3">How will you be getting around?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => advanceStep('TRANSPORT', 'Car / Taxi', 'Car / Taxi')} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] p-4 rounded-xl text-sm font-bold hover:bg-[#C5A059]/5 transition-colors shadow-sm flex flex-col items-center gap-2">
-                    <Car size={24} /> Car / Taxi
-                  </button>
-                  <button onClick={() => advanceStep('TRANSPORT', 'Public Transport / Walk', 'Public Transport / Walk')} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] p-4 rounded-xl text-sm font-bold hover:bg-[#C5A059]/5 transition-colors shadow-sm flex flex-col items-center gap-2 text-center">
-                    <MapIcon size={24} /> Transit / Walk
-                  </button>
                 </div>
               </div>
             )}
@@ -551,6 +672,21 @@ export default function AiExpertView({ onClose, property, propertyType, features
                 >
                   Continue with {selectedCats.length} selected
                 </button>
+              </div>
+            )}
+
+            {step === 'DISTANCE' && (
+              <div className="ml-10 max-w-[85%]">
+                <p className="text-sm text-gray-600 font-medium mb-3">Based on your choices, how far are you willing to travel from <span className="font-bold">{preferences.location}</span>?</p>
+                <div className="flex flex-col gap-2">
+                  {dynamicDistances.length > 0 ? dynamicDistances.map((dist, i) => (
+                    <button key={i} onClick={() => advanceStep('DISTANCE', dist, dist)} className="bg-white border border-[#C5A059]/40 text-[#0B4F5C] px-4 py-3 rounded-xl text-sm font-bold text-left hover:bg-[#C5A059]/5 transition-colors shadow-sm">
+                      {dist}
+                    </button>
+                  )) : (
+                    <div className="flex items-center text-sm text-gray-400 p-4"><Loader2 size={16} className="animate-spin mr-2"/> AI analyzing area geography...</div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -597,7 +733,6 @@ export default function AiExpertView({ onClose, property, propertyType, features
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Persistent Chat Input Box */}
       <div className="bg-white p-3 md:p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] border-t border-gray-100 z-20 relative">
         <form onSubmit={handleChatSubmit} className="flex gap-2">
           <input

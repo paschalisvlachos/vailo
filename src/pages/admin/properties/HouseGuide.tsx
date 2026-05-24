@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import type { LucideIcon } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import { 
   Building, BookOpen, Key, ScrollText, Zap, Lightbulb, Thermometer, 
@@ -14,6 +15,14 @@ type Device = { room: string; device: string; brand: string; model: string };
 type MapLocation = { title: string; mapsLink: string };
 type Emergency = { category: string; title: string; phone: string; mapsLink: string };
 type FAQ = { question: string; answer: string };
+type ArrayItem = Device | MapLocation | Emergency | FAQ;
+
+type FormData = Record<string, string | ArrayItem[] | undefined>;
+
+type PropertyType = {
+  id: string;
+  propertyTypeName?: string;
+};
 
 type FieldDef = {
   id: string;
@@ -26,7 +35,7 @@ type FieldDef = {
 type CategoryDef = {
   id: string;
   title: string;
-  icon: any;
+  icon: LucideIcon;
   description: string;
   fields: FieldDef[];
 };
@@ -63,11 +72,11 @@ const CATEGORIES: CategoryDef[] = [
 export default function HouseGuide() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
   
-  const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
+  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   
   // --- STATE MANAGEMENT ---
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<FormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Wizard State
@@ -82,37 +91,37 @@ export default function HouseGuide() {
   useEffect(() => {
     if (!propertyId) return;
     const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
-      const typesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const typesData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PropertyType));
       setPropertyTypes(typesData);
-      if (typesData.length > 0 && !selectedTypeId) setSelectedTypeId(typesData[0].id);
+      setSelectedTypeId((prev) => prev || typesData[0]?.id || '');
     });
     return () => unsubscribe();
-  }, [propertyId, selectedTypeId]);
+  }, [propertyId]);
 
   // 2. Fetch Data
   useEffect(() => {
     if (!propertyId || !selectedTypeId) return;
     const docRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'houseGuide', 'data');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) setFormData(docSnap.data() || {});
+      if (docSnap.exists()) setFormData((docSnap.data() as FormData) || {});
       else setFormData({});
     });
     return () => unsubscribe();
   }, [propertyId, selectedTypeId]);
 
   // --- LOGIC HELPERS ---
-  const checkIsComplete = (category: CategoryDef) => {
-    return category.fields.every(field => {
+  const checkIsComplete = useCallback((category: CategoryDef) => {
+    return category.fields.every((field) => {
       const val = formData[field.id];
       if (field.type.startsWith('array_')) return Array.isArray(val) && val.length > 0;
       return typeof val === 'string' && val.trim().length > 0;
     });
-  };
+  }, [formData]);
 
   const getWizardSteps = useMemo(() => {
     if (!showIncompleteOnly) return CATEGORIES;
-    return CATEGORIES.filter(cat => !checkIsComplete(cat));
-  }, [showIncompleteOnly, formData]);
+    return CATEGORIES.filter((cat) => !checkIsComplete(cat));
+  }, [showIncompleteOnly, checkIsComplete]);
 
   const progressPercentage = Math.round((CATEGORIES.filter(checkIsComplete).length / CATEGORIES.length) * 100);
 
@@ -152,11 +161,12 @@ export default function HouseGuide() {
     const value = formData[field.id];
 
     if (field.type === 'textarea') {
+      const textValue = typeof value === 'string' ? value : '';
       return (
         <div key={field.id} className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-2">{field.label}</label>
           <textarea 
-            value={value || ''} 
+            value={textValue} 
             onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
             placeholder={field.placeholder || ''}
             rows={4} 
@@ -167,8 +177,8 @@ export default function HouseGuide() {
     }
 
     // Dynamic Array Rendering
-    const items: any[] = Array.isArray(value) ? value : [];
-    const handleAdd = (emptyObj: any) => setFormData({ ...formData, [field.id]: [...items, emptyObj] });
+    const items: ArrayItem[] = Array.isArray(value) ? value : [];
+    const handleAdd = (emptyObj: ArrayItem) => setFormData({ ...formData, [field.id]: [...items, emptyObj] });
     const handleUpdate = (index: number, key: string, val: string) => {
       const newItems = [...items];
       newItems[index] = { ...newItems[index], [key]: val };
@@ -191,7 +201,7 @@ export default function HouseGuide() {
               {field.type === 'array_maps' && (
                 <>
                   <div className="flex-1">
-                    <select value={item.title} onChange={e => handleUpdate(idx, 'title', e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
+                    <select value={(item as MapLocation).title} onChange={e => handleUpdate(idx, 'title', e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
                       <option value="" disabled>Select Type...</option>
                       {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
@@ -199,7 +209,7 @@ export default function HouseGuide() {
                   <div className="flex-[2]">
                     <div className="relative">
                       <MapPin size={16} className="absolute left-3 top-2.5 text-gray-400" />
-                      <input type="url" placeholder="Google Maps URL" value={item.mapsLink} onChange={e => handleUpdate(idx, 'mapsLink', e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                      <input type="url" placeholder="Google Maps URL" value={(item as MapLocation).mapsLink} onChange={e => handleUpdate(idx, 'mapsLink', e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
                     </div>
                   </div>
                 </>
@@ -207,32 +217,32 @@ export default function HouseGuide() {
 
               {field.type === 'array_emergencies' && (
                 <>
-                  <select value={item.category} onChange={e => handleUpdate(idx, 'category', e.target.value)} className="w-full sm:w-32 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
+                  <select value={(item as Emergency).category} onChange={e => handleUpdate(idx, 'category', e.target.value)} className="w-full sm:w-32 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
                     <option value="" disabled>Category</option>
                     {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
-                  <input type="text" placeholder="Name / Title" value={item.title} onChange={e => handleUpdate(idx, 'title', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
-                  <input type="tel" placeholder="Phone Number" value={item.phone} onChange={e => handleUpdate(idx, 'phone', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
-                  <input type="url" placeholder="Maps URL (Optional)" value={item.mapsLink} onChange={e => handleUpdate(idx, 'mapsLink', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                  <input type="text" placeholder="Name / Title" value={(item as Emergency).title} onChange={e => handleUpdate(idx, 'title', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                  <input type="tel" placeholder="Phone Number" value={(item as Emergency).phone} onChange={e => handleUpdate(idx, 'phone', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                  <input type="url" placeholder="Maps URL (Optional)" value={(item as Emergency).mapsLink} onChange={e => handleUpdate(idx, 'mapsLink', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
                 </>
               )}
 
               {field.type === 'array_devices' && (
                 <>
-                  <select value={item.room} onChange={e => handleUpdate(idx, 'room', e.target.value)} className="w-full sm:w-36 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
+                  <select value={(item as Device).room} onChange={e => handleUpdate(idx, 'room', e.target.value)} className="w-full sm:w-36 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
                     <option value="" disabled>Room</option>
                     {ROOM_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
-                  <input type="text" placeholder="Device (e.g. Oven)" value={item.device} onChange={e => handleUpdate(idx, 'device', e.target.value)} className="flex-[1.5] text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
-                  <input type="text" placeholder="Brand" value={item.brand} onChange={e => handleUpdate(idx, 'brand', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
-                  <input type="text" placeholder="Model Number" value={item.model} onChange={e => handleUpdate(idx, 'model', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                  <input type="text" placeholder="Device (e.g. Oven)" value={(item as Device).device} onChange={e => handleUpdate(idx, 'device', e.target.value)} className="flex-[1.5] text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                  <input type="text" placeholder="Brand" value={(item as Device).brand} onChange={e => handleUpdate(idx, 'brand', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
+                  <input type="text" placeholder="Model Number" value={(item as Device).model} onChange={e => handleUpdate(idx, 'model', e.target.value)} className="flex-1 text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]" />
                 </>
               )}
 
               {field.type === 'array_faqs' && (
                 <div className="flex flex-col w-full gap-2">
-                  <input type="text" placeholder="Question?" value={item.question} onChange={e => handleUpdate(idx, 'question', e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C] font-medium" />
-                  <textarea placeholder="Answer..." value={item.answer} onChange={e => handleUpdate(idx, 'answer', e.target.value)} rows={2} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C] resize-y" />
+                  <input type="text" placeholder="Question?" value={(item as FAQ).question} onChange={e => handleUpdate(idx, 'question', e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C] font-medium" />
+                  <textarea placeholder="Answer..." value={(item as FAQ).answer} onChange={e => handleUpdate(idx, 'answer', e.target.value)} rows={2} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C] resize-y" />
                 </div>
               )}
             </div>
@@ -310,12 +320,14 @@ export default function HouseGuide() {
       </div>
 
       {/* --- QUICK EDIT MODAL (DASHBOARD) --- */}
-      {quickEditCategory && (
+      {quickEditCategory && (() => {
+        const QuickEditIcon = quickEditCategory.icon;
+        return (
         <div className="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#0B4F5C]/10 text-[#0B4F5C] rounded-lg"><quickEditCategory.icon size={20}/></div>
+                <div className="p-2 bg-[#0B4F5C]/10 text-[#0B4F5C] rounded-lg"><QuickEditIcon size={20}/></div>
                 <h2 className="text-xl font-bold text-gray-900">{quickEditCategory.title}</h2>
               </div>
               <button onClick={() => setQuickEditCategory(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
@@ -331,7 +343,8 @@ export default function HouseGuide() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* --- SETUP WIZARD FULLSCREEN --- */}
       {isWizardOpen && (

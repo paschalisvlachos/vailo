@@ -137,6 +137,8 @@ export default function GuestPortal() {
 
   const wifiName = typeData?.wifiName || guide?.wifiName || property?.wifiName;
   const wifiPassword = typeData?.wifiPassword || guide?.wifiPassword || property?.wifiPassword;
+  const heroPhoto = typeData?.photoUrl || property?.photoUrl || '';
+  const heroLocation = typeData?.city || typeData?.area || property?.city || property?.area || '';
 
   const copyWifi = () => {
     if (wifiPassword) {
@@ -186,21 +188,33 @@ export default function GuestPortal() {
   const filteredFeatures = featureFilter === 'All' ? features : features.filter(f => f.categories?.[0] === featureFilter);
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#F3F4F6] font-sans">
-      <img src="../../../vailoLogo.png" alt="Vailo" className="h-12 w-auto mb-6 animate-pulse" />
-      <div className="text-[#C5A059] tracking-[0.2em] text-[11px] uppercase font-bold">Preparing your experience</div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#051F26] font-sans">
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:wght@400;500;600&display=swap');`}</style>
+      <div className="relative w-16 h-16 mb-8">
+        <div className="absolute inset-0 rounded-full border-2 border-[#C5A059]/30 border-t-[#C5A059] animate-spin" />
+        <img src="/vailoLogo.png" alt="" className="absolute inset-2 w-auto h-auto object-contain opacity-90" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      </div>
+      <p className="text-[#C5A059] tracking-[0.25em] text-[10px] uppercase font-semibold">Preparing your stay</p>
     </div>
   );
-  if (error) return <div className="min-h-screen flex items-center justify-center bg-[#F3F4F6] text-red-500 font-luxury text-lg">{error}</div>;
+  if (error) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#F3F4F6] px-6 font-sans">
+      <div className="text-center max-w-sm">
+        <p className="font-luxury text-xl text-[#051F26] mb-2">Something went wrong</p>
+        <p className="text-red-500/90 text-sm">{error}</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-[#E5E7EB] flex flex-col items-center justify-start transition-all duration-500 relative pb-16 overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative pb-16 overflow-hidden font-sans">
       
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
           .font-luxury { font-family: 'Lora', serif; }
           .font-sans { font-family: 'DM Sans', sans-serif; }
+          .hero-text-shadow { text-shadow: 0 2px 24px rgba(0,0,0,0.35); }
         `}
       </style>
 
@@ -216,189 +230,206 @@ export default function GuestPortal() {
 
       <div className={`w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col ${
         viewMode === 'mobile' 
-          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_20px_60px_rgba(0,0,0,0.15)] md:border-[10px] md:border-gray-900 md:min-h-[800px] relative' 
+          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] relative md:overflow-hidden' 
           : 'max-w-none min-h-screen'
       }`}>
         
         {activeView === 'portal' ? (
           <>
-            {/* TOP ELEGANT SPLIT BACKGROUND */}
-            <div className="relative bg-gradient-to-b from-[#EAF0F0] to-[#E0E7E7] pt-8 pb-[60px] z-10 rounded-t-[40px] md:rounded-none shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] border-b border-[#D4E0E0]">
-              
-              <div className="absolute inset-0 bg-[radial-gradient(#0B4F5C_1px,transparent_1px)] [background-size:30px_30px] opacity-[0.03]"></div>
-              <div className="absolute top-[2%] right-[-10%] w-[300px] h-[300px] bg-[#C5A059] opacity-[0.06] blur-[80px] rounded-full"></div>
-              <div className="absolute top-[10%] left-[-20%] w-[300px] h-[300px] bg-[#0B4F5C] opacity-[0.05] blur-[100px] rounded-full"></div>
-
-              {/* ALIGNMENT FIX: Strict uniform wrapper for the top content */}
-              <div className={`mx-auto relative z-10 px-5 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
-                
-                <div className="flex justify-between items-center mb-5">
-                  <button 
-                    onClick={() => setShowPropertyMap(!showPropertyMap)}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-white shadow-sm rounded-full border border-gray-200 text-[#0B4F5C] hover:bg-gray-50 transition-all text-[11px] font-semibold uppercase tracking-[0.15em]"
-                  >
-                    <MapPin size={14} className="text-[#C5A059]" /> {showPropertyMap ? 'Hide Map' : 'Location'}
-                  </button>
-                  <button className="flex items-center justify-center h-9 w-9 bg-white shadow-sm rounded-full border border-gray-200 text-[#0B4F5C] hover:bg-gray-50 transition-all">
-                    <Globe size={16} />
-                  </button>
-                </div>
-
-                {showPropertyMap && typeData?.latitude && typeData?.longitude && (
-                  <div className="mb-6 rounded-2xl overflow-hidden shadow-md border border-gray-200 animate-in slide-in-from-top-2 fade-in duration-200">
-                    <iframe 
-                      width="100%" height="200" frameBorder="0" scrolling="no" 
-                      src={`https://maps.google.com/maps?q=${typeData.latitude},${typeData.longitude}&z=14&output=embed`}
-                      className="bg-gray-100"
-                    ></iframe>
-                    <a 
-                      href={`https://www.google.com/maps/search/?api=1&query=${typeData.latitude},${typeData.longitude}`} 
-                      target="_blank" rel="noopener noreferrer"
-                      className="block w-full py-2.5 bg-[#0B4F5C] text-white text-center text-[11px] font-semibold tracking-[0.15em] uppercase hover:bg-[#083A43] transition-colors"
-                    >
-                      Open in Maps App
-                    </a>
-                  </div>
-                )}
-
-                <div className="flex justify-center mb-6">
-                  <img src="../../../vailoLogo.png" alt="Vailo" className="h-20 md:h-24 w-auto object-contain transition-all drop-shadow-sm" />
-                </div>
-
-                <div className="text-center">
-                  <p className="text-[10px] md:text-[11px] font-bold text-[#C5A059] tracking-[0.2em] uppercase mb-3">Welcome to</p>
-                  <h1 className="font-luxury text-3xl md:text-4xl lg:text-5xl text-[#051F26] leading-tight font-medium">
-                    {property?.propertyName}
-                  </h1>
-                  {typeData?.propertyTypeName && (
-                    <h2 className="font-luxury text-lg md:text-xl text-[#0B4F5C]/80 mt-1.5 mb-4 italic font-medium">
-                      {typeData.propertyTypeName}
-                    </h2>
+            {/* ── HERO: property photo + overlay content ── */}
+            <section className="relative z-10">
+              <div className={`relative overflow-hidden ${viewMode === 'mobile' ? 'md:rounded-t-[30px]' : ''}`}>
+                {/* Background photo or fallback gradient */}
+                <div className="absolute inset-0">
+                  {heroPhoto ? (
+                    <img
+                      src={heroPhoto}
+                      alt={typeData?.propertyTypeName || property?.propertyName || 'Your stay'}
+                      className="w-full h-full object-cover scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-[#0B4F5C] via-[#083A43] to-[#051F26]" />
                   )}
-                  
-                  <div className="flex items-center justify-center space-x-3 mb-8 mt-5">
-                    <div className="h-[1px] w-8 bg-gradient-to-r from-transparent to-[#C5A059]/40"></div>
-                    <p className="text-[9px] md:text-[10px] font-bold tracking-[0.15em] uppercase text-[#0B4F5C]/70">Discover local treasures – Enjoy your Vacations</p>
-                    <div className="h-[1px] w-8 bg-gradient-to-l from-transparent to-[#C5A059]/40"></div>
-                  </div>
                 </div>
 
-                {/* ALIGNMENT FIX: Removed double padding class, spanning 100% of parent */}
-                <div className="w-full mb-4 relative z-30">
-                  <button 
-                    onClick={() => setActiveView('aiExpert')}
-                    className="w-full bg-gradient-to-r from-[#051F26] to-[#0B4F5C] rounded-[1.25rem] p-4 md:p-5 flex items-center justify-between shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
-                  >
-                    <div className="flex items-center gap-3 md:gap-4">
-                      <div className="h-9 w-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-                        <Sparkles size={18} className="text-[#C5A059]" />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-white text-[14px] md:text-[15px] font-medium tracking-wide">
-                          <span className="font-bold text-[#C5A059]">Live like a local</span>
-                        </p>
-                        <p className="text-white/80 text-[11px] md:text-[12px] mt-0.5">Your AI travel expert</p>
-                      </div>
+                {/* Layered overlays for legibility */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/25 to-[#F3F4F6]" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/80 via-transparent to-black/30" />
+
+                <div className={`relative mx-auto px-5 pt-5 pb-28 min-h-[420px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+                  {/* Top bar */}
+                  <div className="flex justify-between items-center mb-auto">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20">
+                      <img src="/vailoLogo.png" alt="Vailo" className="h-5 w-auto brightness-0 invert opacity-95" onError={(e) => { (e.target as HTMLImageElement).src = '../../../vailoLogo.png'; }} />
                     </div>
-                    <div className="text-white/50 p-1.5 rounded-full">
-                      <ChevronDown size={18} className="-rotate-90" />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowPropertyMap(!showPropertyMap)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-[10px] font-semibold uppercase tracking-wider hover:bg-white/20 transition-all"
+                      >
+                        <MapPin size={13} className="text-[#C5A059]" />
+                        {showPropertyMap ? 'Hide' : 'Map'}
+                      </button>
+                      <button className="flex items-center justify-center h-9 w-9 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all">
+                        <Globe size={15} />
+                      </button>
                     </div>
-                  </button>
+                  </div>
+
+                  {showPropertyMap && typeData?.latitude && typeData?.longitude && (
+                    <div className="mt-4 rounded-2xl overflow-hidden shadow-2xl border border-white/20 animate-in slide-in-from-top-2 fade-in duration-200">
+                      <iframe
+                        width="100%" height="180" frameBorder="0" scrolling="no"
+                        title="Property location"
+                        src={`https://maps.google.com/maps?q=${typeData.latitude},${typeData.longitude}&z=14&output=embed`}
+                        className="bg-gray-100"
+                      />
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${typeData.latitude},${typeData.longitude}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="block w-full py-2.5 bg-[#0B4F5C] text-white text-center text-[10px] font-semibold tracking-widest uppercase hover:bg-[#083A43] transition-colors"
+                      >
+                        Open in Maps
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Hero copy */}
+                  <div className="mt-8 text-center hero-text-shadow">
+                    <p className="text-[10px] font-semibold text-[#C5A059] tracking-[0.3em] uppercase mb-2">Welcome to</p>
+                    <h1 className="font-luxury text-[2rem] md:text-4xl lg:text-[2.75rem] text-white leading-[1.15] font-medium">
+                      {property?.propertyName}
+                    </h1>
+                    {typeData?.propertyTypeName && (
+                      <p className="font-luxury text-lg md:text-xl text-white/85 mt-2 italic">
+                        {typeData.propertyTypeName}
+                      </p>
+                    )}
+                    {heroLocation && (
+                      <p className="text-white/60 text-xs mt-3 flex items-center justify-center gap-1.5">
+                        <MapPin size={12} className="text-[#C5A059]" /> {heroLocation}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Live Like a Local — glass CTA on hero */}
+                  <div className="mt-8 w-full">
+                    <button
+                      onClick={() => setActiveView('aiExpert')}
+                      className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition-all duration-300 hover:-translate-y-0.5"
+                    >
+                      <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0 shadow-lg">
+                            <Sparkles size={20} className="text-white" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-white text-[15px] font-semibold tracking-wide">
+                              Live like a local
+                            </p>
+                            <p className="text-white/65 text-[11px] mt-0.5">Your AI travel expert · curated picks</p>
+                          </div>
+                        </div>
+                        <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/25 transition-colors">
+                          <ChevronDown size={18} className="-rotate-90" />
+                        </div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* ALIGNMENT FIX: Strict uniform px-5 grid */}
-            <div className={`mx-auto px-5 -mt-[44px] relative z-30 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
-              <div className="bg-white/95 backdrop-blur-xl rounded-[1.25rem] p-4 flex items-center justify-between shadow-[0_10px_25px_-10px_rgba(11,79,92,0.15)] border border-white">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 md:h-14 md:w-14 bg-gradient-to-br from-[#FFF8E7] to-[#FBEBB5] rounded-full flex items-center justify-center shrink-0 shadow-inner border border-amber-100/50">
-                    <CloudSun className="text-[#C5A059] w-6 h-6 md:w-7 md:h-7" />
-                  </div>
-                  <div>
-                    <p className="font-luxury text-xl md:text-2xl text-[#0B4F5C] leading-none font-medium">
-                      {weather ? `${weather.temp}°C` : '--°C'}
-                    </p>
-                    <div className="text-[10px] md:text-[11px] text-gray-500 font-bold tracking-[0.15em] uppercase mt-1 flex items-center">
-                      <MapPin size={10} className="mr-1 text-[#C5A059]" /> 
-                      {weather ? weather.city : 'Loading...'}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right pl-4 border-l border-gray-100">
-                  <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-[0.15em] mb-0.5">High/Low</p>
-                  <p className="text-sm md:text-base font-luxury text-[#0B4F5C] font-medium">
-                    {weather ? `${weather.max}° / ${weather.min}°` : '- / -'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {wifiName && (
-              /* ALIGNMENT FIX: Strict uniform px-5 grid */
-              <div className={`mx-auto px-5 mt-4 relative z-30 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
-                <div className="bg-white rounded-[1.25rem] p-4 flex items-center justify-between shadow-sm border border-gray-100">
+            {/* Weather + Wi‑Fi — same width & card style as Live like a local */}
+            <div className={`mx-auto px-5 -mt-14 relative z-20 w-full space-y-3 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+              <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">
+                <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="bg-gray-100 p-2.5 rounded-xl border border-gray-200 text-[#0B4F5C]">
-                      <Wifi size={18} />
+                    <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#FFF8E7] to-[#FBEBB5] flex items-center justify-center shrink-0 shadow-inner">
+                      <CloudSun className="text-[#C5A059] w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.15em] leading-none mb-1">Network</p>
-                      <p className="text-[13px] font-bold text-gray-900 leading-none">{wifiName}</p>
+                      <p className="font-luxury text-2xl text-[#0B4F5C] leading-none font-medium">
+                        {weather ? `${weather.temp}°` : '—°'}
+                      </p>
+                      <p className="text-[10px] text-gray-500 font-semibold tracking-wider uppercase mt-1 flex items-center">
+                        <MapPin size={10} className="mr-1 text-[#C5A059]" />
+                        {weather ? weather.city : 'Loading…'}
+                      </p>
                     </div>
                   </div>
-                  
-                  {wifiPassword && (
-                    <div className="flex flex-col items-end">
-                      <div className="flex items-center gap-2 bg-gray-100 pl-3 pr-1.5 py-1.5 rounded-lg border border-gray-200">
-                        <p className="text-[12px] font-mono font-semibold text-gray-700 tracking-wide">{wifiPassword}</p>
-                        <button 
+                  <div className="text-right pl-4 border-l border-gray-100">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Today</p>
+                    <p className="text-sm font-luxury text-[#0B4F5C] font-medium">
+                      {weather ? `${weather.max}° / ${weather.min}°` : '— / —'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {wifiName && (
+                <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">
+                  <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#0B4F5C]/10 to-[#0B4F5C]/5 flex items-center justify-center shrink-0">
+                        <Wifi size={18} className="text-[#0B4F5C]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider leading-none mb-1">Wi‑Fi</p>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{wifiName}</p>
+                      </div>
+                    </div>
+                    {wifiPassword && (
+                      <div className="flex items-center gap-2 bg-gray-50 pl-3 pr-1.5 py-1.5 rounded-xl border border-gray-100 shrink-0">
+                        <p className="text-xs font-mono font-semibold text-gray-600">{wifiPassword}</p>
+                        <button
                           onClick={copyWifi}
-                          className={`p-1.5 rounded-md transition-colors ${copiedWifi ? 'bg-green-100 text-green-700' : 'bg-white hover:bg-gray-200 text-[#0B4F5C] shadow-sm'}`}
+                          className={`p-1.5 rounded-lg transition-colors ${copiedWifi ? 'bg-emerald-100 text-emerald-700' : 'bg-white hover:bg-gray-100 text-[#0B4F5C] shadow-sm'}`}
+                          aria-label="Copy Wi-Fi password"
                         >
                           {copiedWifi ? <Check size={14} /> : <Copy size={14} />}
                         </button>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* ALIGNMENT FIX: Strict uniform px-5 grid */}
-            <div className={`mx-auto px-5 mt-10 space-y-12 pb-12 relative z-20 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
-              
+            {/* Main content */}
+            <div className={`mx-auto px-5 mt-10 space-y-14 pb-14 relative z-10 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
               <section>
-                <div className="mb-6 text-center">
-                  <h2 className="font-luxury text-xl md:text-2xl text-[#051F26] font-medium">Property Guide</h2>
+                <div className="mb-5">
+                  <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Essentials</p>
+                  <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Property Guide</h2>
                 </div>
                 
-                <div className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.12)] border border-gray-100/80 overflow-hidden divide-y divide-gray-50">
                   {[
                     { id: 'checkIn', title: 'Arrival Instructions', content: guide?.checkIn },
                     { id: 'rules', title: 'Property Rules', content: guide?.rules },
                     { id: 'technical', title: 'Appliance Guide', content: guide?.technical },
                     { id: 'daily', title: 'Daily Needs', content: guide?.daily },
                     { id: 'emergency', title: 'Emergency Info', content: guide?.emergency },
-                  ].map((section, index) => (
-                    <div key={section.id} className={index !== 0 ? 'border-t border-gray-100' : ''}>
+                  ].map((section) => (
+                    <div key={section.id}>
                       <button 
                         onClick={() => toggleGuide(section.id)}
-                        className="w-full flex items-center p-4 md:p-5 text-left hover:bg-gray-50/80 transition-colors group"
+                        className="w-full flex items-center p-4 md:p-5 text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group"
                       >
-                        <div className="h-9 w-9 rounded-xl bg-white border border-gray-200 shadow-sm flex items-center justify-center mr-4 shrink-0 group-hover:scale-105 transition-all">
+                        <div className="h-10 w-10 rounded-xl bg-[#F8FAFA] border border-gray-100 flex items-center justify-center mr-4 shrink-0 group-hover:border-[#0B4F5C]/20 transition-all">
                           {getGuideIcon(section.id)}
                         </div>
-                        <span className={`flex-1 font-luxury text-[15px] md:text-base transition-colors font-medium ${openGuideSection === section.id ? 'text-[#0B4F5C]' : 'text-gray-800'}`}>
+                        <span className={`flex-1 font-luxury text-[15px] transition-colors ${openGuideSection === section.id ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'}`}>
                           {section.title}
                         </span>
-                        <div className={`p-1.5 rounded-full transition-all ${openGuideSection === section.id ? 'bg-[#0B4F5C] text-white shadow-sm rotate-180' : 'text-gray-400'}`}>
+                        <div className={`p-1.5 rounded-full transition-all ${openGuideSection === section.id ? 'bg-[#0B4F5C] text-white rotate-180' : 'text-gray-300 group-hover:text-gray-400'}`}>
                           <ChevronDown size={16} />
                         </div>
                       </button>
                       <div className={`transition-all duration-300 ease-in-out overflow-hidden ${openGuideSection === section.id ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="px-5 pb-6 pt-1 ml-[3.25rem] text-[13px] text-gray-600 whitespace-pre-wrap leading-relaxed">
-                          {section.content || 'Information will be provided shortly.'}
+                        <div className="px-5 pb-5 mr-5 mb-4 ml-5 pl-5 text-[13px] text-gray-600 whitespace-pre-wrap leading-relaxed border-l-2 border-[#C5A059]/30">
+                          {section.content || 'Your host will add details here soon.'}
                         </div>
                       </div>
                     </div>
@@ -408,24 +439,25 @@ export default function GuestPortal() {
 
               {gems.length > 0 && (
                 <section>
-                  <div className="mb-6 text-center">
-                    <h2 className="font-luxury text-xl md:text-2xl text-[#051F26] font-medium">Local Gems</h2>
-                    <p className="text-[#C5A059] text-[10px] md:text-[11px] tracking-[0.15em] uppercase mt-2 font-bold">
-                      Showing {filteredGems.length} spot{filteredGems.length !== 1 && 's'}
+                  <div className="mb-5">
+                    <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Curated by your host</p>
+                    <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Gems</h2>
+                    <p className="text-gray-500 text-xs mt-1.5">
+                      {filteredGems.length} spot{filteredGems.length !== 1 && 's'} · places locals love
                     </p>
                   </div>
                   
-                  <div className="flex flex-wrap gap-2.5 pb-6 justify-center items-center">
+                  <div className="flex flex-wrap gap-2 pb-6">
                     {allGemFilterOptions.map(filter => {
                       const isActive = gemFilters.includes(filter);
                       return (
                         <button 
                           key={filter}
                           onClick={() => handleGemFilterClick(filter)}
-                          className={`whitespace-nowrap px-4 py-2 rounded-full text-[10px] uppercase tracking-[0.1em] font-bold transition-all ${
+                          className={`whitespace-nowrap px-3.5 py-2 rounded-full text-[10px] uppercase tracking-wider font-semibold transition-all ${
                             isActive 
-                              ? 'bg-[#0B4F5C] text-white shadow-md border border-[#0B4F5C]' 
-                              : 'bg-white text-gray-500 border border-gray-200 hover:border-[#C5A059] hover:text-[#0B4F5C]'
+                              ? 'bg-[#0B4F5C] text-white shadow-md' 
+                              : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#C5A059]/50 hover:text-[#0B4F5C]'
                           }`}
                         >
                           {filter}
@@ -436,7 +468,7 @@ export default function GuestPortal() {
 
                   <div className={`grid gap-6 md:gap-8 ${viewMode === 'web' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
                     {filteredGems.map(gem => (
-                      <div key={gem.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-200 overflow-hidden flex flex-col group">
+                      <div key={gem.id} className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300">
                         <div className="relative h-48 bg-gray-100 overflow-hidden shrink-0">
                           {gem.photoUrl ? (
                             <img src={gem.photoUrl} alt={gem.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -528,12 +560,13 @@ export default function GuestPortal() {
 
               {features.length > 0 && (
                 <section>
-                  <div className="mb-6 text-center pt-8 border-t border-gray-200">
-                    <h2 className="font-luxury text-xl md:text-2xl text-[#051F26] font-medium">Guest Services</h2>
-                    <p className="text-[#C5A059] text-[10px] md:text-[11px] tracking-[0.15em] uppercase mt-2 font-bold">Trusted Partners</p>
+                  <div className="mb-5 pt-4 border-t border-gray-200/60">
+                    <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Partners</p>
+                    <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Guest Services</h2>
+                    <p className="text-gray-500 text-xs mt-1.5">Trusted local partners</p>
                   </div>
                   
-                  <div className="flex flex-wrap gap-2.5 pb-6 justify-center items-center">
+                  <div className="flex flex-wrap gap-2 pb-6">
                     {featureCategories.map(cat => (
                       <button 
                         key={cat} onClick={() => setFeatureFilter(cat)}
@@ -548,7 +581,7 @@ export default function GuestPortal() {
 
                   <div className={`grid gap-6 md:gap-8 ${viewMode === 'web' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
                     {filteredFeatures.map(feature => (
-                      <div key={feature.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-200 overflow-hidden flex flex-col group">
+                      <div key={feature.id} className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300">
                         <div className="relative h-44 bg-gray-100 overflow-hidden shrink-0">
                           {feature.photoUrl ? (
                             <img src={feature.photoUrl} alt={feature.businessName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
@@ -586,9 +619,9 @@ export default function GuestPortal() {
                 </section>
               )}
 
-              <div className="text-center pt-10 pb-8 mt-10 relative z-20">
-                <img src="../../../vailoLogo.png" alt="Vailo" className="h-8 md:h-10 w-auto mx-auto mb-4 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all" />
-                <p className="text-[9px] font-bold text-gray-500 tracking-[0.2em] uppercase">Powered by Vailo AI Concierge</p>
+              <div className="text-center pt-8 pb-4">
+                <img src="/vailoLogo.png" alt="Vailo" className="h-7 w-auto mx-auto mb-3 opacity-40 grayscale hover:grayscale-0 hover:opacity-70 transition-all" onError={(e) => { (e.target as HTMLImageElement).src = '../../../vailoLogo.png'; }} />
+                <p className="text-[9px] font-semibold text-gray-400 tracking-[0.2em] uppercase">Powered by Vailo</p>
               </div>
 
             </div>

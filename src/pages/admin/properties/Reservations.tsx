@@ -165,7 +165,7 @@ export default function Reservations() {
 
   if (isFormOpen) {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="w-full">
         <div className="flex items-center mb-6">
           <button onClick={() => setIsFormOpen(false)} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500">
             <ArrowLeft size={20} />
@@ -178,7 +178,7 @@ export default function Reservations() {
           {/* Unit Selector */}
           <div className="p-6 border-b border-gray-100 bg-gray-50">
             <label className="block text-sm font-semibold text-gray-700 mb-1">Select Unit *</label>
-            <select required name="typeId" value={formData.typeId} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <select required name="typeId" value={formData.typeId} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
               <option value="">Select a property type...</option>
               {propertyTypes.map(type => (
                 <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
@@ -190,27 +190,27 @@ export default function Reservations() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Guest Full Name *</label>
-                <input type="text" required name="guestName" value={formData.guestName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="John Doe" />
+                <input type="text" required name="guestName" value={formData.guestName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" placeholder="John Doe" />
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Guest Email *</label>
-                <input type="email" required name="guestEmail" value={formData.guestEmail} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="john@example.com" />
+                <input type="email" required name="guestEmail" value={formData.guestEmail} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" placeholder="john@example.com" />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Guest Phone <span className="text-gray-400 font-normal">(Optional, for WhatsApp)</span></label>
-                <input type="tel" name="guestPhone" value={formData.guestPhone} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="+1 234 567 8900" />
+                <input type="tel" name="guestPhone" value={formData.guestPhone} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" placeholder="+1 234 567 8900" />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Check-in Date *</label>
-                <input type="date" required name="start" value={formData.start} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                <input type="date" required name="start" value={formData.start} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Check-out Date *</label>
-                <input type="date" required name="end" value={formData.end} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                <input type="date" required name="end" value={formData.end} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" />
               </div>
             </div>
           </div>
@@ -222,7 +222,7 @@ export default function Reservations() {
             </div>
             <div className="flex gap-4">
               <button type="button" onClick={() => setIsFormOpen(false)} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
-              <button type="submit" disabled={isSubmitting} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm">
+              <button type="submit" disabled={isSubmitting} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg disabled:opacity-50 transition-colors shadow-sm">
                 {isSubmitting && <Loader2 size={16} className="mr-2 animate-spin" />}
                 {isSubmitting ? 'Verifying...' : 'Add Reservation'}
               </button>
@@ -234,17 +234,17 @@ export default function Reservations() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto pb-8">
+    <div className="admin-page">
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
-          <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+          <div className="h-10 w-10 bg-vailo-teal/5 text-vailo-teal rounded-xl flex items-center justify-center">
             <CalendarIcon size={20} />
           </div>
           <select 
             value={filterTypeId} 
             onChange={(e) => setFilterTypeId(e.target.value)}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[200px]"
+            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
           >
             <option value="all">All Units (Master View)</option>
             {propertyTypes.map(type => (
@@ -253,7 +253,7 @@ export default function Reservations() {
           </select>
         </div>
 
-        <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm text-sm font-medium">
+        <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm text-sm font-medium">
           <Plus size={18} className="mr-2" /> Add Manual Booking
         </button>
       </div>
@@ -315,7 +315,7 @@ export default function Reservations() {
                             Invited
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-vailo-teal/10 text-vailo-dark">
                             Pending
                           </span>
                         )}
@@ -328,7 +328,7 @@ export default function Reservations() {
                           {/* Copy Link */}
                           <button 
                             onClick={() => handleCopyLink(booking.id)}
-                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                            className="text-gray-400 hover:text-vailo-teal transition-colors"
                             title="Copy Guest Link"
                           >
                             {copiedId === booking.id ? <Check size={18} className="text-green-500" /> : <Link2 size={18} />}
@@ -340,7 +340,7 @@ export default function Reservations() {
                             className={`flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
                               booking.isInvited 
                                 ? 'bg-white border-gray-200 text-gray-400 cursor-not-allowed' 
-                                : 'bg-white border-blue-200 text-blue-600 hover:bg-blue-50'
+                                : 'bg-white border-vailo-teal/15 text-vailo-teal hover:bg-vailo-teal/5'
                             }`}
                             disabled={booking.isInvited}
                           >

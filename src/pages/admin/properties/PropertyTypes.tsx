@@ -220,7 +220,7 @@ export default function PropertyTypes() {
             <h3 className="text-lg font-bold text-gray-900">Configured Property Types</h3>
             <p className="text-sm text-gray-500">Manage individual units, rooms, or tiers within this property.</p>
           </div>
-          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Property Type
           </button>
         </div>
@@ -273,7 +273,7 @@ export default function PropertyTypes() {
                     </div>
                     
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
-                      <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
+                      <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors">
                         <Pencil size={14} className="mr-1.5" /> Edit
                       </button>
                       <button 
@@ -281,7 +281,7 @@ export default function PropertyTypes() {
                           const safeTypeSlug = type.typeSlug || type.propertyTypeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
                           window.open(`/${property.urlSlug}/${safeTypeSlug}`, '_blank');
                         }}
-                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
                         title="Preview Guest Portal"
                       >
                         <ExternalLink size={18} />
@@ -302,7 +302,7 @@ export default function PropertyTypes() {
 
   // --- RENDER FORM VIEW --- //
   return (
-    <div className="max-w-4xl mx-auto pb-10">
+    <div className="admin-page">
       <div className="flex items-center mb-6">
         <button onClick={cancelForm} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
@@ -320,10 +320,10 @@ export default function PropertyTypes() {
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
               </div>
               <button type="button" onClick={() => alert('OTA Scraper coming soon')} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-                <Wand2 size={16} className="mr-2 text-blue-600" /> Auto-fill
+                <Wand2 size={16} className="mr-2 text-vailo-teal" /> Auto-fill
               </button>
             </div>
           </div>
@@ -332,10 +332,10 @@ export default function PropertyTypes() {
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="googleMapsUrl" value={typeFormData.googleMapsUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                <input type="url" name="googleMapsUrl" value={typeFormData.googleMapsUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
               </div>
               <button type="button" onClick={handleAutoFillMaps} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors">
-                <Wand2 size={16} className="mr-2 text-blue-600" /> Auto-calc
+                <Wand2 size={16} className="mr-2 text-vailo-teal" /> Auto-calc
               </button>
             </div>
           </div>
@@ -373,9 +373,9 @@ export default function PropertyTypes() {
         </div>
 
         {/* iCal Sync Section */}
-        <div className="p-6 border-b border-gray-100 bg-blue-50/30">
+        <div className="p-6 border-b border-gray-100 bg-vailo-teal/5/30">
           <h4 className="text-sm font-bold text-gray-900 flex items-center mb-3">
-            <CalendarSync size={18} className="mr-2 text-blue-600" /> Calendar Sync (iCal)
+            <CalendarSync size={18} className="mr-2 text-vailo-teal" /> Calendar Sync (iCal)
           </h4>
           <label className="block text-sm font-medium text-gray-700 mb-1">iCal Feed URL</label>
           <div className="flex gap-3">
@@ -384,13 +384,13 @@ export default function PropertyTypes() {
               name="iCalUrl" 
               value={typeFormData.iCalUrl} 
               onChange={handleTypeChange} 
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" 
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" 
               placeholder="https://www.airbnb.com/calendar/ical/..." 
             />
             <button 
               type="button" 
               onClick={handleICalSync} 
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors shadow-sm"
+              className="px-6 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover text-sm font-medium transition-colors shadow-sm"
             >
               Sync Now
             </button>
@@ -404,7 +404,7 @@ export default function PropertyTypes() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Property Type Name *</label>
-              <input type="text" required name="propertyTypeName" value={typeFormData.propertyTypeName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="propertyTypeName" value={typeFormData.propertyTypeName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             
             {/* 🔥 FIXED SLUG INPUT 🔥 */}
@@ -421,7 +421,7 @@ export default function PropertyTypes() {
                   value={typeFormData.urlSlug} 
                   onChange={handleSlugChange} 
                   placeholder="e.g., grand-villa" 
-                  className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none" 
+                  className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-lg border border-gray-300 admin-input outline-none" 
                 />
               </div>
             </div>
@@ -432,7 +432,7 @@ export default function PropertyTypes() {
                 name="ownerId" 
                 value={typeFormData.ownerId} 
                 onChange={handleTypeChange} 
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
               >
                 <option value="">Select an owner...</option>
                 {owners.map(owner => (
@@ -443,19 +443,19 @@ export default function PropertyTypes() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
-              <input type="text" name="latitude" value={typeFormData.latitude} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="latitude" value={typeFormData.latitude} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
-              <input type="text" name="longitude" value={typeFormData.longitude} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="longitude" value={typeFormData.longitude} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WiFi Name</label>
-              <input type="text" name="wifiName" value={typeFormData.wifiName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="wifiName" value={typeFormData.wifiName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WiFi Password</label>
-              <input type="text" name="wifiPassword" value={typeFormData.wifiPassword} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="wifiPassword" value={typeFormData.wifiPassword} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Internal Reference Code *</label>
@@ -470,12 +470,12 @@ export default function PropertyTypes() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Street Address *</label>
-              <input type="text" required name="addressLine" value={typeFormData.addressLine} onChange={handleTypeChange} placeholder="e.g., 123 Main St, Apt 4B" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="addressLine" value={typeFormData.addressLine} onChange={handleTypeChange} placeholder="e.g., 123 Main St, Apt 4B" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
-              <select required name="country" value={typeFormData.country} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <select required name="country" value={typeFormData.country} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
                 <option value="" disabled>Select Country</option>
                 {countries.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -483,7 +483,7 @@ export default function PropertyTypes() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">City / Master Area *</label>
-              <select required name="city" value={typeFormData.city} onChange={handleTypeChange} disabled={!typeFormData.country} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:opacity-50">
+              <select required name="city" value={typeFormData.city} onChange={handleTypeChange} disabled={!typeFormData.country} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white disabled:opacity-50">
                 <option value="" disabled>{dbAreas.length === 0 ? 'No areas setup for this country' : 'Select City/Area'}</option>
                 {dbAreas.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
@@ -494,19 +494,19 @@ export default function PropertyTypes() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Neighborhood / Area *</label>
-              <input type="text" required name="area" value={typeFormData.area} onChange={handleTypeChange} placeholder="e.g., Akrotiri" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="area" value={typeFormData.area} onChange={handleTypeChange} placeholder="e.g., Akrotiri" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
-              <input type="text" name="postCode" value={typeFormData.postCode} onChange={handleTypeChange} placeholder="e.g., 73100" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="postCode" value={typeFormData.postCode} onChange={handleTypeChange} placeholder="e.g., 73100" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
           </div>
         </div>
 
         <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
           <button type="button" onClick={cancelForm} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
-          <button type="submit" disabled={isSubmittingType} className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm">
+          <button type="submit" disabled={isSubmittingType} className="px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg disabled:opacity-50 transition-colors shadow-sm">
             {isSubmittingType ? 'Saving...' : (editingTypeId ? 'Update Property Type' : 'Save Property Type')}
           </button>
         </div>

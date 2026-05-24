@@ -333,15 +333,15 @@ export default function LocalGems() {
   if (!isFormOpen) {
     return (
       <div>
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-vailo-teal/5 border border-vailo-teal/10 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h4 className="text-sm font-bold text-blue-900">Select Unit Level</h4>
-            <p className="text-xs text-blue-700">Gems are assigned specifically to the selected property type.</p>
+            <h4 className="text-sm font-bold text-vailo-dark">Select Unit Level</h4>
+            <p className="text-xs text-vailo-teal-hover">Gems are assigned specifically to the selected property type.</p>
           </div>
           <select 
             value={selectedTypeId} 
             onChange={(e) => setSelectedTypeId(e.target.value)}
-            className="px-4 py-2 bg-white border border-blue-200 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[200px]"
+            className="px-4 py-2 bg-white border border-vailo-teal/15 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
           >
             {propertyTypes.map(type => (
               <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
@@ -354,10 +354,10 @@ export default function LocalGems() {
             <h3 className="text-lg font-bold text-gray-900">Local Gems</h3>
             <p className="text-sm text-gray-500">
               Curated recommendations for your guests. 
-              {propertyAreaContext && <span className="ml-1 font-medium text-blue-600">(Area: {propertyAreaContext.areaName})</span>}
+              {propertyAreaContext && <span className="ml-1 font-medium text-vailo-teal">(Area: {propertyAreaContext.areaName})</span>}
             </p>
           </div>
-          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Custom Gem
           </button>
         </div>
@@ -398,7 +398,7 @@ export default function LocalGems() {
                           </div>
                           <div className="flex mt-1">
                             {gem.isLegitPick && <span className="mr-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-[10px] uppercase font-bold rounded-full">Legit Pick</span>}
-                            {gem.isDailyTrip && <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] uppercase font-bold rounded-full">Daily Trip</span>}
+                            {gem.isDailyTrip && <span className="px-2 py-0.5 bg-vailo-teal/10 text-vailo-dark text-[10px] uppercase font-bold rounded-full">Daily Trip</span>}
                           </div>
                         </div>
                       </div>
@@ -414,7 +414,7 @@ export default function LocalGems() {
                       {gem.distanceKm ? `${gem.distanceKm} km (${gem.distanceTime})` : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-medium">
-                      <button onClick={() => handleEditClick(gem)} className="text-blue-600 hover:text-blue-900 mr-4"><Pencil size={18} /></button>
+                      <button onClick={() => handleEditClick(gem)} className="text-vailo-teal hover:text-vailo-dark mr-4"><Pencil size={18} /></button>
                       <button onClick={() => handleDeleteClick(gem.id, gem.name)} className="text-red-600 hover:text-red-900"><Trash2 size={18} /></button>
                     </td>
                   </tr>
@@ -428,25 +428,25 @@ export default function LocalGems() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full">
       <div className="flex items-center mb-6">
         <button onClick={closeAndResetForm} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
         </button>
         <div>
           <h3 className="text-xl font-bold text-gray-900">{editingGemId ? 'Edit Local Gem' : 'Add Custom Gem'}</h3>
-          <p className="text-gray-500 text-sm mt-1">Adding recommendation for <span className="font-semibold text-blue-600">{propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName}</span></p>
+          <p className="text-gray-500 text-sm mt-1">Adding recommendation for <span className="font-semibold text-vailo-teal">{propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName}</span></p>
         </div>
       </div>
 
       <form onSubmit={submitGem} className="border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         
         {/* Smart Calculator Header */}
-        <div className="p-6 border-b border-gray-100 bg-blue-50/50 space-y-2">
-          <h4 className="text-sm font-bold text-blue-900 flex items-center">
+        <div className="p-6 border-b border-gray-100 bg-vailo-teal/5/50 space-y-2">
+          <h4 className="text-sm font-bold text-vailo-dark flex items-center">
             <Wand2 size={16} className="mr-2" /> Free Smart Import Tool
           </h4>
-          <p className="text-xs text-blue-700 max-w-2xl">
+          <p className="text-xs text-vailo-teal-hover max-w-2xl">
             Paste a Google Maps link below and click AI Magic Fill. We will extract the GPS coordinates and calculate the driving distance and time from this specific Property Type!
           </p>
         </div>
@@ -460,7 +460,7 @@ export default function LocalGems() {
               <div className="flex gap-3 items-end">
                 <div className="relative flex-1">
                   <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                  <input type="url" required name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="https://www.google.com/maps/place/..." className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+                  <input type="url" required name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="https://www.google.com/maps/place/..." className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
                 </div>
                 <button 
                   type="button" 
@@ -480,13 +480,13 @@ export default function LocalGems() {
             {/* 2. Basic Info */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Gem Name *</label>
-              <input type="text" required name="name" value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="name" value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             
             {/* 3. DYNAMIC CATEGORY DROPDOWN */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-              <select required name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <select required name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
                 <option value="" disabled>
                   {localGemsCategories.length === 0 ? "No Area Categories Found" : "Please select"}
                 </option>
@@ -499,7 +499,7 @@ export default function LocalGems() {
             {/* 4. GOOGLE RATING */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Google Rating (1-5)</label>
-              <input type="number" min="1" max="5" step="0.1" name="rating" value={formData.rating} onChange={handleChange} placeholder="e.g. 4.8" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="number" min="1" max="5" step="0.1" name="rating" value={formData.rating} onChange={handleChange} placeholder="e.g. 4.8" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             {/* 5. VISIBLE DISTANCE FIELDS */}
@@ -507,30 +507,30 @@ export default function LocalGems() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Distance from {propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName || 'Property'} (km) *
               </label>
-              <input type="text" required name="distanceKm" value={formData.distanceKm} onChange={handleChange} placeholder="e.g. 5.2" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="distanceKm" value={formData.distanceKm} onChange={handleChange} placeholder="e.g. 5.2" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Distance from {propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName || 'Property'} (time) *
               </label>
-              <input type="text" required name="distanceTime" value={formData.distanceTime} onChange={handleChange} placeholder="e.g. 15 min" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="distanceTime" value={formData.distanceTime} onChange={handleChange} placeholder="e.g. 15 min" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             {/* 6. VISIBLE LATITUDE & LONGITUDE */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
-              <input type="text" name="latitude" value={formData.latitude || ''} onChange={handleChange} placeholder="e.g. 35.5138" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="latitude" value={formData.latitude || ''} onChange={handleChange} placeholder="e.g. 35.5138" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
-              <input type="text" name="longitude" value={formData.longitude || ''} onChange={handleChange} placeholder="e.g. 24.0180" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" name="longitude" value={formData.longitude || ''} onChange={handleChange} placeholder="e.g. 24.0180" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="Why do you recommend this place?"></textarea>
+              <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none resize-none" placeholder="Why do you recommend this place?"></textarea>
             </div>
 
             {/* 7. PERFECTED PHOTO GALLERY WITH GOOGLE MEMORY */}
@@ -550,7 +550,7 @@ export default function LocalGems() {
 
                 <div className="flex-1 w-full">
                   <p className="text-sm font-bold text-gray-700 mb-2">Upload Custom Image</p>
-                  <input type="file" accept="image/*" onChange={handleImageSelect} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer mb-4" />
+                  <input type="file" accept="image/*" onChange={handleImageSelect} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-vailo-teal/5 file:text-vailo-teal-hover hover:file:bg-vailo-teal/10 cursor-pointer mb-4" />
                   
                   {/* Selectable Thumbnail Gallery (Uploads & Google Data) */}
                   {(imagePreview || googlePhoto) && (
@@ -578,7 +578,7 @@ export default function LocalGems() {
                               onClick={() => setFormData({...formData, photoUrl: googlePhoto})} 
                               className={`w-16 h-16 object-cover rounded-lg cursor-pointer border-[3px] hover:opacity-80 transition-all ${formData.photoUrl === googlePhoto ? 'border-blue-600 shadow-md scale-105' : 'border-transparent'}`} 
                             />
-                            <div className="absolute top-1 left-1 bg-white/90 backdrop-blur-sm text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm leading-none">Google</div>
+                            <div className="absolute top-1 left-1 bg-white/90 backdrop-blur-sm text-vailo-teal text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm leading-none">Google</div>
                           </div>
                         )}
                       </div>
@@ -592,7 +592,7 @@ export default function LocalGems() {
             <div className="md:col-span-2 flex flex-col sm:flex-row gap-6 pt-4 border-t border-gray-100">
               <label className="flex items-center cursor-pointer">
                 <div className="relative flex items-center">
-                  <input type="checkbox" name="isLegitPick" checked={formData.isLegitPick} onChange={handleChange} className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-all cursor-pointer" />
+                  <input type="checkbox" name="isLegitPick" checked={formData.isLegitPick} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded transition-all cursor-pointer" />
                 </div>
                 <div className="ml-3">
                   <span className="block text-sm font-medium text-gray-900">Owner's Legit Pick</span>
@@ -602,7 +602,7 @@ export default function LocalGems() {
 
               <label className="flex items-center cursor-pointer">
                 <div className="relative flex items-center">
-                  <input type="checkbox" name="isDailyTrip" checked={formData.isDailyTrip} onChange={handleChange} className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition-all cursor-pointer" />
+                  <input type="checkbox" name="isDailyTrip" checked={formData.isDailyTrip} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded transition-all cursor-pointer" />
                 </div>
                 <div className="ml-3">
                   <span className="block text-sm font-medium text-gray-900">Daily Trip</span>
@@ -617,7 +617,7 @@ export default function LocalGems() {
         <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
           <button type="button" onClick={closeAndResetForm} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>          
           
-          <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm">
+          <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg disabled:opacity-50 transition-colors shadow-sm">
             {(isSubmitting || isUploadingImage) && <Loader2 size={16} className="mr-2 animate-spin" />}
             {isUploadingImage ? 'Uploading Image...' : isSubmitting ? 'Saving...' : (editingGemId ? 'Update Gem' : 'Add Gem')}
           </button>

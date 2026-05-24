@@ -1,1 +1,123 @@
 @import "tailwindcss";
+
+@theme {
+  --color-vailo-dark: #051f26;
+  --color-vailo-teal: #0b4f5c;
+  --color-vailo-teal-hover: #083a43;
+  --color-vailo-teal-light: #0a6574;
+  --color-vailo-teal-muted: #0b4f5c1a;
+  --color-vailo-gold: #c5a059;
+  --color-vailo-gold-hover: #b8924f;
+  --color-vailo-gold-muted: #8a6d2e;
+  --color-vailo-surface: #f0f3f2;
+  --color-vailo-surface-elevated: #f8faf9;
+  --font-luxury: "Lora", Georgia, serif;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .admin-page {
+    @apply w-full pb-8 sm:pb-10;
+  }
+
+  .admin-label {
+    @apply block text-sm font-semibold text-vailo-dark/80 mb-1.5;
+  }
+
+  .admin-input {
+    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-white outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15;
+  }
+
+  .admin-input-muted {
+    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15 focus:bg-white;
+  }
+
+  .admin-select {
+    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15 focus:bg-white disabled:opacity-50;
+  }
+
+  .admin-textarea {
+    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-white outline-none transition-all resize-y min-h-[100px] placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15;
+  }
+
+  .admin-section-title {
+    @apply text-base sm:text-lg font-bold text-vailo-dark flex items-center gap-2 border-b border-gray-100 pb-4 mb-5;
+  }
+
+  .admin-table-wrap {
+    @apply overflow-x-auto rounded-xl border border-gray-100;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .admin-table-wrap::-webkit-scrollbar {
+    height: 4px;
+  }
+  .admin-table-wrap::-webkit-scrollbar-thumb {
+    background: rgb(11 79 92 / 0.25);
+    border-radius: 9999px;
+  }
+
+  .admin-table {
+    @apply w-full text-sm text-left;
+  }
+
+  .admin-table thead {
+    @apply bg-vailo-surface-elevated text-vailo-dark/70 uppercase text-[11px] tracking-wider font-semibold;
+  }
+
+  .admin-table th {
+    @apply px-4 py-3.5 whitespace-nowrap;
+  }
+
+  .admin-table td {
+    @apply px-4 py-3.5 border-t border-gray-50 text-gray-700;
+  }
+
+  .admin-table tbody tr {
+    @apply hover:bg-vailo-teal/[0.03] transition-colors;
+  }
+
+  .admin-icon-box {
+    @apply flex items-center justify-center h-11 w-11 rounded-xl text-vailo-teal shrink-0;
+    background-color: color-mix(in srgb, var(--color-vailo-teal) 8%, transparent);
+  }
+
+  .admin-icon-box-gold {
+    @apply flex items-center justify-center h-11 w-11 rounded-xl text-vailo-gold shrink-0;
+    background-color: color-mix(in srgb, var(--color-vailo-gold) 15%, transparent);
+  }
+
+  .admin-module-card {
+    @apply flex flex-col items-start p-5 sm:p-6 text-left rounded-2xl border border-gray-100 bg-white hover:border-vailo-teal/20 transition-all duration-200 h-full;
+  }
+  .admin-module-card:hover {
+    box-shadow: 0 8px 30px -12px rgba(11, 79, 92, 0.18);
+  }
+
+  .admin-back-link {
+    @apply inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors mb-4;
+  }
+}
+
+@layer utilities {
+  .admin-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .admin-scroll-x::-webkit-scrollbar {
+    height: 4px;
+  }
+  .admin-scroll-x::-webkit-scrollbar-thumb {
+    background: rgb(11 79 92 / 0.25);
+    border-radius: 9999px;
+  }
+  .font-luxury {
+    font-family: var(--font-luxury);
+  }
+}

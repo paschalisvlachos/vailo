@@ -205,17 +205,17 @@ export default function Calendar() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto pb-8">
+    <div className="admin-page">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
-          <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+          <div className="h-10 w-10 bg-vailo-teal/5 text-vailo-teal rounded-xl flex items-center justify-center">
             <CalendarIcon size={20} />
           </div>
           <select 
             value={selectedTypeId} 
             onChange={(e) => setSelectedTypeId(e.target.value)}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm min-w-[200px]"
+            className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
           >
             {propertyTypes.map(type => (
               <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
@@ -237,7 +237,7 @@ export default function Calendar() {
           <button 
             onClick={handleSync}
             disabled={!selectedType?.iCalUrl || isSyncing}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-400 transition-colors shadow-sm"
+            className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl text-sm font-medium hover:bg-vailo-teal-hover disabled:opacity-50 disabled:bg-gray-400 transition-colors shadow-sm"
           >
             <RefreshCw size={14} className={`mr-2 ${isSyncing ? 'animate-spin text-white' : 'text-white'}`} />
             {isSyncing ? 'Syncing Bookings...' : 'Sync Now'}
@@ -288,10 +288,10 @@ export default function Calendar() {
             return (
               <div 
                 key={day} 
-                className={`bg-white min-h-[140px] p-2 relative group transition-colors flex flex-col ${isPast ? 'opacity-60 bg-gray-50/50' : 'hover:bg-gray-50'} ${dayBookings.length > 0 ? 'bg-blue-50/10' : ''}`}
+                className={`bg-white min-h-[140px] p-2 relative group transition-colors flex flex-col ${isPast ? 'opacity-60 bg-gray-50/50' : 'hover:bg-gray-50'} ${dayBookings.length > 0 ? 'bg-vailo-teal/5/10' : ''}`}
               >
                 <span className={`inline-flex items-center justify-center w-7 h-7 text-sm font-semibold rounded-full mb-1 ${
-                  isToday ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700'
+                  isToday ? 'bg-vailo-teal text-white shadow-sm' : 'text-gray-700'
                 }`}>
                   {day}
                 </span>
@@ -318,7 +318,7 @@ export default function Calendar() {
                             ) : (
                               <button 
                                 onClick={() => handleInviteClick(booking)}
-                                className="text-[12px] font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                className="text-[12px] font-medium text-vailo-teal hover:text-vailo-dark hover:underline"
                               >
                                 Invite
                               </button>

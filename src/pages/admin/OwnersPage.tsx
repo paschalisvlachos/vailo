@@ -1,17 +1,35 @@
 import { useState, useEffect } from 'react';
 import { Users, Plus, Pencil, Trash2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import AdminPageHeader, {
+  AdminButtonLink,
+  AdminCard,
+  AdminEmptyState,
+} from '../../components/admin/AdminPageHeader';
 
 interface Owner {
   id: string;
   fullName: string;
   email: string;
   company: string;
-  propertiesCount: number; // We'll default this to 0 for now
+  propertiesCount: number;
   role: string;
   status: string;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    active: 'bg-emerald-50 text-emerald-800 border-emerald-100',
+    trial: 'bg-vailo-teal/5 text-vailo-dark border-vailo-teal/10',
+  };
+  const key = status?.toLowerCase() || '';
+  const cls = styles[key] || 'bg-red-50 text-red-800 border-red-100';
+  return (
+    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border capitalize ${cls}`}>
+      {status || 'Unknown'}
+    </span>
+  );
 }
 
 export default function OwnersPage() {
@@ -20,117 +38,133 @@ export default function OwnersPage() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'owners'), (snapshot) => {
-      const ownersData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Owner[];
-      
-      setOwners(ownersData);
+      setOwners(
+        snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Owner[]
+      );
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete ${name}?`)) {
+    if (window.confirm(`Delete ${name}?`)) {
       try {
         await deleteDoc(doc(db, 'owners', id));
       } catch (error) {
-        console.error("Error deleting owner:", error);
-        alert("Failed to delete owner.");
+        console.error('Error deleting owner:', error);
+        alert('Failed to delete owner.');
       }
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-        return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span>;
-      case 'trial':
-        return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Trial</span>;
-      default:
-        return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Deactive</span>;
-    }
-  };
-
   if (loading) {
-    return <div className="p-8 text-center text-gray-500">Loading CRM...</div>;
+    return <div className="py-16 text-center text-gray-500 text-sm">Loading CRM…</div>;
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Owners CRM</h2>
-          <p className="text-gray-500 mt-1">Manage property owners and agents</p>
-        </div>
-        
-        <Link to="/add-owner" className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus size={20} className="mr-2" />
-          Add New Owner
-        </Link>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader
+        title="Owners CRM"
+        description="Manage property owners and agents"
+        icon={<Users size={26} />}
+        action={
+          <AdminButtonLink to="/add-owner" className="w-full sm:w-auto">
+            <Plus size={18} /> Add Owner
+          </AdminButtonLink>
+        }
+      />
 
       {owners.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-          <div className="h-16 w-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 mb-4">
-            <Users size={32} />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No users found</h3>
-          <p className="text-gray-500 max-w-sm mb-6">Start building your CRM by adding your first property owner or agent.</p>
-          <Link to="/add-owner" className="flex items-center px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
-            <Plus size={20} className="mr-2" />
-            Add New Owner
-          </Link>
-        </div>
+        <AdminEmptyState
+          icon={<Users size={32} />}
+          title="No users yet"
+          description="Add property owners or agents to assign to your portfolio."
+          action={
+            <AdminButtonLink to="/add-owner">
+              <Plus size={18} /> Add Owner
+            </AdminButtonLink>
+          }
+        />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Properties</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {owners.map((owner) => (
-                <tr key={owner.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-gray-900">{owner.fullName}</div>
-                    <div className="text-sm text-gray-500">{owner.email}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {owner.company || '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-900">
-                    <span className="bg-gray-100 text-gray-700 py-1 px-3 rounded-full font-medium">
-                      {owner.propertiesCount || 0}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
-                    {owner.role}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(owner.status)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-blue-600 hover:text-blue-900 mr-4" onClick={() => alert('Edit coming soon!')}>
-                      <Pencil size={18} />
+        <>
+          <div className="grid gap-3 lg:hidden">
+            {owners.map((owner) => (
+              <AdminCard key={owner.id} className="p-4">
+                <div className="flex justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-vailo-dark truncate">{owner.fullName}</p>
+                    <p className="text-sm text-gray-500 truncate">{owner.email}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <StatusBadge status={owner.status} />
+                      <span className="text-xs text-gray-500 capitalize px-2 py-1 bg-gray-100 rounded-lg">
+                        {owner.role}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button
+                      type="button"
+                      className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
+                      onClick={() => alert('Edit coming soon!')}
+                    >
+                      <Pencil size={17} />
                     </button>
-                    <button onClick={() => handleDelete(owner.id, owner.fullName)} className="text-red-600 hover:text-red-900">
-                      <Trash2 size={18} />
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(owner.id, owner.fullName)}
+                      className="p-2 text-gray-400 hover:text-red-600 rounded-lg"
+                    >
+                      <Trash2 size={17} />
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </div>
+              </AdminCard>
+            ))}
+          </div>
+
+          <AdminCard className="hidden lg:block overflow-hidden">
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Company</th>
+                    <th className="text-center">Properties</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {owners.map((owner) => (
+                    <tr key={owner.id}>
+                      <td>
+                        <div className="font-semibold text-vailo-dark">{owner.fullName}</div>
+                        <div className="text-sm text-gray-500">{owner.email}</div>
+                      </td>
+                      <td>{owner.company || '—'}</td>
+                      <td className="text-center">
+                        <span className="bg-vailo-surface-elevated text-vailo-dark py-1 px-3 rounded-full text-sm font-medium">
+                          {owner.propertiesCount || 0}
+                        </span>
+                      </td>
+                      <td className="capitalize text-gray-600">{owner.role}</td>
+                      <td><StatusBadge status={owner.status} /></td>
+                      <td className="text-right">
+                        <button type="button" className="p-2 text-gray-400 hover:text-vailo-teal" onClick={() => alert('Edit coming soon!')}>
+                          <Pencil size={17} />
+                        </button>
+                        <button type="button" onClick={() => handleDelete(owner.id, owner.fullName)} className="p-2 text-gray-400 hover:text-red-600">
+                          <Trash2 size={17} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </AdminCard>
+        </>
       )}
     </div>
   );

@@ -1,90 +1,190 @@
-import { 
-  LayoutDashboard, 
-  Building2, 
-  Users, 
+import { useState, useEffect } from 'react';
+import {
+  LayoutDashboard,
+  Building2,
+  Users,
   LogOut,
   CreditCard,
-  Globe
+  Globe,
+  Menu,
+  X,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
 
+const NAV_ITEMS = [
+  { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
+  { icon: Building2, label: 'Properties', to: '/properties' },
+  { icon: Users, label: 'Owners CRM', to: '/owners' },
+  { icon: Globe, label: 'Area Functionality', to: '/area' },
+  { icon: CreditCard, label: 'Billing & Usage', to: '/billing' },
+] as const;
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
-  
+  const location = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileOpen]);
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error("Error logging out:", error);
+      console.error('Error logging out:', error);
     }
   };
 
-  return (
-    <div className="flex h-screen bg-[#F8F9FA]">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        {/* App Title / Logo Area */}
-        <div className="p-6">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Vailo</h1>
-          <p className="text-xs text-gray-500 mt-1">Admin Panel</p>
+  const sidebarContent = (
+    <>
+      <div className="p-5 lg:p-6 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner">
+            <span className="font-bold text-vailo-gold text-lg font-luxury">V</span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-white font-luxury">Vailo</h1>
+            <p className="text-[11px] text-white/45 font-medium tracking-wide">Admin Panel</p>
+          </div>
         </div>
+      </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-          <p className="px-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 mt-4">Main</p>
-          
-          <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" to="/" />
-          <NavItem icon={<Building2 size={20} />} label="Properties" to="/properties" />          
-          <NavItem icon={<Users size={20} />} label="Owners CRM" to="/owners" />
-          <NavItem icon={<Globe size={20} />} label="Area Functionality" to="/area" badge={newDiscoveredCount} />
-          <NavItem icon={<CreditCard size={20} />} label="Billing & Usage" to="/billing" />
-        </nav>
+      <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+        <p className="px-3 text-[10px] font-bold text-white/30 uppercase tracking-[0.22em] mb-3">
+          Navigation
+        </p>
+        {NAV_ITEMS.map((item) => (
+          <NavItem
+            key={item.to}
+            icon={<item.icon size={19} strokeWidth={1.75} />}
+            label={item.label}
+            to={item.to}
+            badge={item.to === '/area' ? newDiscoveredCount : 0}
+            onNavigate={() => setMobileOpen(false)}
+          />
+        ))}
+      </nav>
+
+      <div className="p-4 border-t border-white/10">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white/65 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          <LogOut size={17} />
+          Logout
+        </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex min-h-screen bg-vailo-surface">
+      <aside className="hidden lg:flex w-[17.5rem] bg-gradient-to-b from-vailo-teal to-vailo-teal-hover flex-col shrink-0 fixed inset-y-0 left-0 z-40 shadow-[4px_0_24px_-8px_rgba(5,31,38,0.35)]">
+        {sidebarContent}
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header */}
-        <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-end px-8">
-          <button 
-            onClick={handleLogout}
-            className="flex items-center text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="fixed inset-0 z-50 bg-vailo-dark/65 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-[min(100vw-3rem,17.5rem)] bg-gradient-to-b from-vailo-teal to-vailo-teal-hover flex flex-col transform transition-transform duration-300 ease-out lg:hidden shadow-2xl ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className="absolute top-4 right-4 p-2 rounded-xl text-white/55 hover:text-white hover:bg-white/10"
+          aria-label="Close menu"
+        >
+          <X size={20} />
+        </button>
+        {sidebarContent}
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-[17.5rem]">
+        <header className="sticky top-0 z-30 h-14 sm:h-[4.25rem] border-b border-gray-200/70 bg-white/92 backdrop-blur-lg flex items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-10 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="lg:hidden p-2 -ml-1 rounded-xl text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+            aria-label="Open menu"
           >
-            <LogOut size={18} className="mr-2" />
+            <Menu size={22} />
+          </button>
+
+          <div className="hidden lg:flex items-center gap-2 text-sm text-gray-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-vailo-gold" />
+            <span className="font-medium">Hospitality management</span>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="hidden sm:flex items-center text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors ml-auto"
+          >
+            <LogOut size={17} className="mr-2 opacity-70" />
             Logout
           </button>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-8">
-          {children}
-        </div>
-      </main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="p-4 sm:p-6 lg:p-8 xl:p-10 w-full">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }
 
-// Small helper component for the sidebar items
-function NavItem({ icon, label, to, className = "", badge = 0 }: { icon: React.ReactNode, label: string, to: string, className?: string, badge?: number }) {
+function NavItem({
+  icon,
+  label,
+  to,
+  badge = 0,
+  onNavigate,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  to: string;
+  badge?: number;
+  onNavigate?: () => void;
+}) {
   const location = useLocation();
-  // Check if the current URL matches the link's destination to highlight it
-  const active = location.pathname === to;
+  const active =
+    to === '/'
+      ? location.pathname === '/'
+      : location.pathname === to || location.pathname.startsWith(`${to}/`);
 
   return (
     <Link
       to={to}
-      className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-        active 
-          ? "bg-gray-100 text-gray-900" 
-          : `text-gray-600 hover:bg-gray-50 hover:text-gray-900 ${className}`
+      onClick={onNavigate}
+      className={`relative flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+        active
+          ? 'bg-white/12 text-white shadow-sm before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-0.5 before:rounded-full before:bg-vailo-gold'
+          : 'text-white/60 hover:bg-white/6 hover:text-white/90'
       }`}
     >
-      <span className="mr-3">{icon}</span>
-      <span className="flex-1">{label}</span>
+      <span className={`mr-3 ${active ? 'text-vailo-gold' : 'text-white/45'}`}>{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
       {badge > 0 && (
-        <span className="ml-2 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold">
+        <span className="ml-2 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold">
           {badge > 99 ? '99+' : badge}
         </span>
       )}

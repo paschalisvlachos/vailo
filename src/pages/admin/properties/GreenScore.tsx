@@ -172,7 +172,7 @@ export default function GreenScore() {
   );
 
   return (
-    <div className="max-w-5xl mx-auto pb-8">
+    <div className="admin-page">
       
       {/* Selector Header */}
       <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -185,7 +185,7 @@ export default function GreenScore() {
         <select 
           value={selectedTypeId} 
           onChange={(e) => setSelectedTypeId(e.target.value)}
-          className="px-4 py-2 bg-white border border-emerald-200 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm min-w-[200px]"
+          className="px-4 py-2 bg-white border border-emerald-200 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
         >
           {propertyTypes.map(type => (
             <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
@@ -232,12 +232,12 @@ export default function GreenScore() {
             {/* Water Section */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-gray-900 flex items-center mb-4">
-                <Droplet size={20} className="mr-2 text-blue-500" /> Water
+                <Droplet size={20} className="mr-2 text-vailo-teal" /> Water
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <CustomToggle label="Water-Saving Fixtures" name="hasWaterFixtures" checked={formData.hasWaterFixtures} points={8} icon={Droplet} colorClass="text-blue-600" bgClass="bg-blue-50" ringClass="peer-focus:ring-blue-300" checkedClass="peer-checked:bg-blue-500" />
-                <CustomToggle label="Rainwater Collection" name="hasRainwater" checked={formData.hasRainwater} points={7} icon={CloudRain} colorClass="text-blue-600" bgClass="bg-blue-50" ringClass="peer-focus:ring-blue-300" checkedClass="peer-checked:bg-blue-500" />
-                <CustomToggle label="Pool Cover" name="hasPoolCover" checked={formData.hasPoolCover} points={5} icon={Waves} colorClass="text-blue-600" bgClass="bg-blue-50" ringClass="peer-focus:ring-blue-300" checkedClass="peer-checked:bg-blue-500" />
+                <CustomToggle label="Water-Saving Fixtures" name="hasWaterFixtures" checked={formData.hasWaterFixtures} points={8} icon={Droplet} colorClass="text-vailo-teal" bgClass="bg-vailo-teal/5" ringClass="peer-focus:ring-blue-300" checkedClass="peer-checked:bg-vailo-teal/50" />
+                <CustomToggle label="Rainwater Collection" name="hasRainwater" checked={formData.hasRainwater} points={7} icon={CloudRain} colorClass="text-vailo-teal" bgClass="bg-vailo-teal/5" ringClass="peer-focus:ring-blue-300" checkedClass="peer-checked:bg-vailo-teal/50" />
+                <CustomToggle label="Pool Cover" name="hasPoolCover" checked={formData.hasPoolCover} points={5} icon={Waves} colorClass="text-vailo-teal" bgClass="bg-vailo-teal/5" ringClass="peer-focus:ring-blue-300" checkedClass="peer-checked:bg-vailo-teal/50" />
               </div>
             </div>
 
@@ -268,12 +268,12 @@ export default function GreenScore() {
             {/* Transport Section */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-gray-900 flex items-center mb-4">
-                <Bus size={20} className="mr-2 text-purple-500" /> Transport
+                <Bus size={20} className="mr-2 text-vailo-teal" /> Transport
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <CustomToggle label="EV Charging Station" name="hasEvCharging" checked={formData.hasEvCharging} points={6} icon={Car} colorClass="text-purple-600" bgClass="bg-purple-50" ringClass="peer-focus:ring-purple-300" checkedClass="peer-checked:bg-purple-500" />
-                <CustomToggle label="Bikes Available" name="hasBikes" checked={formData.hasBikes} points={5} icon={Bike} colorClass="text-purple-600" bgClass="bg-purple-50" ringClass="peer-focus:ring-purple-300" checkedClass="peer-checked:bg-purple-500" />
-                <CustomToggle label="Public Transport Info" name="hasPublicTransport" checked={formData.hasPublicTransport} points={4} icon={Bus} colorClass="text-purple-600" bgClass="bg-purple-50" ringClass="peer-focus:ring-purple-300" checkedClass="peer-checked:bg-purple-500" />
+                <CustomToggle label="EV Charging Station" name="hasEvCharging" checked={formData.hasEvCharging} points={6} icon={Car} colorClass="text-vailo-teal" bgClass="bg-vailo-teal/5" ringClass="peer-focus:ring-purple-300" checkedClass="peer-checked:bg-vailo-teal/50" />
+                <CustomToggle label="Bikes Available" name="hasBikes" checked={formData.hasBikes} points={5} icon={Bike} colorClass="text-vailo-teal" bgClass="bg-vailo-teal/5" ringClass="peer-focus:ring-purple-300" checkedClass="peer-checked:bg-vailo-teal/50" />
+                <CustomToggle label="Public Transport Info" name="hasPublicTransport" checked={formData.hasPublicTransport} points={4} icon={Bus} colorClass="text-vailo-teal" bgClass="bg-vailo-teal/5" ringClass="peer-focus:ring-purple-300" checkedClass="peer-checked:bg-vailo-teal/50" />
               </div>
             </div>
 
@@ -287,7 +287,7 @@ export default function GreenScore() {
                 value={formData.notes} 
                 onChange={handleChange} 
                 rows={3} 
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none bg-white" 
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none resize-none bg-white" 
                 placeholder="Add any internal notes regarding the eco-friendly status of this unit..."
               ></textarea>
             </div>

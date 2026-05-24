@@ -3,6 +3,11 @@ import { Building2, Plus, Pencil, Trash2, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import AdminPageHeader, {
+  AdminButtonLink,
+  AdminCard,
+  AdminEmptyState,
+} from '../../../components/admin/AdminPageHeader';
 
 interface Property {
   id: string;
@@ -13,115 +18,172 @@ interface Property {
 
 export default function PropertiesPage() {
   const [properties, setProperties] = useState<Property[]>([]);
-  const [owners, setOwners] = useState<Record<string, any>>({}); // Lookup map for fast access
+  const [owners, setOwners] = useState<Record<string, { fullName?: string; role?: string }>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Listen to properties
     const unsubProps = onSnapshot(collection(db, 'properties'), (snapshot) => {
-      const propertiesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Property[];
-      setProperties(propertiesData);
+      setProperties(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Property[]);
       setLoading(false);
     });
-
-    // 2. Listen to owners to build a fast lookup dictionary
     const unsubOwners = onSnapshot(collection(db, 'owners'), (snapshot) => {
-      const ownersMap: Record<string, any> = {};
-      snapshot.forEach(doc => {
-        ownersMap[doc.id] = doc.data();
+      const ownersMap: Record<string, { fullName?: string; role?: string }> = {};
+      snapshot.forEach((d) => {
+        ownersMap[d.id] = d.data();
       });
       setOwners(ownersMap);
     });
-
-    return () => { unsubProps(); unsubOwners(); };
+    return () => {
+      unsubProps();
+      unsubOwners();
+    };
   }, []);
 
   const handleDelete = async (id: string, propertyName: string) => {
-    if (window.confirm(`Are you sure you want to delete "${propertyName}"?`)) {
-      try { await deleteDoc(doc(db, 'properties', id)); } 
-      catch (error) { alert("Failed to delete property."); }
+    if (window.confirm(`Delete "${propertyName}"?`)) {
+      try {
+        await deleteDoc(doc(db, 'properties', id));
+      } catch {
+        alert('Failed to delete property.');
+      }
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading properties...</div>;
+  if (loading) {
+    return <div className="py-16 text-center text-gray-500 text-sm">Loading properties…</div>;
+  }
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Properties</h2>
-          <p className="text-gray-500 mt-1">Manage your rental portfolio</p>
-        </div>
-        
-        <Link to="/add-property" className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus size={20} className="mr-2" /> Add Property
-        </Link>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader
+        title="Properties"
+        description="Manage your rental portfolio and guest portals"
+        icon={<Building2 size={26} />}
+        action={
+          <AdminButtonLink to="/add-property" className="w-full sm:w-auto">
+            <Plus size={18} /> Add Property
+          </AdminButtonLink>
+        }
+      />
 
       {properties.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-          <div className="h-16 w-16 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 mb-4">
-            <Building2 size={32} />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No properties found</h3>
-          <p className="text-gray-500 max-w-sm mb-6">Your property list is empty. Add your first property to start managing.</p>
-          <Link to="/add-property" className="flex items-center px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">
-            <Plus size={20} className="mr-2" /> Add New Property
-          </Link>
-        </div>
+        <AdminEmptyState
+          icon={<Building2 size={32} />}
+          title="No properties yet"
+          description="Add your first property to set up guest portals, local gems, and house guides."
+          action={
+            <AdminButtonLink to="/add-property">
+              <Plus size={18} /> Add Property
+            </AdminButtonLink>
+          }
+        />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Owner / Agent</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ref Code</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {properties.map((property) => {
-                const allocatedUser = owners[property.ownerId];
-                return (
-                  <tr key={property.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Link to={`/properties/${property.id}`} className="font-medium text-blue-600 hover:text-blue-800 hover:underline">
+        <>
+          {/* Mobile / tablet cards */}
+          <div className="grid gap-3 md:hidden">
+            {properties.map((property) => {
+              const allocatedUser = owners[property.ownerId];
+              return (
+                <AdminCard key={property.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        to={`/properties/${property.id}`}
+                        className="font-semibold text-vailo-teal hover:underline block truncate"
+                      >
                         {property.propertyName}
                       </Link>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <p className="text-xs text-gray-500 mt-1 font-mono">{property.internalRefCode}</p>
                       {allocatedUser ? (
-                        <div className="flex items-center">
-                          <User size={14} className="mr-2 text-gray-400" />
-                          <span className="font-medium">{allocatedUser.fullName}</span>
-                          <span className="ml-2 text-xs text-gray-500 capitalize px-2 py-0.5 bg-gray-100 rounded-md">
-                            {allocatedUser.role}
-                          </span>
-                        </div>
+                        <p className="text-sm text-gray-700 mt-2 flex items-center gap-1.5">
+                          <User size={14} className="text-gray-400 shrink-0" />
+                          <span className="truncate">{allocatedUser.fullName}</span>
+                        </p>
                       ) : (
-                        <span className="text-gray-400 italic">Unassigned</span>
+                        <p className="text-sm text-gray-400 italic mt-2">Unassigned</p>
                       )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                        {property.internalRefCode}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button className="text-blue-600 hover:text-blue-900 mr-4">
-                        <Pencil size={18} />
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button type="button" className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg">
+                        <Pencil size={17} />
                       </button>
-                      <button onClick={() => handleDelete(property.id, property.propertyName)} className="text-red-600 hover:text-red-900">
-                        <Trash2 size={18} />
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(property.id, property.propertyName)}
+                        className="p-2 text-gray-400 hover:text-red-600 rounded-lg"
+                      >
+                        <Trash2 size={17} />
                       </button>
-                    </td>
+                    </div>
+                  </div>
+                </AdminCard>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <AdminCard className="hidden md:block overflow-hidden">
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Property</th>
+                    <th>Owner / Agent</th>
+                    <th>Ref</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {properties.map((property) => {
+                    const allocatedUser = owners[property.ownerId];
+                    return (
+                      <tr key={property.id}>
+                        <td>
+                          <Link
+                            to={`/properties/${property.id}`}
+                            className="font-semibold text-vailo-teal hover:underline"
+                          >
+                            {property.propertyName}
+                          </Link>
+                        </td>
+                        <td className="px-5 py-4 text-sm">
+                          {allocatedUser ? (
+                            <div className="flex items-center gap-2">
+                              <User size={14} className="text-gray-400" />
+                              <span>{allocatedUser.fullName}</span>
+                              <span className="text-xs text-gray-500 capitalize px-2 py-0.5 bg-gray-100 rounded-md">
+                                {allocatedUser.role}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-vailo-teal/5 text-vailo-teal">
+                            {property.internalRefCode}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <button type="button" className="p-2 text-gray-400 hover:text-vailo-teal">
+                            <Pencil size={17} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(property.id, property.propertyName)}
+                            className="p-2 text-gray-400 hover:text-red-600"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </AdminCard>
+        </>
       )}
     </div>
   );

@@ -85,7 +85,7 @@ export default function FeaturesPhotos() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto pb-8">
+    <div className="admin-page">
       
       {/* Header with Back Button */}
       <div className="flex items-center mb-8">

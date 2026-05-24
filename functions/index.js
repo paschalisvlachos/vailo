@@ -11,6 +11,26 @@ if (!admin.apps.length) {
 
 const firestore = admin.firestore();
 
+async function recordPlatformUsage(field) {
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const increment = admin.firestore.FieldValue.increment(1);
+  const updatedAt = admin.firestore.FieldValue.serverTimestamp();
+  try {
+    await Promise.all([
+      firestore.collection("platformUsage").doc(monthKey).set(
+        { [field]: increment, updatedAt },
+        { merge: true }
+      ),
+      firestore.collection("platformUsage").doc("allTime").set(
+        { [field]: increment, updatedAt },
+        { merge: true }
+      ),
+    ]);
+  } catch (e) {
+    logger.warn("recordPlatformUsage failed:", e);
+  }
+}
+
 setGlobalOptions({
   maxInstances: 10,
   region: "us-central1",
@@ -445,6 +465,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
 
     const searchQuery = area ? `${title}, ${area}` : title;
     const place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, title);
+    await recordPlatformUsage("magicFill");
 
     if (!place) {
       return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
@@ -559,6 +580,7 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
 
   try {
     const place = await fetchPlaceFromGoogle(searchQuery, apiKey, null, null, searchQuery);
+    await recordPlatformUsage("magicFill");
 
     if (!place) {
       throw new HttpsError("not-found", "Place not found on Google.");

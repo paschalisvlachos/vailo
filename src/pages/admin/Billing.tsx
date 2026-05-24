@@ -1,137 +1,144 @@
 import { useState } from 'react';
-import { 
-  Wallet, Calculator, Database, TrendingUp, AlertCircle, 
-  RefreshCw, CheckCircle2, DollarSign, Activity
+import {
+  Wallet,
+  Calculator,
+  Database,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Activity,
+  Radio,
 } from 'lucide-react';
+import AdminPageHeader, { AdminAlert, AdminCard } from '../../components/admin/AdminPageHeader';
+import { MAGIC_FILL_UNIT_COST, usePlatformUsage } from '../../hooks/usePlatformUsage';
+
+function formatUsd(amount: number) {
+  return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+}
+
+function formatMonthLabel(monthKey: string) {
+  const [year, month] = monthKey.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
 
 export default function Billing() {
-  const [activeTab, setActiveTab] = useState<'accurate' | 'estimate'>('accurate');
+  const [activeTab, setActiveTab] = useState<'accurate' | 'estimate'>('estimate');
+  const { stats, loading, error, monthKey, estimatedCost } = usePlatformUsage();
 
   return (
-    <div className="max-w-5xl mx-auto pb-8">
-      
-      {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-          <Wallet className="mr-3 text-blue-600" size={28} />
-          Platform Billing & Usage
-        </h2>
-        <p className="text-gray-500 mt-1">Track your API costs, Firebase usage, and AI generation.</p>
-      </div>
+    <div className="admin-page">
+      <AdminPageHeader
+        title="Billing & Usage"
+        description="Track API costs, Firebase usage, and AI generation"
+        icon={<Wallet size={26} />}
+      />
 
-      {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-gray-100/50 p-1 rounded-xl mb-6 border border-gray-200/50 w-fit">
+      <div className="flex flex-col sm:flex-row gap-1 bg-white p-1 rounded-xl mb-6 border border-gray-100 w-full sm:w-fit shadow-sm">
         <button
+          type="button"
           onClick={() => setActiveTab('accurate')}
-          className={`flex items-center px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${
+          className={`flex items-center justify-center sm:justify-start px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
             activeTab === 'accurate'
-              ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              ? 'bg-vailo-teal text-white shadow-sm'
+              : 'text-gray-500 hover:text-vailo-teal hover:bg-vailo-surface-elevated'
           }`}
         >
-          <Database size={16} className={`mr-2 ${activeTab === 'accurate' ? 'text-blue-600' : ''}`} />
-          Official Invoice (Accurate)
+          <Database size={16} className="mr-2 shrink-0" />
+          Official Invoice
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('estimate')}
-          className={`flex items-center px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${
+          className={`flex items-center justify-center sm:justify-start px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
             activeTab === 'estimate'
-              ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              ? 'bg-vailo-teal text-white shadow-sm'
+              : 'text-gray-500 hover:text-vailo-teal hover:bg-vailo-surface-elevated'
           }`}
         >
-          <Calculator size={16} className={`mr-2 ${activeTab === 'estimate' ? 'text-emerald-600' : ''}`} />
-          Live Tracker (Estimate)
+          <Calculator size={16} className="mr-2 shrink-0" />
+          Live Tracker
         </button>
       </div>
 
-      {/* ------------------------------------------------ */}
-      {/* TAB 1: ACCURATE (BIGQUERY)                       */}
-      {/* ------------------------------------------------ */}
       {activeTab === 'accurate' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start">
-            <CheckCircle2 className="text-blue-600 mt-0.5 mr-3 shrink-0" size={18} />
-            <div>
-              <h4 className="text-sm font-bold text-blue-900">100% Financial Accuracy</h4>
-              <p className="text-sm text-blue-800 mt-1">
-                This data is pulled directly from Google Cloud's BigQuery billing exports. It includes your $200 monthly free tier credits and exact API routing costs. Data here may be delayed by 24-48 hours per Google's billing cycle.
-              </p>
-            </div>
-          </div>
+        <div className="space-y-6">
+          <AdminAlert variant="gold" icon={<AlertCircle size={18} />} title="BigQuery billing export not connected">
+            Official invoice data requires a Google Cloud BigQuery billing export. Until that is configured, use
+            the Live Tracker tab for real-time Magic Fill counts from Firestore.
+          </AdminAlert>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Placeholder Cards for Accurate Data */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-2 bg-gray-50 rounded-lg text-gray-500"><DollarSign size={20} /></div>
-                <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full border border-green-200">This Month</span>
-              </div>
-              <h3 className="text-3xl font-bold text-gray-900">$0.00</h3>
-              <p className="text-sm text-gray-500 mt-1">Total Google Cloud Spend</p>
-            </div>
-            
-            {/* We will fill these with real BigQuery data later */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm border-dashed flex flex-col items-center justify-center text-gray-400 min-h-[160px]">
-              <Database size={24} className="mb-2" />
-              <p className="text-sm font-medium">Awaiting BigQuery Setup</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm border-dashed flex flex-col items-center justify-center text-gray-400 min-h-[160px]">
-              <Database size={24} className="mb-2" />
-              <p className="text-sm font-medium">Awaiting BigQuery Setup</p>
-            </div>
-          </div>
+          <AdminCard className="p-12 border-dashed flex flex-col items-center justify-center text-center min-h-[220px]">
+            <Database size={36} className="mb-3 text-gray-300" />
+            <p className="text-base font-semibold text-vailo-dark font-luxury">Awaiting BigQuery setup</p>
+            <p className="text-sm text-gray-400 mt-2 max-w-lg leading-relaxed">
+              Enable billing export in Google Cloud Console, then wire a Cloud Function or scheduled job to query
+              costs into this dashboard.
+            </p>
+          </AdminCard>
         </div>
       )}
 
-      {/* ------------------------------------------------ */}
-      {/* TAB 2: ESTIMATE (FIRESTORE)                      */}
-      {/* ------------------------------------------------ */}
       {activeTab === 'estimate' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          
-          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-start">
-            <AlertCircle className="text-emerald-600 mt-0.5 mr-3 shrink-0" size={18} />
-            <div>
-              <h4 className="text-sm font-bold text-emerald-900">Real-Time Approximations</h4>
-              <p className="text-sm text-emerald-800 mt-1">
-                This tracker counts actions as they happen in your app. It assumes every "Magic Fill" costs a flat $0.027. It does NOT account for caching or Google's $200 free tier. Use this strictly to monitor raw platform activity.
-              </p>
-            </div>
-          </div>
+        <div className="space-y-6">
+          <AdminAlert variant="info" icon={<AlertCircle size={18} />} title="Real-time approximations">
+            Counts every Google Places lookup triggered by Magic Fill (admin) and guest place-photo resolution.
+            Assumes a flat {formatUsd(MAGIC_FILL_UNIT_COST)} per call. Does not account for caching or
+            Google&apos;s $200 free tier.
+          </AdminAlert>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Placeholder Cards for Live Tracker */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+          {error && (
+            <AdminAlert variant="warning" title="Error">
+              {error}
+            </AdminAlert>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <AdminCard className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center text-gray-700 font-bold">
-                  <Activity size={18} className="mr-2 text-emerald-500" /> Total Magic Fills
+                <div className="flex items-center text-vailo-dark font-bold">
+                  <Activity size={18} className="mr-2 text-vailo-teal" /> Total Magic Fills
                 </div>
-                <button className="text-gray-400 hover:text-gray-600"><RefreshCw size={16} /></button>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-vailo-teal bg-vailo-teal/8 px-2.5 py-1 rounded-full border border-vailo-teal/15">
+                  <Radio size={12} className="animate-pulse" /> Live
+                </span>
               </div>
               <div className="flex items-end gap-3">
-                <h3 className="text-4xl font-black text-gray-900">0</h3>
-                <p className="text-sm text-gray-500 pb-1">clicks across all users</p>
+                <h3 className="text-4xl font-black text-vailo-dark font-luxury">
+                  {loading ? '—' : stats.magicFill.toLocaleString()}
+                </h3>
+                <p className="text-sm text-gray-500 pb-1">{formatMonthLabel(monthKey)}</p>
               </div>
-            </div>
+              {stats.updatedAt && !loading && (
+                <p className="text-xs text-gray-400 mt-3">Last activity {stats.updatedAt.toLocaleString()}</p>
+              )}
+            </AdminCard>
 
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <AdminCard className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center text-gray-700 font-bold">
-                  <TrendingUp size={18} className="mr-2 text-emerald-500" /> Estimated Raw Cost
+                <div className="flex items-center text-vailo-dark font-bold">
+                  <TrendingUp size={18} className="mr-2 text-vailo-gold" /> Estimated Raw Cost
                 </div>
-                <div className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded">Rate: $0.027/fill</div>
+                <span className="text-xs font-bold text-gray-400 bg-vailo-surface-elevated px-2 py-1 rounded-lg">
+                  {formatUsd(MAGIC_FILL_UNIT_COST)}/fill
+                </span>
               </div>
               <div className="flex items-end gap-3">
-                <h3 className="text-4xl font-black text-gray-900">$0.00</h3>
-                <p className="text-sm text-gray-500 pb-1">estimated value</p>
+                <h3 className="text-4xl font-black text-vailo-dark font-luxury">
+                  {loading ? '—' : formatUsd(estimatedCost)}
+                </h3>
+                <p className="text-sm text-gray-500 pb-1">estimated</p>
               </div>
-            </div>
+            </AdminCard>
           </div>
+
+          {!loading && stats.magicFill === 0 && (
+            <AdminAlert variant="info" icon={<CheckCircle2 size={18} />}>
+              No Magic Fill API calls recorded yet this month. Counts appear automatically when admins use Magic
+              Fill or guests trigger place photo lookups.
+            </AdminAlert>
+          )}
         </div>
       )}
-
     </div>
   );
 }

@@ -98,7 +98,7 @@ export default function AiGaps() {
       <div className="flex justify-between items-center mb-6 shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Sparkles className="mr-3 text-blue-600" size={28} />
+            <Sparkles className="mr-3 text-vailo-teal" size={28} />
             AI Gap Analyzer
           </h2>
           <p className="text-gray-500 mt-1">Consult with Vailo AI to find missing features and opportunities.</p>
@@ -128,7 +128,7 @@ export default function AiGaps() {
                   ? 'bg-blue-600 text-white rounded-tr-sm' 
                   : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
               }`}>
-                {msg.role === 'ai' && <Bot size={20} className="shrink-0 mt-0.5 text-blue-600" />}
+                {msg.role === 'ai' && <Bot size={20} className="shrink-0 mt-0.5 text-vailo-teal" />}
                 <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.text}</div>
                 {msg.role === 'user' && <User size={20} className="shrink-0 mt-0.5 opacity-80" />}
               </div>
@@ -138,7 +138,7 @@ export default function AiGaps() {
         {isGenerating && messages.length > 0 && (
           <div className="flex justify-start">
             <div className="bg-white border border-gray-200 p-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center text-gray-500 text-sm">
-              <Loader2 size={16} className="animate-spin mr-2 text-blue-600" /> AI is thinking...
+              <Loader2 size={16} className="animate-spin mr-2 text-vailo-teal" /> AI is thinking...
             </div>
           </div>
         )}
@@ -153,7 +153,7 @@ export default function AiGaps() {
           onChange={(e) => setInput(e.target.value)}
           disabled={isGenerating}
           placeholder="Ask the AI a question about your setup..." 
-          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50 bg-white shadow-sm"
+          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl admin-input outline-none disabled:opacity-50 bg-white shadow-sm"
         />
         <button 
           type="submit"

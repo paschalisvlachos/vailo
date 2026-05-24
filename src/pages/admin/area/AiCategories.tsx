@@ -75,7 +75,7 @@ export default function AiCategories() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-8">
+    <div className="admin-page">
       
       {/* Header with Back Button */}
       <div className="flex items-center mb-8">
@@ -87,11 +87,11 @@ export default function AiCategories() {
         </button>
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Sparkles className="mr-3 text-purple-600" size={28} />
+            <Sparkles className="mr-3 text-vailo-teal" size={28} />
             AI Categories
           </h2>
           <p className="text-gray-500 mt-1">
-            Managing categories for <span className="font-bold text-purple-700">{decodedArea}, {decodedCountry}</span>
+            Managing categories for <span className="font-bold text-vailo-teal-hover">{decodedArea}, {decodedCountry}</span>
           </p>
         </div>
       </div>
@@ -111,14 +111,14 @@ export default function AiCategories() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Restaurants"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
               />
             </div>
 
             <button 
               type="submit" 
               disabled={isSubmitting || !newName.trim()} 
-              className="w-full flex justify-center items-center px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm"
+              className="w-full flex justify-center items-center px-4 py-2.5 bg-vailo-teal text-white font-medium rounded-xl hover:bg-vailo-teal-hover disabled:opacity-50 transition-colors shadow-sm"
             >
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} className="mr-2" />}
               {isSubmitting ? 'Adding...' : 'Add Category'}
@@ -131,7 +131,7 @@ export default function AiCategories() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
               <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Active Categories</h3>
-              <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2.5 py-0.5 rounded-full">
+              <span className="bg-vailo-gold/15 text-vailo-teal-hover text-xs font-bold px-2.5 py-0.5 rounded-full">
                 {categories.length} Total
               </span>
             </div>
@@ -152,7 +152,7 @@ export default function AiCategories() {
                 {categories.map((cat) => (
                   <li key={cat.id} className="p-4 hover:bg-gray-50 flex items-center justify-between transition-colors">
                     <span className="font-medium text-gray-900 flex items-center">
-                      <Tag size={16} className="text-purple-400 mr-3" />
+                      <Tag size={16} className="text-vailo-teal/50 mr-3" />
                       {cat.name}
                     </span>
                     <button 

@@ -71,7 +71,7 @@ export default function FeaturesCategories() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-8">
+    <div className="admin-page">
       
       {/* Header with Back Button */}
       <div className="flex items-center mb-8">
@@ -103,7 +103,7 @@ export default function FeaturesCategories() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Car Rentals"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
               />
             </div>
             <button type="submit" disabled={isSubmitting || !newName.trim()} className="w-full flex justify-center items-center px-4 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm">

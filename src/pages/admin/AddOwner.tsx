@@ -50,7 +50,7 @@ export default function AddOwner() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-12">
+    <div className="admin-page">
       <div className="flex items-center mb-6">
         <Link to="/owners" className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
@@ -70,23 +70,23 @@ export default function AddOwner() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                <input type="text" required name="fullName" value={formData.fullName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" required name="fullName" value={formData.fullName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                <input type="email" required name="email" value={formData.email} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="email" required name="email" value={formData.email} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
-                <input type="tel" required name="phone" value={formData.phone} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="tel" required name="phone" value={formData.phone} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
-                <input type="text" name="company" value={formData.company} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" name="company" value={formData.company} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">VAT Number</label>
-                <input type="text" name="vatNumber" value={formData.vatNumber} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" name="vatNumber" value={formData.vatNumber} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
             </div>
           </div>
@@ -99,19 +99,19 @@ export default function AddOwner() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Billing Address</label>
-                <input type="text" name="billingAddress" value={formData.billingAddress} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" name="billingAddress" value={formData.billingAddress} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                <input type="text" name="city" value={formData.city} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" name="city" value={formData.city} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
-                <input type="text" name="postalCode" value={formData.postalCode} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" name="postalCode" value={formData.postalCode} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                <input type="text" name="country" value={formData.country} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="text" name="country" value={formData.country} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
             </div>
           </div>
@@ -124,7 +124,7 @@ export default function AddOwner() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select name="role" value={formData.role} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                <select name="role" value={formData.role} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
                   <option value="admin">Admin</option>
                   <option value="agent">Agent</option>
                   <option value="owner">Owner</option>
@@ -132,7 +132,7 @@ export default function AddOwner() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
-                <select name="status" value={formData.status} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                <select name="status" value={formData.status} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
                   <option value="active">Active</option>
                   <option value="trial">Trial</option>
                   <option value="deactive">Deactive</option>
@@ -141,13 +141,13 @@ export default function AddOwner() {
               {/* NEW: Password Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Login Password *</label>
-                <input type="password" required name="password" value={formData.password} onChange={handleChange} placeholder="••••••••" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="password" required name="password" value={formData.password} onChange={handleChange} placeholder="••••••••" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
                 <p className="text-xs text-gray-500 mt-1">Temporary password for initial login</p>
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea name="notes" value={formData.notes} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="Internal notes about this user..." />
+              <textarea name="notes" value={formData.notes} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none resize-none" placeholder="Internal notes about this user..." />
             </div>
           </div>
 
@@ -158,7 +158,7 @@ export default function AddOwner() {
           <Link to="/owners" className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">
             Cancel
           </Link>
-          <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50">
+          <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg transition-colors disabled:opacity-50">
             {isSubmitting ? 'Saving...' : 'Create Owner'}
           </button>
         </div>

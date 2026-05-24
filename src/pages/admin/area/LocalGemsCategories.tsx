@@ -71,7 +71,7 @@ export default function LocalGemsCategories() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-8">
+    <div className="admin-page">
       
       {/* Header with Back Button */}
       <div className="flex items-center mb-8">
@@ -80,11 +80,11 @@ export default function LocalGemsCategories() {
         </button>
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Grid className="mr-3 text-blue-600" size={28} />
+            <Grid className="mr-3 text-vailo-teal" size={28} />
             Local Gems Categories
           </h2>
           <p className="text-gray-500 mt-1">
-            Managing categories for <span className="font-bold text-blue-700">{decodedArea}, {decodedCountry}</span>
+            Managing categories for <span className="font-bold text-vailo-teal-hover">{decodedArea}, {decodedCountry}</span>
           </p>
         </div>
       </div>
@@ -103,10 +103,10 @@ export default function LocalGemsCategories() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Beaches"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg admin-input outline-none"
               />
             </div>
-            <button type="submit" disabled={isSubmitting || !newName.trim()} className="w-full flex justify-center items-center px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm">
+            <button type="submit" disabled={isSubmitting || !newName.trim()} className="w-full flex justify-center items-center px-4 py-2.5 bg-vailo-teal text-white font-medium rounded-xl hover:bg-vailo-teal-hover disabled:opacity-50 transition-colors shadow-sm">
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} className="mr-2" />}
               {isSubmitting ? 'Adding...' : 'Add Category'}
             </button>
@@ -118,7 +118,7 @@ export default function LocalGemsCategories() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
               <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Active Categories</h3>
-              <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-0.5 rounded-full">{categories.length} Total</span>
+              <span className="bg-vailo-teal/10 text-vailo-dark text-xs font-bold px-2.5 py-0.5 rounded-full">{categories.length} Total</span>
             </div>
             
             {isLoading ? (
@@ -136,7 +136,7 @@ export default function LocalGemsCategories() {
                 {categories.map((cat) => (
                   <li key={cat.id} className="p-4 hover:bg-gray-50 flex items-center justify-between transition-colors">
                     <span className="font-medium text-gray-900 flex items-center">
-                      <Tag size={16} className="text-blue-400 mr-3" />
+                      <Tag size={16} className="text-vailo-teal/50 mr-3" />
                       {cat.name}
                     </span>
                     <button onClick={() => handleDelete(cat.id, cat.name)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">

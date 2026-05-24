@@ -252,7 +252,7 @@ export default function HouseGuide() {
             if (field.type === 'array_emergencies') handleAdd({ category: '', title: '', phone: '', mapsLink: '' });
             if (field.type === 'array_devices') handleAdd({ room: '', device: '', brand: '', model: '' });
             if (field.type === 'array_faqs') handleAdd({ question: '', answer: '' });
-          }} className="flex items-center text-sm font-bold text-[#0B4F5C] hover:text-[#C5A059] bg-white px-4 py-2 rounded-lg border border-dashed border-[#0B4F5C]/30 hover:border-[#C5A059] transition-colors shadow-sm">
+          }} className="flex items-center text-sm font-bold text-vailo-teal hover:text-vailo-gold bg-white px-4 py-2 rounded-lg border border-dashed border-vailo-teal/30 hover:border-[#C5A059] transition-colors shadow-sm">
             <Plus size={16} className="mr-1.5" /> Add New Entry
           </button>
         </div>
@@ -264,13 +264,13 @@ export default function HouseGuide() {
   if (propertyTypes.length === 0) return <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-gray-100"><Building className="mx-auto text-gray-300 mb-4" size={40}/><h3 className="text-xl font-bold">No Property Types</h3></div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
+    <div className="admin-page">
       {/* Header & Controls */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-2 h-full bg-[#0B4F5C]" />
+        <div className="absolute top-0 left-0 w-2 h-full bg-vailo-teal" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center mb-2">
-            <BookOpen className="mr-3 text-[#C5A059]" size={28}/> Master House Guide
+            <BookOpen className="mr-3 text-vailo-gold" size={28}/> Master House Guide
           </h1>
           <p className="text-gray-500 text-sm max-w-lg leading-relaxed">Provide detailed, structured information about your property. The AI Concierge uses this data to instantly answer guest questions.</p>
         </div>
@@ -279,7 +279,7 @@ export default function HouseGuide() {
           <select value={selectedTypeId} onChange={e => setSelectedTypeId(e.target.value)} className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#0B4F5C] min-w-[200px] shadow-inner">
             {propertyTypes.map(t => <option key={t.id} value={t.id}>{t.propertyTypeName}</option>)}
           </select>
-          <button onClick={() => { setWizardStepIndex(0); setIsWizardOpen(true); }} className="px-6 py-3 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-xl text-sm font-bold shadow-md transition-colors flex items-center w-full sm:w-auto justify-center">
+          <button onClick={() => { setWizardStepIndex(0); setIsWizardOpen(true); }} className="px-6 py-3 bg-vailo-teal hover:bg-[#C5A059] text-white rounded-xl text-sm font-bold shadow-md transition-colors flex items-center w-full sm:w-auto justify-center">
             <Sparkles size={18} className="mr-2" /> Run Setup Wizard
           </button>
         </div>
@@ -289,10 +289,10 @@ export default function HouseGuide() {
       <div className="mb-8 px-2">
         <div className="flex justify-between items-end mb-2">
           <span className="text-sm font-bold text-gray-700">Guide Completion</span>
-          <span className="text-sm font-bold text-[#0B4F5C]">{progressPercentage}%</span>
+          <span className="text-sm font-bold text-vailo-teal">{progressPercentage}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
-          <div className="bg-[#0B4F5C] h-3 rounded-full transition-all duration-1000 ease-out" style={{ width: `${progressPercentage}%` }}></div>
+          <div className="bg-vailo-teal h-3 rounded-full transition-all duration-1000 ease-out" style={{ width: `${progressPercentage}%` }}></div>
         </div>
       </div>
 
@@ -304,14 +304,14 @@ export default function HouseGuide() {
           return (
             <div key={cat.id} onClick={() => setQuickEditCategory(cat)} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer group relative overflow-hidden flex flex-col h-full">
               <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl ${isComplete ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-50 text-gray-500 group-hover:bg-[#0B4F5C]/10 group-hover:text-[#0B4F5C]'} transition-colors`}>
+                <div className={`p-3 rounded-xl ${isComplete ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-50 text-gray-500 group-hover:bg-vailo-teal/10 group-hover:text-vailo-teal'} transition-colors`}>
                   <Icon size={22} />
                 </div>
                 {isComplete ? <CheckCircle2 size={20} className="text-emerald-500" /> : <Circle size={20} className="text-gray-300" />}
               </div>
               <h3 className="text-base font-bold text-gray-900 mb-1">{cat.title}</h3>
               <p className="text-xs text-gray-500 line-clamp-2 flex-1">{cat.description}</p>
-              <div className="mt-4 pt-3 border-t border-gray-50 flex items-center text-[10px] font-bold uppercase tracking-wider text-[#C5A059] opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="mt-4 pt-3 border-t border-gray-50 flex items-center text-[10px] font-bold uppercase tracking-wider text-vailo-gold opacity-0 group-hover:opacity-100 transition-opacity">
                 <Edit3 size={12} className="mr-1"/> Edit Category
               </div>
             </div>
@@ -327,7 +327,7 @@ export default function HouseGuide() {
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#0B4F5C]/10 text-[#0B4F5C] rounded-lg"><QuickEditIcon size={20}/></div>
+                <div className="p-2 bg-vailo-teal/10 text-vailo-teal rounded-lg"><QuickEditIcon size={20}/></div>
                 <h2 className="text-xl font-bold text-gray-900">{quickEditCategory.title}</h2>
               </div>
               <button onClick={() => setQuickEditCategory(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
@@ -337,7 +337,7 @@ export default function HouseGuide() {
             </div>
             <div className="p-6 border-t border-gray-100 bg-white flex justify-end gap-3 rounded-b-3xl">
               <button onClick={() => setQuickEditCategory(null)} className="px-6 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Close</button>
-              <button onClick={async () => { await saveToFirebase(); setQuickEditCategory(null); }} disabled={isSubmitting} className="px-6 py-2.5 bg-[#0B4F5C] hover:bg-black text-white text-sm font-bold rounded-xl transition-colors flex items-center shadow-md">
+              <button onClick={async () => { await saveToFirebase(); setQuickEditCategory(null); }} disabled={isSubmitting} className="px-6 py-2.5 bg-vailo-teal hover:bg-black text-white text-sm font-bold rounded-xl transition-colors flex items-center shadow-md">
                 {isSubmitting ? <Loader2 size={16} className="animate-spin mr-2"/> : <Save size={16} className="mr-2"/>} Save Changes
               </button>
             </div>
@@ -375,9 +375,9 @@ export default function HouseGuide() {
             {/* Wizard Sidebar (Desktop) */}
             <div className="hidden lg:flex w-72 bg-white border-r border-gray-200 flex-col overflow-y-auto custom-scrollbar">
               {getWizardSteps.map((cat, idx) => (
-                <button key={cat.id} onClick={() => setWizardStepIndex(idx)} className={`text-left px-6 py-4 flex items-center border-l-4 transition-colors ${wizardStepIndex === idx ? 'border-[#0B4F5C] bg-[#0B4F5C]/5' : 'border-transparent hover:bg-gray-50'}`}>
+                <button key={cat.id} onClick={() => setWizardStepIndex(idx)} className={`text-left px-6 py-4 flex items-center border-l-4 transition-colors ${wizardStepIndex === idx ? 'border-vailo-teal bg-vailo-teal/5' : 'border-transparent hover:bg-gray-50'}`}>
                   {checkIsComplete(cat) ? <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mr-3"/> : <Circle size={16} className="text-gray-300 shrink-0 mr-3"/>}
-                  <span className={`text-sm ${wizardStepIndex === idx ? 'font-bold text-[#0B4F5C]' : 'font-medium text-gray-600'} truncate`}>{cat.title}</span>
+                  <span className={`text-sm ${wizardStepIndex === idx ? 'font-bold text-vailo-teal' : 'font-medium text-gray-600'} truncate`}>{cat.title}</span>
                 </button>
               ))}
             </div>
@@ -389,21 +389,21 @@ export default function HouseGuide() {
                   <div className="w-20 h-20 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-sm"><CheckCircle2 size={40}/></div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">All Caught Up!</h2>
                   <p className="text-gray-500 mb-8 max-w-md">You have completely filled out the House Guide. The AI Concierge now has maximum context.</p>
-                  <button onClick={() => setIsWizardOpen(false)} className="px-8 py-3 bg-[#0B4F5C] text-white font-bold rounded-xl shadow-md hover:bg-black transition-colors">Return to Dashboard</button>
+                  <button onClick={() => setIsWizardOpen(false)} className="px-8 py-3 bg-vailo-teal text-white font-bold rounded-xl shadow-md hover:bg-black transition-colors">Return to Dashboard</button>
                 </div>
               ) : (
                 <>
                   {/* Progress Header (Mobile) */}
                   <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 shrink-0 flex justify-between items-center shadow-sm">
                     <span className="text-xs font-bold text-gray-500">Step {wizardStepIndex + 1} of {getWizardSteps.length}</span>
-                    <span className="text-sm font-bold text-[#0B4F5C] truncate max-w-[200px]">{getWizardSteps[wizardStepIndex].title}</span>
+                    <span className="text-sm font-bold text-vailo-teal truncate max-w-[200px]">{getWizardSteps[wizardStepIndex].title}</span>
                   </div>
 
                   {/* Form Container */}
                   <div className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar pb-32">
-                    <div className="max-w-3xl mx-auto">
+                    <div className="w-full">
                       <div className="mb-8">
-                        <div className="inline-flex items-center justify-center p-3 bg-[#0B4F5C]/10 text-[#0B4F5C] rounded-2xl mb-4">
+                        <div className="inline-flex items-center justify-center p-3 bg-vailo-teal/10 text-vailo-teal rounded-2xl mb-4">
                           {(() => { const Icon = getWizardSteps[wizardStepIndex].icon; return <Icon size={28}/> })()}
                         </div>
                         <h1 className="text-3xl font-extrabold text-gray-900 mb-2">{getWizardSteps[wizardStepIndex].title}</h1>
@@ -418,11 +418,11 @@ export default function HouseGuide() {
 
                   {/* Wizard Footer / Actions */}
                   <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 sm:p-6 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] z-20">
-                    <div className="max-w-3xl mx-auto flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
+                    <div className="w-full flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
                       <button onClick={handleWizardSkip} className="w-full sm:w-auto px-6 py-3 text-sm font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-colors">
                         Skip for now
                       </button>
-                      <button onClick={handleWizardSaveAndNext} disabled={isSubmitting} className="w-full sm:w-auto px-8 py-3 bg-[#0B4F5C] hover:bg-black text-white text-sm font-bold rounded-xl transition-colors flex items-center justify-center shadow-md">
+                      <button onClick={handleWizardSaveAndNext} disabled={isSubmitting} className="w-full sm:w-auto px-8 py-3 bg-vailo-teal hover:bg-black text-white text-sm font-bold rounded-xl transition-colors flex items-center justify-center shadow-md">
                         {isSubmitting ? <Loader2 size={18} className="animate-spin mr-2"/> : <Save size={18} className="mr-2"/>}
                         Save & Continue <ArrowRight size={18} className="ml-2"/>
                       </button>

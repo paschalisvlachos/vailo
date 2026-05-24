@@ -284,16 +284,16 @@ export default function Features() {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-            <Briefcase className="mr-3 text-blue-600" size={28} />
+            <Briefcase className="mr-3 text-vailo-teal" size={28} />
             Property Features
           </h2>
           <p className="text-gray-500 mt-1">
             Manage services and local experiences specific to this property. 
-            {propertyAreaContext && <span className="ml-1 font-medium text-blue-600">(Connected to {propertyAreaContext.areaName})</span>}
+            {propertyAreaContext && <span className="ml-1 font-medium text-vailo-teal">(Connected to {propertyAreaContext.areaName})</span>}
           </p>
         </div>
         {!isFormOpen && (
-          <button onClick={() => { setIsFormOpen(true); setFormData(initialFormState); setCustomPreview(null); setCustomFile(null); setGooglePhoto(null); }} className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+          <button onClick={() => { setIsFormOpen(true); setFormData(initialFormState); setCustomPreview(null); setCustomFile(null); setGooglePhoto(null); }} className="flex items-center px-4 py-2 bg-vailo-teal text-white text-sm font-bold rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Feature
           </button>
         )}
@@ -307,25 +307,25 @@ export default function Features() {
 
       {isFormOpen && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-blue-900">
+          <div className="px-6 py-4 bg-vailo-teal/5 border-b border-vailo-teal/10 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-vailo-dark">
               {editingFeatureId ? 'Edit Feature' : 'Add New Feature'}
             </h3>
-            <button type="button" onClick={closeAndResetForm} className="text-blue-500 hover:text-blue-700 font-medium text-sm">Cancel</button>
+            <button type="button" onClick={closeAndResetForm} className="text-vailo-teal hover:text-vailo-teal-hover font-medium text-sm">Cancel</button>
           </div>
 
           <div className="p-6">
             
             {/* 1. MAGIC FILL - Fixed Alignment (items-end) */}
-            <div className="flex flex-col md:flex-row gap-4 mb-8 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 items-end">
+            <div className="flex flex-col md:flex-row gap-4 mb-8 bg-vailo-teal/5/50 p-4 rounded-xl border border-indigo-100 items-end">
               <div className="flex-1 w-full">
-                <label className="block text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Google Maps Link</label>
+                <label className="block text-xs font-bold text-vailo-dark uppercase tracking-wider mb-1">Google Maps Link</label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-3 text-indigo-400" size={18} />
-                  <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="Paste FULL or Short Google Maps URL here..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                  <MapPin className="absolute left-3 top-3 text-vailo-teal/50" size={18} />
+                  <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="Paste FULL or Short Google Maps URL here..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-vailo-teal/15 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none text-sm" />
                 </div>
               </div>
-              <button type="button" onClick={handleMagicFill} disabled={isMagicFilling || !formData.googleMapsUrl || !propertyAreaContext} className="w-full md:w-auto h-[46px] px-6 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap">
+              <button type="button" onClick={handleMagicFill} disabled={isMagicFilling || !formData.googleMapsUrl || !propertyAreaContext} className="w-full md:w-auto h-[46px] px-6 bg-vailo-teal hover:bg-vailo-teal-hover text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap">
                 {isMagicFilling ? <Loader2 size={18} className="animate-spin mr-2" /> : <Wand2 size={18} className="mr-2" />}
                 AI Magic Fill
               </button>
@@ -338,12 +338,12 @@ export default function Features() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Feature Name *</label>
-                    <input type="text" name="name" required value={formData.name} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input type="text" name="name" required value={formData.name} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg admin-input outline-none" />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Agreement (Percentage) *</label>
                     <div className="relative">
-                      <input type="number" step="0.1" name="agreement" required value={formData.agreement} onChange={handleChange} placeholder="0" className="w-full pl-4 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="number" step="0.1" name="agreement" required value={formData.agreement} onChange={handleChange} placeholder="0" className="w-full pl-4 pr-10 py-2.5 border border-gray-300 rounded-lg admin-input outline-none" />
                       <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-500 font-bold">%</div>
                     </div>
                   </div>
@@ -362,11 +362,11 @@ export default function Features() {
               <div>
                 <div className="flex justify-between items-end mb-2">
                   <label className="block text-sm font-bold text-gray-700">Description *</label>
-                  <button type="button" onClick={handleGenerateDescription} disabled={isGeneratingDesc || !formData.name} className="text-xs font-bold text-purple-600 flex items-center bg-purple-50 px-3 py-1.5 rounded-lg hover:bg-purple-100 transition-colors">
+                  <button type="button" onClick={handleGenerateDescription} disabled={isGeneratingDesc || !formData.name} className="text-xs font-bold text-vailo-teal flex items-center bg-vailo-teal/5 px-3 py-1.5 rounded-lg hover:bg-vailo-gold/15 transition-colors">
                     {isGeneratingDesc ? <Loader2 size={14} className="animate-spin mr-1" /> : <Wand2 size={14} className="mr-1" />} AI Write
                   </button>
                 </div>
-                <textarea name="description" required rows={3} value={formData.description} onChange={handleChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y" />
+                <textarea name="description" required rows={3} value={formData.description} onChange={handleChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg admin-input outline-none resize-y" />
               </div>
 
               {/* 4. CONTACT INFORMATION */}
@@ -377,28 +377,28 @@ export default function Features() {
                     <label className="block text-sm font-bold text-gray-700 mb-1">Phone Number</label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-3 text-gray-400" size={18} />
-                      <input type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg admin-input outline-none" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">WhatsApp</label>
                     <div className="relative">
                       <MessageCircle className="absolute left-3 top-3 text-gray-400" size={18} />
-                      <input type="tel" name="whatsapp" value={formData.whatsapp} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="tel" name="whatsapp" value={formData.whatsapp} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg admin-input outline-none" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Email</label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-3 text-gray-400" size={18} />
-                      <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg admin-input outline-none" />
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Website</label>
                     <div className="relative">
                       <LinkIcon className="absolute left-3 top-3 text-gray-400" size={18} />
-                      <input type="url" name="website" value={formData.website} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="url" name="website" value={formData.website} onChange={handleChange} className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg admin-input outline-none" />
                     </div>
                   </div>
                 </div>
@@ -419,7 +419,7 @@ export default function Features() {
               {/* 6. COVER PHOTO (Memory Upgraded) */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Cover Photo</label>
-                <div className="flex flex-col md:flex-row items-start gap-6 bg-blue-50/50 p-6 rounded-xl border border-blue-100">
+                <div className="flex flex-col md:flex-row items-start gap-6 bg-vailo-teal/5/50 p-6 rounded-xl border border-vailo-teal/10">
                   
                   {/* Fixed Margin/Padding Issue */}
                   <div className="w-48 h-32 rounded-xl border-2 border-dashed border-gray-300 overflow-hidden bg-gray-100 flex items-center justify-center shrink-0">
@@ -443,12 +443,12 @@ export default function Features() {
                         setCustomPreview(url); 
                         setFormData({...formData, photoUrl: url}); 
                       } 
-                    }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer mb-4" />
+                    }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-vailo-teal/5 file:text-vailo-teal-hover hover:file:bg-vailo-teal/10 cursor-pointer mb-4" />
                     
                     {/* Selectable Thumbnail Gallery */}
                     {(availableMasterPhotos.length > 0 || googlePhoto || customPreview) && (
-                      <div className="border-t border-blue-200 pt-4">
-                        <p className="text-xs font-bold text-blue-900 mb-2 uppercase tracking-wider">Select Photo Source</p>
+                      <div className="border-t border-vailo-teal/15 pt-4">
+                        <p className="text-xs font-bold text-vailo-dark mb-2 uppercase tracking-wider">Select Photo Source</p>
                         <div className="flex gap-3 overflow-x-auto pb-2 items-center">
                           
                           {/* Uploaded Thumbnail */}
@@ -464,7 +464,7 @@ export default function Features() {
                             <div className="relative shrink-0 mt-1">
                               <img src={googlePhoto} onClick={() => setFormData({...formData, photoUrl: googlePhoto})} className={`w-16 h-16 object-cover rounded-lg cursor-pointer border-[3px] hover:opacity-80 transition-all ${formData.photoUrl === googlePhoto ? 'border-blue-600 shadow-md scale-105' : 'border-transparent'}`} />
                               {/* Fixed Badge Position */}
-                              <div className="absolute top-1 left-1 bg-white/90 backdrop-blur-sm text-blue-600 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm leading-none">Google</div>
+                              <div className="absolute top-1 left-1 bg-white/90 backdrop-blur-sm text-vailo-teal text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm leading-none">Google</div>
                             </div>
                           )}
 
@@ -489,7 +489,7 @@ export default function Features() {
                 <div className="space-y-4 mb-6">
                   <label className="flex items-start bg-white p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-colors">
                     <div className="flex items-center h-5">
-                      <input type="checkbox" name="isMainPage" checked={formData.isMainPage} onChange={handleChange} className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
+                      <input type="checkbox" name="isMainPage" checked={formData.isMainPage} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded cursor-pointer" />
                     </div>
                     <div className="ml-3">
                       <span className="block text-sm font-bold text-gray-900">Show on Main Page</span>
@@ -497,9 +497,9 @@ export default function Features() {
                     </div>
                   </label>
 
-                  <label className="flex items-start bg-white p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-purple-300 transition-colors">
+                  <label className="flex items-start bg-white p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-vailo-gold/30 transition-colors">
                     <div className="flex items-center h-5">
-                      <input type="checkbox" name="isLocal" checked={formData.isLocal} onChange={handleChange} className="h-5 w-5 text-purple-600 focus:ring-purple-500 border-gray-300 rounded cursor-pointer" />
+                      <input type="checkbox" name="isLocal" checked={formData.isLocal} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded cursor-pointer" />
                     </div>
                     <div className="ml-3">
                       <span className="block text-sm font-bold text-gray-900">Live Like a Local</span>
@@ -509,14 +509,14 @@ export default function Features() {
                 </div>
 
                 {formData.isLocal && (
-                  <div className="bg-purple-50 p-5 rounded-xl border border-purple-100 animate-in fade-in slide-in-from-top-2">
-                    <h3 className="text-sm font-bold text-purple-900 uppercase tracking-wider mb-2 flex items-center">
+                  <div className="bg-vailo-teal/5 p-5 rounded-xl border border-purple-100 animate-in fade-in slide-in-from-top-2">
+                    <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-2 flex items-center">
                       <Wand2 size={16} className="mr-2" /> Experience Targeting
                     </h3>
-                    <p className="text-sm text-purple-700 mb-4">Select the ideal vibe for this experience. Multiple selections allowed.</p>
+                    <p className="text-sm text-vailo-teal-hover mb-4">Select the ideal vibe for this experience. Multiple selections allowed.</p>
                     
                     {aiCategories.length === 0 ? (
-                      <p className="text-sm text-purple-600 italic">No AI Categories found for this area. Please add them in the Area Functionality hub.</p>
+                      <p className="text-sm text-vailo-teal italic">No AI Categories found for this area. Please add them in the Area Functionality hub.</p>
                     ) : (
                       <PillSelector label="Experience Type *" options={aiCategories} selected={formData.experienceTypes} onToggle={(v) => handlePillToggle('experienceTypes', v)} colorClass="purple" />
                     )}
@@ -529,7 +529,7 @@ export default function Features() {
                 <button type="button" onClick={closeAndResetForm} className="px-6 py-3 mr-4 text-sm font-bold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
                   Cancel
                 </button>
-                <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-8 py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-50 transition-colors shadow-md hover:shadow-lg">
+                <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-8 py-3 text-sm font-bold text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-xl disabled:opacity-50 transition-colors shadow-md hover:shadow-lg">
                   {(isSubmitting || isUploadingImage) && <Loader2 size={18} className="mr-2 animate-spin" />}
                   {isUploadingImage ? 'Uploading...' : isSubmitting ? 'Saving...' : 'Save Feature'}
                 </button>
@@ -567,7 +567,7 @@ export default function Features() {
                   ))}
                 </div>
                 {feat.agreement && feat.agreement !== "0" && (
-                  <div className="absolute top-3 right-3 bg-blue-600 text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-sm">
+                  <div className="absolute top-3 right-3 bg-vailo-teal text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-sm">
                     {feat.agreement}%
                   </div>
                 )}
@@ -577,12 +577,12 @@ export default function Features() {
                 <p className="text-sm text-gray-500 mb-4 line-clamp-2 flex-1">{feat.description}</p>
                 
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {feat.isMainPage && <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-1 rounded-md">Main Page</span>}
-                  {feat.isLocal && <span className="text-[10px] font-bold bg-purple-100 text-purple-800 px-2 py-1 rounded-md">Local Experience</span>}
+                  {feat.isMainPage && <span className="text-[10px] font-bold bg-vailo-teal/10 text-vailo-dark px-2 py-1 rounded-md">Main Page</span>}
+                  {feat.isLocal && <span className="text-[10px] font-bold bg-vailo-gold/15 text-vailo-teal-hover px-2 py-1 rounded-md">Local Experience</span>}
                 </div>
 
                 <div className="mt-auto flex justify-end gap-2 pt-4 border-t border-gray-100">
-                  <button onClick={() => { setFormData(feat); setEditingFeatureId(feat.id); setGooglePhoto(null); setCustomPreview(null); setIsFormOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Pencil size={18} /></button>
+                  <button onClick={() => { setFormData(feat); setEditingFeatureId(feat.id); setGooglePhoto(null); setCustomPreview(null); setIsFormOpen(true); }} className="p-2 text-vailo-teal hover:bg-vailo-teal/5 rounded-lg transition-colors"><Pencil size={18} /></button>
                   <button onClick={() => handleDelete(feat.id, feat.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18} /></button>
                 </div>
               </div>
@@ -596,8 +596,8 @@ export default function Features() {
 
 function PillSelector({ label, options, selected, onToggle, colorClass }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, colorClass: 'blue' | 'purple' }) {
   const colorMap = {
-    blue: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300' },
-    purple: { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300' }
+    blue: { bg: 'bg-vailo-teal/10', text: 'text-vailo-dark', border: 'border-blue-300' },
+    purple: { bg: 'bg-vailo-gold/15', text: 'text-vailo-teal-hover', border: 'border-vailo-gold/30' }
   };
   const activeStyle = colorMap[colorClass];
 

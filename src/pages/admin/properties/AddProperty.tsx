@@ -90,7 +90,7 @@ export default function AddProperty() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-12">
+    <div className="admin-page">
       <div className="flex items-center mb-6">
         <Link to="/properties" className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
@@ -109,10 +109,10 @@ export default function AddProperty() {
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="listingUrl" value={formData.listingUrl} onChange={handleChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                <input type="url" name="listingUrl" value={formData.listingUrl} onChange={handleChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
               </div>
               <button type="button" onClick={() => alert("Backend connection required.")} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-                <Wand2 size={16} className="mr-2 text-blue-600" /> Auto-fill details
+                <Wand2 size={16} className="mr-2 text-vailo-teal" /> Auto-fill details
               </button>
             </div>
           </div>
@@ -120,7 +120,7 @@ export default function AddProperty() {
             <label className="block text-sm font-semibold text-gray-700 mb-1">Google Maps Location Link</label>
             <div className="relative">
               <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
-              <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="General property location map link..." />
+              <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" placeholder="General property location map link..." />
             </div>
           </div>
         </div>
@@ -130,11 +130,11 @@ export default function AddProperty() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Property Name *</label>
-              <input type="text" required name="propertyName" value={formData.propertyName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <input type="text" required name="propertyName" value={formData.propertyName} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">URL Slug *</label>
-              <input type="text" name="urlSlug" value={formData.urlSlug} onChange={handleChange} placeholder="e.g. villa-paschalis" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50" />
+              <input type="text" name="urlSlug" value={formData.urlSlug} onChange={handleChange} placeholder="e.g. villa-paschalis" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-gray-50" />
             </div>
           </div>
 
@@ -151,7 +151,7 @@ export default function AddProperty() {
                   name="ownerId" 
                   value={formData.ownerId} 
                   onChange={handleChange} 
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
                 >
                   <option value="">Select a user...</option>
                   {ownersList.map(user => (
@@ -173,7 +173,7 @@ export default function AddProperty() {
 
         <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
           <Link to="/properties" className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg">Cancel</Link>
-          <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50">
+          <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg disabled:opacity-50">
             {isSubmitting ? 'Saving...' : 'Create Property'}
           </button>
         </div>

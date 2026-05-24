@@ -281,6 +281,62 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+export function isCoordOnlyQuery(query: string): boolean {
+  return /^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/.test(query.trim());
+}
+
+/** Opens one exact place/listing — not a text search results page. */
+export function isDirectPlaceMapsUrl(url?: string): boolean {
+  if (!url?.trim()) return false;
+  if (!url.includes('google') || !url.includes('maps')) return false;
+  if (/query_place_id=|destination_place_id=|[?&]place_id=/i.test(url)) return true;
+  if (url.includes('/maps/place/') || url.includes('google.com/maps/place')) return true;
+  if (/!1s0x|ftid=|[?&]cid=/i.test(url)) return true;
+
+  const qMatch = url.match(/[?&]query=([^&]+)/i);
+  if (qMatch) {
+    const decoded = decodeURIComponent(qMatch[1].replace(/\+/g, ' '));
+    return isCoordOnlyQuery(decoded);
+  }
+
+  return false;
+}
+
+/** @deprecated use isDirectPlaceMapsUrl */
+export function isRichGoogleMapsUrl(url?: string): boolean {
+  return isDirectPlaceMapsUrl(url);
+}
+
+export function bareGooglePlaceId(placeId?: string | null): string | null {
+  if (!placeId?.trim()) return null;
+  return placeId.replace(/^places\//, '').trim() || null;
+}
+
+export function buildPlaceMapUrls(
+  googlePlaceId?: string | null,
+  lat?: number,
+  lng?: number,
+  placeName?: string
+) {
+  const bareId = bareGooglePlaceId(googlePlaceId);
+  if (bareId) {
+    const label = placeName?.trim() || 'place';
+    return {
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}&query_place_id=${encodeURIComponent(bareId)}`,
+      navigateUrl: `https://www.google.com/maps/dir/?api=1&destination_place_id=${encodeURIComponent(bareId)}`,
+    };
+  }
+
+  if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+    return buildPreciseMapUrls(lat, lng);
+  }
+
+  return {
+    googleMapsUrl: '',
+    navigateUrl: '',
+  };
+}
+
 export function buildPreciseMapUrls(lat: number, lng: number) {
   const coordQuery = `${lat},${lng}`;
   return {
@@ -289,18 +345,61 @@ export function buildPreciseMapUrls(lat: number, lng: number) {
   };
 }
 
+function buildNavigateFromMapsUrl(
+  googleMapsUrl: string,
+  googlePlaceId?: string | null,
+  lat?: number,
+  lng?: number
+): string {
+  const fromUrl = googleMapsUrl.match(/[?&](?:query_place_id|destination_place_id)=([^&]+)/i);
+  if (fromUrl) {
+    return `https://www.google.com/maps/dir/?api=1&destination_place_id=${fromUrl[1]}`;
+  }
+
+  const bareId = bareGooglePlaceId(googlePlaceId);
+  if (bareId) {
+    return `https://www.google.com/maps/dir/?api=1&destination_place_id=${encodeURIComponent(bareId)}`;
+  }
+
+  if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+    return buildPreciseMapUrls(lat, lng).navigateUrl;
+  }
+
+  return googleMapsUrl;
+}
+
 export function getItemMapLinks(item: {
   title?: string;
   googleMapsUrl?: string;
+  googlePlaceId?: string;
   latitude?: number;
   longitude?: number;
   lat?: number;
   lng?: number;
   navigateUrl?: string;
 }, areaHint: string) {
+  const title = item.title?.trim();
   const lat = item.latitude ?? item.lat;
   const lng = item.longitude ?? item.lng;
-  if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+  const hasCoords =
+    typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
+
+  if (item.googlePlaceId || bareGooglePlaceId(item.googlePlaceId)) {
+    return { ...buildPlaceMapUrls(item.googlePlaceId, lat, lng, title), resolved: true };
+  }
+
+  if (isDirectPlaceMapsUrl(item.googleMapsUrl)) {
+    return {
+      googleMapsUrl: item.googleMapsUrl!,
+      navigateUrl:
+        item.navigateUrl && isDirectPlaceMapsUrl(item.navigateUrl)
+          ? item.navigateUrl
+          : buildNavigateFromMapsUrl(item.googleMapsUrl!, item.googlePlaceId, lat, lng),
+      resolved: true,
+    };
+  }
+
+  if (hasCoords) {
     return { ...buildPreciseMapUrls(lat, lng), resolved: true };
   }
 
@@ -308,21 +407,7 @@ export function getItemMapLinks(item: {
     return { googleMapsUrl: item.googleMapsUrl, navigateUrl: item.navigateUrl, resolved: true };
   }
 
-  if (item.googleMapsUrl?.includes('google.com/maps')) {
-    const coordMatch = item.googleMapsUrl.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
-    if (coordMatch) {
-      return buildPreciseMapUrls(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
-    }
-    if (item.googleMapsUrl.includes('/place/') || item.googleMapsUrl.includes('query=')) {
-      return {
-        googleMapsUrl: item.googleMapsUrl,
-        navigateUrl: item.googleMapsUrl.replace('/place/', '/dir/') || item.googleMapsUrl,
-        resolved: true,
-      };
-    }
-  }
-
-  const q = item.title ? `${item.title}, ${areaHint}` : areaHint;
+  const q = title ? `${title}, ${areaHint}` : areaHint;
   const encoded = encodeURIComponent(q);
   return {
     googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encoded}`,
@@ -359,34 +444,55 @@ async function resolvePlaceOnMap(
   return null;
 }
 
-function planItemsNeedingCoords(item: any): boolean {
-  if (item.source === 'database' && item.googleMapsUrl?.includes('google.com/maps')) return false;
+async function enrichItem(item: any, areaHint: string, anchorCoords: { lat: number; lng: number } | null) {
   const lat = item.latitude ?? item.lat;
   const lng = item.longitude ?? item.lng;
-  if (typeof lat === 'number' && typeof lng === 'number') return false;
-  if (item.googleMapsUrl?.match(/query=-?\d+\.?\d*,-?\d+\.?\d*/)) return false;
-  if (item.googleMapsUrl?.includes('/place/')) return false;
-  return !!item.title?.trim();
-}
+  const hasCoords = typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
+  const hasCuratedMap =
+    item.googlePlaceId ||
+    isDirectPlaceMapsUrl(item.googleMapsUrl) ||
+    (item.source === 'database' && item.googleMapsUrl);
 
-async function enrichItem(item: any, areaHint: string, anchorCoords: { lat: number; lng: number } | null) {
-  if (!planItemsNeedingCoords(item)) return item;
+  if (hasCuratedMap || hasCoords) {
+    const links = getItemMapLinks(item, areaHint);
+    return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
+  }
 
-  const resolved = await resolvePlaceOnMap(item.title, areaHint, anchorCoords);
+  const title = item.title?.trim();
+  if (!title) return item;
+
+  const resolved = await resolvePlaceOnMap(title, areaHint, anchorCoords);
   if (!resolved) {
     const links = getItemMapLinks(item, areaHint);
     return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
   }
 
-  const links = buildPreciseMapUrls(resolved.lat, resolved.lng);
+  const coordLinks = buildPreciseMapUrls(resolved.lat, resolved.lng);
   return {
     ...item,
     latitude: resolved.lat,
     longitude: resolved.lng,
-    googleMapsUrl: links.googleMapsUrl,
-    navigateUrl: links.navigateUrl,
+    googleMapsUrl: coordLinks.googleMapsUrl,
+    navigateUrl: coordLinks.navigateUrl,
     mapPlaceName: shortLabel(resolved.displayName, 2),
   };
+}
+
+async function mapConcurrent<T, R>(
+  items: T[],
+  worker: (item: T) => Promise<R>,
+  concurrency = 5
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const runWorker = async () => {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await worker(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runWorker));
+  return results;
 }
 
 export async function enrichPlanWithMapLinks(
@@ -397,20 +503,18 @@ export async function enrichPlanWithMapLinks(
   if (!planData) return planData;
 
   if (planData.type === 'timeline' && Array.isArray(planData.plan)) {
-    const plan = [];
-    for (const item of planData.plan) {
-      plan.push(await enrichItem(item, areaHint, anchorCoords));
-    }
+    const plan = await mapConcurrent(planData.plan, (item) =>
+      enrichItem(item, areaHint, anchorCoords)
+    );
     return { ...planData, plan };
   }
 
   if (planData.type === 'picks' && Array.isArray(planData.categories)) {
     const categories = [];
     for (const cat of planData.categories) {
-      const items = [];
-      for (const item of cat.items || []) {
-        items.push(await enrichItem(item, areaHint, anchorCoords));
-      }
+      const items = await mapConcurrent(cat.items || [], (item) =>
+        enrichItem(item, areaHint, anchorCoords)
+      );
       categories.push({ ...cat, items });
     }
     return { ...planData, categories };

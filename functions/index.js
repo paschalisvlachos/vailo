@@ -72,6 +72,33 @@ function namesLikelySame(a, b) {
   return false;
 }
 
+function placeNamesMatch(requested, resolved) {
+  const a = normalizePlaceName(requested);
+  const b = normalizePlaceName(resolved);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ca = nameCore(a);
+  const cb = nameCore(b);
+  if (ca === cb && ca.length >= 4) return true;
+  if (ca.length >= 5 && b.includes(ca)) return true;
+  if (cb.length >= 5 && a.includes(cb)) return true;
+  const words = String(requested || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0370-\u03ff\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 5 && !GENERIC_SUFFIXES.includes(w));
+  return words.some((w) => b.includes(normalizePlaceName(w)));
+}
+
+function pickBestPlaceMatch(places, requestedTitle) {
+  if (!places?.length) return null;
+  for (const place of places) {
+    const name = place.displayName?.text || "";
+    if (placeNamesMatch(requestedTitle, name)) return place;
+  }
+  return null;
+}
+
 function stablePlaceDocId(googlePlaceId, normalizedName, latitude, longitude) {
   if (googlePlaceId) {
     return crypto.createHash("sha256").update(`gp:${googlePlaceId}`).digest("hex").slice(0, 40);
@@ -109,15 +136,55 @@ function discoveredPlacesCollection(country, areaId) {
 }
 
 function placeToResponse(data, placeNameFallback) {
+  const name = data.name || placeNameFallback;
+  let googleMapsUrl = data.googleMapsUrl || null;
+
+  if (data.googlePlaceId) {
+    const upgraded = buildPlaceMapUrls(
+      data.googlePlaceId,
+      data.latitude,
+      data.longitude,
+      name
+    );
+    if (upgraded.googleMapsUrl) {
+      googleMapsUrl = upgraded.googleMapsUrl;
+    }
+  }
+
   return {
     photoUrl: data.photoUrl || null,
-    googleMapsUrl: data.googleMapsUrl || null,
+    googleMapsUrl,
+    googlePlaceId: data.googlePlaceId || null,
     latitude: data.latitude ?? null,
     longitude: data.longitude ?? null,
-    placeName: data.name || placeNameFallback,
+    placeName: name,
     discoveredPlaceId: data.id || null,
     fromDiscoveredDb: true,
   };
+}
+
+function duplicateMatchesRequest(data, normalizedName, title) {
+  const existingNorm = data.normalizedName || normalizePlaceName(data.name);
+  return namesLikelySame(normalizedName, existingNorm) || placeNamesMatch(title, data.name || "");
+}
+
+function buildPlaceMapUrls(googlePlaceId, latitude, longitude, label) {
+  const bareId = googlePlaceId ? String(googlePlaceId).replace(/^places\//, "") : null;
+  if (bareId) {
+    const name = label?.trim() || "place";
+    return {
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${encodeURIComponent(bareId)}`,
+      navigateUrl: `https://www.google.com/maps/dir/?api=1&destination_place_id=${encodeURIComponent(bareId)}`,
+    };
+  }
+  if (typeof latitude === "number" && typeof longitude === "number") {
+    const coordQuery = `${latitude},${longitude}`;
+    return {
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordQuery)}`,
+      navigateUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(coordQuery)}`,
+    };
+  }
+  return { googleMapsUrl: "", navigateUrl: "" };
 }
 
 async function findDuplicateDiscoveredPlace(
@@ -157,9 +224,6 @@ async function findDuplicateDiscoveredPlace(
         data.latitude,
         data.longitude
       );
-      if (distanceMeters <= DUPLICATE_RADIUS_METERS) {
-        return { id: docSnap.id, data };
-      }
     }
 
     if (
@@ -177,17 +241,11 @@ async function findDuplicateDiscoveredPlace(
 }
 
 function buildMapsSearchUrl(latitude, longitude, label) {
-  if (typeof latitude === "number" && typeof longitude === "number") {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${latitude},${longitude}`)}`;
-  }
-  if (label) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(label)}`;
-  }
-  return "";
+  return buildPlaceMapUrls(null, latitude, longitude, label).googleMapsUrl;
 }
 
-async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng) {
-  const body = { textQuery: searchQuery };
+async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, requestedTitle) {
+  const body = { textQuery: searchQuery, pageSize: 10 };
 
   const lat = typeof biasLat === "number" ? biasLat : null;
   const lng = typeof biasLng === "number" ? biasLng : null;
@@ -217,7 +275,31 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng) {
     return null;
   }
 
-  const place = response.data.places[0];
+  const title = requestedTitle || searchQuery;
+  let place = pickBestPlaceMatch(response.data.places, title);
+
+  if (!place && title) {
+    const exactQuery = `"${title.split(",")[0].trim()}"${searchQuery.includes(",") ? " " + searchQuery.split(",").slice(1).join(",").trim() : ""}`;
+    const retry = await axios.post(
+      "https://places.googleapis.com/v1/places:searchText",
+      { ...body, textQuery: exactQuery.trim() },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": PLACES_FIELD_MASK,
+        },
+      }
+    );
+    place = pickBestPlaceMatch(retry.data.places || [], title);
+  }
+
+  if (!place) {
+    logger.warn(
+      `No Google place name match for "${title}" among ${response.data.places.length} results`
+    );
+    return null;
+  }
   const latitude = place.location?.latitude ?? null;
   const longitude = place.location?.longitude ?? null;
 
@@ -226,17 +308,13 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng) {
     photoUrl = `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxHeightPx=800&maxWidthPx=800&key=${apiKey}`;
   }
 
-  const googleMapsUrl =
-    place.googleMapsUri ||
-    buildMapsSearchUrl(
-      latitude,
-      longitude,
-      place.displayName?.text || searchQuery
-    );
+  const placeName = place.displayName?.text || searchQuery;
+  const mapUrls = buildPlaceMapUrls(place.id, latitude, longitude, placeName);
+  const googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
 
   return {
     googlePlaceId: place.id || null,
-    name: place.displayName?.text || "",
+    name: placeName,
     rating: place.rating || null,
     description: place.editorialSummary?.text || "",
     category: place.primaryType || "",
@@ -247,6 +325,7 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng) {
     websiteUri: place.websiteUri || "",
     photoUrl,
     googleMapsUrl,
+    navigateUrl: mapUrls.navigateUrl,
   };
 }
 
@@ -354,7 +433,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       null
     );
 
-    if (duplicate) {
+    if (duplicate && duplicateMatchesRequest(duplicate.data, normalizedName, title)) {
       return bumpDiscoveredPlaceUsage(coll, duplicate.id, duplicate.data, title);
     }
 
@@ -365,10 +444,15 @@ exports.resolvePlacePhoto = onCall(async (request) => {
     }
 
     const searchQuery = area ? `${title}, ${area}` : title;
-    const place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng);
+    const place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, title);
 
     if (!place) {
-      return { photoUrl: null, googleMapsUrl: null, notFound: true };
+      return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
+    }
+
+    if (!placeNamesMatch(title, place.name || "")) {
+      logger.warn(`Rejected Google result "${place.name}" for requested "${title}"`);
+      return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
     }
 
     const resolvedLat = place.latitude ?? latitude ?? null;
@@ -384,7 +468,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       place.googlePlaceId
     );
 
-    if (geoDuplicate) {
+    if (geoDuplicate && duplicateMatchesRequest(geoDuplicate.data, normalizedName, title)) {
       return bumpDiscoveredPlaceUsage(coll, geoDuplicate.id, geoDuplicate.data, title);
     }
 
@@ -474,7 +558,7 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   }
 
   try {
-    const place = await fetchPlaceFromGoogle(searchQuery, apiKey);
+    const place = await fetchPlaceFromGoogle(searchQuery, apiKey, null, null, searchQuery);
 
     if (!place) {
       throw new HttpsError("not-found", "Place not found on Google.");

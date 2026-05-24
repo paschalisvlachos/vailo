@@ -1,6 +1,11 @@
-/** Flexible "Skip / Keep it flexible" picks: 5 per category, distance-sorted, local-first. */
+/** Flexible picks: up to 5 unique businesses per category, distance-sorted, local-first. */
 
-export const PICKS_PER_CATEGORY = 5;
+import { normalizePlaceName, namesLikelySame } from './placeNameUtils';
+import { bareGooglePlaceId } from './geocoding';
+
+export const MAX_PICKS_PER_CATEGORY = 5;
+/** @deprecated use MAX_PICKS_PER_CATEGORY */
+export const PICKS_PER_CATEGORY = MAX_PICKS_PER_CATEGORY;
 const BEYOND_RADIUS_BUFFER_KM = 25;
 
 export type FlexiblePickItem = {
@@ -12,6 +17,7 @@ export type FlexiblePickItem = {
   source?: string;
   photoUrl?: string;
   googleMapsUrl?: string;
+  googlePlaceId?: string;
   latitude?: number;
   longitude?: number;
   navigateUrl?: string;
@@ -27,6 +33,9 @@ type DbPickRow = {
   description: string;
   photoUrl: string;
   googleMapsUrl: string;
+  googlePlaceId?: string;
+  latitude?: number;
+  longitude?: number;
   isLegitPick: boolean;
 };
 
@@ -93,6 +102,9 @@ function rowToPick(row: DbPickRow): FlexiblePickItem {
     source: 'database',
     photoUrl: row.photoUrl,
     googleMapsUrl: row.googleMapsUrl,
+    googlePlaceId: row.googlePlaceId,
+    latitude: row.latitude,
+    longitude: row.longitude,
     isLegitPick: row.isLegitPick,
   };
 }
@@ -126,6 +138,9 @@ function mapDbItem(
     description: item.description || '',
     photoUrl: item.photoUrl || '',
     googleMapsUrl: item.googleMapsUrl || '',
+    googlePlaceId: item.googlePlaceId || '',
+    latitude: coords.lat,
+    longitude: coords.lng,
     isLegitPick: !!item.isLegitPick,
   };
 }
@@ -170,22 +185,92 @@ export function buildFlexiblePicksDbContext(
       return a.distanceKm - b.distanceKm;
     });
 
+    const uniqueRows = dedupeDbRows(rows);
+
     result[cat] = {
-      withinRadius: rows.filter((r) => !r.beyondRadius),
-      beyondRadius: rows.filter((r) => r.beyondRadius),
+      withinRadius: uniqueRows.filter((r) => !r.beyondRadius),
+      beyondRadius: uniqueRows.filter((r) => r.beyondRadius),
     };
   }
 
   return result;
 }
 
+function extractPlaceId(item: FlexiblePickItem | DbPickRow): string | null {
+  const raw = 'googlePlaceId' in item ? item.googlePlaceId : undefined;
+  const bare = bareGooglePlaceId(raw);
+  if (bare) return bare;
+
+  const url = item.googleMapsUrl;
+  if (typeof url === 'string') {
+    const match = url.match(/[?&](?:query_place_id|destination_place_id)=([^&]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+  }
+  return null;
+}
+
+function coordsWithinKm(
+  a: { latitude?: number; longitude?: number; lat?: number; lng?: number },
+  b: { latitude?: number; longitude?: number; lat?: number; lng?: number },
+  maxKm = 0.2
+): boolean {
+  const latA = a.latitude ?? a.lat;
+  const lngA = a.longitude ?? a.lng;
+  const latB = b.latitude ?? b.lat;
+  const lngB = b.longitude ?? b.lng;
+  if (
+    typeof latA !== 'number' ||
+    typeof lngA !== 'number' ||
+    typeof latB !== 'number' ||
+    typeof lngB !== 'number' ||
+    isNaN(latA) ||
+    isNaN(lngA) ||
+    isNaN(latB) ||
+    isNaN(lngB)
+  ) {
+    return false;
+  }
+  return drivingKm(latA, lngA, latB, lngB) < maxKm;
+}
+
+function businessKey(item: FlexiblePickItem): string {
+  const placeId = extractPlaceId(item);
+  if (placeId) return `id:${placeId}`;
+
+  const lat = item.latitude ?? item.lat;
+  const lng = item.longitude ?? item.lng;
+  if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat)) {
+    return `geo:${lat.toFixed(3)},${lng.toFixed(3)}`;
+  }
+
+  return `name:${normalizeTitle(item.title)}`;
+}
+
+function isSameBusiness(a: FlexiblePickItem, b: FlexiblePickItem): boolean {
+  const idA = extractPlaceId(a);
+  const idB = extractPlaceId(b);
+  if (idA && idB && idA === idB) return true;
+
+  if (businessKey(a) === businessKey(b)) return true;
+  if (coordsWithinKm(a, b)) return true;
+
+  return namesLikelySame(normalizePlaceName(a.title), normalizePlaceName(b.title));
+}
+
+function dedupeDbRows(rows: DbPickRow[]): DbPickRow[] {
+  const out: DbPickRow[] = [];
+  for (const row of rows) {
+    const candidate = rowToPick(row);
+    if (out.some((existing) => isSameBusiness(rowToPick(existing), candidate))) continue;
+    out.push(row);
+  }
+  return out;
+}
+
 function dedupePickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
-  const seen = new Set<string>();
   const out: FlexiblePickItem[] = [];
   for (const item of items) {
-    const key = normalizeTitle(item.title);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    if (out.some((existing) => isSameBusiness(existing, item))) continue;
     out.push(item);
   }
   return out;
@@ -240,23 +325,36 @@ function padCategoryFromDb(
   const pool = dbContext[categoryName];
   if (!pool) return items;
 
-  const seen = new Set(items.map((i) => normalizeTitle(i.title)));
   const out = [...items];
 
-  const addFrom = (rows: DbPickRow[]) => {
+  const tryAdd = (rows: DbPickRow[]) => {
     for (const row of rows) {
-      if (out.length >= PICKS_PER_CATEGORY) break;
-      const key = normalizeTitle(row.name);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(rowToPick(row));
+      if (out.length >= MAX_PICKS_PER_CATEGORY) break;
+      const candidate = rowToPick(row);
+      if (out.some((existing) => isSameBusiness(existing, candidate))) continue;
+      out.push(candidate);
     }
   };
 
-  addFrom(pool.withinRadius);
-  if (out.length < PICKS_PER_CATEGORY) addFrom(pool.beyondRadius);
+  // Within radius first, then extended range — always unique businesses only
+  if (out.length < MAX_PICKS_PER_CATEGORY) tryAdd(pool.withinRadius);
+  if (out.length < MAX_PICKS_PER_CATEGORY) tryAdd(pool.beyondRadius);
 
   return out.map((i) => enrichPickItem(i, maxKm, startCoords));
+}
+
+function sortPickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
+  return [...items].sort((a, b) => {
+    const aBeyond = a.beyondRadius ? 1 : 0;
+    const bBeyond = b.beyondRadius ? 1 : 0;
+    if (aBeyond !== bBeyond) return aBeyond - bBeyond;
+    const ak = parseDistanceKm(a);
+    const bk = parseDistanceKm(b);
+    if (ak != null && bk != null) return ak - bk;
+    if (ak != null) return -1;
+    if (bk != null) return 1;
+    return 0;
+  });
 }
 
 export function normalizeFlexiblePicksPlan(
@@ -275,20 +373,12 @@ export function normalizeFlexiblePicksPlan(
     );
 
     items = dedupePickItems(items);
-    items.sort((a, b) => {
-      const aBeyond = a.beyondRadius ? 1 : 0;
-      const bBeyond = b.beyondRadius ? 1 : 0;
-      if (aBeyond !== bBeyond) return aBeyond - bBeyond;
-      const ak = parseDistanceKm(a);
-      const bk = parseDistanceKm(b);
-      if (ak != null && bk != null) return ak - bk;
-      if (ak != null) return -1;
-      if (bk != null) return 1;
-      return 0;
-    });
+    items = sortPickItems(items);
 
     items = padCategoryFromDb(items, dbContext, cat.categoryName, maxKm, startCoords);
-    items = items.slice(0, PICKS_PER_CATEGORY);
+    items = dedupePickItems(items);
+    items = sortPickItems(items);
+    items = items.slice(0, MAX_PICKS_PER_CATEGORY);
 
     return { ...cat, items };
   });
@@ -315,10 +405,14 @@ export function buildFlexiblePicksPromptSection(
         photoUrl: r.photoUrl,
         googleMapsUrl: r.googleMapsUrl,
       })),
-      beyondRadiusExtension: pool.beyondRadius.slice(0, 5).map((r) => ({
+      beyondRadiusExtension: pool.beyondRadius.slice(0, 8).map((r) => ({
         name: r.name,
         distanceKm: Number(r.distanceKm.toFixed(1)),
-        note: `Beyond ${maxKm}km — use ONLY if you cannot reach 5 picks within radius`,
+        isLegitPick: r.isLegitPick,
+        description: r.description,
+        photoUrl: r.photoUrl,
+        googleMapsUrl: r.googleMapsUrl,
+        note: `Beyond ${maxKm}km (extended range) — use to fill remaining slots with DISTINCT businesses only`,
       })),
     };
   });
@@ -330,12 +424,14 @@ export function buildFlexiblePicksPromptSection(
         PRIORITIZE: Vailo database items (especially isLegitPick), then only AI suggestions you are certain locals actually use.
 
         FLEXIBLE PICKS RULES:
-        1. Return EXACTLY ${PICKS_PER_CATEGORY} picks for EACH of these categories: ${categories.join(', ')}.
-        2. Sort each category's items from CLOSEST to FURTHEST (shortest distanceKm first).
-        3. Fill slots 1–N from WITHIN ${maxKm}km first using the database pools below.
-        4. If fewer than ${PICKS_PER_CATEGORY} exist within ${maxKm}km, fill remaining slots from beyondRadiusExtension and set "beyondRadius": true on those items.
-        5. Every item MUST include numeric "distanceKm" (for database items use provided value; for AI items estimate conservatively or omit and use neighborhood in estimatedDistance only if truly unknown).
-        6. Items with beyondRadius true MUST use estimatedDistance starting with "Further ·" and include the km when known.
+        1. Aim for UP TO ${MAX_PICKS_PER_CATEGORY} UNIQUE picks per category for: ${categories.join(', ')}.
+           - Fill from WITHIN ${maxKm}km first using the database pools below.
+           - If fewer than ${MAX_PICKS_PER_CATEGORY} unique options exist within ${maxKm}km, fill remaining slots from beyondRadiusExtension (extended range up to ${maxKm + BEYOND_RADIUS_BUFFER_KM}km). Mark those items "beyondRadius": true.
+           - If only 1–2 unique businesses exist in total (even extended range), return only those — never pad with duplicates.
+        2. ABSOLUTE RULE — NEVER list the same business twice: not under a different title, description, or activity angle. One riding centre = one entry. Same Google Place, same address, or same owner = one entry.
+        3. Sort each category's items from CLOSEST to FURTHEST (shortest distanceKm first).
+        4. Every item MUST include numeric "distanceKm" when known.
+        5. Items with beyondRadius true MUST use estimatedDistance starting with "Further ·".
 
         PER-CATEGORY DATABASE POOLS (pre-sorted by distance):
         ${JSON.stringify(perCategory)}

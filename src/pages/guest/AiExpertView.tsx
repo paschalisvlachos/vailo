@@ -14,9 +14,10 @@ import {
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
   normalizeFlexiblePicksPlan,
-  PICKS_PER_CATEGORY,
+  MAX_PICKS_PER_CATEGORY,
 } from '../../lib/flexiblePicks';
 import CategoryPickCarousel from '../../components/guest/CategoryPickCarousel';
+import PlanOverviewMap from '../../components/guest/PlanOverviewMap';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Image as ImageIcon, Compass, Heart } from 'lucide-react';
 
 const WIZARD_STEPS = [
@@ -320,18 +321,21 @@ export default function AiExpertView({ onClose, property, propertyType, features
         name: p.name,
         photoUrl: p.photoUrl,
         googleMapsUrl: p.googleMapsUrl,
+        googlePlaceId: p.googlePlaceId,
+        latitude: p.latitude,
+        longitude: p.longitude,
       })),
     };
   };
 
   const finalizePlanData = async (planData: any, mapAreaHint: string, startCoords: ReturnType<typeof getStartCoords>) => {
-    const withMaps = await enrichPlanWithMapLinks(planData, mapAreaHint, startCoords);
-    setThinkingLabel('Loading venue photos...');
+    setThinkingLabel('Matching places & photos…');
     const photoCtx: PlanPhotoContext = {
       ...getPlanPhotoContext(),
       anchorCoords: startCoords ? { lat: startCoords.lat, lng: startCoords.lng } : null,
     };
-    return enrichPlanWithAllPhotos(withMaps, photoCtx);
+    const withPhotos = await enrichPlanWithAllPhotos(planData, photoCtx);
+    return enrichPlanWithMapLinks(withPhotos, mapAreaHint, startCoords);
   };
 
   const validateDrivingFromProperty = async (
@@ -716,7 +720,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
             }
           ]
         }
-        Return exactly ${PICKS_PER_CATEGORY} items per category, sorted closest to furthest.`;
+        Return up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${distanceLimitNum}km first; if fewer than ${MAX_PICKS_PER_CATEGORY}, add distinct places from extended range (beyondRadius: true). NEVER list the same business twice under any name or description. Sort closest to furthest.`;
       }
 
       console.log("--- AI PROMPT START (executePlan) ---");
@@ -1032,6 +1036,8 @@ export default function AiExpertView({ onClose, property, propertyType, features
               </div>
             )}
 
+            <PlanOverviewMap planData={msg.data} />
+
             <button
               onClick={planAnotherDay}
               className="w-full mt-6 py-3.5 bg-[#f8faf9] hover:bg-[#eef3f2] text-[#0B4F5C] font-semibold text-sm rounded-2xl transition-colors border border-[#0B4F5C]/10"
@@ -1243,7 +1249,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
                           type="text"
                           value={customLoc}
                           onChange={(e) => setCustomLoc(e.target.value)}
-                          placeholder="e.g. Paleochora, Chania"
+                          placeholder="i.e location, area"
                           className="flex-1 px-4 py-3 bg-white border border-[#0B4F5C]/10 rounded-xl text-sm outline-none focus:border-[#C5A059]/50 focus:ring-2 focus:ring-[#C5A059]/15 transition-shadow"
                         />
                         <button

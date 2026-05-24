@@ -1,11 +1,13 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { normalizePlaceName, namesLikelySame } from './placeNameUtils';
+import { normalizePlaceName } from './placeNameUtils';
 
 export type ResolvedPlacePhoto = {
   photoUrl: string | null;
   googleMapsUrl?: string | null;
+  googlePlaceId?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  placeName?: string | null;
   discoveredPlaceId?: string | null;
   fromDiscoveredDb?: boolean;
   fromCache?: boolean;
@@ -13,15 +15,6 @@ export type ResolvedPlacePhoto = {
 };
 
 const sessionPhotoCache = new Map<string, ResolvedPlacePhoto>();
-
-function findFuzzySessionHit(title: string): ResolvedPlacePhoto | undefined {
-  const normalized = normalizePlaceName(title);
-  for (const [key, value] of sessionPhotoCache) {
-    const keyNorm = key.split('::')[0];
-    if (namesLikelySame(normalized, keyNorm)) return value;
-  }
-  return undefined;
-}
 
 export async function resolvePlacePhoto(params: {
   title: string;
@@ -34,10 +27,11 @@ export async function resolvePlacePhoto(params: {
   anchorLng?: number;
 }): Promise<ResolvedPlacePhoto> {
   const normalized = normalizePlaceName(params.title);
-  const fuzzyHit = findFuzzySessionHit(params.title);
-  if (fuzzyHit) return fuzzyHit;
-
-  const key = `${normalized}::${params.country}::${params.areaId}`;
+  const coordSuffix =
+    typeof params.latitude === 'number' && typeof params.longitude === 'number'
+      ? `@${params.latitude.toFixed(4)},${params.longitude.toFixed(4)}`
+      : '';
+  const key = `${normalized}::${params.country}::${params.areaId}${coordSuffix}`;
   const exactHit = sessionPhotoCache.get(key);
   if (exactHit) return exactHit;
 
@@ -56,6 +50,5 @@ export async function resolvePlacePhoto(params: {
 
   const data = result.data as ResolvedPlacePhoto;
   sessionPhotoCache.set(key, data);
-  sessionPhotoCache.set(`${normalized}::${params.country}::${params.areaId}`, data);
   return data;
 }

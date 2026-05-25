@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, NavLink, Outlet } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import {
   ArrowLeft,
@@ -18,7 +18,7 @@ import { AdminBadge } from '../../../components/admin/AdminPageHeader';
 
 const TABS = [
   { name: 'Overview', path: '', icon: Home },
-  { name: 'Property Types', path: 'types', icon: Building },
+  { name: 'Property Listings', path: 'types', icon: Building },
   { name: 'Reservations', path: 'reservations', icon: CalendarCheck },
   { name: 'Calendar', path: 'calendar', icon: CalendarIcon },
   { name: 'Local Gems', path: 'local-gems', icon: MapPin },
@@ -28,27 +28,44 @@ const TABS = [
   { name: 'AI Gaps', path: 'ai-gaps', icon: Sparkles },
 ];
 
+export type PropertyRecord = {
+  id: string;
+  propertyName?: string;
+  internalRefCode?: string;
+  urlSlug?: string;
+  listingKind?: string;
+  country?: string;
+  area?: string;
+  city?: string;
+  ownerId?: string;
+  listingUrl?: string;
+  googleMapsUrl?: string;
+  createdAt?: string;
+};
+
 export default function PropertyLayout() {
   const { id } = useParams();
-  const [property, setProperty] = useState<{ id: string; propertyName?: string; internalRefCode?: string } | null>(null);
+  const [property, setProperty] = useState<PropertyRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProperty = async () => {
-      if (!id) return;
-      try {
-        const docRef = doc(db, 'properties', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProperty({ id: docSnap.id, ...docSnap.data() });
+    if (!id) return;
+    const unsub = onSnapshot(
+      doc(db, 'properties', id),
+      (snap) => {
+        if (snap.exists()) {
+          setProperty({ id: snap.id, ...snap.data() } as PropertyRecord);
+        } else {
+          setProperty(null);
         }
-      } catch (error) {
-        console.error('Error fetching property:', error);
-      } finally {
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Error fetching property:', err);
         setLoading(false);
       }
-    };
-    fetchProperty();
+    );
+    return () => unsub();
   }, [id]);
 
   if (loading) {
@@ -83,9 +100,16 @@ export default function PropertyLayout() {
             <p className="text-gray-500 text-sm mt-0.5">Property management</p>
           </div>
         </div>
-        {property.internalRefCode && (
-          <AdminBadge variant="teal">{property.internalRefCode}</AdminBadge>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {property.listingKind && (
+            <AdminBadge variant={property.listingKind === 'hotel' ? 'gold' : 'teal'}>
+              {property.listingKind === 'hotel' ? 'Hotel' : 'Property'}
+            </AdminBadge>
+          )}
+          {property.internalRefCode && (
+            <AdminBadge variant="teal">{property.internalRefCode}</AdminBadge>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col xl:flex-row gap-5 xl:gap-8">

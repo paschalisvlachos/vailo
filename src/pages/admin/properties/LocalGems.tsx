@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, ai } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { getGenerativeModel } from "firebase/ai";
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -29,6 +30,7 @@ const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLa
 
 export default function LocalGems() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
+  const toast = useToast();
   
   // Context States
   const [propertyAreaContext, setPropertyAreaContext] = useState<{country: string, areaId: string, areaName: string} | null>(null);
@@ -150,8 +152,14 @@ export default function LocalGems() {
   // --- SUPERCHARGED AI MAGIC FILL ---
   const handleMagicFill = async () => {
     const url = formData.googleMapsUrl;
-    if (!url) return alert("Please paste a Google Maps URL first.");
-    if (!propertyAreaContext) return alert("Area data missing. Ensure your property has a City/Area set.");
+    if (!url) {
+      toast.warning("Please paste a Google Maps URL first.");
+      return;
+    }
+    if (!propertyAreaContext) {
+      toast.warning("Area data missing. Ensure your property has a City/Area set.");
+      return;
+    }
     setIsMagicFilling(true);
 
     try {
@@ -244,7 +252,7 @@ export default function LocalGems() {
 
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      alert("Something went wrong. Make sure it's a valid link!");
+      toast.error("Something went wrong. Make sure it's a valid link!");
     } finally {
       setIsMagicFilling(false);
     }
@@ -281,7 +289,7 @@ export default function LocalGems() {
       closeAndResetForm();
     } catch (error) {
       console.error("Error saving gem:", error);
-      alert("Failed to save local gem.");
+      toast.error("Failed to save local gem.");
     } finally {
       setIsSubmitting(false);
       setIsUploadingImage(false);
@@ -302,7 +310,7 @@ export default function LocalGems() {
       try {
         await deleteDoc(doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems', gemId));
       } catch (error) {
-        alert("Failed to delete gem.");
+        toast.error("Failed to delete gem.");
       }
     }
   };
@@ -321,9 +329,9 @@ export default function LocalGems() {
     return (
       <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
         <Building size={32} className="mx-auto text-gray-400 mb-3" />
-        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Types Configured</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Listings Configured</h3>
         <p className="text-gray-500 max-w-sm mx-auto mb-6">
-          Local gems are assigned to specific units. Please go to the <b>Property Types</b> tab and create a unit before adding local gems.
+          Local gems are assigned to specific units. Please go to the <b>Property Listings</b> tab and create a unit before adding local gems.
         </p>
       </div>
     );
@@ -336,7 +344,7 @@ export default function LocalGems() {
         <div className="bg-vailo-teal/5 border border-vailo-teal/10 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h4 className="text-sm font-bold text-vailo-dark">Select Unit Level</h4>
-            <p className="text-xs text-vailo-teal-hover">Gems are assigned specifically to the selected property type.</p>
+            <p className="text-xs text-vailo-teal-hover">Gems are assigned specifically to the selected property listing.</p>
           </div>
           <select 
             value={selectedTypeId} 
@@ -447,7 +455,7 @@ export default function LocalGems() {
             <Wand2 size={16} className="mr-2" /> Free Smart Import Tool
           </h4>
           <p className="text-xs text-vailo-teal-hover max-w-2xl">
-            Paste a Google Maps link below and click AI Magic Fill. We will extract the GPS coordinates and calculate the driving distance and time from this specific Property Type!
+            Paste a Google Maps link below and click AI Magic Fill. We will extract the GPS coordinates and calculate the driving distance and time from this specific property listing!
           </p>
         </div>
 

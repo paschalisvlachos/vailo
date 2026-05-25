@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw } from 'lucide-react';
 
 // --- UPGRADED HELPER: Identify Booking Provider from URL first, then Summary ---
@@ -26,6 +27,7 @@ const extractProvider = (summary: string, url: string) => {
 
 export default function Calendar() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const toast = useToast();
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
@@ -146,10 +148,10 @@ export default function Calendar() {
         lastSyncedAt: new Date().toISOString()
       }, { merge: true });
 
-      alert(`Calendar synced! Found ${events.length} reservations.`);
+      toast.success(`Calendar synced! Found ${events.length} reservations.`);
     } catch (error: any) {
       console.error("Sync error:", error);
-      alert(`Failed to sync calendar. Error: ${error.message}`);
+      toast.error(`Failed to sync calendar. Error: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
@@ -171,7 +173,7 @@ export default function Calendar() {
       await setDoc(typeRef, { syncedBookings: updatedBookings }, { merge: true });
     } catch (error) {
       console.error("Error updating invite status", error);
-      alert("Failed to update invite status.");
+      toast.error("Failed to update invite status.");
     }
   };
 
@@ -196,7 +198,7 @@ export default function Calendar() {
     return (
       <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
         <Building size={32} className="mx-auto text-gray-400 mb-3" />
-        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Types Configured</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Listings Configured</h3>
         <p className="text-gray-500 max-w-sm mx-auto mb-6">
           Availability calendars are managed per specific unit. Please create a unit first.
         </p>

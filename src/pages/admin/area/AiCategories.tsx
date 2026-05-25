@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { collection, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { Sparkles, ArrowLeft, Plus, Trash2, Loader2, Tag } from 'lucide-react';
 
 export default function AiCategories() {
   const { country, area } = useParams<{ country: string, area: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
   const [newName, setNewName] = useState('');
@@ -45,7 +47,7 @@ export default function AiCategories() {
 
     // Prevent duplicates
     if (categories.some(c => c.name.toLowerCase() === newName.trim().toLowerCase())) {
-      alert("This category already exists.");
+      toast.warning("This category already exists.");
       return;
     }
 
@@ -58,7 +60,7 @@ export default function AiCategories() {
       setNewName('');
     } catch (error) {
       console.error("Error adding category:", error);
-      alert("Failed to add category.");
+      toast.error("Failed to add category.");
     } finally {
       setIsSubmitting(false);
     }
@@ -70,7 +72,7 @@ export default function AiCategories() {
     try {
       await deleteDoc(doc(db, 'countries', decodedCountry, 'areas', areaId, 'aiCategories', id));
     } catch (error) {
-      alert("Failed to delete category.");
+      toast.error("Failed to delete category.");
     }
   };
 

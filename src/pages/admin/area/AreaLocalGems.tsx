@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, ai } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getGenerativeModel } from "firebase/ai";
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Tag } from 'lucide-react';
@@ -10,6 +11,7 @@ import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash
 export default function AreaLocalGems() {
   const { country, area } = useParams<{ country: string, area: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   
   const decodedCountry = decodeURIComponent(country || '');
   const decodedArea = decodeURIComponent(area || '');
@@ -87,7 +89,10 @@ export default function AreaLocalGems() {
   // --- AI MAGIC FILL (Upgraded for Short Links) ---
   const handleMagicFill = async () => {
     const url = formData.googleMapsUrl;
-    if (!url) return alert("Please paste a Google Maps URL first.");
+    if (!url) {
+      toast.warning("Please paste a Google Maps URL first.");
+      return;
+    }
     setIsMagicFilling(true);
 
     try {
@@ -149,7 +154,7 @@ export default function AreaLocalGems() {
       }
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      alert("Could not process this link. Ensure it is a valid Google Maps place.");
+      toast.error("Could not process this link. Ensure it is a valid Google Maps place.");
     } finally {
       setIsMagicFilling(false);
     }
@@ -190,7 +195,7 @@ export default function AreaLocalGems() {
       
     } catch (error) {
       console.error("Error saving Gem:", error);
-      alert("Failed to save Local Gem.");
+      toast.error("Failed to save Local Gem.");
     } finally {
       setIsSubmitting(false);
     }

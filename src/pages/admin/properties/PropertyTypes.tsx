@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud } from 'lucide-react';
+import { useToast } from '../../../context/ToastContext';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2 } from 'lucide-react';
 
 export default function PropertyTypes() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
+  const toast = useToast();
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
@@ -14,6 +17,7 @@ export default function PropertyTypes() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [isSubmittingType, setIsSubmittingType] = useState(false);
+  const [isMagicFilling, setIsMagicFilling] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
   
   // Photo upload state
@@ -108,13 +112,93 @@ export default function PropertyTypes() {
     setTypeFormData({ ...typeFormData, urlSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') });
   };
 
-  const handleAutoFillMaps = () => {
-    const regex = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
-    const match = typeFormData.googleMapsUrl.match(regex);
-    if (match) {
-      setTypeFormData(prev => ({ ...prev, latitude: match[1], longitude: match[2] }));
-    } else {
-      alert("Could not extract coordinates directly from this URL format. Make sure it contains the @lat,lng format.");
+  const handleAutoFillMaps = async () => {
+    const url = typeFormData.googleMapsUrl.trim();
+    if (!url) {
+      toast.warning('Please paste a Google Maps link first.');
+      return;
+    }
+
+    const areaHint =
+      typeFormData.city ||
+      typeFormData.area ||
+      property?.area ||
+      property?.city ||
+      property?.country ||
+      '';
+
+    setIsMagicFilling(true);
+
+    try {
+      let searchQuery = url;
+      let placeNameFallback = '';
+
+      const nameMatch = url.match(/\/place\/([^/?@]+)/);
+      if (nameMatch?.[1]) {
+        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
+        searchQuery = areaHint ? `${placeNameFallback} ${areaHint}` : placeNameFallback;
+      }
+
+      const functions = getFunctions();
+      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+      const result = await getGooglePlaceDetails({ searchQuery, area: areaHint });
+      const googleData = result.data as {
+        name?: string;
+        latitude?: number;
+        longitude?: number;
+        websiteUri?: string;
+        photoUrl?: string;
+        googleMapsUrl?: string;
+        addressLine?: string;
+        area?: string;
+        city?: string;
+        postCode?: string;
+        country?: string;
+      };
+
+      const listingName = googleData.name || placeNameFallback;
+      const slugFromName = listingName
+        ? listingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
+        : '';
+
+      setTypeFormData((prev) => ({
+        ...prev,
+        propertyTypeName: listingName || prev.propertyTypeName,
+        urlSlug: !isSlugManuallyEdited && slugFromName ? slugFromName : prev.urlSlug,
+        latitude: googleData.latitude?.toString() || prev.latitude,
+        longitude: googleData.longitude?.toString() || prev.longitude,
+        googleMapsUrl: googleData.googleMapsUrl || url,
+        listingUrl: googleData.websiteUri || prev.listingUrl,
+        addressLine: googleData.addressLine || prev.addressLine,
+        area: googleData.area || prev.area,
+        city: googleData.city || prev.city,
+        postCode: googleData.postCode || prev.postCode,
+        country: googleData.country || prev.country,
+        photoUrl: googleData.photoUrl || prev.photoUrl,
+      }));
+
+      if (googleData.photoUrl) {
+        setPhotoFile(null);
+        setPhotoPreview(googleData.photoUrl);
+      }
+    } catch (error) {
+      console.error('Maps auto-fill error:', error);
+
+      const coordMatch =
+        url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+        url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+      if (coordMatch) {
+        setTypeFormData((prev) => ({
+          ...prev,
+          latitude: coordMatch[1],
+          longitude: coordMatch[2],
+        }));
+        toast.info('Could not load full place details, but coordinates were extracted from the URL.');
+      } else {
+        toast.error('Could not process this link. Paste a full Google Maps place URL or a maps.app.goo.gl short link.');
+      }
+    } finally {
+      setIsMagicFilling(false);
     }
   };
 
@@ -154,7 +238,7 @@ export default function PropertyTypes() {
       try {
         await deleteDoc(doc(db, 'properties', propertyId, 'propertyTypes', typeId));
       } catch (error) {
-        alert("Failed to delete property type.");
+        toast.error("Failed to delete property listing.");
       }
     }
   };
@@ -188,7 +272,7 @@ export default function PropertyTypes() {
       cancelForm();
     } catch (error) {
       console.error(error);
-      alert("Failed to save property type.");
+      toast.error("Failed to save property listing.");
     } finally {
       setIsSubmittingType(false);
     }
@@ -205,10 +289,10 @@ export default function PropertyTypes() {
 
   const handleICalSync = () => {
     if (!typeFormData.iCalUrl) {
-      alert("Please enter a valid iCal URL first.");
+      toast.warning("Please enter a valid iCal URL first.");
       return;
     }
-    alert("iCal Sync Initiated! (Backend cloud function required to parse .ics file and map bookings to the database).");
+    toast.info("iCal Sync Initiated! (Backend cloud function required to parse .ics file and map bookings to the database).");
   };
 
   // --- RENDER LIST VIEW --- //
@@ -217,19 +301,19 @@ export default function PropertyTypes() {
       <div>
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Configured Property Types</h3>
+            <h3 className="text-lg font-bold text-gray-900">Configured Property Listings</h3>
             <p className="text-sm text-gray-500">Manage individual units, rooms, or tiers within this property.</p>
           </div>
           <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-            <Plus size={18} className="mr-2" /> Add Property Type
+            <Plus size={18} className="mr-2" /> Add Property Listing
           </button>
         </div>
 
         {propertyTypes.length === 0 ? (
           <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
             <Building size={32} className="mx-auto text-gray-400 mb-3" />
-            <p className="text-gray-900 font-medium">No property types found</p>
-            <p className="text-gray-500 text-sm mt-1">Add your first room, villa, or suite type to get started.</p>
+            <p className="text-gray-900 font-medium">No property listings found</p>
+            <p className="text-gray-500 text-sm mt-1">Add your first room, villa, or suite listing to get started.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -308,7 +392,7 @@ export default function PropertyTypes() {
           <ArrowLeft size={20} />
         </button>
         <h3 className="text-xl font-bold text-gray-900">
-          {editingTypeId ? 'Edit Property Type' : 'Add New Property Type'}
+          {editingTypeId ? 'Edit Property Listing' : 'Add New Property Listing'}
         </h3>
       </div>
       <form onSubmit={submitPropertyType} className="border border-gray-200 rounded-xl shadow-sm overflow-hidden bg-white">
@@ -317,14 +401,9 @@ export default function PropertyTypes() {
         <div className="p-6 border-b border-gray-100 bg-gray-50 space-y-6">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Listing URL (Airbnb or Booking)</label>
-            <div className="flex gap-3">
-              <div className="relative flex-1">
-                <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
-              </div>
-              <button type="button" onClick={() => alert('OTA Scraper coming soon')} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium">
-                <Wand2 size={16} className="mr-2 text-vailo-teal" /> Auto-fill
-              </button>
+            <div className="relative">
+              <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
             </div>
           </div>
           <div>
@@ -332,12 +411,32 @@ export default function PropertyTypes() {
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                <input type="url" name="googleMapsUrl" value={typeFormData.googleMapsUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
+                <input
+                  type="url"
+                  name="googleMapsUrl"
+                  value={typeFormData.googleMapsUrl}
+                  onChange={handleTypeChange}
+                  placeholder="Full google.com/maps/place/… or maps.app.goo.gl/…"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
+                />
               </div>
-              <button type="button" onClick={handleAutoFillMaps} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors">
-                <Wand2 size={16} className="mr-2 text-vailo-teal" /> Auto-calc
+              <button
+                type="button"
+                onClick={handleAutoFillMaps}
+                disabled={isMagicFilling || !typeFormData.googleMapsUrl}
+                className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {isMagicFilling ? (
+                  <Loader2 size={16} className="mr-2 animate-spin text-vailo-teal" />
+                ) : (
+                  <Wand2 size={16} className="mr-2 text-vailo-teal" />
+                )}
+                {isMagicFilling ? 'Filling…' : 'Auto-fill'}
               </button>
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Fills listing name, coordinates, address, website, and cover photo when available.
+            </p>
           </div>
         </div>
 
@@ -403,7 +502,7 @@ export default function PropertyTypes() {
           <h4 className="text-sm font-bold text-gray-900 border-b border-gray-100 pb-2 mb-4">General Details</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Property Type Name *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Listing name *</label>
               <input type="text" required name="propertyTypeName" value={typeFormData.propertyTypeName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             
@@ -507,7 +606,7 @@ export default function PropertyTypes() {
         <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
           <button type="button" onClick={cancelForm} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>
           <button type="submit" disabled={isSubmittingType} className="px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg disabled:opacity-50 transition-colors shadow-sm">
-            {isSubmittingType ? 'Saving...' : (editingTypeId ? 'Update Property Type' : 'Save Property Type')}
+            {isSubmittingType ? 'Saving...' : (editingTypeId ? 'Update Property Listing' : 'Save Property Listing')}
           </button>
         </div>
       </form>

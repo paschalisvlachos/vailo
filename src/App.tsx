@@ -5,9 +5,9 @@ import { auth } from "./lib/firebase";
 import Layout from "./components/admin/Layout";
 import Login from "./components/admin/Login";
 import PropertiesPage from "./pages/admin/properties/PropertiesPage";
-import AddProperty from "./pages/admin/properties/AddProperty";
+import PropertyFormPage from "./pages/admin/properties/PropertyFormPage";
 import OwnersPage from "./pages/admin/OwnersPage";
-import AddOwner from "./pages/admin/AddOwner";
+import OwnerFormPage from "./pages/admin/OwnerFormPage";
 import PropertyLayout from "./pages/admin/properties/PropertyLayout";
 import Overview from "./pages/admin/properties/Overview";
 import PropertyTypes from "./pages/admin/properties/PropertyTypes";
@@ -31,6 +31,7 @@ import { useNewDiscoveredPlacesCount } from "./hooks/useNewDiscoveredPlacesCount
 import { Link } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 
+import { ToastProvider } from "./context/ToastContext";
 import GuestPortal from "./pages/guest/GuestPortal";
 import AdminPageHeader, { AdminCard } from "./components/admin/AdminPageHeader";
 import { Building2, Globe, Users, Sparkles } from "lucide-react";
@@ -121,6 +122,7 @@ export default function App() {
   };
 
   return (
+    <ToastProvider>
     <BrowserRouter>
       <Routes>
         {/* ======================================= */}
@@ -133,7 +135,8 @@ export default function App() {
         {/* ======================================= */}
         <Route path="/" element={<AdminRoute><DashboardPage /></AdminRoute>} />
         <Route path="/properties" element={<AdminRoute><PropertiesPage /></AdminRoute>} />
-        <Route path="/add-property" element={<AdminRoute><AddProperty /></AdminRoute>} />
+        <Route path="/add-property" element={<AdminRoute><PropertyFormPage /></AdminRoute>} />
+        <Route path="/properties/:id/edit" element={<AdminRoute><PropertyFormPage /></AdminRoute>} />
         
         {/* React Router now knows this takes priority over the GuestPortal route! */}
         <Route path="/properties/:id" element={<AdminRoute><PropertyLayout /></AdminRoute>}>
@@ -149,7 +152,8 @@ export default function App() {
         </Route>
 
         <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />
-        <Route path="/add-owner" element={<AdminRoute><AddOwner /></AdminRoute>} />
+        <Route path="/add-owner" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
+        <Route path="/owners/:id/edit" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
         <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
         <Route path="/area" element={<AdminRoute><AreaSelector /></AdminRoute>} />
         <Route path="/area/:country/:area/ai-categories" element={<AdminRoute><AiCategories /></AdminRoute>} />
@@ -161,5 +165,6 @@ export default function App() {
         <Route path="/area/:country/:area/discovered-places" element={<AdminRoute><AreaDiscoveredPlaces /></AdminRoute>} />
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import {
   Globe,
   MapPin,
@@ -37,6 +38,7 @@ const MODULES = [
 
 export default function AreaSelector() {
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [countries, setCountries] = useState<string[]>([]);
   const [selectedCountry, setSelectedCountry] = useState(localStorage.getItem('vailo_admin_country') || '');
@@ -96,7 +98,7 @@ export default function AreaSelector() {
 
     const isDuplicate = dbAreas.some((area) => area.toLowerCase() === newAreaName.trim().toLowerCase());
     if (isDuplicate) {
-      alert('This area already exists in the database.');
+      toast.warning('This area already exists in the database.');
       return;
     }
 
@@ -115,7 +117,7 @@ export default function AreaSelector() {
       localStorage.setItem('vailo_admin_area', finalName);
     } catch (error) {
       console.error('Error adding area:', error);
-      alert('Failed to add area to database.');
+      toast.error('Failed to add area to database.');
     } finally {
       setIsAddingArea(false);
     }

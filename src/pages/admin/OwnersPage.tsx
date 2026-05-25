@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Users, Plus, Pencil, Trash2 } from 'lucide-react';
-import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
+import { collection, collectionGroup, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { useToast } from '../../context/ToastContext';
 import AdminPageHeader, {
   AdminButtonLink,
   AdminCard,
@@ -13,7 +15,6 @@ interface Owner {
   fullName: string;
   email: string;
   company: string;
-  propertiesCount: number;
   role: string;
   status: string;
 }
@@ -32,18 +33,53 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function CountBadge({ count, title }: { count: number; title?: string }) {
+  return (
+    <span
+      title={title}
+      className="inline-flex min-w-[2rem] justify-center bg-vailo-surface-elevated text-vailo-dark py-1 px-2.5 rounded-full text-sm font-semibold tabular-nums"
+    >
+      {count}
+    </span>
+  );
+}
+
 export default function OwnersPage() {
+  const toast = useToast();
   const [owners, setOwners] = useState<Owner[]>([]);
+  const [managedPropertyCounts, setManagedPropertyCounts] = useState<Record<string, number>>({});
+  const [allocatedTypeCounts, setAllocatedTypeCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'owners'), (snapshot) => {
-      setOwners(
-        snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Owner[]
-      );
+    const unsubOwners = onSnapshot(collection(db, 'owners'), (snapshot) => {
+      setOwners(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Owner[]);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    const unsubProperties = onSnapshot(collection(db, 'properties'), (snapshot) => {
+      const counts: Record<string, number> = {};
+      snapshot.docs.forEach((d) => {
+        const ownerId = d.data().ownerId as string | undefined;
+        if (ownerId) counts[ownerId] = (counts[ownerId] || 0) + 1;
+      });
+      setManagedPropertyCounts(counts);
+    });
+
+    const unsubTypes = onSnapshot(collectionGroup(db, 'propertyTypes'), (snapshot) => {
+      const counts: Record<string, number> = {};
+      snapshot.docs.forEach((d) => {
+        const ownerId = d.data().ownerId as string | undefined;
+        if (ownerId) counts[ownerId] = (counts[ownerId] || 0) + 1;
+      });
+      setAllocatedTypeCounts(counts);
+    });
+
+    return () => {
+      unsubOwners();
+      unsubProperties();
+      unsubTypes();
+    };
   }, []);
 
   const handleDelete = async (id: string, name: string) => {
@@ -52,7 +88,7 @@ export default function OwnersPage() {
         await deleteDoc(doc(db, 'owners', id));
       } catch (error) {
         console.error('Error deleting owner:', error);
-        alert('Failed to delete owner.');
+        toast.error('Failed to delete owner.');
       }
     }
   };
@@ -100,15 +136,26 @@ export default function OwnersPage() {
                         {owner.role}
                       </span>
                     </div>
+                    <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-600">
+                      <span>
+                        <strong className="text-vailo-teal">{managedPropertyCounts[owner.id] || 0}</strong>{' '}
+                        properties managed
+                      </span>
+                      <span className="text-gray-300">·</span>
+                      <span>
+                        <strong className="text-vailo-gold-muted">{allocatedTypeCounts[owner.id] || 0}</strong>{' '}
+                        listings allocated
+                      </span>
+                    </div>
                   </div>
                   <div className="flex flex-col gap-1 shrink-0">
-                    <button
-                      type="button"
+                    <Link
+                      to={`/owners/${owner.id}/edit`}
                       className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
-                      onClick={() => alert('Edit coming soon!')}
+                      title="Edit owner"
                     >
                       <Pencil size={17} />
-                    </button>
+                    </Link>
                     <button
                       type="button"
                       onClick={() => handleDelete(owner.id, owner.fullName)}
@@ -129,7 +176,12 @@ export default function OwnersPage() {
                   <tr>
                     <th>Name</th>
                     <th>Company</th>
-                    <th className="text-center">Properties</th>
+                    <th className="text-center" title="Assigned on property (owner / manager)">
+                      Properties managed
+                    </th>
+                    <th className="text-center" title="Allocated owner on individual property listings">
+                      Listings allocated
+                    </th>
                     <th>Role</th>
                     <th>Status</th>
                     <th className="text-right">Actions</th>
@@ -144,17 +196,34 @@ export default function OwnersPage() {
                       </td>
                       <td>{owner.company || '—'}</td>
                       <td className="text-center">
-                        <span className="bg-vailo-surface-elevated text-vailo-dark py-1 px-3 rounded-full text-sm font-medium">
-                          {owner.propertiesCount || 0}
-                        </span>
+                        <CountBadge
+                          count={managedPropertyCounts[owner.id] || 0}
+                          title="Properties where this user is assigned agent/owner"
+                        />
+                      </td>
+                      <td className="text-center">
+                        <CountBadge
+                          count={allocatedTypeCounts[owner.id] || 0}
+                          title="Property listings where this user is the allocated owner"
+                        />
                       </td>
                       <td className="capitalize text-gray-600">{owner.role}</td>
-                      <td><StatusBadge status={owner.status} /></td>
+                      <td>
+                        <StatusBadge status={owner.status} />
+                      </td>
                       <td className="text-right">
-                        <button type="button" className="p-2 text-gray-400 hover:text-vailo-teal" onClick={() => alert('Edit coming soon!')}>
+                        <Link
+                          to={`/owners/${owner.id}/edit`}
+                          className="inline-flex p-2 text-gray-400 hover:text-vailo-teal"
+                          title="Edit owner"
+                        >
                           <Pencil size={17} />
-                        </button>
-                        <button type="button" onClick={() => handleDelete(owner.id, owner.fullName)} className="p-2 text-gray-400 hover:text-red-600">
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(owner.id, owner.fullName)}
+                          className="p-2 text-gray-400 hover:text-red-600"
+                        >
                           <Trash2 size={17} />
                         </button>
                       </td>

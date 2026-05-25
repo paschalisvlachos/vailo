@@ -5,11 +5,13 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage, ai } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { ArrowLeft, Plus, Image as ImageIcon, Pencil, Trash2, Loader2, MapPin, Wand2, Briefcase, Link as LinkIcon, Phone, Mail, MessageCircle } from 'lucide-react';
 
 export default function AreaFeatures() {
   const { country, area } = useParams<{ country: string, area: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   
   const decodedCountry = decodeURIComponent(country || '');
   const decodedArea = decodeURIComponent(area || '');
@@ -118,7 +120,10 @@ export default function AreaFeatures() {
   // --- AI MAGIC FILL ---
   const handleMagicFill = async () => {
     const url = formData.googleMapsUrl;
-    if (!url) return alert("Please paste a Google Maps URL first.");
+    if (!url) {
+      toast.warning("Please paste a Google Maps URL first.");
+      return;
+    }
     setIsMagicFilling(true);
 
     try {
@@ -200,7 +205,7 @@ export default function AreaFeatures() {
       }
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      alert("Could not process this link. Ensure it is a valid Google Maps place.");
+      toast.error("Could not process this link. Ensure it is a valid Google Maps place.");
     } finally {
       setIsMagicFilling(false);
     }
@@ -208,7 +213,10 @@ export default function AreaFeatures() {
 
   // --- AI DESCRIPTION GENERATOR ---
   const handleGenerateDescription = async () => {
-    if (!formData.name) return alert("Please enter a name first.");
+    if (!formData.name) {
+      toast.warning("Please enter a name first.");
+      return;
+    }
     setIsGeneratingDesc(true);
     try {
       const cats = formData.categories.join(' and ');
@@ -217,15 +225,22 @@ export default function AreaFeatures() {
       const result = await model.generateContent(prompt);
       setFormData(prev => ({ ...prev, description: result.response.text().trim() }));
     } catch (e) {
-      console.error(e); alert("Failed to generate description.");
+      console.error(e);
+      toast.error("Failed to generate description.");
     } finally { setIsGeneratingDesc(false); }
   };
 
   // --- SUBMIT ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.categories.length === 0) return alert("Please select at least one Category.");
-    if (formData.isLocal && formData.experienceTypes.length === 0) return alert("Please select an Experience Type for the Local tag.");
+    if (formData.categories.length === 0) {
+      toast.warning("Please select at least one Category.");
+      return;
+    }
+    if (formData.isLocal && formData.experienceTypes.length === 0) {
+      toast.warning("Please select an Experience Type for the Local tag.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -251,7 +266,7 @@ export default function AreaFeatures() {
       setImageFile(null); 
       setImagePreview(null);
     } catch (error) { 
-      alert("Failed to save feature."); 
+      toast.error("Failed to save feature."); 
     } finally { 
       setIsSubmitting(false); 
       setIsUploadingImage(false); 

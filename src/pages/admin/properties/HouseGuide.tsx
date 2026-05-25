@@ -261,7 +261,7 @@ export default function HouseGuide() {
   };
 
   // --- RENDERERS ---
-  if (propertyTypes.length === 0) return <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-gray-100"><Building className="mx-auto text-gray-300 mb-4" size={40}/><h3 className="text-xl font-bold">No Property Types</h3></div>;
+  if (propertyTypes.length === 0) return <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-gray-100"><Building className="mx-auto text-gray-300 mb-4" size={40}/><h3 className="text-xl font-bold">No Property Listings</h3></div>;
 
   return (
     <div className="admin-page">

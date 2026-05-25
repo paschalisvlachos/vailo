@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { Calendar as CalendarIcon, Plus, Mail, Link2, Check, ArrowLeft, Building, Trash2, Loader2, AlertCircle } from 'lucide-react';
 
 export default function Reservations() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const toast = useToast();
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [filterTypeId, setFilterTypeId] = useState<string>('all');
@@ -55,7 +57,10 @@ export default function Reservations() {
 
   const submitManualBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!propertyId || !formData.typeId) return alert("Please select a unit.");
+    if (!propertyId || !formData.typeId) {
+      toast.warning("Please select a unit.");
+      return;
+    }
     
     // Normalize new dates for mathematical comparison
     const newStart = new Date(formData.start);
@@ -63,7 +68,10 @@ export default function Reservations() {
     newStart.setHours(0, 0, 0, 0);
     newEnd.setHours(0, 0, 0, 0);
 
-    if (newEnd <= newStart) return alert("Check-out must be after check-in.");
+    if (newEnd <= newStart) {
+      toast.warning("Check-out must be after check-in.");
+      return;
+    }
     
     setIsSubmitting(true);
     try {
@@ -85,7 +93,7 @@ export default function Reservations() {
       });
 
       if (hasConflict) {
-        alert("DOUBLE BOOKING DETECTED: These dates overlap with an existing reservation in this unit. Please choose different dates or a different unit.");
+        toast.warning("DOUBLE BOOKING DETECTED: These dates overlap with an existing reservation in this unit. Please choose different dates or a different unit.");
         setIsSubmitting(false);
         return; // Immediately stop execution
       }
@@ -112,7 +120,7 @@ export default function Reservations() {
       setIsFormOpen(false);
       setFormData(initialFormState);
     } catch (error) {
-      alert("Failed to add reservation.");
+      toast.error("Failed to add reservation.");
     } finally {
       setIsSubmitting(false);
     }
@@ -122,7 +130,7 @@ export default function Reservations() {
     const targetType = propertyTypes.find(t => t.id === booking.typeId);
     if (!targetType) return;
 
-    alert(`Invitation sent to ${booking.guestName || booking.summary}!`);
+    toast.success(`Invitation sent to ${booking.guestName || booking.summary}!`);
 
     const updatedBookings = targetType.syncedBookings.map((b: any) => 
       b.id === booking.id ? { ...b, isInvited: true } : b
@@ -157,7 +165,7 @@ export default function Reservations() {
     return (
       <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
         <Building size={32} className="mx-auto text-gray-400 mb-3" />
-        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Types Configured</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Listings Configured</h3>
         <p className="text-gray-500 max-w-sm mx-auto mb-6">Create a unit first to manage reservations.</p>
       </div>
     );
@@ -179,7 +187,7 @@ export default function Reservations() {
           <div className="p-6 border-b border-gray-100 bg-gray-50">
             <label className="block text-sm font-semibold text-gray-700 mb-1">Select Unit *</label>
             <select required name="typeId" value={formData.typeId} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
-              <option value="">Select a property type...</option>
+              <option value="">Select a property listing...</option>
               {propertyTypes.map(type => (
                 <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
               ))}

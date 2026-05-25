@@ -1,29 +1,61 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Pencil, Trash2, User } from 'lucide-react';
+import { Building2, Plus, Pencil, Trash2, User, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import AdminPageHeader, {
+  AdminBadge,
   AdminButtonLink,
   AdminCard,
   AdminEmptyState,
 } from '../../../components/admin/AdminPageHeader';
+import type { ListingKind } from './PropertyFormPage';
 
 interface Property {
   id: string;
   propertyName: string;
   ownerId: string;
   internalRefCode: string;
+  listingKind?: ListingKind;
+  country?: string;
+  area?: string;
+  city?: string;
+}
+
+function KindBadge({ kind }: { kind?: ListingKind }) {
+  const isHotel = kind === 'hotel';
+  return (
+    <AdminBadge variant={isHotel ? 'gold' : 'teal'}>
+      {isHotel ? 'Hotel' : 'Property'}
+    </AdminBadge>
+  );
+}
+
+function LocationCell({ property }: { property: Property }) {
+  const area = property.area || property.city;
+  if (!property.country && !area) {
+    return <span className="text-gray-400 italic text-sm">Not set</span>;
+  }
+  return (
+    <span className="text-sm text-gray-600 inline-flex items-center gap-1.5">
+      <MapPin size={13} className="text-vailo-teal/50 shrink-0" />
+      {[area, property.country].filter(Boolean).join(', ')}
+    </span>
+  );
 }
 
 export default function PropertiesPage() {
+  const toast = useToast();
   const [properties, setProperties] = useState<Property[]>([]);
   const [owners, setOwners] = useState<Record<string, { fullName?: string; role?: string }>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubProps = onSnapshot(collection(db, 'properties'), (snapshot) => {
-      setProperties(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Property[]);
+      const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Property[];
+      rows.sort((a, b) => a.propertyName.localeCompare(b.propertyName));
+      setProperties(rows);
       setLoading(false);
     });
     const unsubOwners = onSnapshot(collection(db, 'owners'), (snapshot) => {
@@ -44,7 +76,7 @@ export default function PropertiesPage() {
       try {
         await deleteDoc(doc(db, 'properties', id));
       } catch {
-        alert('Failed to delete property.');
+        toast.error('Failed to delete property.');
       }
     }
   };
@@ -79,7 +111,6 @@ export default function PropertiesPage() {
         />
       ) : (
         <>
-          {/* Mobile / tablet cards */}
           <div className="grid gap-3 md:hidden">
             {properties.map((property) => {
               const allocatedUser = owners[property.ownerId];
@@ -87,13 +118,19 @@ export default function PropertiesPage() {
                 <AdminCard key={property.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <Link
-                        to={`/properties/${property.id}`}
-                        className="font-semibold text-vailo-teal hover:underline block truncate"
-                      >
-                        {property.propertyName}
-                      </Link>
-                      <p className="text-xs text-gray-500 mt-1 font-mono">{property.internalRefCode}</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <Link
+                          to={`/properties/${property.id}`}
+                          className="font-semibold text-vailo-teal hover:underline truncate"
+                        >
+                          {property.propertyName}
+                        </Link>
+                        <KindBadge kind={property.listingKind} />
+                      </div>
+                      <p className="text-xs text-gray-500 font-mono">{property.internalRefCode}</p>
+                      <div className="mt-2">
+                        <LocationCell property={property} />
+                      </div>
                       {allocatedUser ? (
                         <p className="text-sm text-gray-700 mt-2 flex items-center gap-1.5">
                           <User size={14} className="text-gray-400 shrink-0" />
@@ -104,9 +141,13 @@ export default function PropertiesPage() {
                       )}
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <button type="button" className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg">
+                      <Link
+                        to={`/properties/${property.id}/edit`}
+                        className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
+                        title="Edit property"
+                      >
                         <Pencil size={17} />
-                      </button>
+                      </Link>
                       <button
                         type="button"
                         onClick={() => handleDelete(property.id, property.propertyName)}
@@ -121,13 +162,14 @@ export default function PropertiesPage() {
             })}
           </div>
 
-          {/* Desktop table */}
           <AdminCard className="hidden md:block overflow-hidden">
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
                   <tr>
                     <th>Property</th>
+                    <th>Type</th>
+                    <th>Location</th>
                     <th>Owner / Agent</th>
                     <th>Ref</th>
                     <th className="text-right">Actions</th>
@@ -146,7 +188,13 @@ export default function PropertiesPage() {
                             {property.propertyName}
                           </Link>
                         </td>
-                        <td className="px-5 py-4 text-sm">
+                        <td>
+                          <KindBadge kind={property.listingKind} />
+                        </td>
+                        <td>
+                          <LocationCell property={property} />
+                        </td>
+                        <td>
                           {allocatedUser ? (
                             <div className="flex items-center gap-2">
                               <User size={14} className="text-gray-400" />
@@ -159,15 +207,19 @@ export default function PropertiesPage() {
                             <span className="text-gray-400 italic">Unassigned</span>
                           )}
                         </td>
-                        <td className="px-5 py-4">
-                          <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-vailo-teal/5 text-vailo-teal">
+                        <td>
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-vailo-teal/5 text-vailo-teal font-mono">
                             {property.internalRefCode}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-right">
-                          <button type="button" className="p-2 text-gray-400 hover:text-vailo-teal">
+                        <td className="text-right">
+                          <Link
+                            to={`/properties/${property.id}/edit`}
+                            className="inline-flex p-2 text-gray-400 hover:text-vailo-teal"
+                            title="Edit property"
+                          >
                             <Pencil size={17} />
-                          </button>
+                          </Link>
                           <button
                             type="button"
                             onClick={() => handleDelete(property.id, property.propertyName)}

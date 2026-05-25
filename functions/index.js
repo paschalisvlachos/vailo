@@ -37,7 +37,7 @@ setGlobalOptions({
 });
 
 const PLACES_FIELD_MASK =
-  "places.id,places.displayName,places.rating,places.editorialSummary,places.location,places.photos,places.primaryType,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.googleMapsUri";
+  "places.id,places.displayName,places.rating,places.editorialSummary,places.location,places.photos,places.primaryType,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.formattedAddress,places.addressComponents";
 
 const DUPLICATE_RADIUS_METERS = 150;
 const FUZZY_NAME_RADIUS_METERS = 250;
@@ -264,6 +264,32 @@ function buildMapsSearchUrl(latitude, longitude, label) {
   return buildPlaceMapUrls(null, latitude, longitude, label).googleMapsUrl;
 }
 
+function parseAddressComponents(components) {
+  if (!Array.isArray(components)) {
+    return { addressLine: "", area: "", city: "", postCode: "", country: "" };
+  }
+
+  const get = (...types) => {
+    for (const type of types) {
+      const match = components.find((c) => c.types?.includes(type));
+      if (match) return (match.longText || match.shortText || "").trim();
+    }
+    return "";
+  };
+
+  const streetNumber = get("street_number");
+  const route = get("route");
+  const addressLine = [streetNumber, route].filter(Boolean).join(" ");
+
+  return {
+    addressLine,
+    area: get("neighborhood", "sublocality", "sublocality_level_1"),
+    city: get("locality", "postal_town", "administrative_area_level_2"),
+    postCode: get("postal_code"),
+    country: get("country"),
+  };
+}
+
 async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, requestedTitle) {
   const body = { textQuery: searchQuery, pageSize: 10 };
 
@@ -331,6 +357,8 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
   const placeName = place.displayName?.text || searchQuery;
   const mapUrls = buildPlaceMapUrls(place.id, latitude, longitude, placeName);
   const googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
+  const parsedAddress = parseAddressComponents(place.addressComponents);
+  const formattedAddress = place.formattedAddress || "";
 
   return {
     googlePlaceId: place.id || null,
@@ -346,6 +374,12 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
     photoUrl,
     googleMapsUrl,
     navigateUrl: mapUrls.navigateUrl,
+    formattedAddress,
+    addressLine: parsedAddress.addressLine || formattedAddress,
+    area: parsedAddress.area,
+    city: parsedAddress.city,
+    postCode: parsedAddress.postCode,
+    country: parsedAddress.country,
   };
 }
 
@@ -411,6 +445,14 @@ async function resolveUrlSearchQuery(searchQuery, area) {
     !placeName.includes("302 Moved")
   ) {
     return area ? `${placeName} ${area}` : placeName;
+  }
+
+  const coordMatch =
+    finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+    finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (coordMatch) {
+    const coordQuery = `${coordMatch[1]},${coordMatch[2]}`;
+    return area ? `${coordQuery} ${area}` : coordQuery;
   }
 
   throw new Error("Extracted invalid name from URL/HTML.");
@@ -596,10 +638,136 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
       phoneNumber: place.phoneNumber,
       websiteUri: place.websiteUri,
       photoUrl: place.photoUrl,
+      googleMapsUrl: place.googleMapsUrl,
+      formattedAddress: place.formattedAddress,
+      addressLine: place.addressLine,
+      area: place.area,
+      city: place.city,
+      postCode: place.postCode,
+      country: place.country,
     };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Google API Error:", error.response?.data || error.message);
     throw new HttpsError("internal", "Failed to fetch Google Place data.");
   }
+});
+
+const MAGIC_FILL_UNIT_COST = 0.027;
+
+async function queryBigQueryBilling(tableId, invoiceMonth) {
+  const { BigQuery } = require("@google-cloud/bigquery");
+  const bigquery = new BigQuery();
+  const location = process.env.BILLING_BQ_LOCATION || "US";
+
+  const query = `
+    SELECT
+      service.description AS service,
+      ROUND(SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)), 4) AS cost
+    FROM \`${tableId}\`
+    WHERE invoice.month = @invoiceMonth
+    GROUP BY service.description
+    HAVING cost != 0
+    ORDER BY cost DESC
+    LIMIT 50
+  `;
+
+  const [job] = await bigquery.createQueryJob({
+    query,
+    params: { invoiceMonth },
+    location,
+  });
+  const [rows] = await job.getQueryResults();
+
+  const lineItems = rows.map((row) => ({
+    label: row.service || "Unknown service",
+    cost: Number(row.cost) || 0,
+  }));
+  const totalCost = lineItems.reduce((sum, item) => sum + item.cost, 0);
+
+  return { totalCost, lineItems, currency: "USD" };
+}
+
+async function buildUsageLedger(monthKey) {
+  const usageSnap = await firestore.collection("platformUsage").doc(monthKey).get();
+  const usage = usageSnap.data() || {};
+  const magicFill = typeof usage.magicFill === "number" ? usage.magicFill : 0;
+  const estimated = magicFill * MAGIC_FILL_UNIT_COST;
+
+  return {
+    totalCost: estimated,
+    lineItems: magicFill > 0
+      ? [{ label: "Places API (tracked Magic Fill calls)", cost: estimated, count: magicFill }]
+      : [],
+    currency: "USD",
+    magicFill,
+  };
+}
+
+exports.getBillingInvoice = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in to view billing.");
+  }
+
+  const payload = request.data || {};
+  const monthKey =
+    typeof payload.monthKey === "string" && /^\d{4}-\d{2}$/.test(payload.monthKey)
+      ? payload.monthKey
+      : new Date().toISOString().slice(0, 7);
+  const invoiceMonth = monthKey.replace("-", "");
+  const bqTable = process.env.BILLING_BQ_TABLE;
+
+  if (bqTable) {
+    try {
+      const summary = await queryBigQueryBilling(bqTable, invoiceMonth);
+      await firestore.collection("platformBilling").doc(monthKey).set(
+        {
+          source: "bigquery",
+          monthKey,
+          invoiceMonth,
+          totalCost: summary.totalCost,
+          lineItems: summary.lineItems,
+          currency: summary.currency,
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        source: "bigquery",
+        configured: true,
+        monthKey,
+        totalCost: summary.totalCost,
+        lineItems: summary.lineItems,
+        currency: summary.currency,
+      };
+    } catch (error) {
+      logger.error("BigQuery billing query failed:", error.message || error);
+      const ledger = await buildUsageLedger(monthKey);
+      return {
+        source: "ledger",
+        configured: true,
+        bigQueryError: error.message || "BigQuery query failed",
+        monthKey,
+        totalCost: ledger.totalCost,
+        lineItems: ledger.lineItems,
+        currency: ledger.currency,
+        magicFill: ledger.magicFill,
+        note: "BigQuery is configured but the query failed. Showing usage ledger instead.",
+      };
+    }
+  }
+
+  const ledger = await buildUsageLedger(monthKey);
+  return {
+    source: "ledger",
+    configured: false,
+    monthKey,
+    totalCost: ledger.totalCost,
+    lineItems: ledger.lineItems,
+    currency: ledger.currency,
+    magicFill: ledger.magicFill,
+    note:
+      "Set BILLING_BQ_TABLE on Cloud Functions to your billing export table for full GCP costs.",
+  };
 });

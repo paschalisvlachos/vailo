@@ -8,9 +8,12 @@ import {
   CheckCircle2,
   Activity,
   Radio,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
-import AdminPageHeader, { AdminAlert, AdminCard } from '../../components/admin/AdminPageHeader';
+import AdminPageHeader, { AdminAlert, AdminBadge, AdminButton, AdminCard } from '../../components/admin/AdminPageHeader';
 import { MAGIC_FILL_UNIT_COST, usePlatformUsage } from '../../hooks/usePlatformUsage';
+import { useBillingInvoice } from '../../hooks/useBillingInvoice';
 
 function formatUsd(amount: number) {
   return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
@@ -24,6 +27,12 @@ function formatMonthLabel(monthKey: string) {
 export default function Billing() {
   const [activeTab, setActiveTab] = useState<'accurate' | 'estimate'>('estimate');
   const { stats, loading, error, monthKey, estimatedCost } = usePlatformUsage();
+  const {
+    invoice,
+    loading: invoiceLoading,
+    error: invoiceError,
+    refresh: refreshInvoice,
+  } = useBillingInvoice(activeTab === 'accurate' ? monthKey : undefined);
 
   return (
     <div className="admin-page">
@@ -62,19 +71,109 @@ export default function Billing() {
 
       {activeTab === 'accurate' && (
         <div className="space-y-6">
-          <AdminAlert variant="gold" icon={<AlertCircle size={18} />} title="BigQuery billing export not connected">
-            Official invoice data requires a Google Cloud BigQuery billing export. Until that is configured, use
-            the Live Tracker tab for real-time Magic Fill counts from Firestore.
-          </AdminAlert>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {invoice?.source === 'bigquery' ? (
+              <AdminAlert variant="success" icon={<CheckCircle2 size={18} />} title="GCP billing (BigQuery)">
+                Costs pulled from your Google Cloud billing export for {formatMonthLabel(monthKey)}.
+              </AdminAlert>
+            ) : (
+              <AdminAlert variant="info" icon={<AlertCircle size={18} />} title="Usage ledger">
+                Showing tracked Places API usage at {formatUsd(MAGIC_FILL_UNIT_COST)}/call. Optional: set{' '}
+                <code className="text-xs bg-white/60 px-1 py-0.5 rounded">BILLING_BQ_TABLE</code> on Cloud
+                Functions for full GCP invoice breakdown (no extra Vailo cost).
+              </AdminAlert>
+            )}
+            <AdminButton
+              variant="secondary"
+              onClick={() => refreshInvoice()}
+              disabled={invoiceLoading}
+              className="shrink-0 self-start sm:self-center"
+            >
+              {invoiceLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              Refresh
+            </AdminButton>
+          </div>
 
-          <AdminCard className="p-12 border-dashed flex flex-col items-center justify-center text-center min-h-[220px]">
-            <Database size={36} className="mb-3 text-gray-300" />
-            <p className="text-base font-semibold text-vailo-dark font-luxury">Awaiting BigQuery setup</p>
-            <p className="text-sm text-gray-400 mt-2 max-w-lg leading-relaxed">
-              Enable billing export in Google Cloud Console, then wire a Cloud Function or scheduled job to query
-              costs into this dashboard.
-            </p>
-          </AdminCard>
+          {invoiceError && (
+            <AdminAlert variant="warning" title="Could not load invoice">
+              {invoiceError}
+            </AdminAlert>
+          )}
+
+          {invoice?.bigQueryError && (
+            <AdminAlert variant="warning" title="BigQuery unavailable">
+              {invoice.bigQueryError}. Showing usage ledger instead.
+            </AdminAlert>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <AdminCard className="p-6 md:col-span-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total this month</p>
+              <p className="text-4xl font-black text-vailo-dark font-luxury mt-2">
+                {invoiceLoading ? '—' : formatUsd(invoice?.totalCost ?? 0)}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">{formatMonthLabel(monthKey)}</p>
+              {invoice && (
+                <div className="mt-3">
+                  <AdminBadge variant={invoice.source === 'bigquery' ? 'teal' : 'gold'}>
+                    {invoice.source === 'bigquery' ? 'GCP Billing' : 'Usage ledger'}
+                  </AdminBadge>
+                </div>
+              )}
+            </AdminCard>
+
+            <AdminCard className="p-6 md:col-span-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Line items</p>
+              {invoiceLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                  <Loader2 size={18} className="animate-spin text-vailo-teal" />
+                  Loading…
+                </div>
+              ) : invoice && invoice.lineItems.length > 0 ? (
+                <div className="admin-table-wrap border-0">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Service / item</th>
+                        <th className="text-right">Qty</th>
+                        <th className="text-right">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.lineItems.map((item) => (
+                        <tr key={item.label}>
+                          <td className="font-medium text-vailo-dark">{item.label}</td>
+                          <td className="text-right text-gray-500 tabular-nums">
+                            {item.count != null ? item.count.toLocaleString() : '—'}
+                          </td>
+                          <td className="text-right font-semibold tabular-nums">{formatUsd(item.cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4">
+                  No billable usage recorded for {formatMonthLabel(monthKey)} yet.
+                </p>
+              )}
+            </AdminCard>
+          </div>
+
+          {invoice?.note && invoice.source === 'ledger' && !invoice.configured && (
+            <AdminCard className="p-5 text-sm text-gray-600 leading-relaxed">
+              <p className="font-semibold text-vailo-dark mb-2">Optional: full GCP invoice via BigQuery</p>
+              <ol className="list-decimal list-inside space-y-1 text-gray-500">
+                <li>In Google Cloud Console → Billing → Billing export, enable BigQuery export.</li>
+                <li>
+                  Set <code className="text-xs bg-vailo-surface-elevated px-1 rounded">BILLING_BQ_TABLE</code>{' '}
+                  on Cloud Functions to your export table (e.g.{' '}
+                  <code className="text-xs">project.dataset.gcp_billing_export_v1_XXXXX</code>).
+                </li>
+                <li>Redeploy functions. Query costs stay within BigQuery&apos;s free tier for typical admin use.</li>
+              </ol>
+            </AdminCard>
+          )}
         </div>
       )}
 

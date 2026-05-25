@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { 
   Leaf, Building, Zap, Recycle, Droplet, Sun, CheckCircle2, Loader2, 
   Thermometer, Lightbulb, Ban, Car, Bike, Sprout, CloudRain, Waves, 
@@ -15,6 +16,7 @@ const ENERGY_SCORES: Record<string, number> = {
 
 export default function GreenScore() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const toast = useToast();
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
@@ -132,9 +134,9 @@ export default function GreenScore() {
         updatedAt: new Date().toISOString()
       }, { merge: true });
       
-      alert("Green Score saved successfully!");
+      toast.success("Green Score saved successfully!");
     } catch (error) {
-      alert("Failed to save Green Score.");
+      toast.error("Failed to save Green Score.");
     } finally {
       setIsSubmitting(false);
     }
@@ -144,7 +146,7 @@ export default function GreenScore() {
     return (
       <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
         <Building size={32} className="mx-auto text-gray-400 mb-3" />
-        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Types Configured</h3>
+        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Listings Configured</h3>
         <p className="text-gray-500 max-w-sm mx-auto mb-6">
           Green Scores are calculated per specific unit. Please create a unit first.
         </p>
@@ -180,7 +182,7 @@ export default function GreenScore() {
           <h4 className="text-sm font-bold text-emerald-900 flex items-center">
             <Leaf size={16} className="mr-2" /> Unit Eco-Settings
           </h4>
-          <p className="text-xs text-emerald-700 mt-1">Select a property type to manage its sustainability profile.</p>
+          <p className="text-xs text-emerald-700 mt-1">Select a property listing to manage its sustainability profile.</p>
         </div>
         <select 
           value={selectedTypeId} 

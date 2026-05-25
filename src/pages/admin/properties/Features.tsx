@@ -5,10 +5,12 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ai, db, storage } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle } from 'lucide-react';
 
 export default function Features() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
+  const toast = useToast();
   
   const [propertyAreaContext, setPropertyAreaContext] = useState<{country: string, areaId: string, areaName: string} | null>(null);
   
@@ -136,8 +138,14 @@ export default function Features() {
   // --- AI MAGIC FILL ---
   const handleMagicFill = async () => {
     const url = formData.googleMapsUrl;
-    if (!url) return alert("Please paste a Google Maps URL first.");
-    if (!propertyAreaContext) return alert("Property area data missing.");
+    if (!url) {
+      toast.warning("Please paste a Google Maps URL first.");
+      return;
+    }
+    if (!propertyAreaContext) {
+      toast.warning("Property area data missing.");
+      return;
+    }
     setIsMagicFilling(true);
 
     try {
@@ -209,14 +217,17 @@ export default function Features() {
       }
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      alert("Could not process this link. Ensure it is a valid Google Maps place.");
+      toast.error("Could not process this link. Ensure it is a valid Google Maps place.");
     } finally {
       setIsMagicFilling(false);
     }
   };
 
   const handleGenerateDescription = async () => {
-    if (!formData.name) return alert("Please enter a name first.");
+    if (!formData.name) {
+      toast.warning("Please enter a name first.");
+      return;
+    }
     setIsGeneratingDesc(true);
     try {
       const cats = formData.categories.join(' and ');
@@ -226,14 +237,21 @@ export default function Features() {
       const result = await model.generateContent(prompt);
       setFormData(prev => ({ ...prev, description: result.response.text().trim() }));
     } catch (e) {
-      console.error(e); alert("Failed to generate description.");
+      console.error(e);
+      toast.error("Failed to generate description.");
     } finally { setIsGeneratingDesc(false); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.categories.length === 0) return alert("Please select at least one Category.");
-    if (formData.isLocal && formData.experienceTypes.length === 0) return alert("Please select an Experience Type for the Local tag.");
+    if (formData.categories.length === 0) {
+      toast.warning("Please select at least one Category.");
+      return;
+    }
+    if (formData.isLocal && formData.experienceTypes.length === 0) {
+      toast.warning("Please select an Experience Type for the Local tag.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -257,7 +275,7 @@ export default function Features() {
 
       closeAndResetForm();
     } catch (error) { 
-      alert("Failed to save feature."); 
+      toast.error("Failed to save feature."); 
     } finally { 
       setIsSubmitting(false); 
       setIsUploadingImage(false); 
@@ -301,7 +319,7 @@ export default function Features() {
 
       {!propertyAreaContext && !isLoading && (
         <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl mb-6 text-sm text-yellow-800">
-          <strong>Setup Required:</strong> We couldn't find an Area or City assigned to this property. Please go to the <strong>Property Types</strong> tab and ensure you have entered a City/Area. This is required to load your global categories and enable AI Magic Fill.
+          <strong>Setup Required:</strong> We couldn't find an Area or City assigned to this property. Please go to the <strong>Property Listings</strong> tab and ensure you have entered a City/Area. This is required to load your global categories and enable AI Magic Fill.
         </div>
       )}
 

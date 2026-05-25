@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { collection, addDoc, updateDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import {
   Radar,
   CheckCircle2,
@@ -89,6 +90,7 @@ function IconBtn({
 
 export default function AreaDiscoveredPlaces() {
   const { country, area } = useParams<{ country: string; area: string }>();
+  const toast = useToast();
 
   const decodedCountry = decodeURIComponent(country || '');
   const decodedArea = decodeURIComponent(area || '');
@@ -173,7 +175,7 @@ export default function AreaDiscoveredPlaces() {
       setEditingId(null);
     } catch (e) {
       console.error(e);
-      alert('Failed to save changes.');
+      toast.error('Failed to save changes.');
     } finally {
       setIsSaving(false);
     }
@@ -195,7 +197,7 @@ export default function AreaDiscoveredPlaces() {
     const category = editingId === place.id ? formData.category : place.category;
     if (!category) {
       openEdit(place);
-      alert('Choose a category in the form, then click Promote again.');
+      toast.warning('Choose a category in the form, then click Promote again.');
       return;
     }
     try {
@@ -220,15 +222,15 @@ export default function AreaDiscoveredPlaces() {
         updatedAt: new Date(),
       });
 
-      alert(`Added to Local Gems as "${place.name}".`);
+      toast.success(`Added to Local Gems as "${place.name}".`);
       setEditingId(null);
     } catch (e) {
       console.error(e);
-      alert('Failed to promote to Local Gem.');
+      toast.error('Failed to promote to Local Gem.');
     }
   };
 
-  const renderEditPanel = (place: DiscoveredPlace) => (
+  const renderEditPanel = () => (
     <div className="px-3 sm:px-4 py-3 bg-vailo-surface-elevated/80 border-t border-gray-100">
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
         <div className="col-span-2">
@@ -484,7 +486,7 @@ export default function AreaDiscoveredPlaces() {
                     </div>
                   </div>
 
-                  {isEditing && renderEditPanel(place)}
+                  {isEditing && renderEditPanel()}
                 </li>
               );
             })}

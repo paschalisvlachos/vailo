@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { collection, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
+import { useToast } from '../../../context/ToastContext';
 import { Image as ImageIcon, ArrowLeft, Upload, X, Loader2, Tag } from 'lucide-react';
 
 export default function FeaturesPhotos() {
   const { country, area } = useParams<{ country: string, area: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   
   // Notice we added an optional photos string array to our category type
   const [categories, setCategories] = useState<{id: string, name: string, photos?: string[]}[]>([]);
@@ -61,7 +63,7 @@ export default function FeaturesPhotos() {
       
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Failed to upload photo.");
+      toast.error("Failed to upload photo.");
     } finally {
       setUploadingCatId(null);
       // Reset the file input so the same file can be uploaded again if needed
@@ -80,7 +82,7 @@ export default function FeaturesPhotos() {
       });
     } catch (error) {
       console.error("Error removing photo:", error);
-      alert("Failed to remove photo.");
+      toast.error("Failed to remove photo.");
     }
   };
 

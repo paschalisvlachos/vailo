@@ -1,113 +1,518 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  updateDoc,
+  onSnapshot,
+  query,
+  where,
+} from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { User, Calendar, Pencil, Phone, Mail } from 'lucide-react';
-import { AdminCard, AdminBadge } from '../../../components/admin/AdminPageHeader';
+import { useToast } from '../../../context/ToastContext';
+import {
+  User,
+  Calendar,
+  Pencil,
+  Phone,
+  Mail,
+  MapPin,
+  Link2,
+  X,
+  Save,
+  ExternalLink,
+} from 'lucide-react';
+import {
+  AdminBadge,
+  AdminButton,
+  AdminCard,
+  AdminInput,
+  AdminLabel,
+  AdminSelect,
+} from '../../../components/admin/AdminPageHeader';
+import type { PropertyRecord } from './PropertyLayout';
+import type { ListingKind } from './PropertyFormPage';
+
+interface OwnerOption {
+  id: string;
+  fullName: string;
+  role: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+}
+
+type FormData = {
+  propertyName: string;
+  urlSlug: string;
+  internalRefCode: string;
+  listingKind: ListingKind;
+  country: string;
+  area: string;
+  listingUrl: string;
+  googleMapsUrl: string;
+  ownerId: string;
+  email: string;
+  phone: string;
+};
+
+function buildFormFromProperty(property: PropertyRecord): FormData {
+  return {
+    propertyName: property.propertyName || '',
+    urlSlug: property.urlSlug || '',
+    internalRefCode: property.internalRefCode || '',
+    listingKind: property.listingKind === 'hotel' ? 'hotel' : 'property',
+    country: property.country || '',
+    area: property.area || property.city || '',
+    listingUrl: property.listingUrl || '',
+    googleMapsUrl: property.googleMapsUrl || '',
+    ownerId: property.ownerId || '',
+    email: '',
+    phone: '',
+  };
+}
 
 export default function Overview() {
-  const { property } = useOutletContext<{ property: { ownerId?: string; createdAt?: string; urlSlug?: string } }>();
+  const { property, propertyId } = useOutletContext<{
+    property: PropertyRecord;
+    propertyId: string;
+  }>();
+  const toast = useToast();
 
-  const [relationalOwner, setRelationalOwner] = useState<{
-    fullName?: string;
-    email?: string;
-    phone?: string;
-    role?: string;
-  } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState<FormData>(() => buildFormFromProperty(property));
+  const [ownersList, setOwnersList] = useState<OwnerOption[]>([]);
+  const [countries, setCountries] = useState<string[]>([]);
+  const [dbAreas, setDbAreas] = useState<string[]>([]);
+  const [assignedOwner, setAssignedOwner] = useState<OwnerOption | null>(null);
   const [loadingOwner, setLoadingOwner] = useState(true);
+  const prevOwnerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const fetchOwner = async () => {
-      if (!property?.ownerId) {
-        setLoadingOwner(false);
-        return;
-      }
-      try {
-        const ownerDoc = await getDoc(doc(db, 'owners', property.ownerId));
-        if (ownerDoc.exists()) {
-          setRelationalOwner(ownerDoc.data());
-        }
-      } catch (error) {
-        console.error('Error fetching relational owner:', error);
-      } finally {
-        setLoadingOwner(false);
-      }
-    };
+    if (!isEditing) setFormData(buildFormFromProperty(property));
+  }, [property, isEditing]);
 
-    fetchOwner();
-  }, [property?.ownerId]);
+  useEffect(() => {
+    fetch('https://restcountries.com/v3.1/all?fields=name')
+      .then((res) => res.json())
+      .then((data) => {
+        const names = data
+          .map((c: { name: { common: string } }) => c.name.common)
+          .sort((a: string, b: string) => a.localeCompare(b));
+        setCountries(names);
+      })
+      .catch((err) => console.error('Failed to fetch countries:', err));
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'owners'), where('role', 'in', ['agent', 'owner']));
+    return onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as OwnerOption[];
+      list.sort((a, b) => a.fullName.localeCompare(b.fullName));
+      setOwnersList(list);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!formData.country) {
+      setDbAreas([]);
+      return;
+    }
+    return onSnapshot(collection(db, 'countries', formData.country, 'areas'), (snapshot) => {
+      const areas = snapshot.docs.map((d) => d.data().name as string);
+      areas.sort((a, b) => a.localeCompare(b));
+      setDbAreas(areas);
+    });
+  }, [formData.country]);
+
+  useEffect(() => {
+    const ownerId = isEditing ? formData.ownerId : property.ownerId;
+    if (!ownerId) {
+      setAssignedOwner(null);
+      setLoadingOwner(false);
+      return;
+    }
+
+    setLoadingOwner(true);
+    getDoc(doc(db, 'owners', ownerId))
+      .then((snap) => {
+        setAssignedOwner(snap.exists() ? ({ id: snap.id, ...snap.data() } as OwnerOption) : null);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingOwner(false));
+  }, [property.ownerId, formData.ownerId, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      prevOwnerIdRef.current = null;
+      return;
+    }
+    if (formData.ownerId === prevOwnerIdRef.current) return;
+    prevOwnerIdRef.current = formData.ownerId;
+    const owner = ownersList.find((o) => o.id === formData.ownerId);
+    if (owner) {
+      setFormData((prev) => ({
+        ...prev,
+        email: owner.email || '',
+        phone: owner.phone || '',
+      }));
+    } else if (!formData.ownerId) {
+      setFormData((prev) => ({ ...prev, email: '', phone: '' }));
+    }
+  }, [formData.ownerId, isEditing, ownersList]);
+
+  const handleStartEdit = () => {
+    const owner =
+      ownersList.find((o) => o.id === property.ownerId) || assignedOwner;
+    prevOwnerIdRef.current = property.ownerId || null;
+    setFormData({
+      ...buildFormFromProperty(property),
+      email: owner?.email || '',
+      phone: owner?.phone || '',
+    });
+    setIsEditing(true);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    if (name === 'country') {
+      setFormData((prev) => ({ ...prev, country: value, area: '' }));
+      return;
+    }
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleCancel = () => {
+    setFormData(buildFormFromProperty(property));
+    setIsEditing(false);
+  };
+
+  const handleSave = async () => {
+    if (!propertyId) return;
+    setIsSaving(true);
+    try {
+      await updateDoc(doc(db, 'properties', propertyId), {
+        propertyName: formData.propertyName.trim(),
+        urlSlug: formData.urlSlug.trim(),
+        internalRefCode: formData.internalRefCode.trim(),
+        listingKind: formData.listingKind,
+        country: formData.country,
+        area: formData.area,
+        city: formData.area,
+        listingUrl: formData.listingUrl,
+        googleMapsUrl: formData.googleMapsUrl,
+        ownerId: formData.ownerId,
+        updatedAt: new Date().toISOString(),
+      });
+      if (formData.ownerId) {
+        await updateDoc(doc(db, 'owners', formData.ownerId), {
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          updatedAt: new Date().toISOString(),
+        });
+        setAssignedOwner((prev) =>
+          prev && prev.id === formData.ownerId
+            ? { ...prev, email: formData.email.trim(), phone: formData.phone.trim() }
+            : prev
+        );
+      }
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving property:', error);
+      toast.error('Failed to save changes.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <AdminCard className="p-6">
-        <div className="flex justify-between items-center mb-5">
-          <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2">
-            <Calendar size={16} className="text-vailo-teal/60" /> General Details
-          </h3>
-          <button
-            type="button"
-            className="p-2 text-gray-400 hover:text-vailo-teal hover:bg-vailo-teal/5 rounded-xl transition-colors"
-            title="Edit General Details"
-          >
-            <Pencil size={16} />
-          </button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Registration Date</p>
-            <p className="font-medium text-vailo-dark">
-              {property.createdAt ? new Date(property.createdAt).toLocaleDateString() : '—'}
-            </p>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p className="text-sm text-gray-500">
+          {isEditing ? 'Edit property details below, then save.' : 'Property summary and allocation.'}
+        </p>
+        {!isEditing ? (
+          <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>
+            <Pencil size={16} /> Edit overview
+          </AdminButton>
+        ) : (
+          <div className="flex gap-2">
+            <AdminButton type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
+              <X size={16} /> Cancel
+            </AdminButton>
+            <AdminButton type="button" onClick={handleSave} disabled={isSaving}>
+              <Save size={16} /> {isSaving ? 'Saving…' : 'Save changes'}
+            </AdminButton>
           </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Base URL Slug</p>
-            <p className="font-medium text-vailo-dark font-mono text-sm">/{property.urlSlug || 'N/A'}</p>
-          </div>
-        </div>
-      </AdminCard>
+        )}
+      </div>
 
-      <AdminCard className="p-6">
-        <div className="flex justify-between items-center mb-5">
-          <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2">
-            <User size={16} className="text-vailo-teal/60" /> Assigned Contact
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <AdminCard className="p-6">
+          <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2 mb-5">
+            <Calendar size={16} className="text-vailo-teal/60" /> General details
           </h3>
-          <button
-            type="button"
-            className="p-2 text-gray-400 hover:text-vailo-teal hover:bg-vailo-teal/5 rounded-xl transition-colors"
-            title="Change Assigned Owner"
-          >
-            <Pencil size={16} />
-          </button>
-        </div>
 
-        {loadingOwner ? (
-          <p className="text-sm text-gray-500 animate-pulse">Loading contact details…</p>
-        ) : relationalOwner ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-xl bg-vailo-teal/8 flex items-center justify-center text-vailo-teal font-bold text-lg">
-                {relationalOwner.fullName?.charAt(0) || '?'}
+          {isEditing ? (
+            <div className="space-y-4">
+              <div>
+                <AdminLabel htmlFor="propertyName">Property name *</AdminLabel>
+                <AdminInput
+                  id="propertyName"
+                  name="propertyName"
+                  required
+                  value={formData.propertyName}
+                  onChange={handleChange}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <AdminLabel htmlFor="listingKind">Type *</AdminLabel>
+                  <AdminSelect
+                    id="listingKind"
+                    name="listingKind"
+                    value={formData.listingKind}
+                    onChange={handleChange}
+                  >
+                    <option value="property">Property</option>
+                    <option value="hotel">Hotel</option>
+                  </AdminSelect>
+                </div>
+                <div>
+                  <AdminLabel htmlFor="internalRefCode">Reference code *</AdminLabel>
+                  <AdminInput
+                    id="internalRefCode"
+                    name="internalRefCode"
+                    value={formData.internalRefCode}
+                    onChange={handleChange}
+                    className="font-mono text-sm"
+                  />
+                </div>
               </div>
               <div>
-                <p className="font-bold text-vailo-dark">{relationalOwner.fullName}</p>
-                {relationalOwner.role && (
-                  <AdminBadge variant="gold">{relationalOwner.role}</AdminBadge>
-                )}
+                <AdminLabel htmlFor="urlSlug">URL slug *</AdminLabel>
+                <AdminInput
+                  id="urlSlug"
+                  name="urlSlug"
+                  value={formData.urlSlug}
+                  onChange={handleChange}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <AdminLabel htmlFor="country">Country *</AdminLabel>
+                  <AdminSelect id="country" name="country" value={formData.country} onChange={handleChange}>
+                    <option value="" disabled>
+                      Select country
+                    </option>
+                    {countries.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </AdminSelect>
+                </div>
+                <div>
+                  <AdminLabel htmlFor="area">Area *</AdminLabel>
+                  <AdminSelect
+                    id="area"
+                    name="area"
+                    value={formData.area}
+                    onChange={handleChange}
+                    disabled={!formData.country}
+                  >
+                    <option value="" disabled>
+                      {dbAreas.length === 0 ? 'No areas configured' : 'Select area'}
+                    </option>
+                    {dbAreas.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </AdminSelect>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                Registered{' '}
+                {property.createdAt ? new Date(property.createdAt).toLocaleDateString() : '—'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Registration date</p>
+                  <p className="font-medium text-vailo-dark">
+                    {property.createdAt ? new Date(property.createdAt).toLocaleDateString() : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Type</p>
+                  <AdminBadge variant={property.listingKind === 'hotel' ? 'gold' : 'teal'}>
+                    {property.listingKind === 'hotel' ? 'Hotel' : 'Property'}
+                  </AdminBadge>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Reference code</p>
+                  <p className="font-medium text-vailo-dark font-mono text-sm">
+                    {property.internalRefCode || '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">URL slug</p>
+                  <p className="font-medium text-vailo-dark font-mono text-sm">/{property.urlSlug || '—'}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-gray-500 mb-1">Location</p>
+                  <p className="font-medium text-vailo-dark inline-flex items-center gap-1.5">
+                    <MapPin size={14} className="text-vailo-teal/50" />
+                    {[property.area || property.city, property.country].filter(Boolean).join(', ') || '—'}
+                  </p>
+                </div>
               </div>
             </div>
-            {relationalOwner.email && (
+          )}
+        </AdminCard>
+
+        <AdminCard className="p-6">
+          <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2 mb-5">
+            <User size={16} className="text-vailo-teal/60" /> Property allocation
+          </h3>
+
+          {isEditing ? (
+            <div className="space-y-4">
+              <div>
+                <AdminLabel htmlFor="ownerId">Assigned agent / owner *</AdminLabel>
+                <AdminSelect id="ownerId" name="ownerId" value={formData.ownerId} onChange={handleChange}>
+                  <option value="">Select a user…</option>
+                  {ownersList.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      [{user.role}] {user.fullName}
+                      {user.company ? ` (${user.company})` : ''}
+                    </option>
+                  ))}
+                </AdminSelect>
+              </div>
+              {formData.ownerId && (
+                <>
+                  <div>
+                    <AdminLabel htmlFor="email">Email</AdminLabel>
+                    <AdminInput
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="contact@example.com"
+                    />
+                  </div>
+                  <div>
+                    <AdminLabel htmlFor="phone">Telephone</AdminLabel>
+                    <AdminInput
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      placeholder="+30 …"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          ) : loadingOwner ? (
+            <p className="text-sm text-gray-500 animate-pulse">Loading contact…</p>
+          ) : assignedOwner ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-xl bg-vailo-teal/8 flex items-center justify-center text-vailo-teal font-bold text-lg">
+                  {assignedOwner.fullName?.charAt(0) || '?'}
+                </div>
+                <div>
+                  <p className="font-bold text-vailo-dark">{assignedOwner.fullName}</p>
+                  {assignedOwner.role && <AdminBadge variant="gold">{assignedOwner.role}</AdminBadge>}
+                </div>
+              </div>
               <p className="flex items-center gap-2 text-sm text-gray-600">
-                <Mail size={15} className="text-vailo-teal/50" /> {relationalOwner.email}
+                <Mail size={15} className="text-vailo-teal/50 shrink-0" />
+                {assignedOwner.email || '—'}
               </p>
-            )}
-            {relationalOwner.phone && (
               <p className="flex items-center gap-2 text-sm text-gray-600">
-                <Phone size={15} className="text-vailo-teal/50" /> {relationalOwner.phone}
+                <Phone size={15} className="text-vailo-teal/50 shrink-0" />
+                {assignedOwner.phone || '—'}
               </p>
-            )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic">No owner assigned to this property.</p>
+          )}
+        </AdminCard>
+      </div>
+
+      <AdminCard className="p-6">
+        <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2 mb-5">
+          <Link2 size={16} className="text-vailo-teal/60" /> Links
+        </h3>
+
+        {isEditing ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <AdminLabel htmlFor="listingUrl">Listing URL</AdminLabel>
+              <AdminInput
+                id="listingUrl"
+                type="url"
+                name="listingUrl"
+                value={formData.listingUrl}
+                onChange={handleChange}
+                placeholder="Airbnb or Booking link"
+              />
+            </div>
+            <div>
+              <AdminLabel htmlFor="googleMapsUrl">Google Maps URL</AdminLabel>
+              <AdminInput
+                id="googleMapsUrl"
+                type="url"
+                name="googleMapsUrl"
+                value={formData.googleMapsUrl}
+                onChange={handleChange}
+              />
+            </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-400 italic">No owner assigned to this property.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Listing URL</p>
+              {property.listingUrl ? (
+                <a
+                  href={property.listingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-vailo-teal hover:underline inline-flex items-center gap-1 break-all"
+                >
+                  {property.listingUrl} <ExternalLink size={13} />
+                </a>
+              ) : (
+                <p className="text-sm text-gray-400">—</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Google Maps</p>
+              {property.googleMapsUrl ? (
+                <a
+                  href={property.googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-vailo-teal hover:underline inline-flex items-center gap-1 break-all"
+                >
+                  Open in Maps <ExternalLink size={13} />
+                </a>
+              ) : (
+                <p className="text-sm text-gray-400">—</p>
+              )}
+            </div>
+          </div>
         )}
       </AdminCard>
     </div>

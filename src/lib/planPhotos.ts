@@ -2,6 +2,12 @@
 
 import { resolvePlacePhoto } from './placePhotoResolver';
 import { normalizePlaceName, placeNamesMatch } from './placeNameUtils';
+
+function isPropertyPlanItem(item: Record<string, unknown>, ctx: PlanPhotoContext): boolean {
+  if (item.isProperty === true || item.source === 'property') return true;
+  const title = typeof item.title === 'string' ? item.title : '';
+  return !!(ctx.propertyName && title && placeNamesMatch(title, ctx.propertyName));
+}
 import { isDirectPlaceMapsUrl, buildPlaceMapUrls, bareGooglePlaceId } from './geocoding';
 
 export type PlanPhotoContext = {
@@ -146,6 +152,8 @@ function itemNeedsGooglePhoto(item: Record<string, unknown>): boolean {
   const title = typeof item.title === 'string' ? item.title.trim() : '';
   if (!title || title.toLowerCase() === 'n/a') return false;
 
+  if (item.isProperty === true || item.source === 'property') return false;
+
   // Vailo curated picks — never overwrite admin-verified listings
   if (item.source === 'database') return false;
 
@@ -256,11 +264,17 @@ function enrichPlanItem(
   const existing = typeof item.photoUrl === 'string' ? item.photoUrl.trim() : '';
   if (existing) return item;
 
-  if (bookendHint && ctx.usePropertyPhotoOnBookends && ctx.propertyPhotoUrl) {
+  if (
+    bookendHint &&
+    isPropertyPlanItem(item, ctx) &&
+    ctx.usePropertyPhotoOnBookends &&
+    ctx.propertyPhotoUrl
+  ) {
     return {
       ...item,
       photoUrl: ctx.propertyPhotoUrl,
-      source: item.source || 'database',
+      source: 'property',
+      isProperty: true,
     };
   }
 
@@ -318,16 +332,13 @@ export async function enrichPlanWithGooglePhotos(
 
   if (data.type === 'timeline' && Array.isArray(data.plan)) {
     const items = data.plan as Record<string, unknown>[];
-    const plan = await mapConcurrent(items, async (item, i) => {
-      const isBookend =
-        ctx.usePropertyPhotoOnBookends &&
-        ctx.propertyPhotoUrl &&
-        (i === 0 || i === items.length - 1);
-      if (isBookend) {
+    const plan = await mapConcurrent(items, async (item) => {
+      if (isPropertyPlanItem(item, ctx) && ctx.propertyPhotoUrl) {
         return {
           ...item,
           photoUrl: ctx.propertyPhotoUrl,
-          source: item.source || 'database',
+          source: 'property',
+          isProperty: true,
         };
       }
       return enrichItemWithGooglePhoto(item, ctx, planSessionCache);

@@ -22,6 +22,11 @@ import {
   markItemsShown,
   pickKeyForItem,
 } from '../../lib/picksFairness';
+import {
+  ensureTimelinePropertyBookends,
+  type PropertyBookendContext,
+} from '../../lib/timelinePropertyBookends';
+import { scheduleTimelinePlan } from '../../lib/timelineScheduling';
 import CategoryPickCarousel from '../../components/guest/CategoryPickCarousel';
 import PlanOverviewMap from '../../components/guest/PlanOverviewMap';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
@@ -145,6 +150,7 @@ function filterTimelinePlanByDistance(
   }
   const hardCap = effectiveMaxDistanceKm(maxKm);
   const filtered = plan.plan.filter((item: any) => {
+    if (item?.isProperty || item?.source === 'property') return true;
     const lat = item?.latitude ?? item?.lat;
     const lng = item?.longitude ?? item?.lng;
     if (typeof lat !== 'number' || typeof lng !== 'number') return true;
@@ -465,6 +471,34 @@ export default function AiExpertView({ onClose, property, propertyType, features
   const getStartCoords = () => {
     const { coords: propCoords } = getLocationContext();
     return locationCoordsRef.current ?? preferences.locationCoords ?? propCoords;
+  };
+
+  const getPropertyBookendContext = (): PropertyBookendContext => {
+    const { coords: propCoords } = getLocationContext();
+    const startCoords = getStartCoords();
+    const { endMin, nextDay } = computeEndFromDuration(startTime, tripDurationHours ?? 6);
+    return {
+      propertyTitle: getPropertyDisplayName(),
+      propertyPhotoUrl: propertyType?.photoUrl || property?.photoUrl || '',
+      propertyCoords: startCoords || propCoords,
+      locationLabel: preferences.location,
+      defaultStartTime: formatTime12(parseTimeToMinutes(startTime)),
+      defaultEndTime: formatTime12(endMin, nextDay),
+    };
+  };
+
+  const applyTimelinePropertyBookends = (plan: any, isNearProperty: boolean) => {
+    if (!isNearProperty || !plan || plan.type !== 'timeline') return plan;
+    return ensureTimelinePropertyBookends(plan, getPropertyBookendContext());
+  };
+
+  const scheduleTimelineIfNeeded = (plan: any, hasTimedWindow: boolean) => {
+    if (!hasTimedWindow || !plan || plan.type !== 'timeline') return plan;
+    const { endMin } = computeEndFromDuration(startTime, tripDurationHours ?? 6);
+    return scheduleTimelinePlan(plan, {
+      startTime24: startTime,
+      endMin,
+    });
   };
 
   const getPlanPhotoContext = (): PlanPhotoContext => {
@@ -904,17 +938,17 @@ ${JSON.stringify(filteredDatabase)}`
       if (aiTimeFrame) {
         promptText += `
 
-Timeframe: ${aiTimeFrame}. First item must depart from "${preferences.location}". Last item must return to "${preferences.location}".
+Timeframe: ${aiTimeFrame}. Stops must be ordered for a logical route starting and ending at the guest's starting point. We compute exact times and driving/walking legs from GPS — do NOT invent schedules or travel text.
 
 Return JSON with this schema:
 {
   "type": "timeline",
   "plan": [
     {
-      "time": "10:00 AM",
+      "time": "",
       "title": "Specific place name",
       "description": "Engaging 2-sentence description.",
-      "transportToNext": "For DB items: use provided distance. For AI items: neighborhood + estimated drive time (e.g. 'Platanias — 15 mins drive'). Never write fake km.",
+      "transportToNext": "",
       "source": "database" | "ai",
       "googlePlaceId": "Place ID if you know it (improves the map link). Empty string otherwise.",
       "photoUrl": "Exact URL from DB or empty string for AI picks",
@@ -978,7 +1012,8 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
       }
 
       const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
-      let initialPlan = await enrichForImmediateRender(parsedData, mapAreaHint, startCoords);
+      let initialPlan = applyTimelinePropertyBookends(parsedData, isNearProperty);
+      initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);
 
       if (isFlexiblePicks && picksDbContext) {
         initialPlan = normalizeFlexiblePicksPlan(
@@ -990,6 +1025,7 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
         );
       } else {
         initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
+        initialPlan = scheduleTimelineIfNeeded(initialPlan, !!timeFrameStr);
       }
 
       // Render the plan immediately — feels instant. Photos fill in next.
@@ -1014,6 +1050,7 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
             );
           } else {
             finalPlan = filterTimelinePlanByDistance(finalPlan, distanceLimitNum, startCoords, recentlyShown);
+            finalPlan = scheduleTimelineIfNeeded(finalPlan, !!timeFrameStr);
           }
           setMessages(prev =>
             prev.map(m => (m.id === planMessageId ? { ...m, data: finalPlan } : m))
@@ -1147,8 +1184,10 @@ User: ${userText}`;
 
       if (parsedData.hasPlan && parsedData.plan) {
         const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
-        let initialPlan = await enrichForImmediateRender(parsedData.plan, mapAreaHint, startCoords);
+        let initialPlan = applyTimelinePropertyBookends(parsedData.plan, isNearProperty);
+        initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);
         initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
+        initialPlan = scheduleTimelineIfNeeded(initialPlan, !!preferences.timeFrame);
         const planMessageId = Date.now().toString() + 'plan';
         setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
         setIsThinking(false);
@@ -1157,7 +1196,8 @@ User: ${userText}`;
 
         enrichPhotosInBackground(initialPlan, startCoords)
           .then((withPhotos) => {
-            const filtered = filterTimelinePlanByDistance(withPhotos, distanceLimitNum, startCoords, recentlyShown);
+            let filtered = filterTimelinePlanByDistance(withPhotos, distanceLimitNum, startCoords, recentlyShown);
+            filtered = scheduleTimelineIfNeeded(filtered, !!preferences.timeFrame);
             setMessages(prev =>
               prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
             );
@@ -1306,11 +1346,15 @@ User: ${userText}`;
                       <div className="p-4">
                         <h4 className="font-semibold text-gray-900 text-base flex flex-wrap items-center gap-2 mb-2">
                           {item.title}
-                          {item.source === 'database' && (
+                          {(item.isProperty || item.source === 'property') ? (
+                            <span className="bg-[#0B4F5C]/10 text-[#0B4F5C] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">
+                              Your stay
+                            </span>
+                          ) : item.source === 'database' ? (
                             <span className="bg-[#C5A059]/12 text-[#8a6d2e] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">
                               Vailo pick
                             </span>
-                          )}
+                          ) : null}
                         </h4>
                         <ExpandableDescription
                           text={item.description}
@@ -1319,6 +1363,7 @@ User: ${userText}`;
                         />
 
                         <div className="flex items-center justify-between gap-2 pt-4 border-t border-[#0B4F5C]/8">
+                          {!(item.isProperty || item.source === 'property') && (
                           <PickFeedbackButtons
                             propertyId={property?.id}
                             item={{
@@ -1331,6 +1376,7 @@ User: ${userText}`;
                               description: item.description,
                             }}
                           />
+                          )}
                           <div className="flex gap-2 flex-1">
                             {(() => {
                               const links = getItemMapLinks(item, mapAreaHint);

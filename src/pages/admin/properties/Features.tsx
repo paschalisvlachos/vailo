@@ -16,7 +16,7 @@ export default function Features() {
   
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
-  const [aiCategories, setAiCategories] = useState<string[]>([]);
+  const [localGemsCategories, setLocalGemsCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -91,13 +91,13 @@ export default function Features() {
       setFeaturesCategories(fetchedCats);
     });
 
-    const aiUnsub = onSnapshot(collection(db, 'countries', country, 'areas', areaId, 'aiCategories'), (snapshot) => {
-      const fetchedAi = snapshot.docs.map(doc => doc.data().name);
-      fetchedAi.sort((a: string, b: string) => a.localeCompare(b));
-      setAiCategories(fetchedAi);
+    const gemsCatUnsub = onSnapshot(collection(db, 'countries', country, 'areas', areaId, 'localGemsCategories'), (snapshot) => {
+      const fetched = snapshot.docs.map(doc => doc.data().name).filter(Boolean);
+      fetched.sort((a: string, b: string) => a.localeCompare(b));
+      setLocalGemsCategories(fetched);
     });
 
-    return () => { catUnsub(); aiUnsub(); };
+    return () => { catUnsub(); gemsCatUnsub(); };
   }, [propertyAreaContext]);
 
   useEffect(() => {
@@ -249,7 +249,7 @@ export default function Features() {
       return;
     }
     if (formData.isLocal && formData.experienceTypes.length === 0) {
-      toast.warning("Please select an Experience Type for the Local tag.");
+      toast.warning("Please select at least one Local Gems category for the Local tag.");
       return;
     }
 
@@ -531,12 +531,12 @@ export default function Features() {
                     <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-2 flex items-center">
                       <Wand2 size={16} className="mr-2" /> Experience Targeting
                     </h3>
-                    <p className="text-sm text-vailo-teal-hover mb-4">Select the ideal vibe for this experience. Multiple selections allowed.</p>
+                    <p className="text-sm text-vailo-teal-hover mb-4">Tag which local gem categories this experience fits. Multiple selections allowed.</p>
                     
-                    {aiCategories.length === 0 ? (
-                      <p className="text-sm text-vailo-teal italic">No AI Categories found for this area. Please add them in the Area Functionality hub.</p>
+                    {localGemsCategories.length === 0 ? (
+                      <p className="text-sm text-vailo-teal italic">No Local Gems categories found for this area. Add them under Area Functionality → Local Gems Categories.</p>
                     ) : (
-                      <PillSelector label="Experience Type *" options={aiCategories} selected={formData.experienceTypes} onToggle={(v) => handlePillToggle('experienceTypes', v)} colorClass="purple" />
+                      <PillSelector label="Local Gems Category *" options={localGemsCategories} selected={formData.experienceTypes} onToggle={(v) => handlePillToggle('experienceTypes', v)} colorClass="purple" />
                     )}
                   </div>
                 )}

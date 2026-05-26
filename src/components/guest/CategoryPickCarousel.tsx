@@ -1,6 +1,9 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Map as MapIcon, Navigation, Car, Image as ImageIcon } from 'lucide-react';
+import { Map as MapIcon, Navigation, Car, Eye } from 'lucide-react';
 import { getItemMapLinks } from '../../lib/geocoding';
+import ExpandableDescription from './ExpandableDescription';
+import PickFeedbackButtons from './PickFeedbackButtons';
+import PlanImage from './PlanImage';
 
 const CARD_WIDTH = 288;
 const CARD_GAP = 16;
@@ -10,9 +13,11 @@ type PickItem = {
   description?: string;
   estimatedDistance?: string;
   beyondRadius?: boolean;
+  previouslyShown?: boolean;
   source?: string;
   photoUrl?: string;
   googleMapsUrl?: string;
+  googlePlaceId?: string;
   latitude?: number;
   longitude?: number;
   navigateUrl?: string;
@@ -22,12 +27,14 @@ type CategoryPickCarouselProps = {
   categoryName: string;
   items: PickItem[];
   mapAreaHint: string;
+  propertyId?: string;
 };
 
 export default function CategoryPickCarousel({
   categoryName,
   items,
   mapAreaHint,
+  propertyId,
 }: CategoryPickCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -74,21 +81,21 @@ export default function CategoryPickCarousel({
             key={`${item.title}-${i}`}
             className="w-[288px] shrink-0 snap-start snap-always bg-white border border-[#0B4F5C]/8 rounded-2xl overflow-hidden flex flex-col shadow-[0_8px_30px_rgba(11,79,92,0.08)]"
           >
-            <div className="relative h-40 bg-[#eef3f2]">
-              {item.photoUrl ? (
-                <img
-                  src={item.photoUrl}
-                  alt={item.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#0B4F5C]/25">
-                  <ImageIcon size={36} strokeWidth={1.5} />
-                </div>
-              )}
+            <div className="relative">
+              <PlanImage
+                src={item.photoUrl}
+                alt={item.title}
+                className="w-full h-40 object-cover bg-[#eef3f2]"
+                fallbackClassName="w-full h-40"
+              />
               {item.beyondRadius && (
                 <span className="absolute top-3 left-3 bg-amber-500/95 text-white text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
                   Extended range
+                </span>
+              )}
+              {item.previouslyShown && (
+                <span className="absolute top-3 right-3 bg-white/90 text-[#0B4F5C] text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
+                  <Eye size={10} strokeWidth={2.2} /> Seen before
                 </span>
               )}
             </div>
@@ -105,9 +112,11 @@ export default function CategoryPickCarousel({
                 )}
               </div>
 
-              <p className="text-sm text-gray-600 leading-relaxed mb-3 flex-1 line-clamp-4">
-                {item.description}
-              </p>
+              <ExpandableDescription
+                text={item.description}
+                lines={3}
+                className="mb-3 flex-1"
+              />
 
               <p
                 className={`text-[11px] font-semibold flex items-center mb-3 ${
@@ -118,30 +127,45 @@ export default function CategoryPickCarousel({
                 {item.estimatedDistance}
               </p>
 
-              <div className="flex gap-2 mt-auto pt-3 border-t border-gray-100">
-                {(() => {
-                  const links = getItemMapLinks(item, mapAreaHint);
-                  return (
-                    <>
-                      <a
-                        href={links.googleMapsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-xl text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors"
-                      >
-                        <MapIcon size={14} className="mr-1" /> View
-                      </a>
-                      <a
-                        href={links.navigateUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-xl text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors shadow-sm"
-                      >
-                        <Navigation size={14} className="mr-1" /> Directions
-                      </a>
-                    </>
-                  );
-                })()}
+              <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-gray-100">
+                <PickFeedbackButtons
+                  propertyId={propertyId}
+                  item={{
+                    title: item.title,
+                    source: item.source,
+                    googlePlaceId: item.googlePlaceId,
+                    googleMapsUrl: item.googleMapsUrl,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    description: item.description,
+                    category: categoryName,
+                  }}
+                />
+                <div className="flex gap-2 flex-1">
+                  {(() => {
+                    const links = getItemMapLinks(item, mapAreaHint);
+                    return (
+                      <>
+                        <a
+                          href={links.googleMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 py-2 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors"
+                        >
+                          <MapIcon size={13} className="mr-1" /> View
+                        </a>
+                        <a
+                          href={links.navigateUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 py-2 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors shadow-sm"
+                        >
+                          <Navigation size={13} className="mr-1" /> Go
+                        </a>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </article>

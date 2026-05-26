@@ -13,19 +13,24 @@ import {
   BookOpen,
   Handshake,
   Sparkles,
+  AlertTriangle,
+  ThumbsUp,
 } from 'lucide-react';
 import { AdminBadge } from '../../../components/admin/AdminPageHeader';
+import { useUnseenGuestIssuesCount } from '../../../hooks/useUnseenGuestIssuesCount';
 
 const TABS = [
-  { name: 'Overview', path: '', icon: Home },
-  { name: 'Property Listings', path: 'types', icon: Building },
-  { name: 'Reservations', path: 'reservations', icon: CalendarCheck },
-  { name: 'Calendar', path: 'calendar', icon: CalendarIcon },
-  { name: 'Local Gems', path: 'local-gems', icon: MapPin },
-  { name: 'Green Score', path: 'green-score', icon: Leaf },
-  { name: 'House Guide', path: 'house-guide', icon: BookOpen },
-  { name: 'Features', path: 'features', icon: Handshake },
-  { name: 'AI Gaps', path: 'ai-gaps', icon: Sparkles },
+  { name: 'Overview', path: '', icon: Home, badgeKey: null },
+  { name: 'Property Listings', path: 'types', icon: Building, badgeKey: null },
+  { name: 'Reservations', path: 'reservations', icon: CalendarCheck, badgeKey: null },
+  { name: 'Calendar', path: 'calendar', icon: CalendarIcon, badgeKey: null },
+  { name: 'Local Gems', path: 'local-gems', icon: MapPin, badgeKey: null },
+  { name: 'Green Score', path: 'green-score', icon: Leaf, badgeKey: null },
+  { name: 'House Guide', path: 'house-guide', icon: BookOpen, badgeKey: null },
+  { name: 'Features', path: 'features', icon: Handshake, badgeKey: null },
+  { name: 'Guest Issues', path: 'guest-issues', icon: AlertTriangle, badgeKey: 'guestIssues' as const },
+  { name: 'Pick Feedback', path: 'pick-feedback', icon: ThumbsUp, badgeKey: null },
+  { name: 'AI Gaps', path: 'ai-gaps', icon: Sparkles, badgeKey: null },
 ];
 
 export type PropertyRecord = {
@@ -47,6 +52,7 @@ export default function PropertyLayout() {
   const { id } = useParams();
   const [property, setProperty] = useState<PropertyRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const unseenGuestIssues = useUnseenGuestIssuesCount(id);
 
   useEffect(() => {
     if (!id) return;
@@ -133,7 +139,12 @@ export default function PropertyLayout() {
                   }
                 >
                   <tab.icon size={16} className="shrink-0 opacity-90" />
-                  {tab.name}
+                  <span className="flex-1 truncate">{tab.name}</span>
+                  {tab.badgeKey === 'guestIssues' && unseenGuestIssues > 0 && (
+                    <span className="min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold tabular-nums">
+                      {unseenGuestIssues > 99 ? '99+' : unseenGuestIssues}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>

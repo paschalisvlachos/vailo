@@ -3,9 +3,17 @@ import { useParams } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import AiExpertView from './AiExpertView';
+import LegalDocumentModal from '../../components/guest/LegalDocumentModal';
+import GuestLegalFooter from '../../components/guest/GuestLegalFooter';
+import GuestFloatingActions from '../../components/guest/GuestFloatingActions';
+import GuestReportIssueSheet from '../../components/guest/GuestReportIssueSheet';
+import GuestPropertyAssistant from '../../components/guest/GuestPropertyAssistant';
+import PropertyEssentials from '../../components/guest/PropertyEssentials';
+import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
+import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { 
   MapPin, Globe, CloudSun, ChevronDown, Navigation, ExternalLink, 
-  Star, Smartphone, Monitor, Key, FileText, Wrench, Coffee, PhoneCall, Sparkles,
+  Star, Smartphone, Monitor, Sparkles,
   Wifi, Copy, Check, Map, Clock, Award
 } from 'lucide-react';
 
@@ -13,6 +21,8 @@ export default function GuestPortal() {
   const { propertySlug, typeSlug } = useParams(); 
   
   const [property, setProperty] = useState<any>(null);
+  const [propertyId, setPropertyId] = useState<string | null>(null);
+  const [typeId, setTypeId] = useState<string | null>(null);
   const [typeData, setTypeData] = useState<any>(null);
   const [guide, setGuide] = useState<any>(null);
   
@@ -22,10 +32,9 @@ export default function GuestPortal() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'portal' | 'aiExpert'>('portal');
+  const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant'>('portal');
   // Starts in mobile view by default!
   const [viewMode, setViewMode] = useState<'web' | 'mobile'>('mobile');
-  const [openGuideSection, setOpenGuideSection] = useState<string | null>(null);
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [showPropertyMap, setShowPropertyMap] = useState(false);
   
@@ -33,20 +42,13 @@ export default function GuestPortal() {
   const [featureFilter, setFeatureFilter] = useState<string>('All');
   const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>({});
   const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
+  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
+  const { content: platformLegal } = usePlatformLegal();
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
 
-  const getGuideIcon = (id: string) => {
-    switch(id) {
-      case 'checkIn': return <Key size={18} className="text-[#C5A059]" />;
-      case 'rules': return <FileText size={18} className="text-[#0B4F5C]" />;
-      case 'technical': return <Wrench size={18} className="text-gray-400" />;
-      case 'daily': return <Coffee size={18} className="text-[#C5A059]" />;
-      case 'emergency': return <PhoneCall size={18} className="text-red-400" />;
-      default: return <Sparkles size={18} className="text-[#0B4F5C]" />;
-    }
-  };
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -57,10 +59,11 @@ export default function GuestPortal() {
         if (propSnap.empty) { setError("Property not found."); setLoading(false); return; }
         
         const propDoc = propSnap.docs[0];
-        const propertyId = propDoc.id;
-        setProperty(propDoc.data());
+        const resolvedPropertyId = propDoc.id;
+        setPropertyId(resolvedPropertyId);
+        setProperty({ id: resolvedPropertyId, ...propDoc.data() });
 
-        const typesSnap = await getDocs(collection(db, 'properties', propertyId, 'propertyTypes'));
+        const typesSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'propertyTypes'));
         let targetTypeId = null;
         let targetTypeData = null;
         
@@ -74,17 +77,21 @@ export default function GuestPortal() {
         });
         
         if (!targetTypeId) { setError("Unit not found."); setLoading(false); return; }
-        const typeId = targetTypeId;
+        setTypeId(targetTypeId);
         setTypeData(targetTypeData);
 
-        const guideDoc = await getDoc(doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'houseGuide', 'data'));
+        const guideDoc = await getDoc(
+          doc(db, 'properties', resolvedPropertyId, 'propertyTypes', targetTypeId, 'houseGuide', 'data')
+        );
         if (guideDoc.exists()) setGuide(guideDoc.data());
 
-        const gemsSnap = await getDocs(collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'localGems'));
+        const gemsSnap = await getDocs(
+          collection(db, 'properties', resolvedPropertyId, 'propertyTypes', targetTypeId, 'localGems')
+        );
         const loadedGems = gemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         setGems(loadedGems);
 
-        const featuresSnap = await getDocs(collection(db, 'properties', propertyId, 'features'));
+        const featuresSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'features'));
         const loadedFeatures = featuresSnap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .filter((f: any) => f.showOnMain === true);
@@ -137,6 +144,14 @@ export default function GuestPortal() {
 
   const wifiName = typeData?.wifiName || guide?.wifiName || property?.wifiName;
   const wifiPassword = typeData?.wifiPassword || guide?.wifiPassword || property?.wifiPassword;
+
+  const featuredOnPortal: FeaturedKey[] = Array.isArray(guide?.featuredOnPortal)
+    ? (guide.featuredOnPortal as unknown[]).filter((k): k is FeaturedKey => typeof k === 'string').slice(0, 4)
+    : [];
+  const featuredPreviews: FeaturedPreviewsMap =
+    guide && typeof guide.previews === 'object' && guide.previews !== null
+      ? (guide.previews as FeaturedPreviewsMap)
+      : {};
   const heroPhoto = typeData?.photoUrl || property?.photoUrl || '';
   const heroLocation = typeData?.city || typeData?.area || property?.city || property?.area || '';
 
@@ -152,9 +167,6 @@ export default function GuestPortal() {
     setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const toggleGuide = (section: string) => {
-    setOpenGuideSection(openGuideSection === section ? null : section);
-  };
 
   const gemCategories = Array.from(new Set(gems.map(g => g.category).filter(Boolean)));
   const allGemFilterOptions = ['All', "Host's Picks", '< 5km', 'Day Trips', ...gemCategories];
@@ -228,9 +240,9 @@ export default function GuestPortal() {
         </button>
       </div>
 
-      <div className={`w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col ${
+      <div className={`w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col relative ${
         viewMode === 'mobile' 
-          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] relative md:overflow-hidden' 
+          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden' 
           : 'max-w-none min-h-screen'
       }`}>
         
@@ -397,45 +409,12 @@ export default function GuestPortal() {
             </div>
 
             {/* Main content */}
-            <div className={`mx-auto px-5 mt-10 space-y-14 pb-14 relative z-10 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
-              <section>
-                <div className="mb-5">
-                  <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Essentials</p>
-                  <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Property Guide</h2>
-                </div>
-                
-                <div className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.12)] border border-gray-100/80 overflow-hidden divide-y divide-gray-50">
-                  {[
-                    { id: 'checkIn', title: 'Arrival Instructions', content: guide?.checkIn },
-                    { id: 'rules', title: 'Property Rules', content: guide?.rules },
-                    { id: 'technical', title: 'Appliance Guide', content: guide?.technical },
-                    { id: 'daily', title: 'Daily Needs', content: guide?.daily },
-                    { id: 'emergency', title: 'Emergency Info', content: guide?.emergency },
-                  ].map((section) => (
-                    <div key={section.id}>
-                      <button 
-                        onClick={() => toggleGuide(section.id)}
-                        className="w-full flex items-center p-4 md:p-5 text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group"
-                      >
-                        <div className="h-10 w-10 rounded-xl bg-[#F8FAFA] border border-gray-100 flex items-center justify-center mr-4 shrink-0 group-hover:border-[#0B4F5C]/20 transition-all">
-                          {getGuideIcon(section.id)}
-                        </div>
-                        <span className={`flex-1 font-luxury text-[15px] transition-colors ${openGuideSection === section.id ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'}`}>
-                          {section.title}
-                        </span>
-                        <div className={`p-1.5 rounded-full transition-all ${openGuideSection === section.id ? 'bg-[#0B4F5C] text-white rotate-180' : 'text-gray-300 group-hover:text-gray-400'}`}>
-                          <ChevronDown size={16} />
-                        </div>
-                      </button>
-                      <div className={`transition-all duration-300 ease-in-out overflow-hidden ${openGuideSection === section.id ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="px-5 pb-5 mr-5 mb-4 ml-5 pl-5 text-[13px] text-gray-600 whitespace-pre-wrap leading-relaxed border-l-2 border-[#C5A059]/30">
-                          {section.content || 'Your host will add details here soon.'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
+            <div className={`mx-auto px-5 mt-10 space-y-14 pb-32 relative z-10 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+              <PropertyEssentials
+                featuredOnPortal={featuredOnPortal}
+                previews={featuredPreviews}
+                onAskAssistant={() => setActiveView('assistant')}
+              />
 
               {gems.length > 0 && (
                 <section>
@@ -619,14 +598,15 @@ export default function GuestPortal() {
                 </section>
               )}
 
-              <div className="text-center pt-8 pb-4">
-                <img src="/vailoLogo.png" alt="Vailo" className="h-7 w-auto mx-auto mb-3 opacity-40 grayscale hover:grayscale-0 hover:opacity-70 transition-all" onError={(e) => { (e.target as HTMLImageElement).src = '../../../vailoLogo.png'; }} />
-                <p className="text-[9px] font-semibold text-gray-400 tracking-[0.2em] uppercase">Powered by Vailo</p>
-              </div>
+              <GuestLegalFooter
+                onPrivacyClick={() => setLegalModal('privacy')}
+                onTermsClick={() => setLegalModal('terms')}
+              />
 
             </div>
+
           </>
-        ) : (
+        ) : activeView === 'aiExpert' ? (
           <AiExpertView 
             onClose={() => setActiveView('portal')}
             property={property}
@@ -634,8 +614,51 @@ export default function GuestPortal() {
             features={features}
             gems={gems}
           />
+        ) : (
+          <GuestPropertyAssistant
+            property={property}
+            propertyType={typeData}
+            guide={guide}
+            onClose={() => setActiveView('portal')}
+            onOpenPrivacy={() => setLegalModal('privacy')}
+            onOpenTerms={() => setLegalModal('terms')}
+          />
         )}
       </div>
+
+      {activeView === 'portal' && (
+        <GuestFloatingActions
+          mobileFramePreview={viewMode === 'mobile'}
+          onOpenAssistant={() => setActiveView('assistant')}
+          onOpenReport={() => setReportSheetOpen(true)}
+        />
+      )}
+
+      {legalModal === 'privacy' && (
+        <LegalDocumentModal
+          title="Privacy Policy"
+          body={platformLegal.privacyPolicy}
+          onClose={() => setLegalModal(null)}
+        />
+      )}
+      {legalModal === 'terms' && (
+        <LegalDocumentModal
+          title="Terms of Use"
+          body={platformLegal.termsOfUse}
+          onClose={() => setLegalModal(null)}
+        />
+      )}
+
+      {reportSheetOpen && activeView === 'portal' && propertyId && typeId && (
+        <GuestReportIssueSheet
+          propertyId={propertyId}
+          propertyTypeId={typeId}
+          propertyName={property?.propertyName || 'Property'}
+          propertyTypeName={typeData?.propertyTypeName || 'Unit'}
+          guide={guide}
+          onClose={() => setReportSheetOpen(false)}
+        />
+      )}
     </div>
   );
 }

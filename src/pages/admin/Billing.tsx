@@ -168,7 +168,7 @@ export default function Billing() {
                 <li>
                   Set <code className="text-xs bg-vailo-surface-elevated px-1 rounded">BILLING_BQ_TABLE</code>{' '}
                   on Cloud Functions to your export table (e.g.{' '}
-                  <code className="text-xs">project.dataset.gcp_billing_export_v1_XXXXX</code>).
+                  <code className="text-xs">LockIt.billing_export.gcp_billing_export_resource_v1_XXXXX</code>).
                 </li>
                 <li>Redeploy functions. Query costs stay within BigQuery&apos;s free tier for typical admin use.</li>
               </ol>

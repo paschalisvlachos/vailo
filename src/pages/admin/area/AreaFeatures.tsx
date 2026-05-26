@@ -20,7 +20,7 @@ export default function AreaFeatures() {
   // Databases
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
-  const [aiCategories, setAiCategories] = useState<string[]>([]);
+  const [localGemsCategories, setLocalGemsCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Form State
@@ -67,14 +67,14 @@ export default function AreaFeatures() {
     return () => unsubscribe();
   }, [decodedCountry, areaId]);
 
-  // 2. Fetch AI Categories
+  // 2. Fetch Local Gems Categories
   useEffect(() => {
     if (!decodedCountry || !areaId) return;
-    const aiRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'aiCategories');
-    const unsubscribe = onSnapshot(aiRef, (snapshot) => {
-      const fetchedAi = snapshot.docs.map(doc => doc.data().name);
-      fetchedAi.sort((a: string, b: string) => a.localeCompare(b));
-      setAiCategories(fetchedAi);
+    const gemsCatRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGemsCategories');
+    const unsubscribe = onSnapshot(gemsCatRef, (snapshot) => {
+      const fetched = snapshot.docs.map(doc => doc.data().name).filter(Boolean);
+      fetched.sort((a: string, b: string) => a.localeCompare(b));
+      setLocalGemsCategories(fetched);
     });
     return () => unsubscribe();
   }, [decodedCountry, areaId]);
@@ -238,7 +238,7 @@ export default function AreaFeatures() {
       return;
     }
     if (formData.isLocal && formData.experienceTypes.length === 0) {
-      toast.warning("Please select an Experience Type for the Local tag.");
+      toast.warning("Please select at least one Local Gems category for the Local tag.");
       return;
     }
 
@@ -474,18 +474,18 @@ export default function AreaFeatures() {
                   </label>
                 </div>
 
-                {/* EXPERIENCE TARGETING (Dynamic from AI Categories) */}
+                {/* EXPERIENCE TARGETING (Local Gems categories) */}
                 {formData.isLocal && (
                   <div className="bg-vailo-teal/5 p-5 rounded-xl border border-purple-100 animate-in fade-in slide-in-from-top-2">
                     <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-2 flex items-center">
                       <Wand2 size={16} className="mr-2" /> Experience Targeting
                     </h3>
-                    <p className="text-sm text-vailo-teal-hover mb-4">Select the ideal vibe for this experience. Multiple selections allowed.</p>
+                    <p className="text-sm text-vailo-teal-hover mb-4">Tag which local gem categories this experience fits. Multiple selections allowed.</p>
                     
-                    {aiCategories.length === 0 ? (
-                      <p className="text-sm text-vailo-teal italic">No AI Categories found. Please add some in the Area Functionality hub.</p>
+                    {localGemsCategories.length === 0 ? (
+                      <p className="text-sm text-vailo-teal italic">No Local Gems categories found. Add them under Area Functionality → Local Gems Categories.</p>
                     ) : (
-                      <PillSelector label="Experience Type *" options={aiCategories} selected={formData.experienceTypes} onToggle={(v) => handlePillToggle('experienceTypes', v)} colorClass="purple" />
+                      <PillSelector label="Local Gems Category *" options={localGemsCategories} selected={formData.experienceTypes} onToggle={(v) => handlePillToggle('experienceTypes', v)} colorClass="purple" />
                     )}
                   </div>
                 )}

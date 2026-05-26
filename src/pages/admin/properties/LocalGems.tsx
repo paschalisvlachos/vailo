@@ -7,6 +7,7 @@ import { useToast } from '../../../context/ToastContext';
 import { getGenerativeModel } from "firebase/ai";
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallableMessage } from '../../../lib/callableError';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -252,7 +253,12 @@ export default function LocalGems() {
 
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      toast.error("Something went wrong. Make sure it's a valid link!");
+      toast.error(
+        httpsCallableMessage(
+          error,
+          "Could not load this place. Use a full Google Maps place link, or try again in a moment."
+        )
+      );
     } finally {
       setIsMagicFilling(false);
     }

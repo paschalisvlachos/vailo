@@ -6,7 +6,6 @@ import { useToast } from '../../../context/ToastContext';
 import {
   Globe,
   MapPin,
-  Sparkles,
   Grid,
   Layers,
   Map as MapIcon,
@@ -27,7 +26,6 @@ import AdminPageHeader, {
 } from '../../../components/admin/AdminPageHeader';
 
 const MODULES = [
-  { id: 'ai-categories', title: 'AI Categories', icon: Sparkles, desc: 'Manage AI prompt rules for this area' },
   { id: 'local-gems-categories', title: 'Local Gems Categories', icon: Grid, desc: 'Category structure for local recommendations' },
   { id: 'local-gems', title: 'Local Gems', icon: MapIcon, desc: 'Add restaurants, beaches, and experiences' },
   { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review AI-imported venues from guest plans' },

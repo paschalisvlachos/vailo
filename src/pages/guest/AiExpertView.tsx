@@ -13,12 +13,21 @@ import { enrichPlanWithAllPhotos, type PlanPhotoContext } from '../../lib/planPh
 import {
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
+  effectiveMaxDistanceKm,
   normalizeFlexiblePicksPlan,
   MAX_PICKS_PER_CATEGORY,
 } from '../../lib/flexiblePicks';
+import {
+  getRecentlyShownKeys,
+  markItemsShown,
+  pickKeyForItem,
+} from '../../lib/picksFairness';
 import CategoryPickCarousel from '../../components/guest/CategoryPickCarousel';
 import PlanOverviewMap from '../../components/guest/PlanOverviewMap';
-import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Image as ImageIcon, Compass, Heart } from 'lucide-react';
+import ExpandableDescription from '../../components/guest/ExpandableDescription';
+import PlanImage from '../../components/guest/PlanImage';
+import PickFeedbackButtons from '../../components/guest/PickFeedbackButtons';
+import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Compass, Heart, Eye } from 'lucide-react';
 
 const WIZARD_STEPS = [
   { key: 'LOCATION', label: 'Starting point' },
@@ -44,6 +53,116 @@ interface Message {
 }
 
 type Step = 'LOCATION' | 'CATEGORIES' | 'DISTANCE' | 'TIME' | 'DONE';
+
+type ListingAreaContext = {
+  country: string;
+  masterArea: string;
+  areaId: string;
+};
+
+type AreaConfigIssue = 'missing' | 'invalid-master' | null;
+
+/** Match listing country + city/master area to a configured Area Functionality region. */
+async function resolvePropertyTypeAreaContext(
+  propertyType?: any
+): Promise<{ ctx: ListingAreaContext | null; issue: AreaConfigIssue; cityRaw: string }> {
+  const country = typeof propertyType?.country === 'string' ? propertyType.country.trim() : '';
+  const cityRaw = typeof propertyType?.city === 'string' ? propertyType.city.trim() : '';
+
+  if (!country || !cityRaw) {
+    return { ctx: null, issue: 'missing', cityRaw };
+  }
+
+  const areasSnap = await getDocs(collection(db, 'countries', country, 'areas'));
+  const configuredAreas = areasSnap.docs
+    .map((d) => (typeof d.data().name === 'string' ? d.data().name.trim() : ''))
+    .filter(Boolean);
+
+  const match = configuredAreas.find((name) => name.toLowerCase() === cityRaw.toLowerCase());
+  if (!match) {
+    return { ctx: null, issue: 'invalid-master', cityRaw };
+  }
+
+  return {
+    ctx: { country, masterArea: match, areaId: areaNameToId(match) },
+    issue: null,
+    cityRaw,
+  };
+}
+
+/** Guest-facing label — neighborhood (address area) + validated master area when both exist. */
+function getGuestAreaLabel(propertyType?: any, masterArea?: string): string {
+  const master = masterArea || '';
+  const neighborhood = typeof propertyType?.area === 'string' ? propertyType.area.trim() : '';
+  if (neighborhood && master && neighborhood.toLowerCase() !== master.toLowerCase()) {
+    return `${neighborhood}, ${master}`;
+  }
+  return neighborhood || master || 'the region';
+}
+
+/** Pull every DB-sourced item from a finalized plan (picks or timeline) for fairness tracking. */
+function collectDbItemsFromPlan(plan: any): any[] {
+  if (!plan) return [];
+  const out: any[] = [];
+  if (plan.type === 'picks' && Array.isArray(plan.categories)) {
+    for (const cat of plan.categories) {
+      for (const item of cat.items || []) {
+        if (item?.source === 'database') out.push(item);
+      }
+    }
+  } else if (plan.type === 'timeline' && Array.isArray(plan.plan)) {
+    for (const item of plan.plan) {
+      if (item?.source === 'database') out.push(item);
+    }
+  }
+  return out;
+}
+
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * (Math.PI / 180);
+  const dLng = (b.lng - a.lng) * (Math.PI / 180);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * (Math.PI / 180)) *
+      Math.cos(b.lat * (Math.PI / 180)) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)) * 1.35;
+}
+
+/**
+ * Walks a timeline plan, drops AI stops that resolved farther than the effective
+ * limit, and marks DB stops with previouslyShown when their key was seen recently.
+ */
+function filterTimelinePlanByDistance(
+  plan: any,
+  maxKm: number,
+  startCoords: { lat: number; lng: number } | null,
+  recentlyShown: Set<string>
+): any {
+  if (!plan || plan.type !== 'timeline' || !Array.isArray(plan.plan) || !startCoords) {
+    return plan;
+  }
+  const hardCap = effectiveMaxDistanceKm(maxKm);
+  const filtered = plan.plan.filter((item: any) => {
+    const lat = item?.latitude ?? item?.lat;
+    const lng = item?.longitude ?? item?.lng;
+    if (typeof lat !== 'number' || typeof lng !== 'number') return true;
+    const km = haversineKm(startCoords, { lat, lng });
+    return km <= hardCap;
+  }).map((item: any) => {
+    if (item.source !== 'database') return item;
+    const key = pickKeyForItem({
+      name: item.title,
+      googlePlaceId: item.googlePlaceId,
+      googleMapsUrl: item.googleMapsUrl,
+      latitude: item.latitude,
+      longitude: item.longitude,
+    });
+    return { ...item, previouslyShown: !!(key && recentlyShown.has(key)) };
+  });
+  return { ...plan, plan: filtered };
+}
 
 // --- BULLETPROOF COORDINATE EXTRACTOR ---
 const extractCoords = (obj: any) => {
@@ -160,6 +279,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [listingAreaCtx, setListingAreaCtx] = useState<ListingAreaContext | null>(null);
+  const [areaConfigIssue, setAreaConfigIssue] = useState<AreaConfigIssue>(null);
+  const [invalidMasterAreaRaw, setInvalidMasterAreaRaw] = useState('');
   const [dynamicDistances, setDynamicDistances] = useState<string[]>([]);
   
   // 🌟 NEW: State to hold the dynamically fetched Village/Municipality name
@@ -201,8 +324,22 @@ export default function AiExpertView({ onClose, property, propertyType, features
     return typeName ? `Near ${name}, ${typeName}` : `Near ${name}`;
   };
 
-  const getAreaName = () =>
-    propertyType?.city || propertyType?.area || property?.city || property?.area || 'the region';
+  const getAreaName = () => getGuestAreaLabel(propertyType, listingAreaCtx?.masterArea);
+
+  /**
+   * Geographic hint we pass to Google Maps "View" URLs and to Nominatim. MUST be
+   * a real city / region, not the user's start-point label, otherwise queries
+   * like "Omprogialos, Near Villa Petra, Villa Petra Philippos" return a list of
+   * results instead of the place card. Always falls back to something useful.
+   */
+  const getGeographicAreaHint = (): string => {
+    const masterArea = listingAreaCtx?.masterArea || '';
+    const country = propertyType?.country || property?.country || '';
+    const parts = [masterArea, country].filter(Boolean);
+    if (parts.length > 0) return parts.join(', ');
+    // last-resort fallbacks — still avoid using a property name as a place hint
+    return richLocationName || propertyType?.city || property?.city || '';
+  };
 
   useEffect(() => {
     setMessages([
@@ -215,19 +352,43 @@ export default function AiExpertView({ onClose, property, propertyType, features
     ]);
 
     const fetchCategories = async () => {
-      const country = propertyType?.country || property?.country || 'Greece';
-      const areaName = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
-      const areaId = areaNameToId(areaName);
+      setCategoriesLoading(true);
+      setAreaConfigIssue(null);
+      setInvalidMasterAreaRaw('');
 
-      if (areaId && country) {
-        try {
-          const aiRef = collection(db, 'countries', country, 'areas', areaId, 'aiCategories');
-          const aiSnap = await getDocs(aiRef);
-          const aiCats = aiSnap.docs.map(d => d.data().name).filter(Boolean);
-          setAvailableCategories(Array.from(new Set(aiCats)).sort());
-        } catch (error) {
-          console.error("Failed to fetch AI Categories:", error);
-        }
+      const { ctx: areaCtx, issue, cityRaw } = await resolvePropertyTypeAreaContext(propertyType);
+      setListingAreaCtx(areaCtx);
+      setAreaConfigIssue(issue);
+      setInvalidMasterAreaRaw(cityRaw);
+
+      if (!areaCtx?.areaId) {
+        setAvailableCategories([]);
+        setCategoriesLoading(false);
+        return;
+      }
+
+      try {
+        const gemsCatSnap = await getDocs(
+          collection(
+            db,
+            'countries',
+            areaCtx.country,
+            'areas',
+            areaCtx.areaId,
+            'localGemsCategories'
+          )
+        );
+        const names = gemsCatSnap.docs
+          .map((d) => d.data().name)
+          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+          .map((name) => name.trim());
+
+        setAvailableCategories(Array.from(new Set(names)).sort((a, b) => a.localeCompare(b)));
+      } catch (error) {
+        console.error('Failed to fetch local gem categories:', error);
+        setAvailableCategories([]);
+      } finally {
+        setCategoriesLoading(false);
       }
     };
 
@@ -261,12 +422,16 @@ export default function AiExpertView({ onClose, property, propertyType, features
   }, [property, propertyType]);
 
   useEffect(() => {
-    const country = propertyType?.country || property?.country || 'Greece';
-    const areaName = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
-    const areaId = areaNameToId(areaName);
-    if (!areaId || !country) return;
+    if (!listingAreaCtx?.areaId) return;
 
-    const placesRef = collection(db, 'countries', country, 'areas', areaId, 'discoveredPlaces');
+    const placesRef = collection(
+      db,
+      'countries',
+      listingAreaCtx.country,
+      'areas',
+      listingAreaCtx.areaId,
+      'discoveredPlaces'
+    );
     const unsubscribe = onSnapshot(placesRef, (snapshot) => {
       const places = snapshot.docs
         .map((d) => ({ id: d.id, ...d.data() }))
@@ -274,7 +439,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
       setDiscoveredPlaces(places);
     });
     return () => unsubscribe();
-  }, [property, propertyType]);
+  }, [listingAreaCtx]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -283,7 +448,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
   const getLocationContext = () => {
     const propertyDisplayName = getPropertyDisplayName();
     const address = property?.address || propertyType?.address || '';
-    const cityArea = propertyType?.city || propertyType?.area || property?.city || property?.area || '';
+    const cityArea = listingAreaCtx?.masterArea || '';
     const pc = property?.postalCode || property?.pc || property?.zip || propertyType?.postalCode || propertyType?.pc || propertyType?.zip || ''; 
     const country = propertyType?.country || property?.country || '';
 
@@ -305,7 +470,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
   const getPlanPhotoContext = (): PlanPhotoContext => {
     const { cityArea, country } = getLocationContext();
     const areaName = [cityArea, country].filter(Boolean).join(', ');
-    const areaId = areaNameToId(cityArea);
+    const areaId = listingAreaCtx?.areaId || areaNameToId(cityArea);
     return {
       propertyPhotoUrl: propertyType?.photoUrl || property?.photoUrl || '',
       propertyName: getPropertyDisplayName(),
@@ -328,14 +493,25 @@ export default function AiExpertView({ onClose, property, propertyType, features
     };
   };
 
-  const finalizePlanData = async (planData: any, mapAreaHint: string, startCoords: ReturnType<typeof getStartCoords>) => {
-    setThinkingLabel('Matching places & photos…');
+  /** Fast pass: just adds map URLs (no network for photos) — for immediate render. */
+  const enrichForImmediateRender = async (
+    planData: any,
+    mapAreaHint: string,
+    startCoords: ReturnType<typeof getStartCoords>
+  ) => {
+    return enrichPlanWithMapLinks(planData, mapAreaHint, startCoords);
+  };
+
+  /** Background pass: pulls photo URLs from our DB / cloud function. */
+  const enrichPhotosInBackground = async (
+    planData: any,
+    startCoords: ReturnType<typeof getStartCoords>
+  ) => {
     const photoCtx: PlanPhotoContext = {
       ...getPlanPhotoContext(),
       anchorCoords: startCoords ? { lat: startCoords.lat, lng: startCoords.lng } : null,
     };
-    const withPhotos = await enrichPlanWithAllPhotos(planData, photoCtx);
-    return enrichPlanWithMapLinks(withPhotos, mapAreaHint, startCoords);
+    return enrichPlanWithAllPhotos(planData, photoCtx);
   };
 
   const validateDrivingFromProperty = async (
@@ -349,18 +525,27 @@ export default function AiExpertView({ onClose, property, propertyType, features
     let distance = calculateRealisticDrivingDistance(propCoords.lat, propCoords.lng, locLat, locLng);
     let isPossible = true;
 
-    try {
-      const osrmRes = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${propCoords.lng},${propCoords.lat};${locLng},${locLat}?overview=false`
-      );
-      const osrmData = await osrmRes.json();
-      if (osrmData.code === 'Ok') {
-        distance = osrmData.routes[0].distance / 1000;
-      } else if (osrmData.code === 'NoRoute') {
-        isPossible = false;
+    // Skip OSRM for nearby destinations — math is accurate enough and saves 1–3s per call.
+    // Only verify routability for far destinations where math may misjudge.
+    if (distance > 30) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      try {
+        const osrmRes = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${propCoords.lng},${propCoords.lat};${locLng},${locLat}?overview=false`,
+          { signal: controller.signal }
+        );
+        const osrmData = await osrmRes.json();
+        if (osrmData.code === 'Ok') {
+          distance = osrmData.routes[0].distance / 1000;
+        } else if (osrmData.code === 'NoRoute') {
+          isPossible = false;
+        }
+      } catch {
+        // OSRM unavailable / timed out — keep math estimate.
+      } finally {
+        clearTimeout(timeoutId);
       }
-    } catch (e) {
-      console.error('OSRM failed, falling back to math');
     }
 
     if (!isPossible) {
@@ -413,7 +598,53 @@ export default function AiExpertView({ onClose, property, propertyType, features
     }
   };
 
-  const getFilteredDbSummary = (maxKmLimit: number, startCoordsOverride?: { lat: number; lng: number } | null) => {
+  /**
+   * Fair sort for the timeline DB summary — same logic as flexible picks:
+   * legit picks first, fresh > recently-shown, distance band, then random tiebreaker.
+   * The AI sees variety on every call without losing the "nearer first" intuition.
+   */
+  const fairSort = <T extends {
+    calculatedKm: number | null;
+    isLegitPick?: boolean;
+    name?: string;
+    businessName?: string;
+    googlePlaceId?: string;
+    googleMapsUrl?: string;
+    latitude?: number;
+    longitude?: number;
+  }>(items: T[], recentlyShown: Set<string>): T[] => {
+    return items
+      .map((item) => ({
+        item,
+        key: pickKeyForItem({
+          name: item.name ?? item.businessName,
+          googlePlaceId: item.googlePlaceId,
+          googleMapsUrl: item.googleMapsUrl,
+          latitude: item.latitude,
+          longitude: item.longitude,
+        }),
+        rng: Math.random(),
+      }))
+      .sort((a, b) => {
+        const aLegit = a.item.isLegitPick ? 1 : 0;
+        const bLegit = b.item.isLegitPick ? 1 : 0;
+        if (aLegit !== bLegit) return bLegit - aLegit;
+        const aStale = a.key && recentlyShown.has(a.key) ? 1 : 0;
+        const bStale = b.key && recentlyShown.has(b.key) ? 1 : 0;
+        if (aStale !== bStale) return aStale - bStale;
+        const aBand = a.item.calculatedKm == null ? 9999 : Math.floor(a.item.calculatedKm / 3);
+        const bBand = b.item.calculatedKm == null ? 9999 : Math.floor(b.item.calculatedKm / 3);
+        if (aBand !== bBand) return aBand - bBand;
+        return a.rng - b.rng;
+      })
+      .map((entry) => entry.item);
+  };
+
+  const getFilteredDbSummary = (
+    maxKmLimit: number,
+    startCoordsOverride?: { lat: number; lng: number } | null,
+    recentlyShown: Set<string> = new Set()
+  ) => {
     const { coords: propCoords } = getLocationContext();
     const startCoords = startCoordsOverride ?? getStartCoords();
 
@@ -434,8 +665,8 @@ export default function AiExpertView({ onClose, property, propertyType, features
       }).filter(item => item.calculatedKm === null || item.calculatedKm <= maxKmLimit) || [];
     };
 
-    const filteredGems = filterItems(gems);
-    const filteredFeatures = filterItems(features);
+    const filteredGems = fairSort(filterItems(gems), recentlyShown);
+    const filteredFeatures = fairSort(filterItems(features), recentlyShown);
 
     return {
       gems: filteredGems.map(g => ({ name: g.name, category: g.category, distance: g.calculatedKm !== null ? `${g.calculatedKm.toFixed(1)}km` : (g.distanceKm ? `${g.distanceKm}km` : 'Local'), description: g.description, photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })),
@@ -604,10 +835,8 @@ export default function AiExpertView({ onClose, property, propertyType, features
     setStep('DONE');
     setIsThinking(true);
     setThinkingLabel('Curating your local recommendations…');
-    
-    try {
-      const model = getGenerativeModel(ai, { model: "gemini-3.1-pro-preview" });
 
+    try {
       const aiTimeFrame = timeFrameStr
         ? (() => {
             const { end24 } = computeEndFromDuration(startTime, tripDurationHours ?? 6);
@@ -615,10 +844,11 @@ export default function AiExpertView({ onClose, property, propertyType, features
           })()
         : '';
 
-      const { fullLocationContext } = getLocationContext();
+      const { fullLocationContext, coords: propCoords } = getLocationContext();
       const startCoords = getStartCoords();
       const isNearProperty = typeof preferences.location === 'string' && preferences.location.startsWith('Near');
       const startLocationName = isNearProperty ? fullLocationContext : (locationFullNameRef.current || preferences.locationFullName || preferences.location);
+      const gpsString = startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown';
 
       let distanceLimitNum = 9999;
       if (preferences.distance) {
@@ -626,12 +856,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
         if (match) {
           distanceLimitNum = parseFloat(match[0]);
         } else if (preferences.distance.toLowerCase().includes('walk')) {
-          distanceLimitNum = 2; 
+          distanceLimitNum = 2;
         }
       }
 
-      const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords);
-      const { coords: propCoords } = getLocationContext();
+      const recentlyShown = getRecentlyShownKeys();
+      const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
       const isFlexiblePicks = !timeFrameStr;
 
       const picksDbContext = isFlexiblePicks
@@ -641,57 +871,57 @@ export default function AiExpertView({ onClose, property, propertyType, features
             startCoords,
             propCoords,
             gems,
-            features
+            features,
+            recentlyShown
           )
         : null;
 
-      let promptText = `
-        You are an elite, local luxury concierge. 
-        
-        CRITICAL ROUTING INSTRUCTION (POINT A):
-        The user's STARTING POINT is EXACTLY: "${startLocationName}" (GPS: ${startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown'}).
-        Max Distance Radius from STARTING POINT: ${distanceLimitNum}km. 
-        Requested Categories: ${preferences.categories.join(', ')}.
+      const hardCapKm = effectiveMaxDistanceKm(distanceLimitNum);
 
-        ${isNearProperty ? `Property Location Context: ${fullLocationContext}` : `IMPORTANT: The user is NOT starting from their accommodation. They are starting their trip from "${startLocationName}". You MUST focus strictly on generating recommendations near "${startLocationName}" within the ${distanceLimitNum}km radius. DO NOT suggest places near their accommodation.`}
+      const systemInstruction = `You are Vailo, an elite local concierge. Reply only with a valid JSON object (no markdown, no prose outside JSON).
 
-        ${
-          isFlexiblePicks
-            ? ''
-            : `VAILO DATABASE (ALREADY PRE-FILTERED TO BE STRICTLY WITHIN ${distanceLimitNum}KM OF STARTING POINT):
-        ${JSON.stringify(filteredDatabase)}`
-        }
+Rules:
+- HARD DISTANCE LIMIT: NEVER suggest a place farther than ${hardCapKm.toFixed(0)}km from the starting point. If you cannot think of a real, named local place within that limit, return FEWER items — never pad with far-away alternatives. A small radius (e.g. 9km) must never return a 200km+ suggestion.
+- 50 / 50 SPLIT: When the VAILO DATABASE has items in the requested categories, mix roughly half host-curated database picks with half your own AI picks of specific, real, named businesses or natural landmarks LOCALS actually use. Never pad with duplicates and never repeat a business that is already in the database pool.
+- AI picks must be specific NAMED places (e.g. "Taverna O Manolis", "Imbros Gorge"). Never suggest a generic area, town centre, or "best of" list. If you are not sure a specific place exists in the radius, skip it.
+- Leave googleMapsUrl and photoUrl EMPTY for AI picks — our system resolves the exact place link from your title + location.
+- If you know an exact Google Place ID for an AI pick, include it as "googlePlaceId" — it makes the link point to that exact business.
+- distanceKm is REQUIRED on every item and must be ≤ ${hardCapKm.toFixed(0)}.`;
 
-        CONCIERGE RULES (STRICT ANTI-HALLUCINATION PROTOCOL):
-        1. DATABASE FIRST (60/40 RULE): You MUST prioritize items from the VAILO DATABASE above, as they are mathematically proven to be within the distance limit.
-        2. ZERO-TOLERANCE GEOGRAPHICAL FENCING: As an AI, you lack a live routing engine and frequently hallucinate distances.
-           - If you suggest an AI place NOT in the VAILO DATABASE, you must be 1000% mathematically certain it is within ${distanceLimitNum}km of the STARTING POINT ("${startLocationName}").
-           - NEVER suggest famous places from neighboring municipalities if they exceed the radius.
-           - If you do not know a true local, neighborhood spot, DO NOT invent one. It is better to return ONLY database items or an empty list than to hallucinate a distance.
-        3. NO FAKE MATH: For AI-generated places, you are STRICTLY FORBIDDEN from writing fake "km" distances. You MUST write the actual Town/Village name instead. For Database items, use the exact distance string provided.
-        4. SPECIFIC BUSINESSES ONLY: Recommend specific, real, named businesses or attractions.
-      `;
+      let promptText = `Starting point: "${startLocationName}" (GPS: ${gpsString}). Radius: ${distanceLimitNum}km (hard cap ${hardCapKm.toFixed(0)}km). Categories: ${preferences.categories.join(', ')}.
+
+${isNearProperty
+  ? `Property context: ${fullLocationContext}`
+  : `User is NOT at their accommodation. Focus strictly on places near "${startLocationName}". Do not suggest places near their accommodation.`}
+
+${
+  isFlexiblePicks
+    ? ''
+    : `VAILO DATABASE (already pre-filtered within ${distanceLimitNum}km of starting point — use roughly half of timeline stops from here, alternated with your own NAMED AI picks. Never repeat a database business):
+${JSON.stringify(filteredDatabase)}`
+}`;
 
       if (aiTimeFrame) {
         promptText += `
-        5. TIMEFLOW: The guest selected this timeframe: "${aiTimeFrame}".
-        6. START & END POINTS: The FIRST item in the timeline MUST be departing from "${preferences.location}" and the LAST item MUST be returning to "${preferences.location}".
-        
-        You MUST return ONLY a valid JSON object matching this exact schema (NO markdown formatting):
-        {
-          "type": "timeline",
-          "plan": [
-            {
-              "time": "e.g., 10:00 AM",
-              "title": "Specific Name of Activity/Place",
-              "description": "Engaging 2-sentence description.",
-              "transportToNext": "For DB items: use provided distance. For AI items: Output Neighborhood name & estimated drive time (e.g., 'Located in Platanias - 15 mins drive') - NO KM ALLOWED",
-              "source": "database or ai",
-              "photoUrl": "Exact URL from database or empty string if AI",
-              "googleMapsUrl": "Exact URL from database or empty string if AI"
-            }
-          ]
-        }`;
+
+Timeframe: ${aiTimeFrame}. First item must depart from "${preferences.location}". Last item must return to "${preferences.location}".
+
+Return JSON with this schema:
+{
+  "type": "timeline",
+  "plan": [
+    {
+      "time": "10:00 AM",
+      "title": "Specific place name",
+      "description": "Engaging 2-sentence description.",
+      "transportToNext": "For DB items: use provided distance. For AI items: neighborhood + estimated drive time (e.g. 'Platanias — 15 mins drive'). Never write fake km.",
+      "source": "database" | "ai",
+      "googlePlaceId": "Place ID if you know it (improves the map link). Empty string otherwise.",
+      "photoUrl": "Exact URL from DB or empty string for AI picks",
+      "googleMapsUrl": "Exact URL from DB or empty string for AI picks"
+    }
+  ]
+}`;
       } else {
         promptText += buildFlexiblePicksPromptSection(
           preferences.categories,
@@ -699,64 +929,105 @@ export default function AiExpertView({ onClose, property, propertyType, features
           picksDbContext!
         );
         promptText += `
-        You MUST return ONLY a valid JSON object matching this exact schema (NO markdown formatting):
+
+Return JSON with this schema:
+{
+  "type": "picks",
+  "categories": [
+    {
+      "categoryName": "Name of Category",
+      "items": [
         {
-          "type": "picks",
-          "categories": [
-            {
-              "categoryName": "Name of Category",
-              "items": [
-                {
-                  "title": "Specific local business/place name",
-                  "description": "2 sentences on why LOCALS love it — not why tourists go there.",
-                  "distanceKm": 12.4,
-                  "beyondRadius": false,
-                  "estimatedDistance": "12.4km or Further · 18.0km if beyondRadius is true",
-                  "source": "database or ai",
-                  "photoUrl": "Exact URL from database or empty string if AI",
-                  "googleMapsUrl": "Exact URL from database or empty string if AI"
-                }
-              ]
-            }
-          ]
+          "title": "Specific local business/place name",
+          "description": "2 sentences on why LOCALS love it — not why tourists go.",
+          "distanceKm": 12.4,
+          "beyondRadius": false,
+          "estimatedDistance": "12.4km — or 'Further · 18.0km' when beyondRadius is true",
+          "source": "database" | "ai",
+          "googlePlaceId": "Place ID if you know it (AI picks only — improves accuracy). Empty otherwise.",
+          "photoUrl": "Exact URL from DB or empty string for AI picks",
+          "googleMapsUrl": "Exact URL from DB or empty string for AI picks"
         }
-        Return up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${distanceLimitNum}km first; if fewer than ${MAX_PICKS_PER_CATEGORY}, add distinct places from extended range (beyondRadius: true). NEVER list the same business twice under any name or description. Sort closest to furthest.`;
+      ]
+    }
+  ]
+}
+Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${distanceLimitNum}km first; if fewer remain, add distinct places from extended range (beyondRadius: true). Never list the same business twice. Sort closest to furthest.`;
       }
 
-      console.log("--- AI PROMPT START (executePlan) ---");
-      console.log(promptText);
-      console.log("--- AI PROMPT END ---");
+      const model = getGenerativeModel(ai, {
+        model: 'gemini-2.5-flash',
+        systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.7,
+        },
+      });
 
       const result = await model.generateContent(promptText);
-      let rawText = result.response.text();
-      
-      const firstBrace = rawText.indexOf('{');
-      const lastBrace = rawText.lastIndexOf('}');
-      if (firstBrace === -1 || lastBrace === -1) throw new Error("AI did not return a recognizable JSON object.");
-      
-      const cleanJsonString = rawText.substring(firstBrace, lastBrace + 1);
-      const parsedData = JSON.parse(cleanJsonString);
+      const rawText = result.response.text();
 
-      setThinkingLabel('Pinpointing places on the map...');
-      const mapAreaHint = startLocationName || preferences.location;
-      let enrichedData = await finalizePlanData(parsedData, mapAreaHint, startCoords);
-
-      if (isFlexiblePicks && picksDbContext) {
-        enrichedData = normalizeFlexiblePicksPlan(
-          enrichedData,
-          distanceLimitNum,
-          picksDbContext,
-          startCoords
-        );
+      let parsedData: any;
+      try {
+        parsedData = JSON.parse(rawText);
+      } catch {
+        const firstBrace = rawText.indexOf('{');
+        const lastBrace = rawText.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('AI did not return a recognizable JSON object.');
+        parsedData = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
       }
 
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'plan', data: enrichedData }]);
+      const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
+      let initialPlan = await enrichForImmediateRender(parsedData, mapAreaHint, startCoords);
+
+      if (isFlexiblePicks && picksDbContext) {
+        initialPlan = normalizeFlexiblePicksPlan(
+          initialPlan,
+          distanceLimitNum,
+          picksDbContext,
+          startCoords,
+          recentlyShown
+        );
+      } else {
+        initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
+      }
+
+      // Render the plan immediately — feels instant. Photos fill in next.
+      const planMessageId = `${Date.now()}-plan`;
+      setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
+      setIsThinking(false);
+
+      // Record which DB items we just showed so they get rotated out next time.
+      markItemsShown(collectDbItemsFromPlan(initialPlan));
+
+      // Background photo enrichment — updates the same message when ready.
+      enrichPhotosInBackground(initialPlan, startCoords)
+        .then((withPhotos) => {
+          let finalPlan = withPhotos;
+          if (isFlexiblePicks && picksDbContext) {
+            finalPlan = normalizeFlexiblePicksPlan(
+              finalPlan,
+              distanceLimitNum,
+              picksDbContext,
+              startCoords,
+              recentlyShown
+            );
+          } else {
+            finalPlan = filterTimelinePlanByDistance(finalPlan, distanceLimitNum, startCoords, recentlyShown);
+          }
+          setMessages(prev =>
+            prev.map(m => (m.id === planMessageId ? { ...m, data: finalPlan } : m))
+          );
+        })
+        .catch((err) => {
+          console.error('Background photo enrichment failed:', err);
+        });
 
     } catch (error: any) {
-      console.error("Critical AI Itinerary Error:", error);
+      console.error('Critical AI Itinerary Error:', error);
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: `I apologize, but I encountered an error while generating your plan. Error Details: ${error.message}. Please try asking a custom question below.` }]);
-    } finally {
       setIsThinking(false);
+    } finally {
       setThinkingLabel('Curating your local recommendations…');
     }
   };
@@ -775,23 +1046,24 @@ export default function AiExpertView({ onClose, property, propertyType, features
     setThinkingLabel('Curating your local recommendations…');
 
     try {
-      const model = getGenerativeModel(ai, { model: "gemini-3.1-pro-preview" });
-
       const { fullLocationContext } = getLocationContext();
       const startCoords = getStartCoords();
       const isNearProperty = typeof preferences.location === 'string' && preferences.location.startsWith('Near');
-      const startLocationName = isNearProperty ? fullLocationContext : (locationFullNameRef.current || preferences.locationFullName || preferences.location);
-      
-      const conversationHistory = messages.map(m => {
-        if (m.type === 'plan') return `AI generated this plan on screen: ${JSON.stringify(m.data)}`;
-        if (m.text?.startsWith('welcome:')) {
-          return `AI Concierge: Welcomed guest to ${m.text.replace('welcome:', '')} and offered to plan a local day.`;
-        }
-        if (m.type === 'selection') {
-          return `Guest selected: ${m.text}`;
-        }
-        return `${m.role === 'ai' ? 'AI Concierge' : 'Guest'}: ${m.text}`;
-      }).join('\n\n');
+      const startLocationName = isNearProperty
+        ? fullLocationContext
+        : (locationFullNameRef.current || preferences.locationFullName || preferences.location);
+      const gpsString = startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown';
+
+      const conversationHistory = messages
+        .map(m => {
+          if (m.type === 'plan') return `AI generated plan on screen: ${JSON.stringify(m.data)}`;
+          if (m.text?.startsWith('welcome:')) {
+            return `AI: Welcomed guest to ${m.text.replace('welcome:', '')}.`;
+          }
+          if (m.type === 'selection') return `Guest selected: ${m.text}`;
+          return `${m.role === 'ai' ? 'AI' : 'Guest'}: ${m.text}`;
+        })
+        .join('\n');
 
       let distanceLimitNum = 9999;
       if (preferences.distance) {
@@ -799,80 +1071,121 @@ export default function AiExpertView({ onClose, property, propertyType, features
         if (match) {
           distanceLimitNum = parseFloat(match[0]);
         } else if (preferences.distance.toLowerCase().includes('walk')) {
-          distanceLimitNum = 2; 
+          distanceLimitNum = 2;
         }
       }
-      const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords);
+      const recentlyShown = getRecentlyShownKeys();
+      const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
 
-      const prompt = `
-        You are the elite Vailo AI Concierge.
-        The user's STARTING POINT is EXACTLY: "${startLocationName}" (GPS: ${startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown'}).
-        Current itinerary preferences: ${JSON.stringify(preferences)}.
-        
-        ${isNearProperty ? `Property Location Context: ${fullLocationContext}` : `IMPORTANT: The user is NOT starting from their accommodation. They are starting from "${startLocationName}". Focus strictly on the area around this starting point. DO NOT suggest places near their accommodation.`}
+      const systemInstruction = `You are Vailo, an elite local concierge. Always reply with a single valid JSON object (no markdown).
 
-        CONVERSATION HISTORY (What is currently on the screen):
-        ${conversationHistory}
-        
-        VAILO DATABASE (ALREADY PRE-FILTERED BY SYSTEM TO FIT DISTANCE RULES):
-        ${JSON.stringify(filteredDatabase)}
+Rules:
+- Only answer questions about local travel, day planning, itineraries, and "live like a local" advice.
+- 50 / 50 SPLIT when providing a plan: mix roughly half host-curated VAILO DATABASE picks with half your own specific, real, named AI picks (NEVER duplicate a business already in the database).
+- AI picks must be specific NAMED places — never a generic area or town centre. Skip a slot if you are not sure.
+- Leave photoUrl and googleMapsUrl EMPTY for AI picks — our system resolves the exact place link.
+- Include googlePlaceId for AI picks if you know it.
+- Never invent kilometer distances for AI picks. Use neighborhood/village names instead.
+- If providing recommendations, embed them inside the JSON 'plan' object — not in replyText.`;
 
-        STRICT RULES:
-        1. ONLY answer questions related to local travel, day planning, itineraries, and "live like a local" advice.
-        2. ULTRA CLEVER LOCAL EXPERT: 100% prioritize the VAILO DATABASE if relevant items exist near the starting point.
-        3. GEOGRAPHICAL FENCING FOR AI IDEAS: You do not have a live map routing engine. You CANNOT calculate precise point-to-point kilometers for places outside the database. NEVER invent fake kilometer numbers. Use Neighborhood names instead.
-        4. SPECIFIC BUSINESSES ONLY: NEVER recommend generic areas. You MUST recommend specific, real, named businesses or attractions.
-        5. PRESENTATION IS EVERYTHING: If providing recommendations, return the JSON 'plan' object (either 'picks' or 'timeline'). DO NOT list recommendations in plain text.
+      const prompt = `Starting point: "${startLocationName}" (GPS: ${gpsString}).
+Preferences: ${JSON.stringify(preferences)}.
 
-        YOUR OUTPUT FORMAT:
-        You MUST return ONLY a valid JSON object matching this exact schema (no markdown formatting):
-        {
-          "replyText": "Your conversational response.",
-          "hasPlan": true/false,
-          "plan": null OR { 
-            "type": "picks" OR "timeline",
-            "plan": [ { "time": "...", "title": "...", "description": "...", "transportToNext": "...", "source": "database or ai", "photoUrl": "", "googleMapsUrl": "" } ],
-            "categories": [ { "categoryName": "...", "items": [ { "title": "...", "description": "...", "estimatedDistance": "Output Neighborhood Name instead of fake km if not from DB", "source": "database or ai", "photoUrl": "", "googleMapsUrl": "" } ] } ]
-          }
-        }
+${isNearProperty
+  ? `Property context: ${fullLocationContext}`
+  : `User is NOT at their accommodation. Focus on places near "${startLocationName}".`}
 
-        User Query: ${userText}
-      `;
+Conversation so far:
+${conversationHistory}
 
-      console.log("--- AI PROMPT START (handleChatSubmit) ---");
-      console.log(prompt);
-      console.log("--- AI PROMPT END ---");
+VAILO DATABASE (pre-filtered):
+${JSON.stringify(filteredDatabase)}
+
+Return JSON with this schema:
+{
+  "replyText": "Your conversational reply.",
+  "hasPlan": true | false,
+  "plan": null | {
+    "type": "picks" | "timeline",
+    "plan": [ { "time": "", "title": "", "description": "", "transportToNext": "", "source": "database" | "ai", "photoUrl": "", "googleMapsUrl": "" } ],
+    "categories": [ { "categoryName": "", "items": [ { "title": "", "description": "", "estimatedDistance": "", "source": "database" | "ai", "photoUrl": "", "googleMapsUrl": "" } ] } ]
+  }
+}
+
+User: ${userText}`;
+
+      const model = getGenerativeModel(ai, {
+        model: 'gemini-2.5-flash',
+        systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.7,
+        },
+      });
 
       const result = await model.generateContent(prompt);
-      let rawText = result.response.text();
-      
-      const firstBrace = rawText.indexOf('{');
-      const lastBrace = rawText.lastIndexOf('}');
-      if (firstBrace === -1 || lastBrace === -1) throw new Error("JSON Parse failed.");
-      
-      const parsedData = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
-      
-      if (parsedData.replyText) {
-        setMessages(prev => [...prev, { id: Date.now().toString() + 'text', role: 'ai', type: 'text', text: parsedData.replyText }]);
+      const rawText = result.response.text();
+
+      let parsedData: any;
+      try {
+        parsedData = JSON.parse(rawText);
+      } catch {
+        const firstBrace = rawText.indexOf('{');
+        const lastBrace = rawText.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1) throw new Error('JSON Parse failed.');
+        parsedData = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
       }
-      
+
+      if (parsedData.replyText) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString() + 'text',
+          role: 'ai',
+          type: 'text',
+          text: parsedData.replyText,
+        }]);
+      }
+
       if (parsedData.hasPlan && parsedData.plan) {
-        setThinkingLabel('Pinpointing places on the map...');
-        const mapAreaHint = startLocationName || preferences.location;
-        const enrichedPlan = await finalizePlanData(parsedData.plan, mapAreaHint, startCoords);
-        setMessages(prev => [...prev, { id: Date.now().toString() + 'plan', role: 'ai', type: 'plan', data: enrichedPlan }]);
+        const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
+        let initialPlan = await enrichForImmediateRender(parsedData.plan, mapAreaHint, startCoords);
+        initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
+        const planMessageId = Date.now().toString() + 'plan';
+        setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
+        setIsThinking(false);
+
+        markItemsShown(collectDbItemsFromPlan(initialPlan));
+
+        enrichPhotosInBackground(initialPlan, startCoords)
+          .then((withPhotos) => {
+            const filtered = filterTimelinePlanByDistance(withPhotos, distanceLimitNum, startCoords, recentlyShown);
+            setMessages(prev =>
+              prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
+            );
+          })
+          .catch((err) => console.error('Background photo enrichment failed:', err));
+      } else {
+        setIsThinking(false);
       }
 
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: "I'm having trouble connecting right now. Please try again in a moment." }]);
-    } finally {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'ai',
+        type: 'text',
+        text: "I'm having trouble connecting right now. Please try again in a moment.",
+      }]);
       setIsThinking(false);
+    } finally {
       setThinkingLabel('Curating your local recommendations…');
     }
   };
 
+  // Used for "View" / "Directions" buttons rendered after the plan returns. We
+  // prefer a real geographic hint (e.g. "Chania, Greece") so Google Maps lands
+  // on the place card, not a list of results that include the property name.
   const mapAreaHint =
+    getGeographicAreaHint() ||
     locationFullNameRef.current ||
     preferences.locationFullName ||
     preferences.location ||
@@ -977,13 +1290,19 @@ export default function AiExpertView({ onClose, property, propertyType, features
                     <p className="font-semibold text-[#0B4F5C] text-sm mb-2">{item.time}</p>
                     
                     <div className="bg-white border border-[#0B4F5C]/8 rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(11,79,92,0.06)]">
-                      {item.photoUrl ? (
-                        <img src={item.photoUrl} alt={item.title} className="w-full h-36 object-cover" />
-                      ) : (
-                        <div className="w-full h-36 bg-[#eef3f2] flex items-center justify-center text-[#0B4F5C]/25">
-                          <ImageIcon size={32} strokeWidth={1.5} />
-                        </div>
-                      )}
+                      <div className="relative">
+                        <PlanImage
+                          src={item.photoUrl}
+                          alt={item.title}
+                          className="w-full h-36 object-cover"
+                          fallbackClassName="w-full h-36"
+                        />
+                        {item.previouslyShown && (
+                          <span className="absolute top-3 right-3 bg-white/90 text-[#0B4F5C] text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
+                            <Eye size={10} strokeWidth={2.2} /> Seen before
+                          </span>
+                        )}
+                      </div>
                       <div className="p-4">
                         <h4 className="font-semibold text-gray-900 text-base flex flex-wrap items-center gap-2 mb-2">
                           {item.title}
@@ -993,22 +1312,40 @@ export default function AiExpertView({ onClose, property, propertyType, features
                             </span>
                           )}
                         </h4>
-                        <p className="text-gray-600 text-sm leading-relaxed mb-4">{item.description}</p>
-                        
-                        <div className="flex gap-2 pt-4 border-t border-[#0B4F5C]/8">
-                          {(() => {
-                            const links = getItemMapLinks(item, mapAreaHint);
-                            return (
-                              <>
-                                <a href={links.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-xl text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors">
-                                  <MapIcon size={14} className="mr-1.5" /> View
-                                </a>
-                                <a href={links.navigateUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-xl text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors shadow-sm">
-                                  <Navigation size={14} className="mr-1.5" /> Directions
-                                </a>
-                              </>
-                            );
-                          })()}
+                        <ExpandableDescription
+                          text={item.description}
+                          lines={3}
+                          className="mb-4"
+                        />
+
+                        <div className="flex items-center justify-between gap-2 pt-4 border-t border-[#0B4F5C]/8">
+                          <PickFeedbackButtons
+                            propertyId={property?.id}
+                            item={{
+                              title: item.title,
+                              source: item.source,
+                              googlePlaceId: item.googlePlaceId,
+                              googleMapsUrl: item.googleMapsUrl,
+                              latitude: item.latitude,
+                              longitude: item.longitude,
+                              description: item.description,
+                            }}
+                          />
+                          <div className="flex gap-2 flex-1">
+                            {(() => {
+                              const links = getItemMapLinks(item, mapAreaHint);
+                              return (
+                                <>
+                                  <a href={links.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors">
+                                    <MapIcon size={13} className="mr-1" /> View
+                                  </a>
+                                  <a href={links.navigateUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors shadow-sm">
+                                    <Navigation size={13} className="mr-1" /> Go
+                                  </a>
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1031,6 +1368,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
                     categoryName={cat.categoryName}
                     items={cat.items || []}
                     mapAreaHint={mapAreaHint}
+                    propertyId={property?.id}
                   />
                 ))}
               </div>
@@ -1271,7 +1609,11 @@ export default function AiExpertView({ onClose, property, propertyType, features
                 <p className="text-sm font-semibold text-[#0B4F5C] mb-1">What would locals choose today?</p>
                 <p className="text-xs text-gray-500 mb-4">Select up to three interests — we will surface the places residents actually go.</p>
                 <div className="flex flex-wrap gap-2 mb-5">
-                  {availableCategories.length > 0 ? (
+                  {categoriesLoading && availableCategories.length === 0 ? (
+                    <p className="text-xs text-gray-400 flex items-center gap-2">
+                      <Loader2 size={14} className="animate-spin" /> Loading local categories…
+                    </p>
+                  ) : availableCategories.length > 0 ? (
                     availableCategories.map((cat) => (
                       <button
                         key={cat}
@@ -1294,8 +1636,26 @@ export default function AiExpertView({ onClose, property, propertyType, features
                       </button>
                     ))
                   ) : (
-                    <p className="text-xs text-gray-400 flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> Loading local categories…
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      {areaConfigIssue === 'invalid-master' ? (
+                        <>
+                          City/Master Area on this listing is set to &ldquo;{invalidMasterAreaRaw}&rdquo;,
+                          which is not a configured region in Area Functionality. Set it to the master
+                          area (e.g. Chania) on the property listing — not the neighborhood or street
+                          address.
+                        </>
+                      ) : areaConfigIssue === 'missing' ? (
+                        <>
+                          This listing is missing Country or City/Master Area. Your host must set both
+                          on the property listing (e.g. Greece and Chania).
+                        </>
+                      ) : listingAreaCtx ? (
+                        <>
+                          No Local Gems categories are configured for {listingAreaCtx.masterArea},{' '}
+                          {listingAreaCtx.country} yet. Your host can add them in Area Functionality →
+                          Local Gems Categories.
+                        </>
+                      ) : null}
                     </p>
                   )}
                 </div>

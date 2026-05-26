@@ -18,8 +18,8 @@ import Reservations from "./pages/admin/properties/Reservations";
 import HouseGuide from "./pages/admin/properties/HouseGuide";
 import Features from "./pages/admin/properties/Features";
 import Billing from "./pages/admin/Billing";
+import LegalDocuments from "./pages/admin/LegalDocuments";
 import AreaSelector from "./pages/admin/area/AreaSelector";
-import AiCategories from "./pages/admin/area/AiCategories";
 import LocalGemsCategories from "./pages/admin/area/LocalGemsCategories";
 import FeaturesCategories from "./pages/admin/area/FeaturesCategories";
 import FeaturesPhotos from "./pages/admin/area/FeaturesPhotos";
@@ -27,6 +27,8 @@ import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
 import AreaFeatures from "./pages/admin/area/AreaFeatures";
 import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
 import AiGaps from "./pages/admin/properties/AiGaps";
+import GuestIssues from "./pages/admin/properties/GuestIssues";
+import PickFeedback from "./pages/admin/properties/PickFeedback";
 import { useNewDiscoveredPlacesCount } from "./hooks/useNewDiscoveredPlacesCount";
 import { Link } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
@@ -148,6 +150,8 @@ export default function App() {
           <Route path="reservations" element={<Reservations />} />
           <Route path="house-guide" element={<HouseGuide />} />
           <Route path="features" element={<Features />} />
+          <Route path="guest-issues" element={<GuestIssues />} />
+          <Route path="pick-feedback" element={<PickFeedback />} />
           <Route path="ai-gaps" element={<AiGaps />} />
         </Route>
 
@@ -155,8 +159,8 @@ export default function App() {
         <Route path="/add-owner" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
         <Route path="/owners/:id/edit" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
         <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
+        <Route path="/legal" element={<AdminRoute><LegalDocuments /></AdminRoute>} />
         <Route path="/area" element={<AdminRoute><AreaSelector /></AdminRoute>} />
-        <Route path="/area/:country/:area/ai-categories" element={<AdminRoute><AiCategories /></AdminRoute>} />
         <Route path="/area/:country/:area/local-gems-categories" element={<AdminRoute><LocalGemsCategories /></AdminRoute>} />
         <Route path="/area/:country/:area/features-categories" element={<AdminRoute><FeaturesCategories /></AdminRoute>} />
         <Route path="/area/:country/:area/features-photos" element={<AdminRoute><FeaturesPhotos /></AdminRoute>} />

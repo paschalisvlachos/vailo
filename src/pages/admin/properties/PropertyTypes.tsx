@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -19,6 +19,7 @@ export default function PropertyTypes() {
   const [isSubmittingType, setIsSubmittingType] = useState(false);
   const [isMagicFilling, setIsMagicFilling] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
+  const invalidCityWarnedRef = useRef(false);
   
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -86,6 +87,26 @@ export default function PropertyTypes() {
       setTypeFormData(prev => ({ ...prev, internalRefCode: `TYP-${Math.random().toString(36).substring(2, 8).toUpperCase()}` }));
     }
   }, [isFormOpen, editingTypeId]);
+
+  const cityIsInvalid =
+    !!typeFormData.city &&
+    dbAreas.length > 0 &&
+    !dbAreas.some((a) => a.toLowerCase() === typeFormData.city.toLowerCase());
+
+  useEffect(() => {
+    if (!isFormOpen) {
+      invalidCityWarnedRef.current = false;
+      return;
+    }
+    if (!typeFormData.city || dbAreas.length === 0 || !cityIsInvalid) return;
+    if (!invalidCityWarnedRef.current) {
+      toast.warning(
+        `"${typeFormData.city}" is not a valid City/Master Area. Select the correct region (e.g. Chania) and save.`
+      );
+      invalidCityWarnedRef.current = true;
+    }
+    setTypeFormData((prev) => ({ ...prev, city: '' }));
+  }, [isFormOpen, dbAreas, typeFormData.city, cityIsInvalid, toast]);
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (e.target.name === 'urlSlug') setIsSlugManuallyEdited(true);
@@ -160,6 +181,9 @@ export default function PropertyTypes() {
       const slugFromName = listingName
         ? listingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
         : '';
+      const googleNeighborhood = googleData.area?.trim() || '';
+      const googleCity = googleData.city?.trim() || '';
+      const matchedMasterArea = dbAreas.find((a) => a.toLowerCase() === googleCity.toLowerCase());
 
       setTypeFormData((prev) => ({
         ...prev,
@@ -170,8 +194,8 @@ export default function PropertyTypes() {
         googleMapsUrl: googleData.googleMapsUrl || url,
         listingUrl: googleData.websiteUri || prev.listingUrl,
         addressLine: googleData.addressLine || prev.addressLine,
-        area: googleData.area || prev.area,
-        city: googleData.city || prev.city,
+        area: googleNeighborhood || prev.area,
+        city: matchedMasterArea || prev.city,
         postCode: googleData.postCode || prev.postCode,
         country: googleData.country || prev.country,
         photoUrl: googleData.photoUrl || prev.photoUrl,
@@ -246,6 +270,15 @@ export default function PropertyTypes() {
   const submitPropertyType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!propertyId) return;
+
+    if (
+      !typeFormData.city ||
+      !dbAreas.some((a) => a.toLowerCase() === typeFormData.city.toLowerCase())
+    ) {
+      toast.warning('Please select a valid City/Master Area (e.g. Chania) from the dropdown.');
+      return;
+    }
+
     setIsSubmittingType(true);
     
     try {
@@ -586,6 +619,11 @@ export default function PropertyTypes() {
                 <option value="" disabled>{dbAreas.length === 0 ? 'No areas setup for this country' : 'Select City/Area'}</option>
                 {dbAreas.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
+              {cityIsInvalid && (
+                <p className="text-xs text-red-500 mt-1">
+                  Invalid master area stored. Re-select from the list (e.g. Chania) and save.
+                </p>
+              )}
               {typeFormData.country && dbAreas.length === 0 && (
                 <p className="text-xs text-red-500 mt-1">Please add areas in Area Functionality first.</p>
               )}

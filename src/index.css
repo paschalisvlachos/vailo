@@ -135,4 +135,60 @@
   .animate-toast-in {
     animation: toast-in 0.28s ease-out;
   }
+
+  .rich-text-editor:empty::before {
+    content: attr(data-placeholder);
+    color: #9ca3af;
+    pointer-events: none;
+  }
+
+  .rich-text-editor p {
+    margin: 0 0 0.65em;
+  }
+
+  .rich-text-editor ul,
+  .legal-document-content ul {
+    list-style: disc;
+    padding-left: 1.35em;
+    margin: 0.5em 0;
+  }
+
+  .rich-text-editor ol,
+  .legal-document-content ol {
+    list-style: decimal;
+    padding-left: 1.35em;
+    margin: 0.5em 0;
+  }
+
+  .rich-text-editor h2,
+  .legal-document-content h2 {
+    font-family: var(--font-luxury);
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #051f26;
+    margin: 1em 0 0.5em;
+  }
+
+  .rich-text-editor h3,
+  .legal-document-content h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #051f26;
+    margin: 0.85em 0 0.4em;
+  }
+
+  .rich-text-editor a,
+  .legal-document-content a {
+    color: #0b4f5c;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .legal-document-content p {
+    margin: 0 0 0.75em;
+  }
+
+  .legal-document-content p:last-child {
+    margin-bottom: 0;
+  }
 }

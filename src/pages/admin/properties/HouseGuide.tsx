@@ -7,8 +7,22 @@ import {
   Building, BookOpen, Key, ScrollText, Zap, Lightbulb, Thermometer, 
   Droplets, BedDouble, ChefHat, Flame, Waves, Wifi, WashingMachine, 
   Trash2, ShieldAlert, Sparkles, Box, Wrench, MessageCircleQuestion,
-  Loader2, Save, Plus, MapPin, CheckCircle2, Circle, ArrowRight, X, Edit3
+  Loader2, Save, Plus, MapPin, CheckCircle2, Circle, ArrowRight, X, Edit3,
+  Star, Link2
 } from 'lucide-react';
+import {
+  PORTAL_FEATURED_CAP,
+  buildSourceTextForFeaturedKey,
+  featuredKeyForPrimaryCategory,
+  getFeaturedConfig,
+  pairedFeaturedKeyForCategory,
+  shortContentHash,
+  type FeaturedKey,
+  type FeaturedPreviewRecord,
+  type FeaturedPreviewsMap,
+} from '../../../lib/houseGuidePortal';
+import { generateFeaturedPreview } from '../../../lib/houseGuidePreviewAi';
+import { useToast } from '../../../context/ToastContext';
 
 // --- TYPE DEFINITIONS ---
 type Device = { room: string; device: string; brand: string; model: string };
@@ -71,6 +85,7 @@ const CATEGORIES: CategoryDef[] = [
 
 export default function HouseGuide() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const toast = useToast();
   
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
@@ -78,6 +93,8 @@ export default function HouseGuide() {
   // --- STATE MANAGEMENT ---
   const [formData, setFormData] = useState<FormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [featuredOnPortal, setFeaturedOnPortal] = useState<FeaturedKey[]>([]);
+  const [featuredPreviews, setFeaturedPreviews] = useState<FeaturedPreviewsMap>({});
 
   // Wizard State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -103,20 +120,64 @@ export default function HouseGuide() {
     if (!propertyId || !selectedTypeId) return;
     const docRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'houseGuide', 'data');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) setFormData((docSnap.data() as FormData) || {});
-      else setFormData({});
+      if (docSnap.exists()) {
+        const raw = (docSnap.data() as Record<string, unknown>) || {};
+        const { featuredOnPortal: featuredRaw, previews: previewsRaw, ...rest } = raw as {
+          featuredOnPortal?: unknown;
+          previews?: unknown;
+        } & Record<string, unknown>;
+
+        const guideRecord = rest as Record<string, unknown>;
+        setFormData(rest as FormData);
+        setFeaturedOnPortal(
+          Array.isArray(featuredRaw)
+            ? (featuredRaw as unknown[])
+                .filter((k): k is string => typeof k === 'string')
+                .filter((k): k is FeaturedKey => !!getFeaturedConfig(k))
+                .filter((k) =>
+                  buildSourceTextForFeaturedKey(k, guideRecord, (categoryId) => {
+                    const cat = CATEGORIES.find((c) => c.id === categoryId);
+                    return cat ? cat.fields : [];
+                  }).trim().length > 0
+                )
+                .slice(0, PORTAL_FEATURED_CAP)
+            : []
+        );
+        setFeaturedPreviews(
+          previewsRaw && typeof previewsRaw === 'object'
+            ? (previewsRaw as FeaturedPreviewsMap)
+            : {}
+        );
+      } else {
+        setFormData({});
+        setFeaturedOnPortal([]);
+        setFeaturedPreviews({});
+      }
     });
     return () => unsubscribe();
   }, [propertyId, selectedTypeId]);
 
   // --- LOGIC HELPERS ---
-  const checkIsComplete = useCallback((category: CategoryDef) => {
-    return category.fields.every((field) => {
-      const val = formData[field.id];
-      if (field.type.startsWith('array_')) return Array.isArray(val) && val.length > 0;
-      return typeof val === 'string' && val.trim().length > 0;
-    });
+  const fieldHasContent = useCallback((field: FieldDef) => {
+    const val = formData[field.id];
+    if (field.type.startsWith('array_')) return Array.isArray(val) && val.length > 0;
+    return typeof val === 'string' && val.trim().length > 0;
   }, [formData]);
+
+  const checkIsComplete = useCallback(
+    (category: CategoryDef) => category.fields.every(fieldHasContent),
+    [fieldHasContent]
+  );
+
+  const getCategoryCompletion = useCallback(
+    (category: CategoryDef): 'complete' | 'partial' | 'empty' => {
+      const filledCount = category.fields.filter(fieldHasContent).length;
+      if (filledCount === 0) return 'empty';
+      if (filledCount === category.fields.length) return 'complete';
+      return 'partial';
+    },
+    [fieldHasContent]
+  );
 
   const getWizardSteps = useMemo(() => {
     if (!showIncompleteOnly) return CATEGORIES;
@@ -125,18 +186,160 @@ export default function HouseGuide() {
 
   const progressPercentage = Math.round((CATEGORIES.filter(checkIsComplete).length / CATEGORIES.length) * 100);
 
+  // --- FEATURED PORTAL HELPERS ---
+  const fieldsForCategoryId = useCallback(
+    (categoryId: string) => {
+      const cat = CATEGORIES.find((c) => c.id === categoryId);
+      return cat ? cat.fields : [];
+    },
+    []
+  );
+
+  const hasFeaturedContent = useCallback(
+    (key: FeaturedKey) =>
+      buildSourceTextForFeaturedKey(
+        key,
+        formData as Record<string, unknown>,
+        fieldsForCategoryId
+      ).trim().length > 0,
+    [formData, fieldsForCategoryId]
+  );
+
+  // Drop featured keys locally when their source content is cleared (star stays hidden).
+  useEffect(() => {
+    if (!selectedTypeId) return;
+    setFeaturedOnPortal((prev) => {
+      const next = prev.filter((k) => hasFeaturedContent(k));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [formData, hasFeaturedContent, selectedTypeId]);
+
+  const isFeaturedToggled = useCallback(
+    (key: FeaturedKey) => featuredOnPortal.includes(key),
+    [featuredOnPortal]
+  );
+
+  const featuredCount = featuredOnPortal.length;
+  const featuredCapReached = featuredCount >= PORTAL_FEATURED_CAP;
+
+  const computeNextFeatured = useCallback(
+    (key: FeaturedKey, prev: FeaturedKey[]): FeaturedKey[] | null => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      if (!hasFeaturedContent(key)) {
+        toast.warning('Add content to this section before featuring it on the guest portal.');
+        return null;
+      }
+      if (prev.length >= PORTAL_FEATURED_CAP) {
+        toast.warning(
+          `Up to ${PORTAL_FEATURED_CAP} sections can be featured. Deselect one first.`
+        );
+        return null;
+      }
+      return [...prev, key];
+    },
+    [toast, hasFeaturedContent]
+  );
+
+  const updateCustomPreview = useCallback(
+    (key: FeaturedKey, value: string) => {
+      setFeaturedPreviews((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || {}),
+          customPreviewLine: value,
+        },
+      }));
+    },
+    []
+  );
+
   // --- SAVE ACTIONS ---
-  const saveToFirebase = async () => {
+  const regeneratePreviewsIfStale = useCallback(
+    async (
+      data: FormData,
+      featured: FeaturedKey[],
+      previews: FeaturedPreviewsMap
+    ): Promise<FeaturedPreviewsMap> => {
+      const next: FeaturedPreviewsMap = { ...previews };
+      const guideRecord = data as Record<string, unknown>;
+
+      for (const key of featured) {
+        const cfg = getFeaturedConfig(key);
+        if (!cfg) continue;
+
+        const sourceText = buildSourceTextForFeaturedKey(key, guideRecord, fieldsForCategoryId);
+        const hash = await shortContentHash(sourceText);
+
+        const cached = next[key];
+        const hasFreshCache =
+          cached && cached.contentHash === hash && (cached.previewLine || cached.digest);
+
+        if (sourceText.trim() && !hasFreshCache) {
+          try {
+            const result = await generateFeaturedPreview(cfg.title, sourceText);
+            next[key] = {
+              ...(cached || {}),
+              previewLine: result.previewLine,
+              digest: result.digest,
+              contentHash: hash,
+              generatedAt: new Date().toISOString(),
+            };
+          } catch (err) {
+            console.error('generateFeaturedPreview failed for', key, err);
+            // Keep any previously cached preview; just leave hash unchanged
+          }
+        } else if (!sourceText.trim()) {
+          next[key] = {
+            ...(cached || {}),
+            previewLine: '',
+            digest: '',
+            contentHash: hash,
+            generatedAt: cached?.generatedAt,
+          };
+        }
+      }
+
+      return next;
+    },
+    [fieldsForCategoryId]
+  );
+
+  const saveToFirebase = async (featuredOverride?: FeaturedKey[]) => {
     if (!propertyId || !selectedTypeId) return;
     setIsSubmitting(true);
     try {
+      const featured = (featuredOverride ?? featuredOnPortal)
+        .filter((k) => hasFeaturedContent(k))
+        .slice(0, PORTAL_FEATURED_CAP);
+      const updatedPreviews = await regeneratePreviewsIfStale(formData, featured, featuredPreviews);
+      setFeaturedPreviews(updatedPreviews);
+      setFeaturedOnPortal(featured);
+
       const docRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'houseGuide', 'data');
-      await setDoc(docRef, { ...formData, updatedAt: new Date().toISOString() }, { merge: true });
+      await setDoc(
+        docRef,
+        {
+          ...formData,
+          featuredOnPortal: featured,
+          previews: updatedPreviews,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (error) {
       console.error("Error saving:", error);
+      toast.error('Could not save. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleFeaturedToggleAndSave = async (key: FeaturedKey) => {
+    if (isSubmitting) return;
+    const next = computeNextFeatured(key, featuredOnPortal);
+    if (!next) return;
+    setFeaturedOnPortal(next);
+    await saveToFirebase(next);
   };
 
   const handleWizardSaveAndNext = async () => {
@@ -286,7 +489,7 @@ export default function HouseGuide() {
       </div>
 
       {/* Progress Bar */}
-      <div className="mb-8 px-2">
+      <div className="mb-6 px-2">
         <div className="flex justify-between items-end mb-2">
           <span className="text-sm font-bold text-gray-700">Guide Completion</span>
           <span className="text-sm font-bold text-vailo-teal">{progressPercentage}%</span>
@@ -296,21 +499,103 @@ export default function HouseGuide() {
         </div>
       </div>
 
+      {/* Featured-on-portal counter */}
+      <div className="mb-6 px-2 flex items-start gap-3">
+        <Star size={16} className="text-vailo-gold shrink-0 mt-0.5" strokeWidth={2.4} />
+        <p className="text-sm text-gray-700 leading-snug">
+          <span className="font-bold">Featured on guest portal · {featuredCount} of {PORTAL_FEATURED_CAP}</span>
+          <span className="text-gray-500"> — pick the sections you want as preview cards on the guest portal. On save, AI writes a short summary <em>only for the card preview</em>. Your full content stays untouched and is what the 24/7 Assistant uses.</span>
+        </p>
+      </div>
+
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {CATEGORIES.map(cat => {
-          const isComplete = checkIsComplete(cat);
+          const completion = getCategoryCompletion(cat);
           const Icon = cat.icon;
+          const primaryFeaturedKey = featuredKeyForPrimaryCategory(cat.id);
+          const pairedFeaturedKey = pairedFeaturedKeyForCategory(cat.id);
+          const featured = !!(primaryFeaturedKey && isFeaturedToggled(primaryFeaturedKey));
+          const featuredViaPair = !!(pairedFeaturedKey && isFeaturedToggled(pairedFeaturedKey));
+          const canFeature =
+            !!primaryFeaturedKey && hasFeaturedContent(primaryFeaturedKey);
+          const toggleDisabled =
+            !canFeature || (!featured && featuredCapReached);
+
           return (
-            <div key={cat.id} onClick={() => setQuickEditCategory(cat)} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer group relative overflow-hidden flex flex-col h-full">
+            <div key={cat.id} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow group relative overflow-hidden flex flex-col h-full">
               <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl ${isComplete ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-50 text-gray-500 group-hover:bg-vailo-teal/10 group-hover:text-vailo-teal'} transition-colors`}>
+                <div
+                  className={`p-3 rounded-xl transition-colors ${
+                    completion === 'complete'
+                      ? 'bg-emerald-50 text-emerald-600'
+                      : completion === 'partial'
+                        ? 'bg-amber-50 text-amber-600'
+                        : 'bg-gray-50 text-gray-500 group-hover:bg-vailo-teal/10 group-hover:text-vailo-teal'
+                  }`}
+                >
                   <Icon size={22} />
                 </div>
-                {isComplete ? <CheckCircle2 size={20} className="text-emerald-500" /> : <Circle size={20} className="text-gray-300" />}
+                <div className="flex items-center gap-2">
+                  {canFeature && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (toggleDisabled) {
+                          toast.warning(
+                            `Up to ${PORTAL_FEATURED_CAP} sections can be featured. Deselect one first.`
+                          );
+                          return;
+                        }
+                        void handleFeaturedToggleAndSave(primaryFeaturedKey!);
+                      }}
+                      aria-pressed={featured}
+                      disabled={isSubmitting || (toggleDisabled && !featured)}
+                      title={
+                        featured
+                          ? 'Featured on guest portal — click to remove'
+                          : toggleDisabled
+                            ? `Max ${PORTAL_FEATURED_CAP} featured. Deselect one to swap.`
+                            : 'Feature on guest portal'
+                      }
+                      className={`h-8 w-8 rounded-lg flex items-center justify-center border transition-colors ${
+                        featured
+                          ? 'bg-vailo-gold text-vailo-dark border-vailo-gold/70 shadow-sm'
+                          : toggleDisabled
+                            ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                            : 'bg-white text-gray-400 border-gray-200 hover:text-vailo-gold hover:border-vailo-gold/40'
+                      }`}
+                    >
+                      <Star
+                        size={16}
+                        strokeWidth={2}
+                        fill={featured ? 'currentColor' : 'none'}
+                      />
+                    </button>
+                  )}
+                  {completion === 'complete' ? (
+                    <CheckCircle2 size={20} className="text-emerald-500" />
+                  ) : completion === 'partial' ? (
+                    <CheckCircle2 size={20} className="text-amber-500" />
+                  ) : (
+                    <Circle size={20} className="text-gray-300" />
+                  )}
+                </div>
               </div>
-              <h3 className="text-base font-bold text-gray-900 mb-1">{cat.title}</h3>
-              <p className="text-xs text-gray-500 line-clamp-2 flex-1">{cat.description}</p>
+              <button
+                type="button"
+                onClick={() => setQuickEditCategory(cat)}
+                className="text-left flex-1 flex flex-col"
+              >
+                <h3 className="text-base font-bold text-gray-900 mb-1">{cat.title}</h3>
+                <p className="text-xs text-gray-500 line-clamp-2 flex-1">{cat.description}</p>
+              </button>
+              {featuredViaPair && (
+                <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-vailo-gold-muted bg-vailo-gold/10 px-2.5 py-1 rounded-full border border-vailo-gold/20 self-start">
+                  <Link2 size={11} /> Featured with Arrival
+                </div>
+              )}
               <div className="mt-4 pt-3 border-t border-gray-50 flex items-center text-[10px] font-bold uppercase tracking-wider text-vailo-gold opacity-0 group-hover:opacity-100 transition-opacity">
                 <Edit3 size={12} className="mr-1"/> Edit Category
               </div>
@@ -322,6 +607,14 @@ export default function HouseGuide() {
       {/* --- QUICK EDIT MODAL (DASHBOARD) --- */}
       {quickEditCategory && (() => {
         const QuickEditIcon = quickEditCategory.icon;
+        const primaryFeaturedKey = featuredKeyForPrimaryCategory(quickEditCategory.id);
+        const pairedFeaturedKey = pairedFeaturedKeyForCategory(quickEditCategory.id);
+        const featuredKey = primaryFeaturedKey || null;
+        const isFeatured = !!(featuredKey && isFeaturedToggled(featuredKey));
+        const isFeaturedViaPair = !!(pairedFeaturedKey && isFeaturedToggled(pairedFeaturedKey));
+        const toggleDisabled = !featuredKey || (!isFeatured && featuredCapReached);
+        const featuredCfg = featuredKey ? getFeaturedConfig(featuredKey) : null;
+        const previewRecord: FeaturedPreviewRecord = (featuredKey && featuredPreviews[featuredKey]) || {};
         return (
         <div className="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -332,7 +625,102 @@ export default function HouseGuide() {
               </div>
               <button onClick={() => setQuickEditCategory(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={20}/></button>
             </div>
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-gray-50/50">
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-gray-50/50 space-y-6">
+              {/* Feature-on-portal block */}
+              {featuredKey && featuredCfg && hasFeaturedContent(featuredKey) && (
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (toggleDisabled && !isFeatured) {
+                          toast.warning(
+                            `Up to ${PORTAL_FEATURED_CAP} sections can be featured. Deselect one first.`
+                          );
+                          return;
+                        }
+                        void handleFeaturedToggleAndSave(featuredKey);
+                      }}
+                      disabled={isSubmitting || (toggleDisabled && !isFeatured)}
+                      className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center border transition-colors ${
+                        isFeatured
+                          ? 'bg-vailo-gold text-vailo-dark border-vailo-gold/70 shadow-sm'
+                          : toggleDisabled
+                            ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                            : 'bg-white text-gray-500 border-gray-200 hover:text-vailo-gold hover:border-vailo-gold/40'
+                      }`}
+                      aria-pressed={isFeatured}
+                    >
+                      <Star size={18} strokeWidth={2} fill={isFeatured ? 'currentColor' : 'none'} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900">Feature on guest portal</p>
+                      <p className="text-xs text-gray-500 leading-relaxed mt-0.5">
+                        Adds this section as a preview card on the guest portal. AI writes a short summary
+                        for the chip and accordion only — your full text stays untouched and is used by the
+                        24/7 Assistant. {isFeatured ? '' : `${featuredCount} of ${PORTAL_FEATURED_CAP} featured.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isFeatured && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                          Custom preview line (optional)
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={120}
+                          value={previewRecord.customPreviewLine || ''}
+                          onChange={(e) => updateCustomPreview(featuredKey, e.target.value)}
+                          placeholder={previewRecord.previewLine || 'AI will summarise this section when you save.'}
+                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/30 focus:border-vailo-teal/40 transition-shadow"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Leave blank to use the AI-generated preview. Max 120 characters.
+                        </p>
+                      </div>
+
+                      {(previewRecord.previewLine || previewRecord.digest) && (
+                        <div className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-3 leading-relaxed">
+                          <p className="font-bold text-gray-600 mb-1">
+                            AI preview <span className="font-normal text-gray-400">· shown on guest portal card only</span>
+                          </p>
+                          {previewRecord.previewLine && (
+                            <p className="mb-1.5">
+                              <span className="font-semibold text-gray-700">Chip:</span> {previewRecord.previewLine}
+                            </p>
+                          )}
+                          {previewRecord.digest && (
+                            <p className="whitespace-pre-wrap">
+                              <span className="font-semibold text-gray-700">Digest:</span>{' '}
+                              {previewRecord.digest}
+                            </p>
+                          )}
+                          {previewRecord.generatedAt && (
+                            <p className="text-[10px] text-gray-400 mt-2">
+                              Last regenerated {new Date(previewRecord.generatedAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {isFeaturedViaPair && (
+                <div className="bg-vailo-gold/10 border border-vailo-gold/20 rounded-2xl p-4 flex items-start gap-3">
+                  <Link2 size={18} className="text-vailo-gold mt-0.5 shrink-0" />
+                  <p className="text-xs text-gray-700 leading-relaxed">
+                    This category is featured on the guest portal together with{' '}
+                    <span className="font-semibold">Arrival & Check-in</span>. Manage the toggle from the
+                    Arrival card.
+                  </p>
+                </div>
+              )}
+
               {quickEditCategory.fields.map(renderField)}
             </div>
             <div className="p-6 border-t border-gray-100 bg-white flex justify-end gap-3 rounded-b-3xl">

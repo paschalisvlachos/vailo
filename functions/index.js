@@ -119,6 +119,106 @@ function pickBestPlaceMatch(places, requestedTitle) {
   return null;
 }
 
+function pickClosestPlace(places, lat, lng) {
+  if (!places?.length) return null;
+  let best = places[0];
+  let bestDist = Infinity;
+  for (const place of places) {
+    const plat = place.location?.latitude;
+    const plng = place.location?.longitude;
+    if (typeof plat !== "number" || typeof plng !== "number") continue;
+    const d = haversineMeters(lat, lng, plat, plng);
+    if (d < bestDist) {
+      bestDist = d;
+      best = place;
+    }
+  }
+  return best;
+}
+
+function isGenericMapsTitle(name) {
+  const n = String(name || "").trim();
+  return !n || n.includes("Google Maps") || n.includes("302 Moved");
+}
+
+/** Parse place name / coords from a Maps URL without HTTP fetch. */
+function extractMapsUrlHints(url) {
+  const hints = { placeName: "", lat: null, lng: null };
+  const raw = String(url || "").trim();
+  if (!raw.startsWith("http")) return hints;
+
+  const placeMatch = raw.match(/\/place\/([^/?@]+)/i);
+  if (placeMatch?.[1]) {
+    hints.placeName = decodeURIComponent(placeMatch[1].replace(/\+/g, " ")).trim();
+  }
+
+  const coordMatch =
+    raw.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+    raw.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+    raw.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (coordMatch) {
+    hints.lat = parseFloat(coordMatch[1]);
+    hints.lng = parseFloat(coordMatch[2]);
+  }
+  return hints;
+}
+
+function appendAreaIfNeeded(query, area) {
+  const q = String(query || "").trim();
+  const a = String(area || "").trim();
+  if (!q || !a) return q;
+  const qLower = q.toLowerCase();
+  const aLower = a.toLowerCase();
+  if (qLower === aLower || qLower.endsWith(` ${aLower}`) || qLower.endsWith(`, ${aLower}`)) {
+    return q;
+  }
+  return `${q} ${a}`;
+}
+
+function matchTitleFromResolvedQuery(resolvedQuery, area) {
+  let title = String(resolvedQuery || "").trim();
+  const a = String(area || "").trim();
+  if (a) {
+    const suffix = new RegExp(`\\s+${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    title = title.replace(suffix, "").trim();
+  }
+  const coordOnly = title.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
+  if (coordOnly) return title;
+  return title.split(",")[0].trim() || title;
+}
+
+function pickFallbackPlace(places, requestedTitle, biasLat, biasLng) {
+  if (!places?.length) return null;
+
+  const title = String(requestedTitle || "").trim();
+  const coordInTitle = title.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (coordInTitle) {
+    return pickClosestPlace(
+      places,
+      parseFloat(coordInTitle[1]),
+      parseFloat(coordInTitle[2])
+    );
+  }
+
+  if (typeof biasLat === "number" && typeof biasLng === "number") {
+    const closest = pickClosestPlace(places, biasLat, biasLng);
+    if (closest) return closest;
+  }
+
+  if (places.length === 1) return places[0];
+
+  if (title && !title.startsWith("http") && title.length >= 3) {
+    for (const place of places) {
+      const name = place.displayName?.text || "";
+      if (namesLikelySame(normalizePlaceName(title), normalizePlaceName(name))) {
+        return place;
+      }
+    }
+  }
+
+  return null;
+}
+
 function stablePlaceDocId(googlePlaceId, normalizedName, latitude, longitude) {
   if (googlePlaceId) {
     return crypto.createHash("sha256").update(`gp:${googlePlaceId}`).digest("hex").slice(0, 40);
@@ -341,6 +441,10 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
   }
 
   if (!place) {
+    place = pickFallbackPlace(response.data.places, title, lat, lng);
+  }
+
+  if (!place) {
     logger.warn(
       `No Google place name match for "${title}" among ${response.data.places.length} results`
     );
@@ -394,11 +498,20 @@ async function bumpDiscoveredPlaceUsage(coll, id, data, title) {
 }
 
 async function resolveUrlSearchQuery(searchQuery, area) {
-  if (!searchQuery.startsWith("http")) {
-    return area ? `${searchQuery} ${area}`.trim() : searchQuery;
+  const trimmed = String(searchQuery || "").trim();
+  if (!trimmed.startsWith("http")) {
+    return appendAreaIfNeeded(trimmed, area);
   }
 
-  const res = await fetch(searchQuery, {
+  const hints = extractMapsUrlHints(trimmed);
+  if (hints.placeName && !isGenericMapsTitle(hints.placeName)) {
+    return appendAreaIfNeeded(hints.placeName, area);
+  }
+  if (hints.lat != null && hints.lng != null && !Number.isNaN(hints.lat) && !Number.isNaN(hints.lng)) {
+    return appendAreaIfNeeded(`${hints.lat},${hints.lng}`, area);
+  }
+
+  const res = await fetch(trimmed, {
     redirect: "follow",
     headers: {
       "User-Agent":
@@ -439,20 +552,20 @@ async function resolveUrlSearchQuery(searchQuery, area) {
     }
   }
 
-  if (
-    placeName &&
-    !placeName.includes("Google Maps") &&
-    !placeName.includes("302 Moved")
-  ) {
-    return area ? `${placeName} ${area}` : placeName;
+  if (placeName && !isGenericMapsTitle(placeName)) {
+    return appendAreaIfNeeded(placeName, area);
   }
 
   const coordMatch =
     finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
     finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
   if (coordMatch) {
-    const coordQuery = `${coordMatch[1]},${coordMatch[2]}`;
-    return area ? `${coordQuery} ${area}` : coordQuery;
+    return appendAreaIfNeeded(`${coordMatch[1]},${coordMatch[2]}`, area);
+  }
+
+  const htmlHints = extractMapsUrlHints(finalUrl);
+  if (htmlHints.lat != null && htmlHints.lng != null) {
+    return appendAreaIfNeeded(`${htmlHints.lat},${htmlHints.lng}`, area);
   }
 
   throw new Error("Extracted invalid name from URL/HTML.");
@@ -598,18 +711,25 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   const payload = request.data || {};
   let searchQuery = payload.searchQuery;
   const area = payload.area || "";
+  const biasLat = typeof payload.biasLat === "number" ? payload.biasLat : null;
+  const biasLng = typeof payload.biasLng === "number" ? payload.biasLng : null;
 
   if (!searchQuery) {
     throw new HttpsError("invalid-argument", "The search query is missing.");
   }
 
+  const rawQuery = String(searchQuery).trim();
+  const urlHints = rawQuery.startsWith("http") ? extractMapsUrlHints(rawQuery) : null;
+  let matchTitle = urlHints?.placeName || rawQuery;
+
   try {
     searchQuery = await resolveUrlSearchQuery(searchQuery, area);
+    matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
   } catch (e) {
     logger.error("CRITICAL: Link resolution blocked:", e);
     throw new HttpsError(
       "invalid-argument",
-      "Google blocked the short link. Please use a full URL."
+      "Could not read that Maps link. Paste the full place URL from your browser, or a maps.app.goo.gl link."
     );
   }
 
@@ -621,7 +741,13 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   }
 
   try {
-    const place = await fetchPlaceFromGoogle(searchQuery, apiKey, null, null, searchQuery);
+    const place = await fetchPlaceFromGoogle(
+      searchQuery,
+      apiKey,
+      biasLat,
+      biasLng,
+      matchTitle
+    );
     await recordPlatformUsage("magicFill");
 
     if (!place) {
@@ -660,15 +786,16 @@ async function queryBigQueryBilling(tableId, invoiceMonth) {
   const bigquery = new BigQuery();
   const location = process.env.BILLING_BQ_LOCATION || "US";
 
+  // FIX: We changed the aliases to 'service_name' and 'final_cost' to remove ambiguity
   const query = `
     SELECT
-      service.description AS service,
-      ROUND(SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)), 4) AS cost
+      service.description AS service_name,
+      ROUND(SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)), 4) AS final_cost
     FROM \`${tableId}\`
     WHERE invoice.month = @invoiceMonth
     GROUP BY service.description
-    HAVING cost != 0
-    ORDER BY cost DESC
+    HAVING final_cost != 0
+    ORDER BY final_cost DESC
     LIMIT 50
   `;
 
@@ -679,10 +806,12 @@ async function queryBigQueryBilling(tableId, invoiceMonth) {
   });
   const [rows] = await job.getQueryResults();
 
+  // FIX: Updated the mapping to match the new aliases
   const lineItems = rows.map((row) => ({
-    label: row.service || "Unknown service",
-    cost: Number(row.cost) || 0,
+    label: row.service_name || "Unknown service",
+    cost: Number(row.final_cost) || 0,
   }));
+  
   const totalCost = lineItems.reduce((sum, item) => sum + item.cost, 0);
 
   return { totalCost, lineItems, currency: "USD" };

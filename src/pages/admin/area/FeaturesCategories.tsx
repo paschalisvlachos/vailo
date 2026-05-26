@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { collection, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { renameFeaturesCategory } from '../../../lib/categoryRename';
 import { useToast } from '../../../context/ToastContext';
-import { Layers, ArrowLeft, Plus, Trash2, Loader2, Tag } from 'lucide-react';
+import { Layers, ArrowLeft, Plus, Trash2, Loader2, Tag, Pencil, Check, X } from 'lucide-react';
 
 export default function FeaturesCategories() {
   const { country, area } = useParams<{ country: string, area: string }>();
@@ -12,7 +13,10 @@ export default function FeaturesCategories() {
   
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
   const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const decodedCountry = decodeURIComponent(country || '');
@@ -69,6 +73,54 @@ export default function FeaturesCategories() {
       await deleteDoc(doc(db, 'countries', decodedCountry, 'areas', areaId, 'featuresCategories', id));
     } catch (error) {
       toast.error("Failed to delete category.");
+    }
+  };
+
+  const startEdit = (cat: { id: string; name: string }) => {
+    setEditingId(cat.id);
+    setEditingName(cat.name);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const handleSaveEdit = async (id: string, oldName: string) => {
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      toast.warning('Category name cannot be empty.');
+      return;
+    }
+    if (trimmed.toLowerCase() === oldName.toLowerCase()) {
+      cancelEdit();
+      return;
+    }
+    if (categories.some((c) => c.id !== id && c.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.warning('Another category already uses this name.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const updatedCount = await renameFeaturesCategory(
+        decodedCountry,
+        areaId,
+        id,
+        oldName,
+        trimmed
+      );
+      cancelEdit();
+      toast.success(
+        updatedCount > 0
+          ? `Category renamed and updated on ${updatedCount} linked feature${updatedCount === 1 ? '' : 's'}.`
+          : 'Category renamed.'
+      );
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast.error('Failed to update category.');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -136,14 +188,67 @@ export default function FeaturesCategories() {
             ) : (
               <ul className="divide-y divide-gray-100">
                 {categories.map((cat) => (
-                  <li key={cat.id} className="p-4 hover:bg-gray-50 flex items-center justify-between transition-colors">
-                    <span className="font-medium text-gray-900 flex items-center">
-                      <Tag size={16} className="text-emerald-400 mr-3" />
-                      {cat.name}
-                    </span>
-                    <button onClick={() => handleDelete(cat.id, cat.name)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                      <Trash2 size={18} />
-                    </button>
+                  <li key={cat.id} className="p-4 hover:bg-gray-50 flex items-center justify-between gap-3 transition-colors">
+                    {editingId === cat.id ? (
+                      <>
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="flex-1 px-3 py-2 border border-emerald-300 rounded-lg admin-input outline-none text-sm"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit(cat.id, cat.name);
+                            if (e.key === 'Escape') cancelEdit();
+                          }}
+                        />
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEdit(cat.id, cat.name)}
+                            disabled={isSavingEdit}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Save"
+                          >
+                            {isSavingEdit ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            disabled={isSavingEdit}
+                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                            title="Cancel"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-gray-900 flex items-center min-w-0">
+                          <Tag size={16} className="text-emerald-400 mr-3 shrink-0" />
+                          <span className="truncate">{cat.name}</span>
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(cat)}
+                            className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                            title="Edit category"
+                          >
+                            <Pencil size={18} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(cat.id, cat.name)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete category"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

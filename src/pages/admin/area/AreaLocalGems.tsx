@@ -5,6 +5,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, ai } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallableMessage } from '../../../lib/callableError';
 import { getGenerativeModel } from "firebase/ai";
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Tag } from 'lucide-react';
 
@@ -96,24 +97,17 @@ export default function AreaLocalGems() {
     setIsMagicFilling(true);
 
     try {
-      let searchQuery = "";
-      let placeNameFallback = ""; 
-      
-      const nameMatch = url.match(/\/place\/([^\/]+)\//);
-      if (nameMatch && nameMatch[1]) {
-        // It's a standard long URL, we can format it here
-        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
-        searchQuery = `${placeNameFallback} ${decodedArea}`; 
-      } else {
-        // 🔥 THE FIX: It's a short link! We pass the raw URL directly to our smart backend.
-        searchQuery = url;
-      }
+      const placeNameMatch = url.match(/\/place\/([^/?@]+)/);
+      const placeNameFallback = placeNameMatch?.[1]
+        ? decodeURIComponent(placeNameMatch[1].replace(/\+/g, ' '))
+        : '';
 
       const functions = getFunctions();
       const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      
-      // We pass the area so the backend can append it if it unwraps a short link
-      const result = await getGooglePlaceDetails({ searchQuery, area: decodedArea });
+      const result = await getGooglePlaceDetails({
+        searchQuery: url.trim(),
+        area: decodedArea,
+      });
       const googleData: any = result.data;
 
       // Try to intelligently map Google's category to one of our dynamic categories
@@ -154,7 +148,12 @@ export default function AreaLocalGems() {
       }
     } catch (error) {
       console.error("Magic Fill Error:", error);
-      toast.error("Could not process this link. Ensure it is a valid Google Maps place.");
+      toast.error(
+        httpsCallableMessage(
+          error,
+          "Could not load this place. Use a full Google Maps place link, or try again in a moment."
+        )
+      );
     } finally {
       setIsMagicFilling(false);
     }

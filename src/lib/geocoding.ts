@@ -286,6 +286,11 @@ export function isCoordOnlyQuery(query: string): boolean {
 }
 
 /** Opens one exact place/listing — not a text search results page. */
+/**
+ * True if this Google Maps URL goes straight to a rich place card (photo, reviews,
+ * hours). A URL with `query=lat,lng` opens a bare pin — that is NOT a direct place
+ * URL and should be rewritten to a name search when we have the place title.
+ */
 export function isDirectPlaceMapsUrl(url?: string): boolean {
   if (!url?.trim()) return false;
   if (!url.includes('google') || !url.includes('maps')) return false;
@@ -296,7 +301,8 @@ export function isDirectPlaceMapsUrl(url?: string): boolean {
   const qMatch = url.match(/[?&]query=([^&]+)/i);
   if (qMatch) {
     const decoded = decodeURIComponent(qMatch[1].replace(/\+/g, ' '));
-    return isCoordOnlyQuery(decoded);
+    // Coord-only query → bare pin, NOT a direct place. Named query → treat as direct.
+    return !isCoordOnlyQuery(decoded);
   }
 
   return false;
@@ -384,10 +390,12 @@ export function getItemMapLinks(item: {
   const hasCoords =
     typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 
+  // 1. Best — Google Place ID resolves to the exact business card.
   if (item.googlePlaceId || bareGooglePlaceId(item.googlePlaceId)) {
     return { ...buildPlaceMapUrls(item.googlePlaceId, lat, lng, title), resolved: true };
   }
 
+  // 2. Direct /place/ URL — already resolves to a business card. Pass through.
   if (isDirectPlaceMapsUrl(item.googleMapsUrl)) {
     return {
       googleMapsUrl: item.googleMapsUrl!,
@@ -399,16 +407,41 @@ export function getItemMapLinks(item: {
     };
   }
 
+  // 3. Have a name + coordinates — search by NAME (rich place card with photos /
+  //    reviews) and navigate using COORDS (precise, no name ambiguity). This
+  //    avoids the "just a pin with 35°25'31.4N…" UX while staying free.
+  if (title && hasCoords) {
+    const q = areaHint ? `${title}, ${areaHint}` : title;
+    return {
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`,
+      navigateUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}`,
+      resolved: true,
+    };
+  }
+
+  // 4. Name only — straight text search.
+  if (title) {
+    const q = areaHint ? `${title}, ${areaHint}` : title;
+    const encoded = encodeURIComponent(q);
+    return {
+      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encoded}`,
+      navigateUrl: `https://www.google.com/maps/dir/?api=1&destination=${encoded}`,
+      resolved: true,
+    };
+  }
+
+  // 5. Coords only — last resort. Drops the user on the bare pin.
   if (hasCoords) {
     return { ...buildPreciseMapUrls(lat, lng), resolved: true };
   }
 
+  // 6. Whatever the item brought along.
   if (item.navigateUrl && item.googleMapsUrl) {
     return { googleMapsUrl: item.googleMapsUrl, navigateUrl: item.navigateUrl, resolved: true };
   }
 
-  const q = title ? `${title}, ${areaHint}` : areaHint;
-  const encoded = encodeURIComponent(q);
+  // 7. Area hint only.
+  const encoded = encodeURIComponent(areaHint || '');
   return {
     googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encoded}`,
     navigateUrl: `https://www.google.com/maps/dir/?api=1&destination=${encoded}`,
@@ -467,14 +500,19 @@ async function enrichItem(item: any, areaHint: string, anchorCoords: { lat: numb
     return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
   }
 
-  const coordLinks = buildPreciseMapUrls(resolved.lat, resolved.lng);
-  return {
+  // Use name-search for "View" so guests get the rich place card (photo, reviews,
+  // hours), coordinate-based "Directions" for precise routing.
+  const enriched = {
     ...item,
     latitude: resolved.lat,
     longitude: resolved.lng,
-    googleMapsUrl: coordLinks.googleMapsUrl,
-    navigateUrl: coordLinks.navigateUrl,
     mapPlaceName: shortLabel(resolved.displayName, 2),
+  };
+  const links = getItemMapLinks(enriched, areaHint);
+  return {
+    ...enriched,
+    googleMapsUrl: links.googleMapsUrl,
+    navigateUrl: links.navigateUrl,
   };
 }
 

@@ -5,6 +5,7 @@ import {
   Users,
   LogOut,
   CreditCard,
+  FileText,
   Globe,
   Menu,
   X,
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { icon: Users, label: 'Owners CRM', to: '/owners' },
   { icon: Globe, label: 'Area Functionality', to: '/area' },
   { icon: CreditCard, label: 'Billing & Usage', to: '/billing' },
+  { icon: FileText, label: 'Legal Documents', to: '/legal' },
 ] as const;
 
 export default function Layout({ children }: { children: React.ReactNode }) {

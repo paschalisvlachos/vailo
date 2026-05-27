@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -9,10 +9,21 @@ import GuestFloatingActions from '../../components/guest/GuestFloatingActions';
 import GuestReportIssueSheet from '../../components/guest/GuestReportIssueSheet';
 import GuestPropertyAssistant from '../../components/guest/GuestPropertyAssistant';
 import PropertyEssentials from '../../components/guest/PropertyEssentials';
+import GuestLocalServices from '../../components/guest/GuestLocalServices';
+import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
+import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
+import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
+import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
+import GuestGemsLayoutToggle, { type GemsLayoutMode } from '../../components/guest/GuestGemsLayoutToggle';
 import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
+import { useGuestLocale } from '../../hooks/useGuestLocale';
+import { usePwaInstall } from '../../hooks/usePwaInstall';
+import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
+import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
+import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import { 
-  MapPin, Globe, CloudSun, ChevronDown, Navigation, ExternalLink, 
+  MapPin, Globe, CloudSun, ChevronDown, Navigation, 
   Star, Smartphone, Monitor, Sparkles,
   Wifi, Copy, Check, Map, Clock, Award
 } from 'lucide-react';
@@ -36,12 +47,20 @@ export default function GuestPortal() {
   // Starts in mobile view by default!
   const [viewMode, setViewMode] = useState<'web' | 'mobile'>('mobile');
   const [copiedWifi, setCopiedWifi] = useState(false);
-  const [showPropertyMap, setShowPropertyMap] = useState(false);
+  const [propertyMapOpen, setPropertyMapOpen] = useState(false);
+  const { locale, setLocale, t } = useGuestLocale();
+  const pwaInstall = usePwaInstall();
   
   const [gemFilters, setGemFilters] = useState<string[]>(['All']);
-  const [featureFilter, setFeatureFilter] = useState<string>('All');
   const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>({});
   const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
+  const [gemsLayout, setGemsLayout] = useState<GemsLayoutMode>(() => {
+    try {
+      return localStorage.getItem('vailo-gems-layout') === 'list' ? 'list' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const { content: platformLegal } = usePlatformLegal();
@@ -92,9 +111,7 @@ export default function GuestPortal() {
         setGems(loadedGems);
 
         const featuresSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'features'));
-        const loadedFeatures = featuresSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter((f: any) => f.showOnMain === true);
+        const loadedFeatures = featuresSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setFeatures(loadedFeatures);
 
       } catch (err) {
@@ -145,6 +162,16 @@ export default function GuestPortal() {
   const wifiName = typeData?.wifiName || guide?.wifiName || property?.wifiName;
   const wifiPassword = typeData?.wifiPassword || guide?.wifiPassword || property?.wifiPassword;
 
+  const whatsappHref = useMemo(
+    () =>
+      buildGuestWhatsAppLink(
+        typeData?.whatsapp,
+        property?.propertyName || 'your stay',
+        typeData?.propertyTypeName
+      ),
+    [typeData?.whatsapp, typeData?.propertyTypeName, property?.propertyName]
+  );
+
   const featuredOnPortal: FeaturedKey[] = Array.isArray(guide?.featuredOnPortal)
     ? (guide.featuredOnPortal as unknown[]).filter((k): k is FeaturedKey => typeof k === 'string').slice(0, 4)
     : [];
@@ -154,6 +181,36 @@ export default function GuestPortal() {
       : {};
   const heroPhoto = typeData?.photoUrl || property?.photoUrl || '';
   const heroLocation = typeData?.city || typeData?.area || property?.city || property?.area || '';
+
+  const propertyLat = typeData?.latitude ?? property?.latitude;
+  const propertyLng = typeData?.longitude ?? property?.longitude;
+  const hasPropertyCoords =
+    propertyLat != null &&
+    propertyLng != null &&
+    !Number.isNaN(parseFloat(String(propertyLat))) &&
+    !Number.isNaN(parseFloat(String(propertyLng)));
+
+  const googleRating = parseFloat(String(typeData?.googleRating ?? ''));
+  const showGoogleRating = !Number.isNaN(googleRating) && googleRating > 0;
+  const googleReviewUrl = useMemo(
+    () =>
+      buildGoogleReviewUrl({
+        googlePlaceId: typeData?.googlePlaceId,
+        googleMapsUrl: typeData?.googleMapsUrl,
+        latitude: propertyLat,
+        longitude: propertyLng,
+        propertyTypeName: typeData?.propertyTypeName,
+      }),
+    [typeData, propertyLat, propertyLng]
+  );
+
+  const websiteUrl = useMemo(() => {
+    const raw = String(typeData?.listingUrl || property?.listingUrl || '').trim();
+    if (!raw) return null;
+    return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  }, [typeData?.listingUrl, property?.listingUrl]);
+
+  useGuestPwaManifest(property?.propertyName, typeData?.propertyTypeName);
 
   const copyWifi = () => {
     if (wifiPassword) {
@@ -165,6 +222,15 @@ export default function GuestPortal() {
 
   const toggleDesc = (id: string) => {
     setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const setGemsLayoutPersist = (mode: GemsLayoutMode) => {
+    setGemsLayout(mode);
+    try {
+      localStorage.setItem('vailo-gems-layout', mode);
+    } catch {
+      /* ignore */
+    }
   };
 
 
@@ -196,8 +262,15 @@ export default function GuestPortal() {
     return matches;
   });
 
-  const featureCategories = ['All', ...Array.from(new Set(features.map(f => f.categories?.[0]).filter(Boolean)))];
-  const filteredFeatures = featureFilter === 'All' ? features : features.filter(f => f.categories?.[0] === featureFilter);
+  /** Property features flagged for the guest portal (admin: "Show on Main Page"). */
+  const portalFeatures = useMemo(
+    () =>
+      features.filter(
+        (f: { isMainPage?: boolean; showOnMain?: boolean }) =>
+          f.isMainPage === true || f.showOnMain === true
+      ),
+    [features]
+  );
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#051F26] font-sans">
@@ -275,40 +348,33 @@ export default function GuestPortal() {
                       <img src="/vailoLogo.png" alt="Vailo" className="h-5 w-auto brightness-0 invert opacity-95" onError={(e) => { (e.target as HTMLImageElement).src = '../../../vailoLogo.png'; }} />
                     </div>
                     <div className="flex items-center gap-2">
+                      <GuestLanguageMenu locale={locale} onChange={setLocale} />
                       <button
-                        onClick={() => setShowPropertyMap(!showPropertyMap)}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-[10px] font-semibold uppercase tracking-wider hover:bg-white/20 transition-all"
+                        type="button"
+                        onClick={() => hasPropertyCoords && setPropertyMapOpen(true)}
+                        disabled={!hasPropertyCoords}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-[10px] font-semibold uppercase tracking-wider hover:bg-white/20 transition-all disabled:opacity-40 disabled:pointer-events-none"
                       >
                         <MapPin size={13} className="text-[#C5A059]" />
-                        {showPropertyMap ? 'Hide' : 'Map'}
+                        {t('map')}
                       </button>
-                      <button className="flex items-center justify-center h-9 w-9 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all">
-                        <Globe size={15} />
-                      </button>
+                      {websiteUrl && (
+                        <a
+                          href={websiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center h-9 w-9 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all"
+                          aria-label="Website"
+                        >
+                          <Globe size={15} className="text-[#C5A059]" />
+                        </a>
+                      )}
                     </div>
                   </div>
 
-                  {showPropertyMap && typeData?.latitude && typeData?.longitude && (
-                    <div className="mt-4 rounded-2xl overflow-hidden shadow-2xl border border-white/20 animate-in slide-in-from-top-2 fade-in duration-200">
-                      <iframe
-                        width="100%" height="180" frameBorder="0" scrolling="no"
-                        title="Property location"
-                        src={`https://maps.google.com/maps?q=${typeData.latitude},${typeData.longitude}&z=14&output=embed`}
-                        className="bg-gray-100"
-                      />
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${typeData.latitude},${typeData.longitude}`}
-                        target="_blank" rel="noopener noreferrer"
-                        className="block w-full py-2.5 bg-[#0B4F5C] text-white text-center text-[10px] font-semibold tracking-widest uppercase hover:bg-[#083A43] transition-colors"
-                      >
-                        Open in Maps
-                      </a>
-                    </div>
-                  )}
-
                   {/* Hero copy */}
                   <div className="mt-8 text-center hero-text-shadow">
-                    <p className="text-[10px] font-semibold text-[#C5A059] tracking-[0.3em] uppercase mb-2">Welcome to</p>
+                    <p className="text-[10px] font-semibold text-[#C5A059] tracking-[0.3em] uppercase mb-2">{t('welcomeTo')}</p>
                     <h1 className="font-luxury text-[2rem] md:text-4xl lg:text-[2.75rem] text-white leading-[1.15] font-medium">
                       {property?.propertyName}
                     </h1>
@@ -337,9 +403,9 @@ export default function GuestPortal() {
                           </div>
                           <div className="text-left">
                             <p className="text-white text-[15px] font-semibold tracking-wide">
-                              Live like a local
+                              {t('liveLikeLocal')}
                             </p>
-                            <p className="text-white/65 text-[11px] mt-0.5">Your AI travel expert · curated picks</p>
+                            <p className="text-white/65 text-[11px] mt-0.5">{t('liveLikeLocalSub')}</p>
                           </div>
                         </div>
                         <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/25 transition-colors">
@@ -406,27 +472,79 @@ export default function GuestPortal() {
                   </div>
                 </div>
               )}
+
+              {showGoogleRating && googleReviewUrl && (
+                <GuestGoogleRatingCard
+                  rating={googleRating}
+                  reviewUrl={googleReviewUrl}
+                  listingName={typeData?.propertyTypeName}
+                  t={t}
+                />
+              )}
             </div>
 
+            {hasPropertyCoords && (
+              <GuestPropertyMapSheet
+                open={propertyMapOpen}
+                onClose={() => setPropertyMapOpen(false)}
+                title={typeData?.propertyTypeName || property?.propertyName || t('mapTitle')}
+                subtitle={t('mapSubtitle')}
+                addressLine={
+                  [typeData?.addressLine, typeData?.area, typeData?.city].filter(Boolean).join(', ') ||
+                  undefined
+                }
+                latitude={propertyLat!}
+                longitude={propertyLng!}
+                googleMapsUrl={typeData?.googleMapsUrl}
+                t={t}
+              />
+            )}
+
             {/* Main content */}
-            <div className={`mx-auto px-5 mt-10 space-y-14 pb-32 relative z-10 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+            <div className={`mx-auto px-5 mt-6 space-y-14 pb-28 relative z-10 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
               <PropertyEssentials
                 featuredOnPortal={featuredOnPortal}
                 previews={featuredPreviews}
                 onAskAssistant={() => setActiveView('assistant')}
+                t={t}
               />
 
+              {portalFeatures.length > 0 && (
+                <GuestLocalServices
+                  features={portalFeatures}
+                  propertyName={property?.propertyName || 'your stay'}
+                  propertyTypeName={typeData?.propertyTypeName}
+                />
+              )}
+
               {gems.length > 0 && (
-                <section>
-                  <div className="mb-5">
-                    <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Curated by your host</p>
-                    <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Gems</h2>
-                    <p className="text-gray-500 text-xs mt-1.5">
-                      {filteredGems.length} spot{filteredGems.length !== 1 && 's'} · places locals love
-                    </p>
+                <section
+                  className={
+                    portalFeatures.length > 0
+                      ? '!mt-8 !mb-0'
+                      : featuredOnPortal.length > 0
+                        ? '!mt-6 !mb-0'
+                        : '!mb-0'
+                  }
+                >
+                  <div className="mb-5 flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Curated by your host</p>
+                      <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Gems</h2>
+                      <p className="text-gray-500 text-xs mt-1.5">
+                        {filteredGems.length} spot{filteredGems.length !== 1 ? 's' : ''} · places locals love
+                      </p>
+                    </div>
+                    <GuestGemsLayoutToggle
+                      value={gemsLayout}
+                      onChange={setGemsLayoutPersist}
+                      groupLabel={t('gemsLayoutGroup')}
+                      gridLabel={t('gemsLayoutGrid')}
+                      listLabel={t('gemsLayoutList')}
+                    />
                   </div>
-                  
-                  <div className="flex flex-wrap gap-2 pb-6">
+
+                  <div className="flex flex-wrap gap-1.5 pb-4">
                     {allGemFilterOptions.map(filter => {
                       const isActive = gemFilters.includes(filter);
                       return (
@@ -445,10 +563,25 @@ export default function GuestPortal() {
                     })}
                   </div>
 
-                  <div className={`grid gap-6 md:gap-8 ${viewMode === 'web' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
+                  <div
+                    className={
+                      gemsLayout === 'grid'
+                        ? 'grid grid-cols-2 gap-3 md:gap-4'
+                        : 'grid grid-cols-1 gap-4'
+                    }
+                  >
                     {filteredGems.map(gem => (
-                      <div key={gem.id} className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300">
-                        <div className="relative h-48 bg-gray-100 overflow-hidden shrink-0">
+                      <div
+                        key={gem.id}
+                        className={`bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300 ${
+                          gemsLayout === 'grid' && activeGemMap === gem.id ? 'col-span-2' : ''
+                        }`}
+                      >
+                        <div
+                          className={`relative bg-gray-100 overflow-hidden shrink-0 ${
+                            gemsLayout === 'list' ? 'h-36 sm:h-40' : 'h-28 sm:h-32'
+                          }`}
+                        >
                           {gem.photoUrl ? (
                             <img src={gem.photoUrl} alt={gem.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                           ) : (
@@ -456,41 +589,40 @@ export default function GuestPortal() {
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/70 via-transparent to-transparent"></div>
                           
-                          <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+                          <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 max-w-[85%]">
                             {gem.isLegitPick && (
-                              <span className="bg-white/95 text-[#0B4F5C] border border-white/50 text-[9px] uppercase tracking-[0.15em] font-bold px-3 py-1.5 rounded-full shadow-sm flex items-center w-fit">
-                                <Award size={10} className="mr-1.5 text-[#C5A059]" /> Host's Pick
+                              <span className="bg-white/95 text-[#0B4F5C] border border-white/50 text-[8px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center w-fit">
+                                <Award size={8} className="mr-1 text-[#C5A059]" /> Pick
                               </span>
                             )}
                             {gem.isDailyTrip && (
-                              <span className="bg-[#0B4F5C]/95 text-white border border-[#0B4F5C] text-[9px] uppercase tracking-[0.15em] font-bold px-3 py-1.5 rounded-full shadow-sm flex items-center w-fit">
-                                <Clock size={10} className="mr-1.5 text-[#C5A059]" /> Day Trip
+                              <span className="bg-[#0B4F5C]/95 text-white text-[8px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center w-fit">
+                                <Clock size={8} className="mr-1 text-[#C5A059]" /> Trip
                               </span>
                             )}
                           </div>
                           
-                          <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-between items-end">
+                          <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-end gap-1">
                             {gem.rating ? (
-                              <span className="bg-white text-gray-900 text-[11px] font-bold px-2.5 py-1 rounded-full shadow-md flex items-center">
-                                <Star size={12} className="mr-1 text-amber-400 fill-current" /> {gem.rating}
+                              <span className="bg-white text-gray-900 text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md flex items-center">
+                                <Star size={9} className="mr-0.5 text-amber-400 fill-current" /> {gem.rating}
                               </span>
                             ) : <div></div>}
                             
                             {gem.distanceKm && (
-                              <div className="flex flex-col items-end gap-1">
-                                <span className="bg-[#C5A059] text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-md flex items-center">
-                                  <Navigation size={10} className="mr-1.5" /> {gem.distanceKm} km
-                                </span>
-                                <span className="text-white text-[10px] font-medium drop-shadow-md pr-1">
-                                  ~{Math.round(gem.distanceKm * 2)} mins
-                                </span>
-                              </div>
+                              <span className="bg-[#C5A059] text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-md flex items-center shrink-0">
+                                <Navigation size={8} className="mr-0.5" /> {gem.distanceKm}km
+                              </span>
                             )}
                           </div>
                         </div>
 
                         {activeGemMap === gem.id && (
-                          <div className="h-48 w-full bg-gray-100 border-b border-gray-200">
+                          <div
+                            className={`w-full bg-gray-100 border-b border-gray-200 ${
+                              gemsLayout === 'list' ? 'h-48 sm:h-52' : 'h-40'
+                            }`}
+                          >
                             <iframe 
                               width="100%" height="100%" frameBorder="0" scrolling="no" 
                               src={`https://maps.google.com/maps?q=${gem.latitude},${gem.longitude}&z=14&output=embed`}
@@ -498,97 +630,36 @@ export default function GuestPortal() {
                           </div>
                         )}
 
-                        <div className="p-5 md:p-6 flex-1 flex flex-col">
-                          <p className="text-[9px] text-[#C5A059] font-bold uppercase tracking-[0.15em] mb-2">{gem.category || 'Location'}</p>
-                          <h3 className="font-luxury text-lg md:text-xl font-medium text-[#051F26] leading-tight mb-3">{gem.name}</h3>
+                        <div className="p-3 flex-1 flex flex-col min-w-0">
+                          <p className="text-[8px] text-[#C5A059] font-bold uppercase tracking-wider mb-1 truncate">{gem.category || 'Location'}</p>
+                          <h3 className="font-luxury text-sm font-medium text-[#051F26] leading-snug mb-2 line-clamp-2">{gem.name}</h3>
                           
                           {gem.description && (
-                            <div className="mb-5">
-                              <p className={`text-[13px] text-gray-600 font-normal leading-relaxed ${!expandedDesc[gem.id] && 'line-clamp-2'}`}>
+                            <div className="mb-3">
+                              <p className={`text-[11px] text-gray-600 font-normal leading-snug ${!expandedDesc[gem.id] && 'line-clamp-2'}`}>
                                 {gem.description}
                               </p>
-                              {gem.description.length > 90 && (
-                                <button onClick={() => toggleDesc(gem.id)} className="text-[#C5A059] text-[10px] font-bold mt-1.5 hover:underline uppercase tracking-widest">
-                                  {expandedDesc[gem.id] ? 'Read Less' : 'Read More'}
+                              {gem.description.length > 60 && (
+                                <button onClick={() => toggleDesc(gem.id)} className="text-[#C5A059] text-[9px] font-bold mt-1 hover:underline uppercase tracking-wide">
+                                  {expandedDesc[gem.id] ? 'Less' : 'More'}
                                 </button>
                               )}
                             </div>
                           )}
                           
-                          <div className="mt-auto pt-5 border-t border-gray-100 flex gap-3">
+                          <div className="mt-auto pt-3 border-t border-gray-100 flex flex-col gap-1.5">
                             <button 
                               onClick={() => setActiveGemMap(activeGemMap === gem.id ? null : gem.id)}
-                              className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] rounded-xl text-[10px] uppercase tracking-[0.15em] font-bold transition-all flex items-center justify-center border border-gray-200"
+                              className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] rounded-lg text-[9px] uppercase tracking-wider font-bold transition-all flex items-center justify-center border border-gray-200"
                             >
-                              <Map size={14} className="mr-1.5"/> Map
+                              <Map size={12} className="mr-1"/> Map
                             </button>
                             <a 
                               href={`https://www.google.com/maps/dir/?api=1&destination=${gem.latitude},${gem.longitude}`} 
                               target="_blank" rel="noopener noreferrer" 
-                              className="flex-1 py-3 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-xl text-[10px] uppercase tracking-[0.15em] font-bold transition-all flex items-center justify-center shadow-sm"
+                              className="w-full py-2 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[9px] uppercase tracking-wider font-bold transition-all flex items-center justify-center shadow-sm"
                             >
-                              <Navigation size={14} className="mr-1.5"/> Route
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {features.length > 0 && (
-                <section>
-                  <div className="mb-5 pt-4 border-t border-gray-200/60">
-                    <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Partners</p>
-                    <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Guest Services</h2>
-                    <p className="text-gray-500 text-xs mt-1.5">Trusted local partners</p>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2 pb-6">
-                    {featureCategories.map(cat => (
-                      <button 
-                        key={cat} onClick={() => setFeatureFilter(cat)}
-                        className={`whitespace-nowrap px-4 py-2 rounded-full text-[10px] uppercase tracking-[0.1em] font-bold transition-all ${
-                          featureFilter === cat ? 'bg-[#0B4F5C] text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200 hover:border-[#C5A059]'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className={`grid gap-6 md:gap-8 ${viewMode === 'web' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                    {filteredFeatures.map(feature => (
-                      <div key={feature.id} className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300">
-                        <div className="relative h-44 bg-gray-100 overflow-hidden shrink-0">
-                          {feature.photoUrl ? (
-                            <img src={feature.photoUrl} alt={feature.businessName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[#C5A059]"><Sparkles size={28} /></div>
-                          )}
-                          <div className="absolute top-4 left-4 z-10">
-                            {feature.liveLikeLocal && (
-                              <span className="bg-[#C5A059]/95 text-white text-[9px] uppercase tracking-[0.15em] font-bold px-3 py-1.5 rounded-full shadow-sm flex items-center">
-                                <Star size={10} className="mr-1.5 fill-current" /> Local Pick
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="p-5 md:p-6 flex-1 flex flex-col">
-                          <p className="text-[9px] text-gray-400 font-bold uppercase tracking-[0.15em] mb-2">{feature.categories?.[0]}</p>
-                          <h3 className="font-luxury text-base md:text-lg font-medium text-[#051F26] leading-tight mb-3">{feature.businessName}</h3>
-                          {feature.description && <p className="text-[13px] text-gray-600 line-clamp-2 mb-5 font-normal leading-relaxed">{feature.description}</p>}
-                          
-                          <div className="mt-auto pt-5 border-t border-gray-100">
-                            <a 
-                              href={feature.website || (feature.phone ? `tel:${feature.phone}` : '#')} 
-                              target={feature.website ? "_blank" : "_self"} 
-                              rel="noopener noreferrer" 
-                              className="w-full py-3 bg-gray-100 hover:bg-[#0B4F5C] text-[#0B4F5C] hover:text-[#C5A059] rounded-xl text-[10px] uppercase tracking-[0.15em] font-bold transition-all flex items-center justify-center border border-gray-200"
-                            >
-                              <ExternalLink size={14} className="mr-2"/> Connect
+                              <Navigation size={12} className="mr-1"/> Route
                             </a>
                           </div>
                         </div>
@@ -622,15 +693,36 @@ export default function GuestPortal() {
             onClose={() => setActiveView('portal')}
             onOpenPrivacy={() => setLegalModal('privacy')}
             onOpenTerms={() => setLegalModal('terms')}
+            onOpenReport={() => {
+              setActiveView('portal');
+              setReportSheetOpen(true);
+            }}
+            whatsappHref={whatsappHref}
           />
         )}
       </div>
+
+      {activeView === 'portal' && pwaInstall.showBanner && (
+        <GuestAddToHomeBanner
+          t={t}
+          canPromptNative={pwaInstall.canPromptNative}
+          isIosSafari={pwaInstall.isIosSafari}
+          onDismiss={pwaInstall.dismiss}
+          onInstall={pwaInstall.promptInstall}
+          propertyLabel={
+            property?.propertyName && typeData?.propertyTypeName
+              ? `${property.propertyName} · ${typeData.propertyTypeName}`
+              : property?.propertyName
+          }
+        />
+      )}
 
       {activeView === 'portal' && (
         <GuestFloatingActions
           mobileFramePreview={viewMode === 'mobile'}
           onOpenAssistant={() => setActiveView('assistant')}
           onOpenReport={() => setReportSheetOpen(true)}
+          whatsappHref={whatsappHref}
         />
       )}
 

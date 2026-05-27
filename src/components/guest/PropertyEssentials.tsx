@@ -27,11 +27,13 @@ import {
   type FeaturedKey,
   type FeaturedPreviewsMap,
 } from '../../lib/houseGuidePortal';
+import type { GuestLocaleKey } from '../../lib/guestLocale';
 
 type Props = {
   featuredOnPortal: FeaturedKey[];
   previews: FeaturedPreviewsMap;
   onAskAssistant: () => void;
+  t?: (key: GuestLocaleKey) => string;
 };
 
 const ICONS: Record<string, ReactNode> = {
@@ -59,6 +61,7 @@ export default function PropertyEssentials({
   featuredOnPortal,
   previews,
   onAskAssistant,
+  t,
 }: Props) {
   const [openKey, setOpenKey] = useState<FeaturedKey | null>(null);
 
@@ -69,13 +72,13 @@ export default function PropertyEssentials({
   if (featured.length === 0) return null;
 
   return (
-    <section>
-      <div className="mb-5">
+    <section className="!mb-0">
+      <div className="mb-4">
         <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">
-          Essentials
+          {t ? t('essentials') : 'Essentials'}
         </p>
         <h2 className="font-luxury text-2xl text-[#051F26] font-medium">
-          Things to know
+          {t ? t('thingsToKnow') : 'Things to know'}
         </h2>
       </div>
 

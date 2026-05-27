@@ -163,6 +163,43 @@ function extractMapsUrlHints(url) {
   return hints;
 }
 
+function bareGooglePlaceId(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim().replace(/^places\//, "");
+  if (!s) return null;
+  if (/^ChIJ[\w-]+$/i.test(s)) return s;
+  if (/^0x[0-9a-f]+:0x[0-9a-f]+$/i.test(s)) return s;
+  return s;
+}
+
+function extractPlaceIdFromMapsUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return null;
+
+  const queryPlaceId = raw.match(/[?&]query_place_id=([^&]+)/i);
+  if (queryPlaceId?.[1]) return bareGooglePlaceId(decodeURIComponent(queryPlaceId[1]));
+
+  const placeIdParam = raw.match(/[?&]place_id=([^&]+)/i);
+  if (placeIdParam?.[1]) return bareGooglePlaceId(decodeURIComponent(placeIdParam[1]));
+
+  const dataChij = raw.match(/!1s(ChIJ[\w-]+)/i);
+  if (dataChij?.[1]) return dataChij[1];
+
+  const dataHex = raw.match(/!1s(0x[0-9a-f]+:0x[0-9a-f]+)/i);
+  if (dataHex?.[1]) return dataHex[1];
+
+  const pathChij = raw.match(/\/place\/(ChIJ[\w-]+)/i);
+  if (pathChij?.[1]) return pathChij[1];
+
+  return null;
+}
+
+function resolveGooglePlaceIdFromPlace(place, googleMapsUrl) {
+  const fromApi = bareGooglePlaceId(place?.id || place?.name);
+  if (fromApi) return fromApi;
+  return extractPlaceIdFromMapsUrl(googleMapsUrl);
+}
+
 function appendAreaIfNeeded(query, area) {
   const q = String(query || "").trim();
   const a = String(area || "").trim();
@@ -459,13 +496,14 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
   }
 
   const placeName = place.displayName?.text || searchQuery;
-  const mapUrls = buildPlaceMapUrls(place.id, latitude, longitude, placeName);
+  const mapUrls = buildPlaceMapUrls(place.id || place.name, latitude, longitude, placeName);
   const googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
+  const googlePlaceId = resolveGooglePlaceIdFromPlace(place, googleMapsUrl);
   const parsedAddress = parseAddressComponents(place.addressComponents);
   const formattedAddress = place.formattedAddress || "";
 
   return {
-    googlePlaceId: place.id || null,
+    googlePlaceId,
     name: placeName,
     rating: place.rating || null,
     description: place.editorialSummary?.text || "",
@@ -755,6 +793,7 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
     }
 
     return {
+      googlePlaceId: place.googlePlaceId,
       name: place.name,
       rating: place.rating,
       description: place.description,

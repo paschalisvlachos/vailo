@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getGenerativeModel, type Content, type Part } from 'firebase/ai';
 import {
   ArrowLeft,
+  AlertTriangle,
   Image as ImageIcon,
   Loader2,
+  MessageCircle,
   Send,
   ShieldCheck,
   Sparkles,
@@ -21,6 +23,8 @@ type ChatMessage = {
   role: 'user' | 'model';
   text: string;
   imageDataUrl?: string;
+  /** Show report / WhatsApp actions when the model could not answer from the guide. */
+  showEscalation?: boolean;
 };
 
 type Props = {
@@ -30,7 +34,85 @@ type Props = {
   onClose: () => void;
   onOpenPrivacy: () => void;
   onOpenTerms: () => void;
+  onOpenReport: () => void;
+  whatsappHref?: string | null;
 };
+
+/** True when the reply indicates the guide has no answer — guest should escalate. */
+function assistantReplyNeedsEscalation(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return true;
+
+  const patterns = [
+    /not (in|found in) (the )?(house )?guide/,
+    /don'?t have (that|this|any|specific|enough)/,
+    /do not have (that|this|any|specific)/,
+    /no information (about|on|for)/,
+    /not (specifically )?mentioned in/,
+    /isn'?t (in|listed in) (the )?guide/,
+    /contact (your )?host/,
+    /reach out to (your )?host/,
+    /report (an )?issue/,
+    /couldn'?t generate/,
+    /try rephrasing/,
+    /outside (of )?my (scope|knowledge|abilities)/,
+    /cannot (help|answer|assist|find)/,
+    /can'?t (help|answer|assist|find)/,
+    /unable to (find|answer|help|locate)/,
+    /i'?m not sure/,
+    /i do not know/,
+    /i don'?t know/,
+    /not available in/,
+    /wasn'?t provided/,
+    /haven'?t been given/,
+    /only share information/,
+    /please (use|tap|click).{0,40}report/i,
+  ];
+
+  return patterns.some((p) => p.test(t));
+}
+
+function EscalationHelp({
+  onOpenReport,
+  whatsappHref,
+}: {
+  onOpenReport: () => void;
+  whatsappHref?: string | null;
+}) {
+  return (
+    <div className="mt-3 pt-3 border-t border-[#0B4F5C]/10">
+      <p className="text-xs text-gray-600 leading-relaxed mb-3">
+        I couldn&apos;t find that in your house guide. Please{' '}
+        <span className="font-semibold text-[#051F26]">report the issue</span> so your host can
+        help
+        {whatsappHref
+          ? ', or contact them on WhatsApp for an immediate reply.'
+          : '.'}
+      </p>
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onOpenReport}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#0B4F5C] text-white text-[10px] font-bold uppercase tracking-[0.12em] hover:bg-[#083a43] transition-colors"
+        >
+          <AlertTriangle size={14} />
+          Report issue
+        </button>
+        {whatsappHref ? (
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] text-white text-[10px] font-bold uppercase tracking-[0.12em] hover:bg-[#20bd5a] transition-colors"
+          >
+            <MessageCircle size={14} />
+            WhatsApp host
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -123,6 +205,8 @@ export default function GuestPropertyAssistant({
   onClose,
   onOpenPrivacy,
   onOpenTerms,
+  onOpenReport,
+  whatsappHref,
 }: Props) {
   const [hasConsented, setHasConsented] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -245,6 +329,7 @@ export default function GuestPropertyAssistant({
 
       const result = await chat.sendMessage(parts);
       const responseText = (result.response.text() || '').trim();
+      const showEscalation = assistantReplyNeedsEscalation(responseText);
 
       setMessages((prev) => [
         ...prev,
@@ -253,7 +338,8 @@ export default function GuestPropertyAssistant({
           role: 'model',
           text:
             responseText ||
-            "I couldn't generate an answer for that. Please try rephrasing or tap Report Issue.",
+            "I don't have that information in your house guide yet.",
+          showEscalation: showEscalation || !responseText,
         },
       ]);
     } catch (err) {
@@ -435,6 +521,12 @@ export default function GuestPropertyAssistant({
                   </div>
                   <div className="max-w-[85%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                    {(msg.showEscalation ?? assistantReplyNeedsEscalation(msg.text)) && (
+                      <EscalationHelp
+                        onOpenReport={onOpenReport}
+                        whatsappHref={whatsappHref}
+                      />
+                    )}
                   </div>
                 </div>
               )

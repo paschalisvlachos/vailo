@@ -313,9 +313,49 @@ export function isRichGoogleMapsUrl(url?: string): boolean {
   return isDirectPlaceMapsUrl(url);
 }
 
+/** Normalize Places API id / resource name to bare ChIJ… (or hex cid) for storage & review links. */
 export function bareGooglePlaceId(placeId?: string | null): string | null {
   if (!placeId?.trim()) return null;
-  return placeId.replace(/^places\//, '').trim() || null;
+  const bare = placeId.replace(/^places\//, '').trim();
+  if (!bare) return null;
+  if (/^ChIJ[\w-]+$/i.test(bare)) return bare;
+  if (/^0x[0-9a-f]+:0x[0-9a-f]+$/i.test(bare)) return bare;
+  return bare;
+}
+
+/** Extract a Google place id from a Maps URL when the API omits it. */
+export function extractPlaceIdFromMapsUrl(url?: string | null): string | null {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+
+  const queryPlaceId = raw.match(/[?&]query_place_id=([^&]+)/i);
+  if (queryPlaceId?.[1]) return bareGooglePlaceId(decodeURIComponent(queryPlaceId[1]));
+
+  const placeIdParam = raw.match(/[?&]place_id=([^&]+)/i);
+  if (placeIdParam?.[1]) return bareGooglePlaceId(decodeURIComponent(placeIdParam[1]));
+
+  const dataChij = raw.match(/!1s(ChIJ[\w-]+)/i);
+  if (dataChij?.[1]) return dataChij[1];
+
+  const dataHex = raw.match(/!1s(0x[0-9a-f]+:0x[0-9a-f]+)/i);
+  if (dataHex?.[1]) return dataHex[1];
+
+  const pathChij = raw.match(/\/place\/(ChIJ[\w-]+)/i);
+  if (pathChij?.[1]) return pathChij[1];
+
+  return null;
+}
+
+export function resolveGooglePlaceIdFromDetails(
+  details: { googlePlaceId?: string | null; googleMapsUrl?: string | null },
+  mapsUrlFallback?: string | null
+): string | null {
+  return (
+    bareGooglePlaceId(details.googlePlaceId) ||
+    extractPlaceIdFromMapsUrl(details.googleMapsUrl) ||
+    extractPlaceIdFromMapsUrl(mapsUrlFallback) ||
+    null
+  );
 }
 
 export function buildPlaceMapUrls(

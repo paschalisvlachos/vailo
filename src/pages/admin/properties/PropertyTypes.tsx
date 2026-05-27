@@ -4,8 +4,9 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
+import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
 import { useToast } from '../../../context/ToastContext';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle } from 'lucide-react';
 
 export default function PropertyTypes() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
@@ -31,7 +32,8 @@ export default function PropertyTypes() {
   
   const initialFormState = {
     listingUrl: '', googleMapsUrl: '', propertyTypeName: '', urlSlug: '', 
-    latitude: '', longitude: '', wifiName: '', wifiPassword: '', internalRefCode: '',
+    latitude: '', longitude: '', wifiName: '', wifiPassword: '', whatsapp: '', internalRefCode: '',
+    googleRating: '', googlePlaceId: '',
     ownerId: '', iCalUrl: '', 
     photoUrl: '', addressLine: '', area: '', city: '', postCode: '', country: ''
   };
@@ -165,6 +167,8 @@ export default function PropertyTypes() {
       const result = await getGooglePlaceDetails({ searchQuery, area: areaHint });
       const googleData = result.data as {
         name?: string;
+        rating?: number;
+        googlePlaceId?: string;
         latitude?: number;
         longitude?: number;
         websiteUri?: string;
@@ -192,6 +196,12 @@ export default function PropertyTypes() {
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
         googleMapsUrl: googleData.googleMapsUrl || url,
+        googleRating: googleData.rating != null ? String(googleData.rating) : prev.googleRating,
+        googlePlaceId:
+          resolveGooglePlaceIdFromDetails(
+            { googlePlaceId: googleData.googlePlaceId, googleMapsUrl: googleData.googleMapsUrl },
+            url
+          ) || prev.googlePlaceId,
         listingUrl: googleData.websiteUri || prev.listingUrl,
         addressLine: googleData.addressLine || prev.addressLine,
         area: googleNeighborhood || prev.area,
@@ -204,6 +214,18 @@ export default function PropertyTypes() {
       if (googleData.photoUrl) {
         setPhotoFile(null);
         setPhotoPreview(googleData.photoUrl);
+      }
+
+      const resolvedPlaceId = resolveGooglePlaceIdFromDetails(
+        { googlePlaceId: googleData.googlePlaceId, googleMapsUrl: googleData.googleMapsUrl },
+        url
+      );
+      if (resolvedPlaceId) {
+        toast.success('Google Place ID captured for guest reviews.');
+      } else {
+        toast.warning(
+          'Coordinates and details were filled, but no Google Place ID was found. Use a full google.com/maps/place/… link if you need guest review links.'
+        );
       }
     } catch (error) {
       console.error('Maps auto-fill error:', error);
@@ -433,7 +455,7 @@ export default function PropertyTypes() {
         {/* URL Scraping / Auto-fill Section */}
         <div className="p-6 border-b border-gray-100 bg-gray-50 space-y-6">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Listing URL (Airbnb or Booking)</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Website URL</label>
             <div className="relative">
               <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
               <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
@@ -582,12 +604,55 @@ export default function PropertyTypes() {
               <input type="text" name="longitude" value={typeFormData.longitude} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Google rating (1–5)</label>
+              <input
+                type="number"
+                min="0"
+                max="5"
+                step="0.1"
+                name="googleRating"
+                value={typeFormData.googleRating}
+                onChange={handleTypeChange}
+                placeholder="Filled from Maps auto-fill"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Shown on the guest portal; guests can tap to leave a Google review.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Google Place ID</label>
+              <input
+                type="text"
+                name="googlePlaceId"
+                value={typeFormData.googlePlaceId}
+                onChange={handleTypeChange}
+                placeholder="Auto-filled from Maps"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none font-mono text-xs"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WiFi Name</label>
               <input type="text" name="wifiName" value={typeFormData.wifiName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WiFi Password</label>
               <input type="text" name="wifiPassword" value={typeFormData.wifiPassword} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
+              <div className="relative">
+                <MessageCircle className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                <input
+                  type="tel"
+                  name="whatsapp"
+                  value={typeFormData.whatsapp}
+                  onChange={handleTypeChange}
+                  placeholder="+30 69… (shown to guests as a contact button)"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                When filled in, guests see a WhatsApp button on the portal to message you directly.
+              </p>
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Internal Reference Code *</label>

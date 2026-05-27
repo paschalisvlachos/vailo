@@ -1,8 +1,10 @@
-import { AlertTriangle, Sparkles } from 'lucide-react';
+import { AlertTriangle, MessageCircle, Sparkles } from 'lucide-react';
 
 type Props = {
   onOpenAssistant: () => void;
   onOpenReport: () => void;
+  /** wa.me link — when set, shows a WhatsApp FAB below Report Issue. */
+  whatsappHref?: string | null;
   /** When true (desktop phone preview), pin FABs to the right edge of the 400px frame. */
   mobileFramePreview?: boolean;
 };
@@ -11,6 +13,7 @@ type Props = {
 export default function GuestFloatingActions({
   onOpenAssistant,
   onOpenReport,
+  whatsappHref,
   mobileFramePreview = false,
 }: Props) {
   const positionClass = mobileFramePreview
@@ -44,6 +47,23 @@ export default function GuestFloatingActions({
           Report Issue
         </span>
       </button>
+
+      {whatsappHref && (
+        <a
+          href={whatsappHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pointer-events-auto flex items-center gap-1.5 pl-1.5 pr-2.5 py-1.5 rounded-full bg-[#25D366] text-white shadow-[0_4px_16px_rgba(37,211,102,0.45)] border border-[#1da851]/50 hover:bg-[#20bd5a] transition-all active:scale-[0.98]"
+          aria-label="Contact host on WhatsApp"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 shrink-0">
+            <MessageCircle size={13} className="text-white" strokeWidth={2.5} />
+          </span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.05em] whitespace-nowrap">
+            WhatsApp
+          </span>
+        </a>
+      )}
     </div>
   );
 }

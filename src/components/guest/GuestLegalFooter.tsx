@@ -6,9 +6,9 @@ type Props = {
 /** Footer links for Privacy Policy and Terms of Use at the end of the guest portal. */
 export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props) {
   return (
-    <div className="text-center pt-8 pb-6 border-t border-gray-200/50 mt-4">
+    <div className="text-center pt-5 pb-2 border-t border-gray-200/50 !mt-6">
       <nav
-        className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mb-5"
+        className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mb-3"
         aria-label="Legal"
       >
         <button
@@ -32,7 +32,7 @@ export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props
       <img
         src="/vailoLogo.png"
         alt="Vailo"
-        className="h-7 w-auto mx-auto mb-3 opacity-40 grayscale hover:grayscale-0 hover:opacity-70 transition-all"
+        className="h-7 w-auto mx-auto mb-1.5 opacity-40 grayscale hover:grayscale-0 hover:opacity-70 transition-all"
         onError={(e) => {
           (e.target as HTMLImageElement).src = '../../../vailoLogo.png';
         }}

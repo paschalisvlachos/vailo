@@ -939,3 +939,9 @@ exports.getBillingInvoice = onCall(async (request) => {
       "Set BILLING_BQ_TABLE on Cloud Functions to your billing export table for full GCP costs.",
   };
 });
+
+const { registerGuestPortalAccess } = require("./guestPortalAccess");
+registerGuestPortalAccess({ firestore, logger, firebaseExports: exports });
+
+const { registerGuestPortalAnalytics } = require("./guestPortalAnalytics");
+registerGuestPortalAnalytics({ firestore, firebaseExports: exports });

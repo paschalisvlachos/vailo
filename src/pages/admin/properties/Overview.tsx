@@ -56,6 +56,7 @@ type FormData = {
   ownerId: string;
   email: string;
   phone: string;
+  guestPortalAccessRequired: boolean;
 };
 
 function buildFormFromProperty(property: PropertyRecord): FormData {
@@ -71,6 +72,7 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     ownerId: property.ownerId || '',
     email: '',
     phone: '',
+    guestPortalAccessRequired: Boolean(property.guestPortalAccessRequired),
   };
 }
 
@@ -177,7 +179,14 @@ export default function Overview() {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: (e.target as HTMLInputElement).checked,
+      }));
+      return;
+    }
     if (name === 'country') {
       setFormData((prev) => ({ ...prev, country: value, area: '' }));
       return;
@@ -211,6 +220,7 @@ export default function Overview() {
         listingUrl: formData.listingUrl,
         googleMapsUrl: formData.googleMapsUrl,
         ownerId: formData.ownerId,
+        guestPortalAccessRequired: formData.guestPortalAccessRequired,
         updatedAt: new Date().toISOString(),
       });
       if (formData.ownerId) {
@@ -457,6 +467,39 @@ export default function Overview() {
           )}
         </AdminCard>
       </div>
+
+      <AdminCard className="p-6">
+        <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-4">
+          Guest portal access
+        </h3>
+        {isEditing ? (
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="guestPortalAccessRequired"
+              checked={formData.guestPortalAccessRequired}
+              onChange={handleChange}
+              className="mt-1 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
+            />
+            <span className="text-sm text-gray-700">
+              <span className="font-semibold text-gray-900">Require guest access</span>
+              <span className="block text-gray-500 mt-1">
+                Guests need an invitation (password), an active stay on this unit (NFC/QR during
+                booking dates), or a guest visitor access code. Access runs from activation until two days after
+                checkout.
+              </span>
+            </span>
+          </label>
+        ) : (
+          <p className="text-sm text-gray-700">
+            {property.guestPortalAccessRequired ? (
+              <AdminBadge variant="teal">Access control enabled</AdminBadge>
+            ) : (
+              <span className="text-gray-500">Open portal (no invite gate)</span>
+            )}
+          </p>
+        )}
+      </AdminCard>
 
       <AdminCard className="p-6">
         <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2 mb-5">

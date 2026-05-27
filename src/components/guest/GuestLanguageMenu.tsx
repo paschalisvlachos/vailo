@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Languages } from 'lucide-react';
-import { GUEST_LOCALES, type GuestLocale } from '../../lib/guestLocale';
+import { FALLBACK_GUEST_LOCALES, type GuestLocale } from '../../lib/guestLocale';
+
+type LocaleOption = { code: string; label: string; nativeLabel: string };
 
 type Props = {
   locale: GuestLocale;
   onChange: (locale: GuestLocale) => void;
+  options?: LocaleOption[];
 };
 
-export default function GuestLanguageMenu({ locale, onChange }: Props) {
+export default function GuestLanguageMenu({ locale, onChange, options }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const current = GUEST_LOCALES.find((l) => l.code === locale) ?? GUEST_LOCALES[0];
+  const list = options && options.length > 0 ? options : FALLBACK_GUEST_LOCALES;
+  const current = list.find((l) => l.code === locale) ?? list[0];
 
   useEffect(() => {
     if (!open) return;
@@ -41,7 +45,7 @@ export default function GuestLanguageMenu({ locale, onChange }: Props) {
           role="listbox"
           className="absolute right-0 top-full mt-2 min-w-[148px] py-1.5 rounded-xl bg-white/95 backdrop-blur-xl border border-white/40 shadow-[0_12px_40px_rgba(5,31,38,0.28)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
         >
-          {GUEST_LOCALES.map((item) => (
+          {list.map((item) => (
             <li key={item.code} role="option" aria-selected={item.code === locale}>
               <button
                 type="button"

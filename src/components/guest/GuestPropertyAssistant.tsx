@@ -13,6 +13,8 @@ import {
   Bot,
 } from 'lucide-react';
 import { ai } from '../../lib/firebase';
+import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 
 const CONSENT_KEY = 'vailo:assistant-consent:v1';
 const MAX_USER_INPUT = 1000;
@@ -223,6 +225,7 @@ export default function GuestPropertyAssistant({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { track } = useGuestAnalytics();
 
   const propertyName = property?.propertyName || 'your property';
   const propertyTypeName = propertyType?.propertyTypeName || 'your unit';
@@ -301,6 +304,9 @@ export default function GuestPropertyAssistant({
 
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
+    track('assistant_user_message', {
+      text: truncateAnalyticsText(trimmed || '(image)'),
+    });
     setInput('');
     const pendingImageSnapshot = pendingImage;
     setPendingImage(null);
@@ -331,14 +337,15 @@ export default function GuestPropertyAssistant({
       const responseText = (result.response.text() || '').trim();
       const showEscalation = assistantReplyNeedsEscalation(responseText);
 
+      const replyText =
+        responseText || "I don't have that information in your house guide yet.";
+      track('assistant_reply', { text: truncateAnalyticsText(replyText, 1000) });
       setMessages((prev) => [
         ...prev,
         {
           id: `m-${Date.now()}`,
           role: 'model',
-          text:
-            responseText ||
-            "I don't have that information in your house guide yet.",
+          text: replyText,
           showEscalation: showEscalation || !responseText,
         },
       ]);

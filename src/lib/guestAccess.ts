@@ -1,0 +1,118 @@
+/** Guest portal access: invite token, on-stay assignment, testers. */
+
+export const GUEST_SESSION_STORAGE_KEY = 'vailo_guest_portal_session';
+
+export type GuestAccessSource = 'invite' | 'on_site' | 'tester' | 'admin_preview';
+
+export type GuestInviteStatus = 'not_sent' | 'waiting' | 'opened';
+
+export type GuestPortalSession = {
+  sessionId: string;
+  propertyId: string;
+  typeId: string;
+  bookingId?: string | null;
+  testerId?: string | null;
+  accessUntil: string;
+  source: GuestAccessSource;
+  guestName?: string;
+};
+
+export type SyncedBookingAccessFields = {
+  inviteToken?: string;
+  invitePasswordHash?: string;
+  inviteStatus?: GuestInviteStatus;
+  portalActivatedAt?: string;
+  portalAccessUntil?: string;
+  accessSource?: GuestAccessSource;
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function parseIsoDay(iso?: string): Date | null {
+  if (!iso) return null;
+  const parts = iso.split('-').map(Number);
+  if (parts.length < 3) return null;
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Inclusive stay window for on-site NFC assignment (check-in through check-out day). */
+export function isWithinBookingStayDates(isoDay: Date, start?: string, end?: string): boolean {
+  const s = parseIsoDay(start);
+  const e = parseIsoDay(end);
+  if (!s || !e) return false;
+  const t = isoDay.getTime();
+  return t >= s.getTime() && t <= e.getTime();
+}
+
+/** Portal stays open until end of calendar day, 2 days after checkout. */
+export function portalAccessUntilFromEnd(end?: string): string | null {
+  const e = parseIsoDay(end);
+  if (!e) return null;
+  const until = new Date(e.getTime() + 2 * DAY_MS);
+  until.setHours(23, 59, 59, 999);
+  return until.toISOString();
+}
+
+export function isSessionStillValid(session: GuestPortalSession): boolean {
+  if (!session.accessUntil) return false;
+  return Date.now() < new Date(session.accessUntil).getTime();
+}
+
+export function readGuestPortalSession(): GuestPortalSession | null {
+  try {
+    const raw = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GuestPortalSession;
+    if (!parsed?.sessionId || !parsed.propertyId || !parsed.typeId) return null;
+    if (!isSessionStillValid(parsed)) {
+      localStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGuestPortalSession(session: GuestPortalSession): void {
+  localStorage.setItem(GUEST_SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+export function clearGuestPortalSession(): void {
+  localStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+}
+
+export function sessionMatchesUnit(
+  session: GuestPortalSession,
+  propertyId: string,
+  typeId: string
+): boolean {
+  return session.propertyId === propertyId && session.typeId === typeId;
+}
+
+/** Admin “Preview portal” — requires signed-in admin + Cloud Function (not a public bypass). */
+export function buildAdminGuestPortalPreviewUrl(
+  origin: string,
+  propertySlug: string,
+  typeSlug: string,
+  typeId: string
+): string {
+  const base = origin.replace(/\/$/, '');
+  const qs = new URLSearchParams({ typeId, adminPreview: '1' });
+  return `${base}/${propertySlug}/${typeSlug}?${qs.toString()}`;
+}
+
+export function buildInvitePortalUrl(
+  origin: string,
+  propertySlug: string,
+  typeSlug: string,
+  inviteToken: string,
+  typeId?: string
+): string {
+  const base = origin.replace(/\/$/, '');
+  const qs = new URLSearchParams({ invite: inviteToken });
+  if (typeId) qs.set('typeId', typeId);
+  return `${base}/${propertySlug}/${typeSlug}?${qs.toString()}`;
+}

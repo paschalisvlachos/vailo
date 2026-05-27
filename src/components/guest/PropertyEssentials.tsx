@@ -28,6 +28,7 @@ import {
   type FeaturedPreviewsMap,
 } from '../../lib/houseGuidePortal';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
+import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 
 type Props = {
   featuredOnPortal: FeaturedKey[];
@@ -64,6 +65,7 @@ export default function PropertyEssentials({
   t,
 }: Props) {
   const [openKey, setOpenKey] = useState<FeaturedKey | null>(null);
+  const { track } = useGuestAnalytics();
 
   const featured: FeaturedKey[] = (featuredOnPortal || [])
     .filter((id) => getFeaturedConfig(id))
@@ -95,7 +97,15 @@ export default function PropertyEssentials({
             <div key={key}>
               <button
                 type="button"
-                onClick={() => setOpenKey((prev) => (prev === key ? null : key))}
+                onClick={() => {
+                  setOpenKey((prev) => {
+                    const next = prev === key ? null : key;
+                    if (next === key) {
+                      track('guide_accordion_open', { sectionKey: key });
+                    }
+                    return next;
+                  });
+                }}
                 className="w-full flex items-center p-4 md:p-5 text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group"
                 aria-expanded={isOpen}
               >

@@ -1,18 +1,26 @@
-export type GuestLocale = 'en' | 'el' | 'de' | 'fr' | 'it';
+/** Locale code from platform settings (e.g. en, el). */
+export type GuestLocale = string;
+
+export const BUILTIN_GUEST_LOCALES = ['en', 'el', 'de', 'fr', 'it'] as const;
+export type BuiltinGuestLocale = (typeof BUILTIN_GUEST_LOCALES)[number];
 
 export const GUEST_LOCALE_STORAGE_KEY = 'vailo-guest-locale';
 
-export const GUEST_LOCALES: {
+/** Fallback when platform languages are not loaded yet. */
+export const FALLBACK_GUEST_LOCALES: {
   code: GuestLocale;
   label: string;
   nativeLabel: string;
 }[] = [
   { code: 'en', label: 'English', nativeLabel: 'EN' },
-  { code: 'el', label: 'Greek', nativeLabel: 'ΕΛ' },
+  { code: 'el', label: 'Greek', nativeLabel: 'EL' },
   { code: 'de', label: 'German', nativeLabel: 'DE' },
   { code: 'fr', label: 'French', nativeLabel: 'FR' },
   { code: 'it', label: 'Italian', nativeLabel: 'IT' },
 ];
+
+/** @deprecated Use options from usePlatformLanguages / toGuestLocaleOptions */
+export const GUEST_LOCALES = FALLBACK_GUEST_LOCALES;
 
 export type GuestLocaleKey =
   | 'welcomeTo'
@@ -45,7 +53,7 @@ export type GuestLocaleKey =
   | 'gemsLayoutGrid'
   | 'gemsLayoutList';
 
-const MESSAGES: Record<GuestLocale, Record<GuestLocaleKey, string>> = {
+const MESSAGES: Record<BuiltinGuestLocale, Record<GuestLocaleKey, string>> = {
   en: {
     welcomeTo: 'Welcome to',
     map: 'Map',
@@ -204,10 +212,21 @@ const MESSAGES: Record<GuestLocale, Record<GuestLocaleKey, string>> = {
 };
 
 export function guestT(locale: GuestLocale, key: GuestLocaleKey): string {
-  return MESSAGES[locale]?.[key] ?? MESSAGES.en[key];
+  const builtin = locale as BuiltinGuestLocale;
+  return MESSAGES[builtin]?.[key] ?? MESSAGES.en[key];
 }
 
-export function normalizeGuestLocale(raw: string | null | undefined): GuestLocale {
-  if (raw === 'el' || raw === 'de' || raw === 'fr' || raw === 'it') return raw;
-  return 'en';
+export function normalizeGuestLocale(
+  raw: string | null | undefined,
+  availableCodes?: string[]
+): GuestLocale {
+  const codes =
+    availableCodes && availableCodes.length > 0
+      ? availableCodes
+      : FALLBACK_GUEST_LOCALES.map((l) => l.code);
+  const normalized = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (normalized && codes.includes(normalized)) return normalized;
+  return codes[0] ?? 'en';
 }

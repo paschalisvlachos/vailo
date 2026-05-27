@@ -15,6 +15,9 @@ import {
   Sparkles,
   AlertTriangle,
   ThumbsUp,
+  Users,
+  FlaskConical,
+  BarChart3,
 } from 'lucide-react';
 import { AdminBadge } from '../../../components/admin/AdminPageHeader';
 import { useUnseenGuestIssuesCount } from '../../../hooks/useUnseenGuestIssuesCount';
@@ -31,6 +34,9 @@ const TABS = [
   { name: 'Guest Issues', path: 'guest-issues', icon: AlertTriangle, badgeKey: 'guestIssues' as const },
   { name: 'Pick Feedback', path: 'pick-feedback', icon: ThumbsUp, badgeKey: null },
   { name: 'AI Gaps', path: 'ai-gaps', icon: Sparkles, badgeKey: null },
+  { name: 'House Guests', path: 'house-guests', icon: Users, badgeKey: null },
+  { name: 'Visitor access', path: 'testers', icon: FlaskConical, badgeKey: null },
+  { name: 'Analytics', path: 'analytics', icon: BarChart3, badgeKey: null },
 ];
 
 export type PropertyRecord = {
@@ -47,6 +53,7 @@ export type PropertyRecord = {
   listingUrl?: string;
   googleMapsUrl?: string;
   createdAt?: string;
+  guestPortalAccessRequired?: boolean;
 };
 
 export default function PropertyLayout() {

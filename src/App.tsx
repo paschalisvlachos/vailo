@@ -19,6 +19,7 @@ import HouseGuide from "./pages/admin/properties/HouseGuide";
 import Features from "./pages/admin/properties/Features";
 import Billing from "./pages/admin/Billing";
 import LegalDocuments from "./pages/admin/LegalDocuments";
+import Settings from "./pages/admin/Settings";
 import AreaSelector from "./pages/admin/area/AreaSelector";
 import LocalGemsCategories from "./pages/admin/area/LocalGemsCategories";
 import FeaturesCategories from "./pages/admin/area/FeaturesCategories";
@@ -27,6 +28,9 @@ import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
 import AreaFeatures from "./pages/admin/area/AreaFeatures";
 import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
 import AiGaps from "./pages/admin/properties/AiGaps";
+import HouseGuests from "./pages/admin/properties/HouseGuests";
+import PropertyTesters from "./pages/admin/properties/PropertyTesters";
+import PropertyAnalytics from "./pages/admin/properties/PropertyAnalytics";
 import GuestIssues from "./pages/admin/properties/GuestIssues";
 import PickFeedback from "./pages/admin/properties/PickFeedback";
 import { useNewDiscoveredPlacesCount } from "./hooks/useNewDiscoveredPlacesCount";
@@ -153,6 +157,9 @@ export default function App() {
           <Route path="guest-issues" element={<GuestIssues />} />
           <Route path="pick-feedback" element={<PickFeedback />} />
           <Route path="ai-gaps" element={<AiGaps />} />
+          <Route path="house-guests" element={<HouseGuests />} />
+          <Route path="testers" element={<PropertyTesters />} />
+          <Route path="analytics" element={<PropertyAnalytics />} />
         </Route>
 
         <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />
@@ -160,6 +167,7 @@ export default function App() {
         <Route path="/owners/:id/edit" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
         <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
         <Route path="/legal" element={<AdminRoute><LegalDocuments /></AdminRoute>} />
+        <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
         <Route path="/area" element={<AdminRoute><AreaSelector /></AdminRoute>} />
         <Route path="/area/:country/:area/local-gems-categories" element={<AdminRoute><LocalGemsCategories /></AdminRoute>} />
         <Route path="/area/:country/:area/features-categories" element={<AdminRoute><FeaturesCategories /></AdminRoute>} />

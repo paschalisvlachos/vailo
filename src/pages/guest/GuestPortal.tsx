@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import AiExpertView from './AiExpertView';
@@ -14,7 +14,9 @@ import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
-import GuestGemsLayoutToggle, { type GemsLayoutMode } from '../../components/guest/GuestGemsLayoutToggle';
+import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
+import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
+import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { useGuestLocale } from '../../hooks/useGuestLocale';
@@ -25,7 +27,7 @@ import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   formatGuestSlug,
   getTypePublicSlug,
-  typeSlugMatches,
+  resolvePropertyTypeFromUrl,
 } from '../../lib/guestPortalSlug';
 import { 
   MapPin, Globe, CloudSun, ChevronDown, Navigation, 
@@ -33,9 +35,67 @@ import {
   Wifi, Copy, Check, Map, Clock, Award
 } from 'lucide-react';
 
+const GEMS_PAGE_SIZE = 5;
+
+function GemDescriptionToggle({
+  gemId,
+  gemName,
+  expanded,
+  onToggle,
+}: {
+  gemId: string;
+  gemName?: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { track } = useGuestAnalytics();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!expanded) {
+          track('gem_description_expand', { gemId, gemName });
+        }
+        onToggle();
+      }}
+      className="text-[#C5A059] text-[9px] font-bold mt-1 hover:underline uppercase tracking-wide"
+    >
+      {expanded ? 'Less' : 'More'}
+    </button>
+  );
+}
+
+function LiveLikeLocalCTA({
+  onActivate,
+  className,
+  children,
+}: {
+  onActivate: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const { track } = useGuestAnalytics();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        track('live_like_local_open');
+        onActivate();
+      }}
+      className={className}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function GuestPortal() {
   const { propertySlug, typeSlug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const typeIdFromQuery = searchParams.get('typeId') || searchParams.get('type');
+  const inviteTokenFromQuery = searchParams.get('invite');
+  const adminPreviewFromQuery = searchParams.get('adminPreview') === '1';
   
   const [property, setProperty] = useState<any>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
@@ -54,19 +114,13 @@ export default function GuestPortal() {
   const [viewMode, setViewMode] = useState<'web' | 'mobile'>('mobile');
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [propertyMapOpen, setPropertyMapOpen] = useState(false);
-  const { locale, setLocale, t } = useGuestLocale();
+  const { locale, setLocale, t, localeOptions } = useGuestLocale();
   const pwaInstall = usePwaInstall();
   
-  const [gemFilters, setGemFilters] = useState<string[]>(['All']);
+  const [gemFilters, setGemFilters] = useState<string[]>([]);
+  const [gemsVisibleCount, setGemsVisibleCount] = useState(GEMS_PAGE_SIZE);
   const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>({});
   const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
-  const [gemsLayout, setGemsLayout] = useState<GemsLayoutMode>(() => {
-    try {
-      return localStorage.getItem('vailo-gems-layout') === 'list' ? 'list' : 'grid';
-    } catch {
-      return 'grid';
-    }
-  });
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const { content: platformLegal } = usePlatformLegal();
@@ -78,6 +132,9 @@ export default function GuestPortal() {
   useEffect(() => {
     const fetchGuestData = async () => {
       if (!propertySlug || !typeSlug) return;
+      setLoading(true);
+      setError(null);
+      setGems([]);
       try {
         const slugParam = formatGuestSlug(propertySlug);
         let propDoc = null;
@@ -106,18 +163,20 @@ export default function GuestPortal() {
         setProperty({ id: resolvedPropertyId, ...propData });
 
         const typesSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'propertyTypes'));
-        let targetTypeId = null;
-        let targetTypeData = null;
+        const typeMatch = resolvePropertyTypeFromUrl(
+          typesSnap.docs,
+          typeSlug || '',
+          typeIdFromQuery
+        );
 
-        typesSnap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (typeSlugMatches(typeSlug || '', data)) {
-            targetTypeId = docSnap.id;
-            targetTypeData = data;
-          }
-        });
-        
-        if (!targetTypeId) { setError("Unit not found."); setLoading(false); return; }
+        if (!typeMatch) {
+          setError('Unit not found.');
+          setLoading(false);
+          return;
+        }
+
+        const targetTypeId = typeMatch.id;
+        const targetTypeData = typeMatch.data;
         setTypeId(targetTypeId);
         setTypeData(targetTypeData);
 
@@ -129,7 +188,7 @@ export default function GuestPortal() {
         const gemsSnap = await getDocs(
           collection(db, 'properties', resolvedPropertyId, 'propertyTypes', targetTypeId, 'localGems')
         );
-        const loadedGems = gemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const loadedGems = gemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setGems(loadedGems);
 
         const featuresSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'features'));
@@ -144,7 +203,7 @@ export default function GuestPortal() {
       }
     };
     fetchGuestData();
-  }, [propertySlug, typeSlug]);
+  }, [propertySlug, typeSlug, typeIdFromQuery]);
 
   useEffect(() => {
     if (loading || error || !property || !typeData) return;
@@ -152,9 +211,10 @@ export default function GuestPortal() {
     const canonicalType = getTypePublicSlug(typeData);
     if (!canonicalProperty || !canonicalType) return;
     if (propertySlug !== canonicalProperty || typeSlug !== canonicalType) {
-      navigate(`/${canonicalProperty}/${canonicalType}`, { replace: true });
+      const qs = typeId ? `?typeId=${encodeURIComponent(typeId)}` : '';
+      navigate(`/${canonicalProperty}/${canonicalType}${qs}`, { replace: true });
     }
-  }, [loading, error, property, typeData, propertySlug, typeSlug, navigate]);
+  }, [loading, error, property, typeData, propertySlug, typeSlug, typeId, navigate]);
 
   // NEW: Fetch Dynamic Weather when Property Data Loads
   useEffect(() => {
@@ -253,18 +313,8 @@ export default function GuestPortal() {
   };
 
   const toggleDesc = (id: string) => {
-    setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedDesc((prev) => ({ ...prev, [id]: !prev[id] }));
   };
-
-  const setGemsLayoutPersist = (mode: GemsLayoutMode) => {
-    setGemsLayout(mode);
-    try {
-      localStorage.setItem('vailo-gems-layout', mode);
-    } catch {
-      /* ignore */
-    }
-  };
-
 
   const gemCategories = Array.from(new Set(gems.map(g => g.category).filter(Boolean)));
   const allGemFilterOptions = ['All', "Host's Picks", '< 5km', 'Day Trips', ...gemCategories];
@@ -272,27 +322,40 @@ export default function GuestPortal() {
   const handleGemFilterClick = (filter: string) => {
     if (filter === 'All') {
       setGemFilters(['All']);
-    } else {
-      let newFilters = gemFilters.includes('All') ? [] : [...gemFilters];
-      if (newFilters.includes(filter)) {
-        newFilters = newFilters.filter(f => f !== filter);
-        if (newFilters.length === 0) newFilters = ['All'];
-      } else {
-        newFilters.push(filter);
-      }
-      setGemFilters(newFilters);
+      return;
     }
+    setGemFilters((prev) => {
+      const base = prev.includes('All') ? [] : prev.filter((f) => f !== 'All');
+      if (base.includes(filter)) {
+        const next = base.filter((f) => f !== filter);
+        return next;
+      }
+      return [...base, filter];
+    });
   };
 
-  const filteredGems = gems.filter(gem => {
-    if (gemFilters.includes('All')) return true;
-    let matches = false;
-    if (gemFilters.includes("Host's Picks") && gem.isLegitPick) matches = true;
-    if (gemFilters.includes('< 5km') && gem.distanceKm < 5) matches = true;
-    if (gemFilters.includes('Day Trips') && gem.isDailyTrip) matches = true;
-    if (gemFilters.includes(gem.category)) matches = true;
-    return matches;
-  });
+  const filteredGems = useMemo(() => {
+    if (gemFilters.length === 0 || gemFilters.includes('All')) return gems;
+    return gems.filter((gem) => {
+      let matches = false;
+      if (gemFilters.includes("Host's Picks") && gem.isLegitPick) matches = true;
+      if (gemFilters.includes('< 5km') && Number(gem.distanceKm) < 5) matches = true;
+      if (gemFilters.includes('Day Trips') && gem.isDailyTrip) matches = true;
+      if (gemFilters.includes(gem.category)) matches = true;
+      return matches;
+    });
+  }, [gems, gemFilters]);
+
+  useEffect(() => {
+    setGemsVisibleCount(GEMS_PAGE_SIZE);
+  }, [gemFilters, gems]);
+
+  const visibleGems = useMemo(
+    () => filteredGems.slice(0, gemsVisibleCount),
+    [filteredGems, gemsVisibleCount]
+  );
+
+  const hasMoreGems = visibleGems.length < filteredGems.length;
 
   /** Property features flagged for the guest portal (admin: "Show on Main Page"). */
   const portalFeatures = useMemo(
@@ -323,7 +386,7 @@ export default function GuestPortal() {
     </div>
   );
 
-  return (
+  const portalMain = (
     <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative pb-16 overflow-hidden font-sans">
       
       <style>
@@ -394,7 +457,11 @@ export default function GuestPortal() {
                       <img src="/vailoLogo.png" alt="Vailo" className="h-5 w-auto brightness-0 invert opacity-95" onError={(e) => { (e.target as HTMLImageElement).src = '../../../vailoLogo.png'; }} />
                     </div>
                     <div className="flex items-center gap-2">
-                      <GuestLanguageMenu locale={locale} onChange={setLocale} />
+                      <GuestLanguageMenu
+                        locale={locale}
+                        onChange={setLocale}
+                        options={localeOptions}
+                      />
                       <button
                         type="button"
                         onClick={() => hasPropertyCoords && setPropertyMapOpen(true)}
@@ -438,8 +505,8 @@ export default function GuestPortal() {
 
                   {/* Live Like a Local — glass CTA on hero */}
                   <div className="mt-8 w-full">
-                    <button
-                      onClick={() => setActiveView('aiExpert')}
+                    <LiveLikeLocalCTA
+                      onActivate={() => setActiveView('aiExpert')}
                       className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition-all duration-300 hover:-translate-y-0.5"
                     >
                       <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
@@ -458,7 +525,7 @@ export default function GuestPortal() {
                           <ChevronDown size={18} className="-rotate-90" />
                         </div>
                       </div>
-                    </button>
+                    </LiveLikeLocalCTA>
                   </div>
                 </div>
               </div>
@@ -573,26 +640,23 @@ export default function GuestPortal() {
                         : '!mb-0'
                   }
                 >
-                  <div className="mb-5 flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Curated by your host</p>
-                      <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Gems</h2>
-                      <p className="text-gray-500 text-xs mt-1.5">
-                        {filteredGems.length} spot{filteredGems.length !== 1 ? 's' : ''} · places locals love
-                      </p>
-                    </div>
-                    <GuestGemsLayoutToggle
-                      value={gemsLayout}
-                      onChange={setGemsLayoutPersist}
-                      groupLabel={t('gemsLayoutGroup')}
-                      gridLabel={t('gemsLayoutGrid')}
-                      listLabel={t('gemsLayoutList')}
-                    />
+                  <div className="mb-5">
+                    <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Curated by your host</p>
+                    <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Gems</h2>
+                    <p className="text-gray-500 text-xs mt-1.5">
+                      {filteredGems.length} spot{filteredGems.length !== 1 ? 's' : ''}
+                      {hasMoreGems
+                        ? ` · showing ${visibleGems.length}`
+                        : ' · places locals love'}
+                    </p>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 pb-4">
                     {allGemFilterOptions.map(filter => {
-                      const isActive = gemFilters.includes(filter);
+                      const isActive =
+                        filter === 'All'
+                          ? gemFilters.includes('All')
+                          : gemFilters.includes(filter);
                       return (
                         <button 
                           key={filter}
@@ -609,25 +673,21 @@ export default function GuestPortal() {
                     })}
                   </div>
 
-                  <div
-                    className={
-                      gemsLayout === 'grid'
-                        ? 'grid grid-cols-2 gap-3 md:gap-4'
-                        : 'grid grid-cols-1 gap-4'
-                    }
-                  >
-                    {filteredGems.map(gem => (
+                  {filteredGems.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-8 rounded-xl bg-white/80 border border-gray-100">
+                      No spots match these filters.
+                    </p>
+                  ) : (
+                  <>
+                  <div className="grid grid-cols-1 gap-4">
+                    {visibleGems.map(gem => (
                       <div
                         key={gem.id}
-                        className={`bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300 ${
-                          gemsLayout === 'grid' && activeGemMap === gem.id ? 'col-span-2' : ''
-                        }`}
+                        data-gem-id={gem.id}
+                        data-gem-name={gem.name || ''}
+                        className="bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300"
                       >
-                        <div
-                          className={`relative bg-gray-100 overflow-hidden shrink-0 ${
-                            gemsLayout === 'list' ? 'h-36 sm:h-40' : 'h-28 sm:h-32'
-                          }`}
-                        >
+                        <div className="relative bg-gray-100 overflow-hidden shrink-0 h-36 sm:h-40">
                           {gem.photoUrl ? (
                             <img src={gem.photoUrl} alt={gem.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                           ) : (
@@ -664,11 +724,7 @@ export default function GuestPortal() {
                         </div>
 
                         {activeGemMap === gem.id && (
-                          <div
-                            className={`w-full bg-gray-100 border-b border-gray-200 ${
-                              gemsLayout === 'list' ? 'h-48 sm:h-52' : 'h-40'
-                            }`}
-                          >
+                          <div className="w-full bg-gray-100 border-b border-gray-200 h-48 sm:h-52">
                             <iframe 
                               width="100%" height="100%" frameBorder="0" scrolling="no" 
                               src={`https://maps.google.com/maps?q=${gem.latitude},${gem.longitude}&z=14&output=embed`}
@@ -686,9 +742,12 @@ export default function GuestPortal() {
                                 {gem.description}
                               </p>
                               {gem.description.length > 60 && (
-                                <button onClick={() => toggleDesc(gem.id)} className="text-[#C5A059] text-[9px] font-bold mt-1 hover:underline uppercase tracking-wide">
-                                  {expandedDesc[gem.id] ? 'Less' : 'More'}
-                                </button>
+                                <GemDescriptionToggle
+                                  gemId={gem.id}
+                                  gemName={gem.name}
+                                  expanded={Boolean(expandedDesc[gem.id])}
+                                  onToggle={() => toggleDesc(gem.id)}
+                                />
                               )}
                             </div>
                           )}
@@ -712,6 +771,17 @@ export default function GuestPortal() {
                       </div>
                     ))}
                   </div>
+                  {hasMoreGems && (
+                    <button
+                      type="button"
+                      onClick={() => setGemsVisibleCount((n) => n + GEMS_PAGE_SIZE)}
+                      className="mt-4 w-full py-3.5 rounded-xl border border-[#0B4F5C]/20 bg-white text-[#0B4F5C] text-xs font-bold uppercase tracking-wider hover:bg-[#0B4F5C]/5 transition-colors shadow-sm"
+                    >
+                      Load more · {filteredGems.length - visibleGems.length} left
+                    </button>
+                  )}
+                  </>
+                  )}
                 </section>
               )}
 
@@ -784,4 +854,28 @@ export default function GuestPortal() {
       )}
     </div>
   );
+
+  const portalContent =
+    propertyId && typeId ? (
+      <GuestAnalyticsProvider propertyId={propertyId} typeId={typeId}>
+        <GemImpressionTracker gems={gems}>{portalMain}</GemImpressionTracker>
+      </GuestAnalyticsProvider>
+    ) : (
+      portalMain
+    );
+
+  if (property?.guestPortalAccessRequired && propertyId && typeId) {
+    return (
+      <GuestPortalAccessGate
+        propertyId={propertyId}
+        typeId={typeId}
+        inviteToken={inviteTokenFromQuery}
+        adminPreview={adminPreviewFromQuery}
+      >
+        {portalContent}
+      </GuestPortalAccessGate>
+    );
+  }
+
+  return portalContent;
 }

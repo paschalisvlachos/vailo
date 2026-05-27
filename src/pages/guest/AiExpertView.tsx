@@ -32,6 +32,8 @@ import PlanOverviewMap from '../../components/guest/PlanOverviewMap';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
 import PlanImage from '../../components/guest/PlanImage';
 import PickFeedbackButtons from '../../components/guest/PickFeedbackButtons';
+import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Compass, Heart, Eye } from 'lucide-react';
 
 const WIZARD_STEPS = [
@@ -275,7 +277,18 @@ const formatTripWindow = (startTime: string, durationHours: number) => {
   return `${formatTime12(startMin)} → ${formatTime12(endMin, nextDay)}`;
 };
 
+function countPlanStops(plan: unknown): number {
+  if (!plan || typeof plan !== 'object') return 0;
+  const p = plan as { plan?: unknown[]; categories?: { items?: unknown[] }[] };
+  if (Array.isArray(p.plan)) return p.plan.length;
+  if (Array.isArray(p.categories)) {
+    return p.categories.reduce((n, c) => n + (c.items?.length || 0), 0);
+  }
+  return 0;
+}
+
 export default function AiExpertView({ onClose, property, propertyType, features, gems }: AiExpertViewProps) {
+  const { track } = useGuestAnalytics();
   const [messages, setMessages] = useState<Message[]>([]);
   const [step, setStep] = useState<Step>('LOCATION');
   const [chatInput, setChatInput] = useState('');
@@ -709,6 +722,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
   };
 
   const advanceStep = async (currentStep: Step, value: any, displayText: string) => {
+    track('ai_expert_selection', { text: truncateAnalyticsText(displayText) });
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'selection', text: displayText }]);
 
     if (currentStep === 'LOCATION') {
@@ -1030,6 +1044,14 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
 
       // Render the plan immediately — feels instant. Photos fill in next.
       const planMessageId = `${Date.now()}-plan`;
+      track('ai_expert_plan', {
+        planStopCount: countPlanStops(initialPlan),
+        planCategories: Array.isArray(initialPlan?.categories)
+          ? initialPlan.categories
+              .map((c: { categoryName?: string }) => c.categoryName)
+              .filter(Boolean)
+          : undefined,
+      });
       setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
       setIsThinking(false);
 
@@ -1075,6 +1097,7 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
 
     const userText = chatInput;
     setChatInput('');
+    track('ai_expert_user_message', { text: truncateAnalyticsText(userText) });
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: userText }]);
     
     if (step !== 'DONE') setStep('DONE');
@@ -1174,6 +1197,7 @@ User: ${userText}`;
       }
 
       if (parsedData.replyText) {
+        track('ai_expert_reply', { text: truncateAnalyticsText(parsedData.replyText, 1000) });
         setMessages(prev => [...prev, {
           id: Date.now().toString() + 'text',
           role: 'ai',
@@ -1183,6 +1207,14 @@ User: ${userText}`;
       }
 
       if (parsedData.hasPlan && parsedData.plan) {
+        track('ai_expert_plan', {
+          planStopCount: countPlanStops(parsedData.plan),
+          planCategories: Array.isArray(parsedData.plan?.categories)
+            ? parsedData.plan.categories
+                .map((c: { categoryName?: string }) => c.categoryName)
+                .filter(Boolean)
+            : undefined,
+        });
         const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
         let initialPlan = applyTimelinePropertyBookends(parsedData.plan, isNearProperty);
         initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);

@@ -7,6 +7,7 @@ import {
   CreditCard,
   FileText,
   Globe,
+  Settings,
   Menu,
   X,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { icon: Globe, label: 'Area Functionality', to: '/area' },
   { icon: CreditCard, label: 'Billing & Usage', to: '/billing' },
   { icon: FileText, label: 'Legal Documents', to: '/legal' },
+  { icon: Settings, label: 'Settings', to: '/settings' },
 ] as const;
 
 export default function Layout({ children }: { children: React.ReactNode }) {

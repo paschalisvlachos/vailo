@@ -5,9 +5,11 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, ai } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { getGenerativeModel } from "firebase/ai";
-import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles } from 'lucide-react';
+import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, ExternalLink } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
+import { formatGuestSlug, getTypePublicSlug } from '../../../lib/guestPortalSlug';
+import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -280,7 +282,12 @@ export default function LocalGems() {
         finalPhotoUrl = await getDownloadURL(fileRef);
       }
 
-      const payload = { ...formData, photoUrl: finalPhotoUrl };
+      const payload = {
+        ...formData,
+        photoUrl: finalPhotoUrl,
+        isLegitPick: Boolean(formData.isLegitPick),
+        isDailyTrip: Boolean(formData.isDailyTrip),
+      };
 
       if (editingGemId) {
         await updateDoc(doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems', editingGemId), {
@@ -303,7 +310,12 @@ export default function LocalGems() {
   };
 
   const handleEditClick = (gemData: any) => {
-    setFormData(gemData);
+    setFormData({
+      ...initialFormState,
+      ...gemData,
+      isLegitPick: Boolean(gemData.isLegitPick),
+      isDailyTrip: Boolean(gemData.isDailyTrip),
+    });
     setGooglePhoto(null);
     setImagePreview(null);
     setImageFile(null);
@@ -352,15 +364,44 @@ export default function LocalGems() {
             <h4 className="text-sm font-bold text-vailo-dark">Select Unit Level</h4>
             <p className="text-xs text-vailo-teal-hover">Gems are assigned specifically to the selected property listing.</p>
           </div>
-          <select 
-            value={selectedTypeId} 
-            onChange={(e) => setSelectedTypeId(e.target.value)}
-            className="px-4 py-2 bg-white border border-vailo-teal/15 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
-          >
-            {propertyTypes.map(type => (
-              <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select 
+              value={selectedTypeId} 
+              onChange={(e) => setSelectedTypeId(e.target.value)}
+              className="px-4 py-2 bg-white border border-vailo-teal/15 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
+            >
+              {propertyTypes.map(type => (
+                <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
+              ))}
+            </select>
+            {(() => {
+              const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
+              const propSlug = formatGuestSlug(property?.urlSlug);
+              const unitSlug = selectedType ? getTypePublicSlug(selectedType) : '';
+              if (!propSlug || !unitSlug || !selectedTypeId) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(
+                      buildAdminGuestPortalPreviewUrl(
+                        window.location.origin,
+                        propSlug,
+                        unitSlug,
+                        selectedTypeId
+                      ),
+                      '_blank'
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-vailo-teal border border-vailo-teal/20 rounded-lg bg-white hover:bg-vailo-teal/5 transition-colors"
+                  title="Open guest portal for this unit"
+                >
+                  <ExternalLink size={16} />
+                  Preview portal
+                </button>
+              );
+            })()}
+          </div>
         </div>
 
         <div className="flex justify-between items-center mb-6">
@@ -603,7 +644,7 @@ export default function LocalGems() {
             </div>
 
             {/* Toggles */}
-            <div className="md:col-span-2 flex flex-col sm:flex-row gap-6 pt-4 border-t border-gray-100">
+            <div className="md:col-span-2 flex flex-col sm:flex-row flex-wrap gap-6 pt-4 border-t border-gray-100">
               <label className="flex items-center cursor-pointer">
                 <div className="relative flex items-center">
                   <input type="checkbox" name="isLegitPick" checked={formData.isLegitPick} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded transition-all cursor-pointer" />

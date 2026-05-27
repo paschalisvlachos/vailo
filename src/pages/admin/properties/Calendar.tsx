@@ -3,41 +3,57 @@ import { useOutletContext } from 'react-router-dom';
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
+import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
+import CalendarBookingDetailsModal from '../../../components/admin/CalendarBookingDetailsModal';
+import {
+  formatBookingDateRange,
+  getBookingInvitationStatus,
+  guestDetailsPatch,
+  mergeSyncedBookingFromExisting,
+  patchSyncedBookingList,
+  type SyncedBooking,
+} from '../../../lib/syncedBooking';
+import { extractBookingProvider } from '../../../lib/bookingProvider';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw } from 'lucide-react';
 
-// --- UPGRADED HELPER: Identify Booking Provider from URL first, then Summary ---
-const extractProvider = (summary: string, url: string) => {
-  // 1. Check the URL first (This guarantees 100% accuracy for major OTAs)
-  const lowerUrl = url.toLowerCase();
-  if (lowerUrl.includes('airbnb.com')) return 'Airbnb';
-  if (lowerUrl.includes('booking.com')) return 'Booking.com';
-  if (lowerUrl.includes('vrbo.com') || lowerUrl.includes('homeaway.com')) return 'VRBO';
-  if (lowerUrl.includes('expedia.com')) return 'Expedia';
+function bookingStatusLabel(status: ReturnType<typeof getBookingInvitationStatus>): string {
+  switch (status) {
+    case 'invited':
+      return 'Invited';
+    case 'ready_for_reservations':
+      return 'Visit the reservations page for invitation settings';
+    default:
+      return 'Enter details to enable invitation';
+  }
+}
 
-  // 2. If the URL is generic (like a channel manager), fallback to the summary text
-  if (!summary) return 'Direct / Manual Booking';
-  const lowerSum = summary.toLowerCase();
-  if (lowerSum.includes('airbnb')) return 'Airbnb';
-  if (lowerSum.includes('booking.com')) return 'Booking.com';
-  if (lowerSum.includes('vrbo') || lowerSum.includes('homeaway')) return 'VRBO';
-  if (lowerSum.includes('closed') || lowerSum.includes('blocked')) return 'Blocked Date';
-  
-  return summary.length > 20 ? summary.substring(0, 20) + '...' : summary; 
-};
+function bookingBorderClass(status: ReturnType<typeof getBookingInvitationStatus>): string {
+  switch (status) {
+    case 'invited':
+      return 'border-l-red-500';
+    case 'ready_for_reservations':
+      return 'border-l-emerald-500';
+    default:
+      return 'border-l-blue-500';
+  }
+}
 
 export default function Calendar() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
   const toast = useToast();
-  
+  const { languages } = usePlatformLanguages();
+
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [detailsBooking, setDetailsBooking] = useState<SyncedBooking | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
 
   useEffect(() => {
     if (!propertyId) return;
     const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
-      const typesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const typesData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setPropertyTypes(typesData);
       if (typesData.length > 0 && !selectedTypeId) setSelectedTypeId(typesData[0].id);
     });
@@ -48,16 +64,19 @@ export default function Calendar() {
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const startDay = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1; 
+  const startDay = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
 
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const today = new Date();
 
-  const selectedType = propertyTypes.find(t => t.id === selectedTypeId);
+  const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
 
   const handleSync = async () => {
     if (!selectedType?.iCalUrl) return;
@@ -66,14 +85,14 @@ export default function Calendar() {
     try {
       const separator = selectedType.iCalUrl.includes('?') ? '&' : '?';
       const noCacheUrl = `${selectedType.iCalUrl}${separator}nocache=${Date.now()}`;
-      
+
       const proxies = [
         `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(noCacheUrl)}`,
         `https://api.allorigins.win/raw?url=${encodeURIComponent(noCacheUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(noCacheUrl)}`
+        `https://corsproxy.io/?${encodeURIComponent(noCacheUrl)}`,
       ];
 
-      let text = null;
+      let text: string | null = null;
       let success = false;
 
       for (const proxyUrl of proxies) {
@@ -84,21 +103,23 @@ export default function Calendar() {
             if (fetchedText.includes('BEGIN:VCALENDAR')) {
               text = fetchedText;
               success = true;
-              break; 
+              break;
             }
           }
-        } catch (e) {
-          console.warn("Proxy attempt failed, falling back to next network...");
+        } catch {
+          /* try next proxy */
         }
       }
 
       if (!success || !text) {
-        throw new Error("All proxy networks were blocked by the booking channel's firewall. Try again in a few minutes.");
+        throw new Error(
+          "All proxy networks were blocked by the booking channel's firewall. Try again in a few minutes."
+        );
       }
 
-      const events: any[] = [];
+      const events: SyncedBooking[] = [];
       const lines = text.split(/\r?\n/);
-      let currentEvent: any = null;
+      let currentEvent: SyncedBooking | null = null;
 
       const extractDateFromICal = (line: string) => {
         const match = line.match(/:(\d{8})/);
@@ -107,7 +128,7 @@ export default function Calendar() {
           const y = dateStr.substring(0, 4);
           const m = dateStr.substring(4, 6);
           const d = dateStr.substring(6, 8);
-          return `${y}-${m}-${d}`; 
+          return `${y}-${m}-${d}`;
         }
         return null;
       };
@@ -118,17 +139,19 @@ export default function Calendar() {
         } else if (line.startsWith('END:VEVENT')) {
           if (currentEvent && currentEvent.start && currentEvent.end) {
             currentEvent.id = Math.random().toString(36).substr(2, 9);
-            // CHANGED: We now pass the iCal URL into the extractor function
-            currentEvent.provider = extractProvider(currentEvent.summary, selectedType.iCalUrl);
+            currentEvent.provider = extractBookingProvider(
+              currentEvent.summary || '',
+              selectedType.iCalUrl
+            );
             currentEvent.isInvited = false;
             events.push(currentEvent);
           }
           currentEvent = null;
         } else if (currentEvent) {
           if (line.startsWith('DTSTART')) {
-            currentEvent.start = extractDateFromICal(line);
+            currentEvent.start = extractDateFromICal(line) || undefined;
           } else if (line.startsWith('DTEND')) {
-            currentEvent.end = extractDateFromICal(line);
+            currentEvent.end = extractDateFromICal(line) || undefined;
           } else if (line.startsWith('SUMMARY')) {
             currentEvent.summary = line.substring(line.indexOf(':') + 1);
           }
@@ -136,44 +159,67 @@ export default function Calendar() {
       }
 
       const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId);
-      const existingBookings = selectedType.syncedBookings || [];
-      
-      const mergedEvents = events.map(newEvent => {
-        const matchedOld = existingBookings.find((b: any) => b.start === newEvent.start && b.end === newEvent.end);
-        return matchedOld ? { ...newEvent, isInvited: matchedOld.isInvited, id: matchedOld.id || newEvent.id } : newEvent;
+      const existingBookings: SyncedBooking[] = selectedType.syncedBookings || [];
+
+      const mergedEvents = events.map((newEvent) => {
+        const matchedOld = existingBookings.find(
+          (b) => b.start === newEvent.start && b.end === newEvent.end
+        );
+        return mergeSyncedBookingFromExisting(newEvent, matchedOld);
       });
 
-      await setDoc(typeRef, {
-        syncedBookings: mergedEvents,
-        lastSyncedAt: new Date().toISOString()
-      }, { merge: true });
+      await setDoc(
+        typeRef,
+        {
+          syncedBookings: mergedEvents,
+          lastSyncedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
 
       toast.success(`Calendar synced! Found ${events.length} reservations.`);
-    } catch (error: any) {
-      console.error("Sync error:", error);
-      toast.error(`Failed to sync calendar. Error: ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Sync failed';
+      console.error('Sync error:', error);
+      toast.error(`Failed to sync calendar. Error: ${message}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const handleInviteClick = async (targetBooking: any) => {
+  const saveBookingDetails = async (
+    target: SyncedBooking,
+    payload: {
+      guestName: string;
+      guestEmail: string;
+      guestWhatsapp: string;
+      guestLocale: string;
+    }
+  ) => {
+    if (!payload.guestName || !payload.guestEmail || !payload.guestLocale) {
+      toast.warning('Name, email, and language are required.');
+      return;
+    }
+
     if (!selectedType?.syncedBookings) return;
-    
-    const updatedBookings = selectedType.syncedBookings.map((b: any) => {
-      const isMatch = targetBooking.id 
-        ? b.id === targetBooking.id 
-        : (b.start === targetBooking.start && b.end === targetBooking.end);
-        
-      return isMatch ? { ...b, isInvited: true } : b;
-    });
+    setSavingDetails(true);
+
+    const updatedBookings = patchSyncedBookingList(
+      selectedType.syncedBookings,
+      target,
+      guestDetailsPatch(payload)
+    );
 
     try {
       const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId);
       await setDoc(typeRef, { syncedBookings: updatedBookings }, { merge: true });
+      toast.success('Guest details saved. View them under House Guests.');
+      setDetailsBooking(null);
     } catch (error) {
-      console.error("Error updating invite status", error);
-      toast.error("Failed to update invite status.");
+      console.error('Error saving guest details', error);
+      toast.error('Failed to save guest details.');
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -181,14 +227,14 @@ export default function Calendar() {
     if (!selectedType?.syncedBookings) return [];
 
     const cellDate = new Date(year, month, day);
-    cellDate.setHours(0,0,0,0);
+    cellDate.setHours(0, 0, 0, 0);
 
-    return selectedType.syncedBookings.filter((booking: any) => {
+    return selectedType.syncedBookings.filter((booking: SyncedBooking) => {
       if (!booking.start || !booking.end) return false;
       const startDate = new Date(booking.start);
-      startDate.setHours(0,0,0,0);
+      startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(booking.end);
-      endDate.setHours(0,0,0,0);
+      endDate.setHours(0, 0, 0, 0);
 
       return cellDate >= startDate && cellDate < endDate;
     });
@@ -206,21 +252,27 @@ export default function Calendar() {
     );
   }
 
+  const detailsProvider =
+    detailsBooking &&
+    (detailsBooking.provider ||
+      extractBookingProvider(detailsBooking.summary || '', selectedType?.iCalUrl || ''));
+
   return (
     <div className="admin-page">
-      
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
           <div className="h-10 w-10 bg-vailo-teal/5 text-vailo-teal rounded-xl flex items-center justify-center">
             <CalendarIcon size={20} />
           </div>
-          <select 
-            value={selectedTypeId} 
+          <select
+            value={selectedTypeId}
             onChange={(e) => setSelectedTypeId(e.target.value)}
             className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
           >
-            {propertyTypes.map(type => (
-              <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
+            {propertyTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.propertyTypeName}
+              </option>
             ))}
           </select>
         </div>
@@ -235,8 +287,8 @@ export default function Calendar() {
               No iCal configured
             </span>
           )}
-          
-          <button 
+
+          <button
             onClick={handleSync}
             disabled={!selectedType?.iCalUrl || isSyncing}
             className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl text-sm font-medium hover:bg-vailo-teal-hover disabled:opacity-50 disabled:bg-gray-400 transition-colors shadow-sm"
@@ -248,85 +300,112 @@ export default function Calendar() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50">
           <h2 className="text-lg font-bold text-gray-900">
             {monthNames[month]} {year}
           </h2>
           <div className="flex gap-2">
-            <button onClick={prevMonth} className="p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors">
+            <button
+              onClick={prevMonth}
+              className="p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
+            >
               <ChevronLeft size={18} />
             </button>
-            <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors">
+            <button
+              onClick={() => setCurrentDate(new Date())}
+              className="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors"
+            >
               Today
             </button>
-            <button onClick={nextMonth} className="p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors">
+            <button
+              onClick={nextMonth}
+              className="p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
+            >
               <ChevronRight size={18} />
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-7 border-b border-gray-100">
-          {dayNames.map(day => (
-            <div key={day} className="py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">
+          {dayNames.map((day) => (
+            <div
+              key={day}
+              className="py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider"
+            >
               {day}
             </div>
           ))}
         </div>
 
         <div className="grid grid-cols-7 auto-rows-fr bg-gray-200 gap-px border-b border-gray-200">
-          
           {Array.from({ length: startDay }).map((_, i) => (
             <div key={`empty-${i}`} className="bg-gray-50 min-h-[140px] p-2"></div>
           ))}
-          
+
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const day = i + 1;
-            const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
-            const isPast = new Date(year, month, day) < new Date(today.setHours(0,0,0,0));
-            
+            const isToday =
+              day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const isPast = new Date(year, month, day) < todayStart;
+
             const dayBookings = getBookingsForDate(day);
 
             return (
-              <div 
-                key={day} 
-                className={`bg-white min-h-[140px] p-2 relative group transition-colors flex flex-col ${isPast ? 'opacity-60 bg-gray-50/50' : 'hover:bg-gray-50'} ${dayBookings.length > 0 ? 'bg-vailo-teal/5/10' : ''}`}
+              <div
+                key={day}
+                className={`bg-white min-h-[140px] p-2 relative group transition-colors flex flex-col ${
+                  isPast ? 'opacity-60 bg-gray-50/50' : 'hover:bg-gray-50'
+                } ${dayBookings.length > 0 ? 'bg-vailo-teal/5/10' : ''}`}
               >
-                <span className={`inline-flex items-center justify-center w-7 h-7 text-sm font-semibold rounded-full mb-1 ${
-                  isToday ? 'bg-vailo-teal text-white shadow-sm' : 'text-gray-700'
-                }`}>
+                <span
+                  className={`inline-flex items-center justify-center w-7 h-7 text-sm font-semibold rounded-full mb-1 ${
+                    isToday ? 'bg-vailo-teal text-white shadow-sm' : 'text-gray-700'
+                  }`}
+                >
                   {day}
                 </span>
 
                 <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[90px] no-scrollbar">
                   {dayBookings.length > 0 ? (
-                    dayBookings.map((booking: any) => {
+                    dayBookings.map((booking: SyncedBooking) => {
                       const fallbackId = booking.id || `${booking.start}-${booking.end}`;
-                      const providerName = booking.provider || extractProvider(booking.summary || '', selectedType?.iCalUrl || '');
+                      const providerName =
+                        booking.provider ||
+                        extractBookingProvider(booking.summary || '', selectedType?.iCalUrl || '');
+                      const status = getBookingInvitationStatus(booking);
 
                       return (
-                        <div 
-                          key={fallbackId} 
-                          className={`px-2.5 py-2 bg-white border border-gray-200 border-l-[3px] ${booking.isInvited ? 'border-l-red-500' : 'border-l-blue-500'} rounded-md shadow-sm`}
+                        <button
+                          key={fallbackId}
+                          type="button"
+                          onClick={() => setDetailsBooking(booking)}
+                          className={`w-full text-left px-2.5 py-2 bg-white border border-gray-200 border-l-[3px] ${bookingBorderClass(
+                            status
+                          )} rounded-md shadow-sm hover:shadow-md transition-shadow`}
                         >
-                          <div className="text-[11px] font-bold text-gray-900 truncate tracking-tight" title={providerName}>
-                            {providerName}
+                          <div
+                            className="text-[10px] font-bold text-gray-700 truncate"
+                            title={`Booked via ${providerName}`}
+                          >
+                            Booked via {providerName}
                           </div>
-                          <div className="mt-1">
-                            {booking.isInvited ? (
-                              <span className="text-[11px] font-bold text-red-600 tracking-wide uppercase">
-                                Invited
-                              </span>
-                            ) : (
-                              <button 
-                                onClick={() => handleInviteClick(booking)}
-                                className="text-[12px] font-medium text-vailo-teal hover:text-vailo-dark hover:underline"
-                              >
-                                Invite
-                              </button>
-                            )}
+                          <div className="text-[10px] text-gray-600 mt-0.5 font-medium">
+                            {formatBookingDateRange(booking.start, booking.end)}
                           </div>
-                        </div>
+                          <div
+                            className={`text-[9px] mt-1 leading-tight font-semibold ${
+                              status === 'invited'
+                                ? 'text-red-600'
+                                : status === 'ready_for_reservations'
+                                  ? 'text-emerald-700'
+                                  : 'text-vailo-teal'
+                            }`}
+                          >
+                            {bookingStatusLabel(status)}
+                          </div>
+                        </button>
                       );
                     })
                   ) : (
@@ -340,6 +419,17 @@ export default function Calendar() {
           })}
         </div>
       </div>
+
+      {detailsBooking && detailsProvider && (
+        <CalendarBookingDetailsModal
+          booking={detailsBooking}
+          providerLabel={detailsProvider}
+          languages={languages}
+          saving={savingDetails}
+          onClose={() => setDetailsBooking(null)}
+          onSave={(payload) => void saveBookingDetails(detailsBooking, payload)}
+        />
+      )}
     </div>
   );
 }

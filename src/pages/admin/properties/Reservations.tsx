@@ -3,26 +3,76 @@ import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
-import { Calendar as CalendarIcon, Plus, Mail, Link2, Check, ArrowLeft, Building, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
+import CalendarBookingDetailsModal from '../../../components/admin/CalendarBookingDetailsModal';
+import GuestWhatsAppLink from '../../../components/admin/GuestWhatsAppLink';
+import { extractBookingProvider } from '../../../lib/bookingProvider';
+import {
+  buildGuestPortalUrl,
+  formatGuestSlug,
+  getTypePublicSlug,
+} from '../../../lib/guestPortalSlug';
+import { bookingWhatsAppPhone } from '../../../lib/guestWhatsApp';
+import { buildInvitePortalUrl } from '../../../lib/guestAccess';
+import { sendGuestInviteCallable } from '../../../lib/guestPortalCallables';
+import { httpsCallableMessage } from '../../../lib/callableError';
+import {
+  getBookingInvitationStatus,
+  guestDetailsPatch,
+  isBookingGuestDetailsComplete,
+  patchSyncedBookingList,
+  patchSyncedBookingListRevokeAccess,
+  type SyncedBooking,
+} from '../../../lib/syncedBooking';
+import {
+  Calendar as CalendarIcon,
+  Plus,
+  Mail,
+  Link2,
+  Check,
+  ArrowLeft,
+  Building,
+  Trash2,
+  Loader2,
+  AlertCircle,
+  Pencil,
+  Undo2,
+  RefreshCw,
+} from 'lucide-react';
+
+type ReservationRow = SyncedBooking & { typeId: string; typeName: string };
 
 export default function Reservations() {
-  const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const { property, propertyId } = useOutletContext<{
+    property: { urlSlug?: string; guestPortalAccessRequired?: boolean };
+    propertyId: string;
+  }>();
   const toast = useToast();
-  
+  const { languages } = usePlatformLanguages();
+
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [filterTypeId, setFilterTypeId] = useState<string>('all');
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [detailsBooking, setDetailsBooking] = useState<ReservationRow | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [inviteCredentials, setInviteCredentials] = useState<{
+    guestName: string;
+    inviteUrl: string;
+    password: string;
+  } | null>(null);
+  const [sendingInvite, setSendingInvite] = useState(false);
 
   const initialFormState = {
     typeId: '',
     guestName: '',
     guestEmail: '',
     guestPhone: '',
+    guestLocale: '',
     start: '',
-    end: ''
+    end: '',
   };
   const [formData, setFormData] = useState(initialFormState);
 
@@ -99,16 +149,25 @@ export default function Reservations() {
       }
       // --- END ENGINE ---
 
+      if (!formData.guestLocale) {
+        toast.warning('Please select a default language.');
+        setIsSubmitting(false);
+        return;
+      }
+
       const newBooking = {
         id: `MANUAL-${Math.random().toString(36).substr(2, 9)}`,
         start: formData.start,
         end: formData.end,
-        summary: formData.guestName, 
+        summary: formData.guestName,
         provider: 'Direct Booking',
         guestName: formData.guestName,
         guestEmail: formData.guestEmail,
         guestPhone: formData.guestPhone || '',
-        isInvited: false
+        guestWhatsapp: formData.guestPhone || '',
+        guestLocale: formData.guestLocale,
+        guestDetailsComplete: true,
+        isInvited: false,
       };
 
       const updatedBookings = [...existingBookings, newBooking];
@@ -126,30 +185,182 @@ export default function Reservations() {
     }
   };
 
-  const handleInvite = async (booking: any) => {
-    const targetType = propertyTypes.find(t => t.id === booking.typeId);
-    if (!targetType) return;
+  const saveBookingDetails = async (
+    target: ReservationRow,
+    payload: {
+      guestName: string;
+      guestEmail: string;
+      guestWhatsapp: string;
+      guestLocale: string;
+    }
+  ) => {
+    if (!payload.guestName || !payload.guestEmail || !payload.guestLocale) {
+      toast.warning('Name, email, and language are required.');
+      return;
+    }
 
-    toast.success(`Invitation sent to ${booking.guestName || booking.summary}!`);
+    const targetType = propertyTypes.find((t) => t.id === target.typeId);
+    if (!targetType?.syncedBookings) return;
 
-    const updatedBookings = targetType.syncedBookings.map((b: any) => 
-      b.id === booking.id ? { ...b, isInvited: true } : b
+    setSavingDetails(true);
+    const updatedBookings = patchSyncedBookingList(
+      targetType.syncedBookings,
+      target,
+      guestDetailsPatch(payload)
     );
 
-    await setDoc(doc(db, 'properties', propertyId, 'propertyTypes', booking.typeId), {
-      syncedBookings: updatedBookings
-    }, { merge: true });
+    try {
+      await setDoc(
+        doc(db, 'properties', propertyId, 'propertyTypes', target.typeId),
+        { syncedBookings: updatedBookings },
+        { merge: true }
+      );
+      toast.success('Guest details saved. They appear under House Guests.');
+      setDetailsBooking(null);
+    } catch (error) {
+      console.error('Error saving guest details', error);
+      toast.error('Failed to save guest details.');
+    } finally {
+      setSavingDetails(false);
+    }
   };
 
-  const handleCopyLink = (bookingId: string) => {
-    const link = `https://vailo.app/guest/${bookingId}`;
+  const sendInvite = async (booking: ReservationRow, options?: { reinvite?: boolean }) => {
+    if (!isBookingGuestDetailsComplete(booking)) {
+      toast.warning('Add guest details before sending an invite.');
+      return;
+    }
+    if (!booking.id) {
+      toast.warning('This booking has no id; save guest details first.');
+      return;
+    }
+
+    const guestLabel = booking.guestName || booking.summary || 'guest';
+
+    if (property.guestPortalAccessRequired) {
+      setSendingInvite(true);
+      try {
+        const { inviteToken, invitePassword } = await sendGuestInviteCallable(
+          propertyId,
+          booking.typeId,
+          booking.id,
+          options?.reinvite
+        );
+        const type = propertyTypes.find((t) => t.id === booking.typeId);
+        const propSlug = formatGuestSlug(property.urlSlug);
+        const unitSlug = type ? getTypePublicSlug(type) : '';
+        const inviteUrl =
+          propSlug && unitSlug
+            ? buildInvitePortalUrl(
+                window.location.origin,
+                propSlug,
+                unitSlug,
+                inviteToken,
+                booking.typeId
+              )
+            : '';
+        setInviteCredentials({
+          guestName: guestLabel,
+          inviteUrl,
+          password: invitePassword,
+        });
+        toast.success(
+          options?.reinvite
+            ? `Re-invite prepared for ${guestLabel}. Share the link and password (email/WhatsApp delivery next).`
+            : `Invite prepared for ${guestLabel}. Share the link and password.`
+        );
+      } catch (err) {
+        toast.error(httpsCallableMessage(err, 'Failed to send invite.'));
+      } finally {
+        setSendingInvite(false);
+      }
+      return;
+    }
+
+    const targetType = propertyTypes.find((t) => t.id === booking.typeId);
+    if (!targetType) return;
+
+    const updatedBookings = patchSyncedBookingList(targetType.syncedBookings, booking, {
+      isInvited: true,
+      lastInvitedAt: new Date().toISOString(),
+    });
+
+    await setDoc(
+      doc(db, 'properties', propertyId, 'propertyTypes', booking.typeId),
+      { syncedBookings: updatedBookings },
+      { merge: true }
+    );
+
+    toast.success(
+      options?.reinvite
+        ? `Re-invite recorded for ${guestLabel}.`
+        : `Invitation recorded for ${guestLabel}.`
+    );
+  };
+
+  const handleUninvite = async (booking: ReservationRow) => {
+    if (
+      !window.confirm(
+        'Unsend this invitation? The guest will lose guest portal access until you send a new invite.'
+      )
+    ) {
+      return;
+    }
+
+    const targetType = propertyTypes.find((t) => t.id === booking.typeId);
+    if (!targetType) return;
+
+    const updatedBookings = patchSyncedBookingListRevokeAccess(
+      targetType.syncedBookings,
+      booking
+    );
+
+    await setDoc(
+      doc(db, 'properties', propertyId, 'propertyTypes', booking.typeId),
+      { syncedBookings: updatedBookings },
+      { merge: true }
+    );
+    toast.success('Invitation withdrawn and guest portal access revoked.');
+  };
+
+  const handleCopyLink = (booking: ReservationRow) => {
+    const type = propertyTypes.find((t) => t.id === booking.typeId);
+    const link = type
+      ? buildGuestPortalUrl(window.location.origin, property, {
+          id: type.id,
+          urlSlug: type.urlSlug,
+          typeSlug: type.typeSlug,
+          propertyTypeName: type.propertyTypeName,
+        })
+      : null;
+
+    if (!link) {
+      toast.warning('Set property and unit URL slugs before copying the guest portal link.');
+      return;
+    }
+
     navigator.clipboard.writeText(link);
-    setCopiedId(bookingId);
+    const copyKey = booking.id || `${booking.start}-${booking.end}`;
+    setCopiedId(copyKey);
     setTimeout(() => setCopiedId(null), 2000);
+    toast.success('Guest portal link copied.');
+  };
+
+  const bookingProviderLabel = (booking: ReservationRow) => {
+    const type = propertyTypes.find((t) => t.id === booking.typeId);
+    return (
+      booking.provider ||
+      extractBookingProvider(booking.summary || '', type?.iCalUrl || '')
+    );
   };
 
   const handleDelete = async (booking: any) => {
-    if (!window.confirm("Delete this reservation? It will be removed from the calendar.")) return;
+    if (
+      !window.confirm(
+        'Delete this reservation? It will be removed from the calendar and any guest portal access for this stay will be blocked immediately.'
+      )
+    )
+      return;
     
     const targetType = propertyTypes.find(t => t.id === booking.typeId);
     const updatedBookings = targetType.syncedBookings.filter((b: any) => b.id !== booking.id);
@@ -209,6 +420,24 @@ export default function Reservations() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Guest Phone <span className="text-gray-400 font-normal">(Optional, for WhatsApp)</span></label>
                 <input type="tel" name="guestPhone" value={formData.guestPhone} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" placeholder="+1 234 567 8900" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Default language *</label>
+                <select
+                  required
+                  name="guestLocale"
+                  value={formData.guestLocale}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal bg-white"
+                >
+                  <option value="">Select language…</option>
+                  {languages.map((lang) => (
+                    <option key={lang.id} value={lang.shortName}>
+                      {lang.title} ({lang.shortName})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -287,10 +516,18 @@ export default function Reservations() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {displayedBookings.map((booking: any) => {
-                  const checkIn = new Date(booking.start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-                  const checkOut = new Date(booking.end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                {displayedBookings.map((booking: ReservationRow) => {
+                  const checkIn = booking.start
+                    ? new Date(booking.start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                    : '—';
+                  const checkOut = booking.end
+                    ? new Date(booking.end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+                    : '—';
                   const isManual = booking.provider === 'Direct Booking';
+                  const status = getBookingInvitationStatus(booking);
+                  const detailsComplete = isBookingGuestDetailsComplete(booking);
+                  const copyKey = booking.id || `${booking.start}-${booking.end}`;
+                  const whatsappPhone = detailsComplete ? bookingWhatsAppPhone(booking) : null;
 
                   return (
                     <tr key={booking.id} className="hover:bg-gray-50 transition-colors">
@@ -300,7 +537,15 @@ export default function Reservations() {
                         <div className="text-xs text-gray-500 mt-1">
                           {booking.guestEmail ? booking.guestEmail : <span className="italic">OTA Guest Email Hidden</span>}
                         </div>
-                        {booking.guestPhone && <div className="text-xs text-gray-500">{booking.guestPhone}</div>}
+                        {(booking.guestWhatsapp || booking.guestPhone) && (
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
+                            <span>{booking.guestWhatsapp || booking.guestPhone}</span>
+                            {whatsappPhone && <GuestWhatsAppLink phone={whatsappPhone} />}
+                          </div>
+                        )}
+                        {booking.guestLocale && (
+                          <div className="text-xs text-gray-400 uppercase">{booking.guestLocale}</div>
+                        )}
                       </td>
                       
                       {/* Unit */}
@@ -318,43 +563,92 @@ export default function Reservations() {
 
                       {/* Status */}
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {booking.isInvited ? (
+                        {status === 'invited' ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800">
                             Invited
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-vailo-teal/10 text-vailo-dark">
-                            Pending
+                        ) : status === 'ready_for_reservations' ? (
+                          <span className="inline-flex max-w-[200px] mx-auto px-2.5 py-1 rounded-full text-[10px] font-bold leading-tight bg-emerald-50 text-emerald-800">
+                            Ready for invitation
                           </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDetailsBooking(booking)}
+                            className="inline-flex max-w-[200px] mx-auto px-2.5 py-1 rounded-full text-[10px] font-bold leading-tight bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
+                            title="Add guest details"
+                          >
+                            Needs guest details
+                          </button>
                         )}
                       </td>
 
                       {/* Actions */}
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-3">
-                          
-                          {/* Copy Link */}
-                          <button 
-                            onClick={() => handleCopyLink(booking.id)}
-                            className="text-gray-400 hover:text-vailo-teal transition-colors"
-                            title="Copy Guest Link"
+                        <div className="flex items-center justify-end gap-2">
+                          {detailsComplete && (
+                            <button
+                              type="button"
+                              onClick={() => setDetailsBooking(booking)}
+                              className="p-1.5 text-gray-400 hover:text-vailo-teal transition-colors"
+                              title="Edit guest details"
+                            >
+                              <Pencil size={18} />
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopyLink(booking)}
+                            className="p-1.5 text-gray-400 hover:text-vailo-teal transition-colors"
+                            title="Copy guest portal link for this unit"
                           >
-                            {copiedId === booking.id ? <Check size={18} className="text-green-500" /> : <Link2 size={18} />}
+                            {copiedId === copyKey ? (
+                              <Check size={18} className="text-green-500" />
+                            ) : (
+                              <Link2 size={18} />
+                            )}
                           </button>
 
-                          {/* Send Invite */}
-                          <button 
-                            onClick={() => handleInvite(booking)}
-                            className={`flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
-                              booking.isInvited 
-                                ? 'bg-white border-gray-200 text-gray-400 cursor-not-allowed' 
-                                : 'bg-white border-vailo-teal/15 text-vailo-teal hover:bg-vailo-teal/5'
-                            }`}
-                            disabled={booking.isInvited}
-                          >
-                            <Mail size={14} className="mr-1.5" />
-                            {booking.isInvited ? 'Sent' : 'Send Invite'}
-                          </button>
+                          {booking.isInvited ? (
+                            <>
+                              <span className="flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-gray-400">
+                                <Mail size={14} className="mr-1.5" />
+                                Sent
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void sendInvite(booking, { reinvite: true })}
+                                className="flex items-center px-3 py-1.5 rounded-lg border border-vailo-teal/15 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+                                title="Send invitation again"
+                              >
+                                <RefreshCw size={14} className="mr-1.5" />
+                                Re-invite
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleUninvite(booking)}
+                                className="flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                                title="Mark invitation as not sent"
+                              >
+                                <Undo2 size={14} className="mr-1.5" />
+                                Unsend
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void sendInvite(booking)}
+                              className="flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-white border-vailo-teal/15 text-vailo-teal hover:bg-vailo-teal/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200"
+                              disabled={!detailsComplete || sendingInvite}
+                              title={
+                                !detailsComplete ? 'Add guest details first' : 'Mark invitation as sent'
+                              }
+                            >
+                              <Mail size={14} className="mr-1.5" />
+                              Send Invite
+                            </button>
+                          )}
 
                           {/* Delete */}
                           {isManual && (
@@ -375,6 +669,78 @@ export default function Reservations() {
             </table>
           </div>
         </div>
+      )}
+
+      {inviteCredentials && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-gray-900">Invitation for {inviteCredentials.guestName}</h3>
+            <p className="text-sm text-gray-500 mt-1 mb-4">
+              Share the link and password with the guest. The same access applies if they open the
+              unit URL on site during their stay.
+            </p>
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase mb-1">Link</p>
+                <p className="break-all font-mono text-vailo-teal bg-gray-50 p-2 rounded-lg">
+                  {inviteCredentials.inviteUrl || 'Set property and unit URL slugs.'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase mb-1">Password</p>
+                <p className="font-mono text-lg font-bold tracking-widest text-gray-900">
+                  {inviteCredentials.password}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  if (inviteCredentials.inviteUrl) {
+                    navigator.clipboard.writeText(
+                      `${inviteCredentials.inviteUrl}\nPassword: ${inviteCredentials.password}`
+                    );
+                    toast.success('Link and password copied.');
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Copy all
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteCredentials(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailsBooking && (
+        <CalendarBookingDetailsModal
+          booking={detailsBooking}
+          providerLabel={bookingProviderLabel(detailsBooking)}
+          languages={languages}
+          saving={savingDetails}
+          onClose={() => setDetailsBooking(null)}
+          onSave={(payload) => void saveBookingDetails(detailsBooking, payload)}
+          subtitle={
+            isBookingGuestDetailsComplete(detailsBooking)
+              ? 'Updates are saved to House Guests and this reservation.'
+              : 'Saved details appear under House Guests and enable invitation.'
+          }
+          saveLabel={
+            isBookingGuestDetailsComplete(detailsBooking) ? 'Save changes' : 'Save details'
+          }
+        />
       )}
     </div>
   );

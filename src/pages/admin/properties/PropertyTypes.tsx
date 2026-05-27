@@ -6,6 +6,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
 import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
 import { formatGuestSlug, getTypePublicSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
+import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
 import { useToast } from '../../../context/ToastContext';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle } from 'lucide-react';
 
@@ -435,7 +436,16 @@ export default function PropertyTypes() {
                       </button>
                       <button 
                         onClick={() => {
-                          window.open(`/${property.urlSlug}/${getTypePublicSlug(type)}`, '_blank');
+                          const propSlug = formatGuestSlug(property.urlSlug);
+                          const unitSlug = getTypePublicSlug(type);
+                          if (!propSlug || !unitSlug) return;
+                          const url = buildAdminGuestPortalPreviewUrl(
+                            window.location.origin,
+                            propSlug,
+                            unitSlug,
+                            type.id
+                          );
+                          window.open(url, '_blank');
                         }}
                         className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
                         title="Preview Guest Portal"

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { useToast } from '../../../context/ToastContext';
 import { Link2, MapPin, Wand2 } from 'lucide-react';
 import {
@@ -154,27 +155,44 @@ export default function PropertyFormPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const payload = {
-      listingUrl: formData.listingUrl,
-      googleMapsUrl: formData.googleMapsUrl,
-      propertyName: formData.propertyName,
-      urlSlug: formData.urlSlug,
-      internalRefCode: formData.internalRefCode,
-      ownerId: formData.ownerId,
-      listingKind: formData.listingKind,
-      country: formData.country,
-      area: formData.area,
-      city: formData.area,
-      updatedAt: new Date().toISOString(),
-    };
+    const newPropertySlug = formatGuestSlug(formData.urlSlug);
 
     try {
       if (isEdit && id) {
-        await updateDoc(doc(db, 'properties', id), payload);
+        const existingSnap = await getDoc(doc(db, 'properties', id));
+        const existing = existingSnap.data();
+        await updateDoc(doc(db, 'properties', id), {
+          listingUrl: formData.listingUrl,
+          googleMapsUrl: formData.googleMapsUrl,
+          propertyName: formData.propertyName,
+          urlSlug: newPropertySlug,
+          previousUrlSlugs: mergePreviousSlugs(
+            existing?.previousUrlSlugs,
+            existing?.urlSlug,
+            newPropertySlug
+          ),
+          internalRefCode: formData.internalRefCode,
+          ownerId: formData.ownerId,
+          listingKind: formData.listingKind,
+          country: formData.country,
+          area: formData.area,
+          city: formData.area,
+          updatedAt: new Date().toISOString(),
+        });
         navigate(`/properties/${id}`);
       } else {
         const ref = await addDoc(collection(db, 'properties'), {
-          ...payload,
+          listingUrl: formData.listingUrl,
+          googleMapsUrl: formData.googleMapsUrl,
+          propertyName: formData.propertyName,
+          urlSlug: newPropertySlug,
+          previousUrlSlugs: [],
+          internalRefCode: formData.internalRefCode,
+          ownerId: formData.ownerId,
+          listingKind: formData.listingKind,
+          country: formData.country,
+          area: formData.area,
+          city: formData.area,
           createdAt: new Date().toISOString(),
         });
         navigate(`/properties/${ref.id}`);

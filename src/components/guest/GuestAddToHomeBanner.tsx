@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { Plus, Share, Smartphone, X } from 'lucide-react';
+import { Share, Smartphone, X } from 'lucide-react';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
 
 type Props = {
   t: (key: GuestLocaleKey) => string;
   canPromptNative: boolean;
-  isIosSafari: boolean;
   onDismiss: () => void;
   onInstall: () => Promise<'accepted' | 'dismissed' | 'unavailable'>;
   propertyLabel?: string;
@@ -14,24 +13,15 @@ type Props = {
 export default function GuestAddToHomeBanner({
   t,
   canPromptNative,
-  isIosSafari,
   onDismiss,
   onInstall,
   propertyLabel,
 }: Props) {
   const [iosGuideOpen, setIosGuideOpen] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'waiting' | 'success'>('idle');
 
   const handleInstallClick = async () => {
     if (canPromptNative) {
-      setStatus('waiting');
-      const outcome = await onInstall();
-      if (outcome === 'accepted') setStatus('success');
-      else setStatus('idle');
-      return;
-    }
-    if (isIosSafari) {
-      setIosGuideOpen(true);
+      await onInstall();
       return;
     }
     setIosGuideOpen(true);
@@ -39,60 +29,26 @@ export default function GuestAddToHomeBanner({
 
   return (
     <>
-      <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-[55] w-[calc(100%-2rem)] max-w-[360px] pointer-events-none">
-        <div className="pointer-events-auto rounded-2xl border border-[#0B4F5C]/15 bg-white shadow-[0_8px_32px_rgba(11,79,92,0.12)] overflow-hidden">
-          <div className="flex items-start gap-3 p-4 pr-2">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#0B4F5C] to-[#083a43] flex items-center justify-center shrink-0 p-1.5">
-              <img
-                src="/vailoLogo.png"
-                alt=""
-                className="w-full h-full object-contain brightness-0 invert"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-            <div className="flex-1 min-w-0 pt-0.5">
-              <p className="text-sm font-semibold text-[#051F26] leading-snug">{t('installTitle')}</p>
-              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">{t('installSub')}</p>
-              {status === 'success' && (
-                <p className="text-[11px] text-emerald-700 mt-2 font-medium">{t('installSuccess')}</p>
-              )}
-              {status === 'waiting' && (
-                <p className="text-[11px] text-[#0B4F5C] mt-2 font-medium">{t('installWaiting')}</p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 shrink-0"
-              aria-label={t('installDismiss')}
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <div className="px-4 pb-4 pt-0">
-            <button
-              type="button"
-              onClick={handleInstallClick}
-              disabled={status === 'waiting'}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] text-[10px] font-bold uppercase tracking-[0.14em] hover:from-[#083a43] hover:to-[#072d34] transition-colors disabled:opacity-60"
-            >
-              <img
-                src="/vailoLogo.png"
-                alt=""
-                className="h-4 w-auto brightness-0 invert opacity-95"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-              <span>Vailo</span>
-              <Plus size={14} className="opacity-90" />
-              <span className="normal-case tracking-normal font-semibold text-white/90">
-                {t('installCta')}
-              </span>
-            </button>
-          </div>
+      <div className="w-full mb-3 shrink-0">
+        <div className="flex items-center gap-1 rounded-xl bg-gradient-to-r from-[#C5A059] via-[#d4ad65] to-[#C5A059] shadow-[0_4px_20px_rgba(197,160,89,0.35)] border border-[#a88648]/40 overflow-hidden">
+          <button
+            type="button"
+            onClick={handleInstallClick}
+            className="flex-1 min-w-0 py-3 pl-4 pr-2 text-left text-[#051F26] text-[11px] sm:text-xs font-bold uppercase tracking-[0.1em] hover:bg-white/10 transition-colors"
+          >
+            {t('installCta')}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
+            className="shrink-0 p-3 text-[#051F26]/70 hover:text-[#051F26] hover:bg-white/15 transition-colors"
+            aria-label={t('installDismiss')}
+          >
+            <X size={18} strokeWidth={2.5} />
+          </button>
         </div>
       </div>
 

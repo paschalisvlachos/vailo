@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import AiExpertView from './AiExpertView';
@@ -22,6 +22,11 @@ import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
+import {
+  formatGuestSlug,
+  getTypePublicSlug,
+  typeSlugMatches,
+} from '../../lib/guestPortalSlug';
 import { 
   MapPin, Globe, CloudSun, ChevronDown, Navigation, 
   Star, Smartphone, Monitor, Sparkles,
@@ -29,7 +34,8 @@ import {
 } from 'lucide-react';
 
 export default function GuestPortal() {
-  const { propertySlug, typeSlug } = useParams(); 
+  const { propertySlug, typeSlug } = useParams();
+  const navigate = useNavigate();
   
   const [property, setProperty] = useState<any>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
@@ -73,24 +79,40 @@ export default function GuestPortal() {
     const fetchGuestData = async () => {
       if (!propertySlug || !typeSlug) return;
       try {
-        const propQuery = query(collection(db, 'properties'), where('urlSlug', '==', propertySlug));
-        const propSnap = await getDocs(propQuery);
-        if (propSnap.empty) { setError("Property not found."); setLoading(false); return; }
-        
-        const propDoc = propSnap.docs[0];
+        const slugParam = formatGuestSlug(propertySlug);
+        let propDoc = null;
+
+        const propSnap = await getDocs(
+          query(collection(db, 'properties'), where('urlSlug', '==', slugParam))
+        );
+        if (!propSnap.empty) {
+          propDoc = propSnap.docs[0];
+        } else {
+          const legacyPropSnap = await getDocs(
+            query(collection(db, 'properties'), where('previousUrlSlugs', 'array-contains', slugParam))
+          );
+          if (!legacyPropSnap.empty) propDoc = legacyPropSnap.docs[0];
+        }
+
+        if (!propDoc) {
+          setError('Property not found.');
+          setLoading(false);
+          return;
+        }
+
         const resolvedPropertyId = propDoc.id;
+        const propData = propDoc.data();
         setPropertyId(resolvedPropertyId);
-        setProperty({ id: resolvedPropertyId, ...propDoc.data() });
+        setProperty({ id: resolvedPropertyId, ...propData });
 
         const typesSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'propertyTypes'));
         let targetTypeId = null;
         let targetTypeData = null;
-        
-        typesSnap.forEach(doc => {
-          const data = doc.data();
-          const safeSlug = data.typeSlug || data.propertyTypeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-          if (safeSlug === typeSlug) {
-            targetTypeId = doc.id;
+
+        typesSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (typeSlugMatches(typeSlug || '', data)) {
+            targetTypeId = docSnap.id;
             targetTypeData = data;
           }
         });
@@ -123,6 +145,16 @@ export default function GuestPortal() {
     };
     fetchGuestData();
   }, [propertySlug, typeSlug]);
+
+  useEffect(() => {
+    if (loading || error || !property || !typeData) return;
+    const canonicalProperty = formatGuestSlug(property.urlSlug);
+    const canonicalType = getTypePublicSlug(typeData);
+    if (!canonicalProperty || !canonicalType) return;
+    if (propertySlug !== canonicalProperty || typeSlug !== canonicalType) {
+      navigate(`/${canonicalProperty}/${canonicalType}`, { replace: true });
+    }
+  }, [loading, error, property, typeData, propertySlug, typeSlug, navigate]);
 
   // NEW: Fetch Dynamic Weather when Property Data Loads
   useEffect(() => {
@@ -342,6 +374,20 @@ export default function GuestPortal() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/80 via-transparent to-black/30" />
 
                 <div className={`relative mx-auto px-5 pt-5 pb-28 min-h-[420px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+                  {pwaInstall.showBanner && (
+                    <GuestAddToHomeBanner
+                      t={t}
+                      canPromptNative={pwaInstall.canPromptNative}
+                      onDismiss={pwaInstall.dismiss}
+                      onInstall={pwaInstall.promptInstall}
+                      propertyLabel={
+                        property?.propertyName && typeData?.propertyTypeName
+                          ? `${property.propertyName} · ${typeData.propertyTypeName}`
+                          : property?.propertyName
+                      }
+                    />
+                  )}
+
                   {/* Top bar */}
                   <div className="flex justify-between items-center mb-auto">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20">
@@ -701,21 +747,6 @@ export default function GuestPortal() {
           />
         )}
       </div>
-
-      {activeView === 'portal' && pwaInstall.showBanner && (
-        <GuestAddToHomeBanner
-          t={t}
-          canPromptNative={pwaInstall.canPromptNative}
-          isIosSafari={pwaInstall.isIosSafari}
-          onDismiss={pwaInstall.dismiss}
-          onInstall={pwaInstall.promptInstall}
-          propertyLabel={
-            property?.propertyName && typeData?.propertyTypeName
-              ? `${property.propertyName} · ${typeData.propertyTypeName}`
-              : property?.propertyName
-          }
-        />
-      )}
 
       {activeView === 'portal' && (
         <GuestFloatingActions

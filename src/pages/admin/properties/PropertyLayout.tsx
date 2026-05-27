@@ -38,6 +38,7 @@ export type PropertyRecord = {
   propertyName?: string;
   internalRefCode?: string;
   urlSlug?: string;
+  previousUrlSlugs?: string[];
   listingKind?: string;
   country?: string;
   area?: string;

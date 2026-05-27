@@ -5,6 +5,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
 import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
+import { formatGuestSlug, getTypePublicSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { useToast } from '../../../context/ToastContext';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle } from 'lucide-react';
 
@@ -20,6 +21,7 @@ export default function PropertyTypes() {
   const [isSubmittingType, setIsSubmittingType] = useState(false);
   const [isMagicFilling, setIsMagicFilling] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
+  const [slugBeforeEdit, setSlugBeforeEdit] = useState('');
   const invalidCityWarnedRef = useRef(false);
   
   // Photo upload state
@@ -272,6 +274,7 @@ export default function PropertyTypes() {
     }
 
     setTypeFormData({ ...initialFormState, ...typeData, urlSlug: cleanSlug });
+    setSlugBeforeEdit(formatGuestSlug(cleanSlug));
     setEditingTypeId(typeData.id);
     setIsSlugManuallyEdited(true);
     setPhotoFile(null);
@@ -313,7 +316,21 @@ export default function PropertyTypes() {
         finalPhotoUrl = await getDownloadURL(fileRef);
       }
 
-      const payload = { ...typeFormData, photoUrl: finalPhotoUrl };
+      const newSlug = formatGuestSlug(typeFormData.urlSlug);
+      const existingType = editingTypeId
+        ? propertyTypes.find((t) => t.id === editingTypeId)
+        : null;
+      const payload = {
+        ...typeFormData,
+        urlSlug: newSlug,
+        typeSlug: newSlug,
+        photoUrl: finalPhotoUrl,
+        previousUrlSlugs: mergePreviousSlugs(
+          existingType?.previousUrlSlugs,
+          editingTypeId ? slugBeforeEdit : undefined,
+          newSlug
+        ),
+      };
 
       if (editingTypeId) {
         const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', editingTypeId);
@@ -336,6 +353,7 @@ export default function PropertyTypes() {
   const cancelForm = () => {
     setIsFormOpen(false);
     setEditingTypeId(null);
+    setSlugBeforeEdit('');
     setTypeFormData(initialFormState);
     setPhotoFile(null);
     setPhotoPreview(null);
@@ -417,8 +435,7 @@ export default function PropertyTypes() {
                       </button>
                       <button 
                         onClick={() => {
-                          const safeTypeSlug = type.typeSlug || type.propertyTypeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-                          window.open(`/${property.urlSlug}/${safeTypeSlug}`, '_blank');
+                          window.open(`/${property.urlSlug}/${getTypePublicSlug(type)}`, '_blank');
                         }}
                         className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
                         title="Preview Guest Portal"

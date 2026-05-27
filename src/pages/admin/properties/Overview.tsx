@@ -10,6 +10,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { useToast } from '../../../context/ToastContext';
 import {
   User,
@@ -193,9 +194,15 @@ export default function Overview() {
     if (!propertyId) return;
     setIsSaving(true);
     try {
+      const newPropertySlug = formatGuestSlug(formData.urlSlug);
       await updateDoc(doc(db, 'properties', propertyId), {
         propertyName: formData.propertyName.trim(),
-        urlSlug: formData.urlSlug.trim(),
+        urlSlug: newPropertySlug,
+        previousUrlSlugs: mergePreviousSlugs(
+          property.previousUrlSlugs,
+          property.urlSlug,
+          newPropertySlug
+        ),
         internalRefCode: formData.internalRefCode.trim(),
         listingKind: formData.listingKind,
         country: formData.country,

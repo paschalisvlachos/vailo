@@ -8,6 +8,7 @@ import {
   FileText,
   Globe,
   Settings,
+  BookOpen,
   Menu,
   X,
 } from 'lucide-react';
@@ -16,15 +17,33 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
 
-const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
-  { icon: Building2, label: 'Properties', to: '/properties' },
-  { icon: Users, label: 'Owners CRM', to: '/owners' },
-  { icon: Globe, label: 'Area Functionality', to: '/area' },
-  { icon: CreditCard, label: 'Billing & Usage', to: '/billing' },
-  { icon: FileText, label: 'Legal Documents', to: '/legal' },
-  { icon: Settings, label: 'Settings', to: '/settings' },
-] as const;
+type NavItem = {
+  icon: typeof LayoutDashboard;
+  label: string;
+  to: string;
+  badgeOnArea?: boolean;
+};
+
+const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
+  {
+    id: 'general',
+    label: 'General',
+    items: [
+      { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
+      { icon: Building2, label: 'Properties', to: '/properties' },
+      { icon: Users, label: 'Owners CRM', to: '/owners' },
+      { icon: Globe, label: 'Area Functionality', to: '/area', badgeOnArea: true },
+      { icon: CreditCard, label: 'Billing & Usage', to: '/billing' },
+      { icon: FileText, label: 'Legal Documents', to: '/legal' },
+      { icon: Settings, label: 'Settings', to: '/settings' },
+    ],
+  },
+  {
+    id: 'knowledge',
+    label: 'Knowledge',
+    items: [{ icon: BookOpen, label: 'Knowledge base', to: '/knowledge' }],
+  },
+];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
@@ -64,19 +83,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
-        <p className="px-3 text-[10px] font-bold text-white/30 uppercase tracking-[0.22em] mb-3">
-          Navigation
-        </p>
-        {NAV_ITEMS.map((item) => (
-          <NavItem
-            key={item.to}
-            icon={<item.icon size={19} strokeWidth={1.75} />}
-            label={item.label}
-            to={item.to}
-            badge={item.to === '/area' ? newDiscoveredCount : 0}
-            onNavigate={() => setMobileOpen(false)}
-          />
+      <nav className="flex-1 px-3 py-5 space-y-6 overflow-y-auto">
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.id}>
+            <p className="px-3 text-[10px] font-bold text-white/30 uppercase tracking-[0.22em] mb-2">
+              {section.label}
+            </p>
+            <div className="space-y-1">
+              {section.items.map((item) => (
+                <NavItem
+                  key={item.to}
+                  icon={<item.icon size={19} strokeWidth={1.75} />}
+                  label={item.label}
+                  to={item.to}
+                  badge={item.badgeOnArea ? newDiscoveredCount : 0}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 

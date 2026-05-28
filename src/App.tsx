@@ -41,6 +41,12 @@ import { Link } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 
 import { ToastProvider } from "./context/ToastContext";
+import { AdminSessionProvider, useAdminSession } from "./context/AdminSessionContext";
+import {
+  PlatformAdminOnly,
+  PropertyAccessGuard,
+  ScopedAdminHome,
+} from "./components/admin/AdminAccessGuards";
 import GuestPortal from "./pages/guest/GuestPortal";
 import AdminPageHeader, { AdminCard } from "./components/admin/AdminPageHeader";
 import { Building2, Globe, Users, Sparkles } from "lucide-react";
@@ -124,10 +130,27 @@ export default function App() {
     );
   }
 
-  // NEW: A clean wrapper to protect admin routes while keeping them flat
+  function AdminSessionGate({ children }: { children: React.ReactNode }) {
+    const { loading } = useAdminSession();
+    if (loading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-vailo-surface text-vailo-teal text-sm font-medium">
+          Loading your access…
+        </div>
+      );
+    }
+    return <>{children}</>;
+  }
+
   const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     if (!user) return <Login />;
-    return <Layout>{children}</Layout>;
+    return (
+      <AdminSessionProvider>
+        <AdminSessionGate>
+          <Layout>{children}</Layout>
+        </AdminSessionGate>
+      </AdminSessionProvider>
+    );
   };
 
   return (
@@ -142,13 +165,30 @@ export default function App() {
         {/* ======================================= */}
         {/* FLATTENED ADMIN ROUTES                  */}
         {/* ======================================= */}
-        <Route path="/" element={<AdminRoute><DashboardPage /></AdminRoute>} />
-        <Route path="/properties" element={<AdminRoute><PropertiesPage /></AdminRoute>} />
-        <Route path="/add-property" element={<AdminRoute><PropertyFormPage /></AdminRoute>} />
-        <Route path="/properties/:id/edit" element={<AdminRoute><PropertyFormPage /></AdminRoute>} />
+        <Route path="/" element={<AdminRoute><PlatformAdminOnly><DashboardPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route
+          path="/properties"
+          element={
+            <AdminRoute>
+              <ScopedAdminHome>
+                <PropertiesPage />
+              </ScopedAdminHome>
+            </AdminRoute>
+          }
+        />
+        <Route path="/add-property" element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/properties/:id/edit" element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
         
-        {/* React Router now knows this takes priority over the GuestPortal route! */}
-        <Route path="/properties/:id" element={<AdminRoute><PropertyLayout /></AdminRoute>}>
+        <Route
+          path="/properties/:id"
+          element={
+            <AdminRoute>
+              <PropertyAccessGuard>
+                <PropertyLayout />
+              </PropertyAccessGuard>
+            </AdminRoute>
+          }
+        >
           <Route index element={<Overview />} />
           <Route path="types" element={<PropertyTypes />} />
           <Route path="local-gems" element={<LocalGems />} />
@@ -165,22 +205,22 @@ export default function App() {
           <Route path="analytics" element={<PropertyAnalytics />} />
         </Route>
 
-        <Route path="/owners" element={<AdminRoute><OwnersPage /></AdminRoute>} />
-        <Route path="/add-owner" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
-        <Route path="/owners/:id/edit" element={<AdminRoute><OwnerFormPage /></AdminRoute>} />
-        <Route path="/billing" element={<AdminRoute><Billing /></AdminRoute>} />
-        <Route path="/legal" element={<AdminRoute><LegalDocuments /></AdminRoute>} />
-        <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
-        <Route path="/knowledge" element={<AdminRoute><KnowledgeHub /></AdminRoute>} />
-        <Route path="/knowledge/web" element={<AdminRoute><WebKnowledge /></AdminRoute>} />
-        <Route path="/knowledge/client" element={<AdminRoute><ClientKnowledge /></AdminRoute>} />
-        <Route path="/area" element={<AdminRoute><AreaSelector /></AdminRoute>} />
-        <Route path="/area/:country/:area/local-gems-categories" element={<AdminRoute><LocalGemsCategories /></AdminRoute>} />
-        <Route path="/area/:country/:area/features-categories" element={<AdminRoute><FeaturesCategories /></AdminRoute>} />
-        <Route path="/area/:country/:area/features-photos" element={<AdminRoute><FeaturesPhotos /></AdminRoute>} />
-        <Route path="/area/:country/:area/local-gems" element={<AdminRoute><AreaLocalGems /></AdminRoute>} />
-        <Route path="/area/:country/:area/features" element={<AdminRoute><AreaFeatures /></AdminRoute>} />
-        <Route path="/area/:country/:area/discovered-places" element={<AdminRoute><AreaDiscoveredPlaces /></AdminRoute>} />
+        <Route path="/owners" element={<AdminRoute><PlatformAdminOnly><OwnersPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/add-owner" element={<AdminRoute><PlatformAdminOnly><OwnerFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/owners/:id/edit" element={<AdminRoute><PlatformAdminOnly><OwnerFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/billing" element={<AdminRoute><PlatformAdminOnly><Billing /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/legal" element={<AdminRoute><PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/settings" element={<AdminRoute><PlatformAdminOnly><Settings /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/knowledge" element={<AdminRoute><PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/knowledge/web" element={<AdminRoute><PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/knowledge/client" element={<AdminRoute><PlatformAdminOnly><ClientKnowledge /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area" element={<AdminRoute><PlatformAdminOnly><AreaSelector /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area/:country/:area/local-gems-categories" element={<AdminRoute><PlatformAdminOnly><LocalGemsCategories /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area/:country/:area/features-categories" element={<AdminRoute><PlatformAdminOnly><FeaturesCategories /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area/:country/:area/features-photos" element={<AdminRoute><PlatformAdminOnly><FeaturesPhotos /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area/:country/:area/local-gems" element={<AdminRoute><PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area/:country/:area/features" element={<AdminRoute><PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly></AdminRoute>} />
+        <Route path="/area/:country/:area/discovered-places" element={<AdminRoute><PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly></AdminRoute>} />
       </Routes>
     </BrowserRouter>
     </ToastProvider>

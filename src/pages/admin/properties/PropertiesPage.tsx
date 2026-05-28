@@ -11,6 +11,8 @@ import AdminPageHeader, {
   AdminEmptyState,
 } from '../../../components/admin/AdminPageHeader';
 import type { ListingKind } from './PropertyFormPage';
+import { useAdminSession } from '../../../context/AdminSessionContext';
+import { canAccessPropertyId, pathForPropertyLanding } from '../../../lib/adminAccess';
 
 interface Property {
   id: string;
@@ -47,6 +49,7 @@ function LocationCell({ property }: { property: Property }) {
 
 export default function PropertiesPage() {
   const toast = useToast();
+  const { profile, scopes, isPlatformAdmin, isScopedUser } = useAdminSession();
   const [properties, setProperties] = useState<Property[]>([]);
   const [owners, setOwners] = useState<Record<string, { fullName?: string; role?: string }>>({});
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,13 @@ export default function PropertiesPage() {
     }
   };
 
+  const visibleProperties = isPlatformAdmin
+    ? properties
+    : properties.filter((p) => canAccessPropertyId(profile, p.id, scopes));
+
+  const propertyHref = (propertyId: string) =>
+    isPlatformAdmin ? `/properties/${propertyId}` : pathForPropertyLanding(propertyId, scopes);
+
   if (loading) {
     return <div className="py-16 text-center text-gray-500 text-sm">Loading properties…</div>;
   }
@@ -89,30 +99,42 @@ export default function PropertiesPage() {
     <div className="admin-page">
       <AdminPageHeader
         title="Properties"
-        description="Manage your rental portfolio and guest portals"
+        description={
+          isScopedUser
+            ? 'Properties and listings assigned to your account'
+            : 'Manage your rental portfolio and guest portals'
+        }
         icon={<Building2 size={26} />}
         action={
-          <AdminButtonLink to="/add-property" className="w-full sm:w-auto">
-            <Plus size={18} /> Add Property
-          </AdminButtonLink>
+          isPlatformAdmin ? (
+            <AdminButtonLink to="/add-property" className="w-full sm:w-auto">
+              <Plus size={18} /> Add Property
+            </AdminButtonLink>
+          ) : undefined
         }
       />
 
-      {properties.length === 0 ? (
+      {visibleProperties.length === 0 ? (
         <AdminEmptyState
           icon={<Building2 size={32} />}
-          title="No properties yet"
-          description="Add your first property to set up guest portals, local gems, and house guides."
+          title={isScopedUser ? 'No assignments' : 'No properties yet'}
+          description={
+            isScopedUser
+              ? 'Your account is not linked to any property or listing yet. Contact your Vailo administrator.'
+              : 'Add your first property to set up guest portals, local gems, and house guides.'
+          }
           action={
-            <AdminButtonLink to="/add-property">
-              <Plus size={18} /> Add Property
-            </AdminButtonLink>
+            isPlatformAdmin ? (
+              <AdminButtonLink to="/add-property">
+                <Plus size={18} /> Add Property
+              </AdminButtonLink>
+            ) : undefined
           }
         />
       ) : (
         <>
           <div className="grid gap-3 md:hidden">
-            {properties.map((property) => {
+            {visibleProperties.map((property) => {
               const allocatedUser = owners[property.ownerId];
               return (
                 <AdminCard key={property.id} className="p-4">
@@ -120,7 +142,7 @@ export default function PropertiesPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <Link
-                          to={`/properties/${property.id}`}
+                          to={propertyHref(property.id)}
                           className="font-semibold text-vailo-teal hover:underline truncate"
                         >
                           {property.propertyName}
@@ -140,22 +162,24 @@ export default function PropertiesPage() {
                         <p className="text-sm text-gray-400 italic mt-2">Unassigned</p>
                       )}
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Link
-                        to={`/properties/${property.id}/edit`}
-                        className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
-                        title="Edit property"
-                      >
-                        <Pencil size={17} />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(property.id, property.propertyName)}
-                        className="p-2 text-gray-400 hover:text-red-600 rounded-lg"
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
+                    {isPlatformAdmin && (
+                      <div className="flex gap-1 shrink-0">
+                        <Link
+                          to={`/properties/${property.id}/edit`}
+                          className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
+                          title="Edit property"
+                        >
+                          <Pencil size={17} />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(property.id, property.propertyName)}
+                          className="p-2 text-gray-400 hover:text-red-600 rounded-lg"
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </AdminCard>
               );
@@ -176,13 +200,13 @@ export default function PropertiesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {properties.map((property) => {
+                  {visibleProperties.map((property) => {
                     const allocatedUser = owners[property.ownerId];
                     return (
                       <tr key={property.id}>
                         <td>
                           <Link
-                            to={`/properties/${property.id}`}
+                            to={propertyHref(property.id)}
                             className="font-semibold text-vailo-teal hover:underline"
                           >
                             {property.propertyName}
@@ -213,20 +237,24 @@ export default function PropertiesPage() {
                           </span>
                         </td>
                         <td className="text-right">
-                          <Link
-                            to={`/properties/${property.id}/edit`}
-                            className="inline-flex p-2 text-gray-400 hover:text-vailo-teal"
-                            title="Edit property"
-                          >
-                            <Pencil size={17} />
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(property.id, property.propertyName)}
-                            className="p-2 text-gray-400 hover:text-red-600"
-                          >
-                            <Trash2 size={17} />
-                          </button>
+                          {isPlatformAdmin && (
+                            <>
+                              <Link
+                                to={`/properties/${property.id}/edit`}
+                                className="inline-flex p-2 text-gray-400 hover:text-vailo-teal"
+                                title="Edit property"
+                              >
+                                <Pencil size={17} />
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(property.id, property.propertyName)}
+                                className="p-2 text-gray-400 hover:text-red-600"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );

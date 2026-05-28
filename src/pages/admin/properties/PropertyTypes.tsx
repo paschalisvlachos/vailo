@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -9,10 +9,17 @@ import { formatGuestSlug, getTypePublicSlug, mergePreviousSlugs } from '../../..
 import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
 import { useToast } from '../../../context/ToastContext';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle } from 'lucide-react';
+import type { PropertyOutletContext } from './PropertyLayout';
 
 export default function PropertyTypes() {
-  const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
+  const { property, propertyId, propertyAccess, lockedListingId } =
+    useOutletContext<PropertyOutletContext>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
+
+  const isListingOnly = propertyAccess.level === 'listing_only';
+  const allowedTypeIds = isListingOnly ? propertyAccess.typeIds : null;
+  const listingOnlyAutoOpened = useRef(false);
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
@@ -112,6 +119,47 @@ export default function PropertyTypes() {
     }
     setTypeFormData((prev) => ({ ...prev, city: '' }));
   }, [isFormOpen, dbAreas, typeFormData.city, cityIsInvalid, toast]);
+
+  const visiblePropertyTypes = useMemo(() => {
+    if (!allowedTypeIds) return propertyTypes;
+    return propertyTypes.filter((t) => allowedTypeIds.includes(t.id));
+  }, [propertyTypes, allowedTypeIds]);
+
+  const openTypeEditor = (typeData: (typeof propertyTypes)[0]) => {
+    if (isListingOnly && !propertyAccess.typeIds.includes(typeData.id)) {
+      toast.error('You can only edit your assigned listing.');
+      return;
+    }
+
+    let cleanSlug = typeData.urlSlug || '';
+    if (property?.urlSlug && cleanSlug.startsWith(`${property.urlSlug}/`)) {
+      cleanSlug = cleanSlug.replace(`${property.urlSlug}/`, '');
+    }
+
+    setTypeFormData({ ...initialFormState, ...typeData, urlSlug: cleanSlug });
+    setSlugBeforeEdit(formatGuestSlug(cleanSlug));
+    setEditingTypeId(typeData.id);
+    setIsSlugManuallyEdited(true);
+    setPhotoFile(null);
+    setPhotoPreview(typeData.photoUrl || null);
+    setIsFormOpen(true);
+
+    if (isListingOnly) {
+      const next = new URLSearchParams(searchParams);
+      next.set('listing', typeData.id);
+      setSearchParams(next, { replace: true });
+    }
+  };
+
+  useEffect(() => {
+    if (!isListingOnly || !lockedListingId || listingOnlyAutoOpened.current) return;
+    if (propertyAccess.level === 'listing_only' && propertyAccess.typeIds.length > 1) return;
+    const type = propertyTypes.find((t) => t.id === lockedListingId);
+    if (!type) return;
+    listingOnlyAutoOpened.current = true;
+    openTypeEditor(type);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when single assigned listing loads
+  }, [isListingOnly, lockedListingId, propertyTypes, propertyAccess]);
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (e.target.name === 'urlSlug') setIsSlugManuallyEdited(true);
@@ -266,24 +314,15 @@ export default function PropertyTypes() {
   };
 
   // --- CRUD OPERATIONS --- //
-  const handleEditClick = (typeData: any) => {
-    // Safety check: If the old broken slug logic saved "parent-slug/child-slug", 
-    // this cleans it up instantly so the user only edits the child slug.
-    let cleanSlug = typeData.urlSlug || '';
-    if (property?.urlSlug && cleanSlug.startsWith(`${property.urlSlug}/`)) {
-      cleanSlug = cleanSlug.replace(`${property.urlSlug}/`, '');
-    }
-
-    setTypeFormData({ ...initialFormState, ...typeData, urlSlug: cleanSlug });
-    setSlugBeforeEdit(formatGuestSlug(cleanSlug));
-    setEditingTypeId(typeData.id);
-    setIsSlugManuallyEdited(true);
-    setPhotoFile(null);
-    setPhotoPreview(typeData.photoUrl || null);
-    setIsFormOpen(true);
+  const handleEditClick = (typeData: (typeof propertyTypes)[0]) => {
+    openTypeEditor(typeData);
   };
 
   const handleDeleteClick = async (typeId: string, typeName: string) => {
+    if (isListingOnly) {
+      toast.error('You cannot delete property listings.');
+      return;
+    }
     if (window.confirm(`Are you sure you want to delete "${typeName}"? This cannot be undone.`)) {
       try {
         await deleteDoc(doc(db, 'properties', propertyId, 'propertyTypes', typeId));
@@ -296,6 +335,14 @@ export default function PropertyTypes() {
   const submitPropertyType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!propertyId) return;
+    if (isListingOnly && editingTypeId && !propertyAccess.typeIds.includes(editingTypeId)) {
+      toast.error('You can only edit your assigned listing.');
+      return;
+    }
+    if (isListingOnly && !editingTypeId) {
+      toast.error('You cannot create new property listings.');
+      return;
+    }
 
     if (
       !typeFormData.city ||
@@ -378,12 +425,14 @@ export default function PropertyTypes() {
             <h3 className="text-lg font-bold text-gray-900">Configured Property Listings</h3>
             <p className="text-sm text-gray-500">Manage individual units, rooms, or tiers within this property.</p>
           </div>
-          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-            <Plus size={18} className="mr-2" /> Add Property Listing
-          </button>
+          {!isListingOnly && (
+            <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+              <Plus size={18} className="mr-2" /> Add Property Listing
+            </button>
+          )}
         </div>
 
-        {propertyTypes.length === 0 ? (
+        {visiblePropertyTypes.length === 0 ? (
           <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
             <Building size={32} className="mx-auto text-gray-400 mb-3" />
             <p className="text-gray-900 font-medium">No property listings found</p>
@@ -391,7 +440,7 @@ export default function PropertyTypes() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {propertyTypes.map(type => {
+            {visiblePropertyTypes.map(type => {
               const assignedOwner = owners.find(o => o.id === type.ownerId);
               
               return (
@@ -452,9 +501,11 @@ export default function PropertyTypes() {
                       >
                         <ExternalLink size={18} />
                       </button>
-                      <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="flex items-center text-sm font-medium text-gray-400 hover:text-red-600 transition-colors">
-                        <Trash2 size={16} />
-                      </button>
+                      {!isListingOnly && (
+                        <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="flex items-center text-sm font-medium text-gray-400 hover:text-red-600 transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -607,20 +658,22 @@ export default function PropertyTypes() {
               </div>
             </div>
             
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Allocated Owner</label>
-              <select 
-                name="ownerId" 
-                value={typeFormData.ownerId} 
-                onChange={handleTypeChange} 
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
-              >
-                <option value="">Select an owner...</option>
-                {owners.map(owner => (
-                  <option key={owner.id} value={owner.id}>{owner.fullName} {owner.company ? `(${owner.company})` : ''}</option>
-                ))}
-              </select>
-            </div>
+            {!isListingOnly && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Allocated Owner</label>
+                <select 
+                  name="ownerId" 
+                  value={typeFormData.ownerId} 
+                  onChange={handleTypeChange} 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
+                >
+                  <option value="">Select an owner...</option>
+                  {owners.map(owner => (
+                    <option key={owner.id} value={owner.id}>{owner.fullName} {owner.company ? `(${owner.company})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>

@@ -16,6 +16,9 @@ import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
+import { useAdminSession } from '../../context/AdminSessionContext';
+import { scopeFromRoute, scopeKey } from '../../lib/adminAccess';
+import AdminScopeBar from './AdminScopeBar';
 
 type NavItem = {
   icon: typeof LayoutDashboard;
@@ -47,8 +50,27 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
+  const { isScopedUser, profile, scopes, activeScope, setActiveScope } = useAdminSession();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isScopedUser || !activeScope) return;
+    const matched = scopeFromRoute(location.pathname, location.search, scopes);
+    if (matched && scopeKey(matched) !== scopeKey(activeScope)) {
+      setActiveScope(matched);
+    }
+  }, [location.pathname, location.search, scopes, activeScope, isScopedUser, setActiveScope]);
+
+  const navSections = isScopedUser
+    ? [
+        {
+          id: 'portfolio',
+          label: 'Your portfolio',
+          items: [{ icon: Building2, label: 'Properties', to: '/properties' }],
+        },
+      ]
+    : NAV_SECTIONS;
 
   useEffect(() => {
     setMobileOpen(false);
@@ -78,13 +100,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white font-luxury">Vailo</h1>
-            <p className="text-[11px] text-white/45 font-medium tracking-wide">Admin Panel</p>
+            <p className="text-[11px] text-white/45 font-medium tracking-wide">
+              {isScopedUser ? profile?.role || 'Portal' : 'Admin Panel'}
+            </p>
           </div>
         </div>
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-6 overflow-y-auto">
-        {NAV_SECTIONS.map((section) => (
+        {navSections.map((section) => (
           <div key={section.id}>
             <p className="px-3 text-[10px] font-bold text-white/30 uppercase tracking-[0.22em] mb-2">
               {section.label}
@@ -174,7 +198,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="p-4 sm:p-6 lg:p-8 xl:p-10 w-full">{children}</div>
+          <div className="p-4 sm:p-6 lg:p-8 xl:p-10 w-full">
+            <AdminScopeBar />
+            {children}
+          </div>
         </main>
       </div>
     </div>

@@ -121,6 +121,7 @@ export default function OwnerFormPage() {
       const { password, ...profile } = formData;
       const payload: Record<string, unknown> = {
         ...profile,
+        email: profile.email.trim().toLowerCase(),
         updatedAt: new Date().toISOString(),
       };
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import type { PropertyOutletContext } from './PropertyLayout';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import type { LucideIcon } from 'lucide-react';
 import { db } from '../../../lib/firebase';
@@ -84,8 +85,10 @@ const CATEGORIES: CategoryDef[] = [
 ];
 
 export default function HouseGuide() {
-  const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const { propertyId, propertyAccess, lockedListingId } =
+    useOutletContext<PropertyOutletContext>();
   const toast = useToast();
+  const isListingOnly = propertyAccess.level === 'listing_only';
   
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
@@ -104,16 +107,34 @@ export default function HouseGuide() {
   // Quick Edit Modal State (Dashboard)
   const [quickEditCategory, setQuickEditCategory] = useState<CategoryDef | null>(null);
 
+  const allowedPropertyTypes = useMemo(() => {
+    if (!isListingOnly) return propertyTypes;
+    return propertyTypes.filter((t) => propertyAccess.typeIds.includes(t.id));
+  }, [propertyTypes, isListingOnly, propertyAccess]);
+
   // 1. Fetch Property Types
   useEffect(() => {
     if (!propertyId) return;
     const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
       const typesData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as PropertyType));
       setPropertyTypes(typesData);
-      setSelectedTypeId((prev) => prev || typesData[0]?.id || '');
     });
     return () => unsubscribe();
   }, [propertyId]);
+
+  useEffect(() => {
+    if (lockedListingId) {
+      setSelectedTypeId(lockedListingId);
+      return;
+    }
+    if (allowedPropertyTypes.length > 0) {
+      setSelectedTypeId((prev) =>
+        prev && allowedPropertyTypes.some((t) => t.id === prev)
+          ? prev
+          : allowedPropertyTypes[0].id
+      );
+    }
+  }, [lockedListingId, allowedPropertyTypes]);
 
   // 2. Fetch Data
   useEffect(() => {
@@ -464,7 +485,7 @@ export default function HouseGuide() {
   };
 
   // --- RENDERERS ---
-  if (propertyTypes.length === 0) return <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-gray-100"><Building className="mx-auto text-gray-300 mb-4" size={40}/><h3 className="text-xl font-bold">No Property Listings</h3></div>;
+  if (allowedPropertyTypes.length === 0) return <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-gray-100"><Building className="mx-auto text-gray-300 mb-4" size={40}/><h3 className="text-xl font-bold">No Property Listings</h3></div>;
 
   return (
     <div className="admin-page">
@@ -479,9 +500,15 @@ export default function HouseGuide() {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-4 items-center">
-          <select value={selectedTypeId} onChange={e => setSelectedTypeId(e.target.value)} className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#0B4F5C] min-w-[200px] shadow-inner">
-            {propertyTypes.map(t => <option key={t.id} value={t.id}>{t.propertyTypeName}</option>)}
-          </select>
+          {isListingOnly && allowedPropertyTypes.length === 1 ? (
+            <p className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 min-w-[200px]">
+              {allowedPropertyTypes[0].propertyTypeName || 'Your listing'}
+            </p>
+          ) : (
+            <select value={selectedTypeId} onChange={e => setSelectedTypeId(e.target.value)} className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#0B4F5C] min-w-[200px] shadow-inner">
+              {allowedPropertyTypes.map(t => <option key={t.id} value={t.id}>{t.propertyTypeName}</option>)}
+            </select>
+          )}
           <button onClick={() => { setWizardStepIndex(0); setIsWizardOpen(true); }} className="px-6 py-3 bg-vailo-teal hover:bg-[#C5A059] text-white rounded-xl text-sm font-bold shadow-md transition-colors flex items-center w-full sm:w-auto justify-center">
             <Sparkles size={18} className="mr-2" /> Run Setup Wizard
           </button>

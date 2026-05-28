@@ -1,0 +1,215 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import {
+  collection,
+  collectionGroup,
+  onSnapshot,
+  query,
+  where,
+} from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import {
+  buildAdminScopes,
+  isPlatformAdmin,
+  isScopedUser,
+  normalizeAdminEmail,
+  pathForScope,
+  resolveActiveScope,
+  scopeKey,
+  writeStoredScopeKey,
+  type AdminScope,
+  type OwnerProfile,
+} from '../lib/adminAccess';
+
+type AdminSessionContextValue = {
+  authUser: User | null;
+  profile: OwnerProfile | null;
+  loading: boolean;
+  scopes: AdminScope[];
+  activeScope: AdminScope | null;
+  setActiveScope: (scope: AdminScope) => void;
+  isPlatformAdmin: boolean;
+  isScopedUser: boolean;
+};
+
+const AdminSessionContext = createContext<AdminSessionContextValue | null>(null);
+
+function parseOwnerProfile(id: string, data: Record<string, unknown>): OwnerProfile {
+  const role = data.role === 'admin' || data.role === 'agent' ? data.role : 'owner';
+  return {
+    id,
+    fullName: typeof data.fullName === 'string' ? data.fullName : '',
+    email: typeof data.email === 'string' ? data.email : '',
+    role,
+    status: typeof data.status === 'string' ? data.status : 'active',
+    company: typeof data.company === 'string' ? data.company : undefined,
+  };
+}
+
+export function AdminSessionProvider({ children }: { children: ReactNode }) {
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [profile, setProfile] = useState<OwnerProfile | null>(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [properties, setProperties] = useState<
+    { id: string; propertyName?: string; ownerId?: string }[]
+  >([]);
+  const [types, setTypes] = useState<
+    {
+      id: string;
+      propertyId: string;
+      propertyTypeName?: string;
+      ownerId?: string;
+    }[]
+  >([]);
+  const [dataReady, setDataReady] = useState(false);
+  const [activeScope, setActiveScopeState] = useState<AdminScope | null>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setAuthUser(user);
+      setAuthReady(true);
+      if (!user) {
+        setProfile(null);
+        setProfileReady(true);
+      } else {
+        setProfileReady(false);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!authUser?.email) {
+      setProfile(null);
+      setProfileReady(true);
+      return;
+    }
+
+    const email = normalizeAdminEmail(authUser.email);
+    const q = query(collection(db, 'owners'), where('email', '==', email));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        if (snap.empty) {
+          setProfile(null);
+        } else {
+          const doc = snap.docs[0];
+          setProfile(parseOwnerProfile(doc.id, doc.data()));
+        }
+        setProfileReady(true);
+      },
+      () => {
+        setProfile(null);
+        setProfileReady(true);
+      }
+    );
+    return () => unsub();
+  }, [authUser?.email]);
+
+  useEffect(() => {
+    if (!authUser) {
+      setProperties([]);
+      setTypes([]);
+      setDataReady(true);
+      return;
+    }
+
+    let propsDone = false;
+    let typesDone = false;
+
+    const markReady = () => {
+      if (propsDone && typesDone) setDataReady(true);
+    };
+
+    const unsubProps = onSnapshot(collection(db, 'properties'), (snap) => {
+      setProperties(
+        snap.docs.map((d) => ({
+          id: d.id,
+          propertyName: d.data().propertyName as string | undefined,
+          ownerId: d.data().ownerId as string | undefined,
+        }))
+      );
+      propsDone = true;
+      markReady();
+    });
+
+    const unsubTypes = onSnapshot(collectionGroup(db, 'propertyTypes'), (snap) => {
+      setTypes(
+        snap.docs.map((d) => ({
+          id: d.id,
+          propertyId: d.ref.parent.parent?.id || '',
+          propertyTypeName: d.data().propertyTypeName as string | undefined,
+          ownerId: d.data().ownerId as string | undefined,
+        }))
+      );
+      typesDone = true;
+      markReady();
+    });
+
+    return () => {
+      unsubProps();
+      unsubTypes();
+    };
+  }, [authUser]);
+
+  const scopes = useMemo(
+    () => buildAdminScopes(profile, properties, types),
+    [profile, properties, types]
+  );
+
+  useEffect(() => {
+    if (!authReady || !profileReady || !dataReady) return;
+    const next = resolveActiveScope(scopes);
+    setActiveScopeState(next);
+  }, [authReady, profileReady, dataReady, scopes]);
+
+  const setActiveScope = useCallback((scope: AdminScope) => {
+    writeStoredScopeKey(scopeKey(scope));
+    setActiveScopeState(scope);
+  }, []);
+
+  const loading = !authReady || !profileReady || !dataReady;
+
+  const value = useMemo(
+    () => ({
+      authUser,
+      profile,
+      loading,
+      scopes,
+      activeScope,
+      setActiveScope,
+      isPlatformAdmin: isPlatformAdmin(profile),
+      isScopedUser: isScopedUser(profile),
+    }),
+    [authUser, profile, loading, scopes, activeScope, setActiveScope]
+  );
+
+  return (
+    <AdminSessionContext.Provider value={value}>{children}</AdminSessionContext.Provider>
+  );
+}
+
+export function useAdminSession(): AdminSessionContextValue {
+  const ctx = useContext(AdminSessionContext);
+  if (!ctx) {
+    throw new Error('useAdminSession must be used within AdminSessionProvider');
+  }
+  return ctx;
+}
+
+export function useAdminSessionNavigate() {
+  const { setActiveScope } = useAdminSession();
+  return (scope: AdminScope) => {
+    setActiveScope(scope);
+    return pathForScope(scope);
+  };
+}

@@ -242,18 +242,22 @@ export default function GuestPortalAccessGate({
   };
 
   if (phase === 'granted') {
+    const showAdminPreviewBar = session?.source === 'admin_preview';
     return (
-      <>
+      <div className="min-h-screen flex flex-col">
         {session?.guestName && (
           <p className="sr-only">Welcome, {session.guestName}</p>
         )}
-        {session?.source === 'admin_preview' && (
-          <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-amber-950 text-center text-xs font-semibold py-1.5 px-3 shadow-sm">
+        {showAdminPreviewBar && (
+          <div
+            className="shrink-0 sticky top-0 z-50 bg-amber-500 text-amber-950 text-center text-xs font-semibold py-2 px-3 shadow-sm"
+            role="status"
+          >
             Admin preview — guests still need an invitation, stay access, or visitor code
           </div>
         )}
-        {children}
-      </>
+        <div className="flex-1 min-h-0">{children}</div>
+      </div>
     );
   }
 

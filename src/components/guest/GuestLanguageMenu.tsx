@@ -30,7 +30,7 @@ export default function GuestLanguageMenu({ locale, onChange, options }: Props) 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-[10px] font-semibold uppercase tracking-wider hover:bg-white/20 transition-all"
+        className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-xs font-semibold uppercase tracking-wider hover:bg-white/20 transition-all"
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label="Language"
@@ -53,7 +53,7 @@ export default function GuestLanguageMenu({ locale, onChange, options }: Props) 
                   onChange(item.code);
                   setOpen(false);
                 }}
-                className={`w-full text-left px-3.5 py-2.5 text-[11px] font-semibold transition-colors flex items-center justify-between gap-2 ${
+                className={`w-full text-left px-3.5 py-3 min-h-[44px] text-sm font-semibold transition-colors flex items-center justify-between gap-2 ${
                   item.code === locale
                     ? 'bg-[#0B4F5C]/8 text-[#0B4F5C]'
                     : 'text-gray-700 hover:bg-gray-50'

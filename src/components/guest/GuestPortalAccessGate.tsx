@@ -15,6 +15,7 @@ import {
   verifyGuestInviteCallable,
   verifyGuestTesterCodeCallable,
 } from '../../lib/guestPortalCallables';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
 
 type Props = {
   propertyId: string;
@@ -22,6 +23,7 @@ type Props = {
   inviteToken: string | null;
   /** Opened from admin “Preview portal” — uses admin auth, not guest bypass. */
   adminPreview?: boolean;
+  onSessionGranted?: (session: GuestPortalSession) => void;
   children: React.ReactNode;
 };
 
@@ -32,8 +34,10 @@ export default function GuestPortalAccessGate({
   typeId,
   inviteToken,
   adminPreview = false,
+  onSessionGranted,
   children,
 }: Props) {
+  const { t } = useGuestLocale();
   const [phase, setPhase] = useState<GatePhase>('checking');
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
@@ -41,12 +45,16 @@ export default function GuestPortalAccessGate({
   const [submitting, setSubmitting] = useState(false);
   const [session, setSession] = useState<GuestPortalSession | null>(null);
 
-  const grant = useCallback((s: GuestPortalSession) => {
-    writeGuestPortalSession(s);
-    setSession(s);
-    setPhase('granted');
-    setError(null);
-  }, []);
+  const grant = useCallback(
+    (s: GuestPortalSession) => {
+      writeGuestPortalSession(s);
+      setSession(s);
+      onSessionGranted?.(s);
+      setPhase('granted');
+      setError(null);
+    },
+    [onSessionGranted]
+  );
 
   const tryExistingSession = useCallback(async (): Promise<
     'granted' | 'absent' | 'revoked'
@@ -253,7 +261,7 @@ export default function GuestPortalAccessGate({
             className="shrink-0 sticky top-0 z-50 bg-amber-500 text-amber-950 text-center text-xs font-semibold py-2 px-3 shadow-sm"
             role="status"
           >
-            Admin preview — guests still need an invitation, stay access, or visitor code
+            {t('adminPreviewBar')}
           </div>
         )}
         <div className="flex-1 min-h-0">{children}</div>
@@ -265,7 +273,7 @@ export default function GuestPortalAccessGate({
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
         <Loader2 className="animate-spin text-vailo-teal mb-3" size={32} />
-        <p className="text-sm text-gray-600">Checking access…</p>
+        <p className="text-sm text-gray-600">{t('accessChecking')}</p>
       </div>
     );
   }
@@ -277,15 +285,13 @@ export default function GuestPortalAccessGate({
           <>
             <div className="flex items-center gap-2 text-vailo-teal mb-1">
               <Lock size={20} />
-              <h1 className="text-lg font-bold text-gray-900">Guest access</h1>
+              <h1 className="text-lg font-bold text-gray-900">{t('accessGuestTitle')}</h1>
             </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Enter the password from your invitation email or message.
-            </p>
+            <p className="text-sm text-gray-500 mb-4">{t('accessGuestSub')}</p>
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Invitation password
+                  {t('accessInvitePassword')}
                 </label>
                 <input
                   type="password"
@@ -302,7 +308,7 @@ export default function GuestPortalAccessGate({
                 disabled={submitting}
                 className="w-full py-2.5 rounded-xl bg-vailo-teal text-white text-sm font-semibold hover:bg-vailo-teal-hover disabled:opacity-50"
               >
-                {submitting ? 'Verifying…' : 'Continue'}
+                {submitting ? t('accessVerifying') : t('accessContinue')}
               </button>
             </form>
           </>
@@ -312,15 +318,13 @@ export default function GuestPortalAccessGate({
           <>
             <div className="flex items-center gap-2 text-vailo-teal mb-1">
               <FlaskConical size={20} />
-              <h1 className="text-lg font-bold text-gray-900">Guest visitor access</h1>
+              <h1 className="text-lg font-bold text-gray-900">{t('accessTesterTitle')}</h1>
             </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Enter the guest visitor access code you received by email.
-            </p>
+            <p className="text-sm text-gray-500 mb-4">{t('accessTesterSub')}</p>
             <form onSubmit={handleTesterSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                  Visitor access code
+                  {t('accessVisitorCode')}
                 </label>
                 <input
                   type="text"

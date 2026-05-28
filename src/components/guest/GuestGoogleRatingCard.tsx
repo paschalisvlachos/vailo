@@ -70,12 +70,12 @@ export default function GuestGoogleRatingCard({ rating, reviewUrl, listingName, 
             </span>
           </div>
           {listingName && (
-            <p className="text-[10px] text-gray-500 mt-0.5 truncate leading-tight">{listingName}</p>
+            <p className="text-sm text-gray-500 mt-0.5 truncate leading-tight">{listingName}</p>
           )}
         </div>
 
         <div className="shrink-0 flex items-center gap-0.5 pl-1 border-l border-gray-100">
-          <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#0B4F5C] group-hover:text-[#C5A059] transition-colors whitespace-nowrap">
+          <span className="text-xs font-bold uppercase tracking-[0.1em] text-[#0B4F5C] group-hover:text-[#C5A059] transition-colors whitespace-nowrap">
             {t('rateOnGoogle')}
           </span>
           <ChevronRight

@@ -60,7 +60,7 @@ function ContactTag({
   const isWa = kind === 'whatsapp';
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold shrink-0 ${
+      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 ${
         isWa
           ? 'bg-[#25D366]/12 text-[#1a9e4b] border border-[#25D366]/25'
           : 'bg-[#C5A059]/12 text-[#6b5420] border border-[#C5A059]/25'
@@ -136,7 +136,7 @@ function ServiceDetailSheet({
               </div>
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/25 via-transparent to-transparent pointer-events-none" />
-            <span className="absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-sm text-[#0B4F5C] text-[11px] font-semibold shadow-sm border border-white/60">
+            <span className="absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-sm text-[#0B4F5C] text-sm font-semibold shadow-sm border border-white/60">
               <CatIcon size={14} className="shrink-0" />
               {category}
             </span>
@@ -149,7 +149,7 @@ function ServiceDetailSheet({
           )}
 
           {feature.agreement && feature.agreement !== '0' && (
-            <p className="text-center text-xs font-semibold text-[#0B4F5C] mb-4">
+            <p className="text-center text-sm font-semibold text-[#0B4F5C] mb-4">
               {feature.agreement}% offer for guests of {propertyName}
             </p>
           )}
@@ -220,11 +220,11 @@ export default function GuestLocalServices({
     <>
       <section className="!mt-6 !mb-0">
         <div className="mb-4">
-          <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">
+          <p className="guest-eyebrow mb-1">
             Curated by your host
           </p>
-          <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Services</h2>
-          <p className="text-gray-500 text-xs mt-1.5">
+          <h2 className="guest-heading-section">Local Services</h2>
+          <p className="guest-body-sm mt-1.5">
             {filtered.length} partner{filtered.length !== 1 ? 's' : ''} · trusted for your stay
           </p>
         </div>
@@ -236,7 +236,7 @@ export default function GuestLocalServices({
                 key={cat}
                 type="button"
                 onClick={() => setCategoryFilter(cat ?? 'All')}
-                className={`whitespace-nowrap px-3.5 py-2 rounded-full text-[10px] uppercase tracking-wider font-semibold transition-all ${
+                className={`guest-pill whitespace-nowrap rounded-full text-sm uppercase tracking-wider font-semibold transition-all ${
                   categoryFilter === cat
                     ? 'bg-[#0B4F5C] text-white shadow-md'
                     : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#0B4F5C]/30'
@@ -258,7 +258,7 @@ export default function GuestLocalServices({
 
             return (
               <div key={feature.id}>
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#0B4F5C]/8 text-[#0B4F5C] text-[10px] font-semibold mb-1">
+                <span className="guest-badge inline-flex items-center gap-1.5 rounded-md bg-[#0B4F5C]/8 text-[#0B4F5C] mb-1">
                   <CatIcon size={12} />
                   {category}
                 </span>
@@ -281,11 +281,11 @@ export default function GuestLocalServices({
                     )}
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-center">
-                    <h3 className="font-semibold text-[#051F26] text-[15px] leading-tight mb-1 truncate">
+                    <h3 className="guest-card-title mb-1 truncate">
                       {title}
                     </h3>
                     {feature.description && (
-                      <p className="text-xs text-gray-500 line-clamp-2 leading-snug mb-2">
+                      <p className="text-sm text-gray-500 line-clamp-2 leading-snug mb-2">
                         {feature.description}
                       </p>
                     )}

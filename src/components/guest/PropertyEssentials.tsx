@@ -27,14 +27,14 @@ import {
   type FeaturedKey,
   type FeaturedPreviewsMap,
 } from '../../lib/houseGuidePortal';
-import type { GuestLocaleKey } from '../../lib/guestLocale';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+import GuestTranslatedText from './GuestTranslatedText';
 
 type Props = {
   featuredOnPortal: FeaturedKey[];
   previews: FeaturedPreviewsMap;
   onAskAssistant: () => void;
-  t?: (key: GuestLocaleKey) => string;
 };
 
 const ICONS: Record<string, ReactNode> = {
@@ -62,10 +62,10 @@ export default function PropertyEssentials({
   featuredOnPortal,
   previews,
   onAskAssistant,
-  t,
 }: Props) {
   const [openKey, setOpenKey] = useState<FeaturedKey | null>(null);
   const { track } = useGuestAnalytics();
+  const { t } = useGuestLocale();
 
   const featured: FeaturedKey[] = (featuredOnPortal || [])
     .filter((id) => getFeaturedConfig(id))
@@ -76,11 +76,11 @@ export default function PropertyEssentials({
   return (
     <section className="!mb-0">
       <div className="mb-4">
-        <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">
-          {t ? t('essentials') : 'Essentials'}
+        <p className="guest-eyebrow mb-1">
+          {t('essentials')}
         </p>
-        <h2 className="font-luxury text-2xl text-[#051F26] font-medium">
-          {t ? t('thingsToKnow') : 'Things to know'}
+        <h2 className="guest-heading-section">
+          {t('thingsToKnow')}
         </h2>
       </div>
 
@@ -106,18 +106,18 @@ export default function PropertyEssentials({
                     return next;
                   });
                 }}
-                className="w-full flex items-center p-4 md:p-5 text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group"
+                className="w-full flex items-center p-4 min-h-[52px] text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group"
                 aria-expanded={isOpen}
               >
                 <div className="h-10 w-10 rounded-xl bg-[#F8FAFA] border border-gray-100 flex items-center justify-center mr-4 shrink-0 text-[#0B4F5C] group-hover:border-[#0B4F5C]/20 transition-all">
                   {icon}
                 </div>
                 <span
-                  className={`flex-1 font-luxury text-[15px] transition-colors ${
+                  className={`flex-1 font-luxury text-base transition-colors ${
                     isOpen ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'
                   }`}
                 >
-                  {cfg.title}
+                  <GuestTranslatedText text={cfg.title} />
                 </span>
                 <div
                   className={`p-1.5 rounded-full transition-all ${
@@ -137,11 +137,13 @@ export default function PropertyEssentials({
               >
                 <div className="px-5 pb-5">
                   {digest ? (
-                    <div className="text-[13px] text-gray-600 whitespace-pre-wrap leading-relaxed">
-                      {digest}
-                    </div>
+                    <GuestTranslatedText
+                      text={digest}
+                      as="div"
+                      className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
+                    />
                   ) : (
-                    <p className="text-[13px] text-gray-500 italic">
+                    <p className="text-base text-gray-500 italic">
                       Your host has not added details for this section yet.
                     </p>
                   )}
@@ -152,7 +154,7 @@ export default function PropertyEssentials({
                       e.stopPropagation();
                       onAskAssistant();
                     }}
-                    className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] text-[10px] font-bold uppercase tracking-[0.14em] hover:from-[#083a43] hover:to-[#072d34] transition-colors"
+                    className="guest-btn-action mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] hover:from-[#083a43] hover:to-[#072d34] transition-colors"
                   >
                     <Bot size={13} className="shrink-0" />
                     Ask the 24/7 Assistant for full details

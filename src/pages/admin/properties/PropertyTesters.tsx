@@ -19,6 +19,8 @@ import {
   type PropertyTester,
   type TesterDurationPreset,
 } from '../../../lib/guestPortalTesters';
+import { getGuestPortalPublicOrigin } from '../../../lib/guestAccess';
+import { buildGuestPortalUrl } from '../../../lib/guestPortalSlug';
 import { AdminButton, AdminInput, AdminLabel, AdminSelect } from '../../../components/admin/AdminPageHeader';
 import type { PropertyRecord } from './PropertyLayout';
 
@@ -42,6 +44,7 @@ export default function PropertyTesters() {
   const [testers, setTesters] = useState<PropertyTester[]>([]);
   const [filterTypeId, setFilterTypeId] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedUrlTypeId, setCopiedUrlTypeId] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [formOpen, setFormOpen] = useState(false);
@@ -220,6 +223,25 @@ export default function PropertyTesters() {
     navigator.clipboard.writeText(tester.accessCode);
     setCopiedId(tester.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const copyUnitPortalUrl = (typeId: string) => {
+    const type = propertyTypes.find((t) => t.id === typeId);
+    if (!type) return;
+    const link = buildGuestPortalUrl(getGuestPortalPublicOrigin(), property, {
+      id: type.id,
+      urlSlug: type.urlSlug,
+      typeSlug: type.typeSlug,
+      propertyTypeName: type.propertyTypeName,
+    });
+    if (!link) {
+      toast.warning('Set property and unit URL slugs before copying the guest portal link.');
+      return;
+    }
+    navigator.clipboard.writeText(link);
+    setCopiedUrlTypeId(typeId);
+    setTimeout(() => setCopiedUrlTypeId(null), 2000);
+    toast.success('Guest portal URL copied.');
   };
 
   const showForm = formOpen || editing;
@@ -402,7 +424,24 @@ export default function PropertyTesters() {
                   <tr key={`${t.typeId}-${t.id}`} className="hover:bg-gray-50/80">
                     <td className="px-4 py-3 font-semibold text-gray-900">{t.name}</td>
                     <td className="px-4 py-3 text-gray-700">{t.email}</td>
-                    <td className="px-4 py-3 text-gray-700">{unitName(t.typeId)}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="truncate">{unitName(t.typeId)}</span>
+                        <button
+                          type="button"
+                          onClick={() => copyUnitPortalUrl(t.typeId)}
+                          className="p-1.5 text-gray-400 hover:text-vailo-teal shrink-0"
+                          title="Copy guest portal URL"
+                          aria-label={`Copy portal URL for ${unitName(t.typeId)}`}
+                        >
+                          {copiedUrlTypeId === t.typeId ? (
+                            <Check size={16} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={16} />
+                          )}
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
                       <span className={isExpired ? 'text-red-600 font-medium' : ''}>
                         {durationText}

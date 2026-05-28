@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { ai } from '../../lib/firebase';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { guestAiLanguageBlock } from '../../lib/guestAiLanguage';
+import GuestLanguageMenu from './GuestLanguageMenu';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 
 const CONSENT_KEY = 'vailo:assistant-consent:v1';
@@ -83,7 +86,7 @@ function EscalationHelp({
 }) {
   return (
     <div className="mt-3 pt-3 border-t border-[#0B4F5C]/10">
-      <p className="text-xs text-gray-600 leading-relaxed mb-3">
+      <p className="text-sm text-gray-600 leading-relaxed mb-3">
         I couldn&apos;t find that in your house guide. Please{' '}
         <span className="font-semibold text-[#051F26]">report the issue</span> so your host can
         help
@@ -95,7 +98,7 @@ function EscalationHelp({
         <button
           type="button"
           onClick={onOpenReport}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#0B4F5C] text-white text-[10px] font-bold uppercase tracking-[0.12em] hover:bg-[#083a43] transition-colors"
+          className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#0B4F5C] text-white hover:bg-[#083a43] transition-colors"
         >
           <AlertTriangle size={14} />
           Report issue
@@ -105,7 +108,7 @@ function EscalationHelp({
             href={whatsappHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] text-white text-[10px] font-bold uppercase tracking-[0.12em] hover:bg-[#20bd5a] transition-colors"
+            className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#25D366] text-white hover:bg-[#20bd5a] transition-colors"
           >
             <MessageCircle size={14} />
             WhatsApp host
@@ -131,7 +134,12 @@ function stripDataUrlPrefix(dataUrl: string): { mimeType: string; data: string }
   return { mimeType: match[1], data: match[2] };
 }
 
-function buildSystemPrompt(property: any, propertyType: any, guide: any): string {
+function buildSystemPrompt(
+  property: any,
+  propertyType: any,
+  guide: any,
+  locale: string
+): string {
   const propertyName = property?.propertyName || 'this property';
   const propertyTypeName = propertyType?.propertyTypeName || 'this unit';
   const address = [
@@ -157,7 +165,9 @@ function buildSystemPrompt(property: any, propertyType: any, guide: any): string
     // Ignore stringify errors and keep fallback
   }
 
-  return `You are the on-site AI Assistant for the property "${propertyName}" — unit "${propertyTypeName}". You speak ONLY English.
+  return `You are the on-site AI Assistant for the property "${propertyName}" — unit "${propertyTypeName}".
+
+${guestAiLanguageBlock(locale)}
 
 YOUR JOB
 - Answer ONLY questions about THIS property and the guest's current stay here.
@@ -189,16 +199,8 @@ PROPERTY SNAPSHOT
 HOUSE GUIDE (the ONLY data you have about this property):
 ${guideJson}
 
-Never make up details that aren't in the guide. Never claim to take actions you cannot take (you cannot book, call, message, or charge anything). If asked, say "I can only share information; please contact your host for actions like that." Always reply in English.`;
+Never make up details that aren't in the guide. Never claim to take actions you cannot take (you cannot book, call, message, or charge anything). If asked, say "I can only share information; please contact your host for actions like that."`;
 }
-
-const SUGGESTED_PROMPTS = [
-  'How do I connect to the Wi-Fi?',
-  'What time is check-out?',
-  'How do I use the air conditioning?',
-  'Where can I park?',
-  'How does the washing machine work?',
-];
 
 export default function GuestPropertyAssistant({
   property,
@@ -210,6 +212,19 @@ export default function GuestPropertyAssistant({
   onOpenReport,
   whatsappHref,
 }: Props) {
+  const { locale, setLocale, t, localeOptions } = useGuestLocale();
+
+  const suggestedPrompts = useMemo(
+    () => [
+      t('assistantSuggestedWifi'),
+      t('assistantSuggestedCheckout'),
+      t('assistantSuggestedAc'),
+      t('assistantSuggestedParking'),
+      t('assistantSuggestedWasher'),
+    ],
+    [t]
+  );
+
   const [hasConsented, setHasConsented] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -232,13 +247,13 @@ export default function GuestPropertyAssistant({
 
   const welcomeText = useMemo(
     () =>
-      `Welcome to ${propertyName} — ${propertyTypeName}! I'm here to help with anything about your stay. Ask me about Wi-Fi, check-out time, how the AC or appliances work, where to park, house rules, or where to find linens and supplies.\n\nFor sightseeing, restaurants, and daily plans, please use the Live like a local AI on the home screen, to avoid the tourist traps.`,
-    [propertyName, propertyTypeName]
+      `${t('welcomeTo')} ${propertyName} — ${propertyTypeName}! ${t('assistantWelcomeBody')}`,
+    [propertyName, propertyTypeName, t]
   );
 
   const systemPrompt = useMemo(
-    () => buildSystemPrompt(property, propertyType, guide),
-    [property, propertyType, guide]
+    () => buildSystemPrompt(property, propertyType, guide, locale),
+    [property, propertyType, guide, locale]
   );
 
   useEffect(() => {
@@ -373,7 +388,7 @@ export default function GuestPropertyAssistant({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
         .font-luxury { font-family: 'Lora', serif; }
@@ -384,24 +399,25 @@ export default function GuestPropertyAssistant({
         <div className="absolute -top-12 -right-8 w-44 h-44 bg-[#C5A059]/14 blur-3xl rounded-full pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-[#0B4F5C]/10 blur-3xl rounded-full pointer-events-none" />
 
-        <div className="relative px-4 py-3.5 flex items-center gap-3">
+        <div className="relative px-4 py-3 flex items-center gap-2.5">
           <button
             onClick={onClose}
-            className="h-10 w-10 flex items-center justify-center rounded-full bg-white/90 border border-[#0B4F5C]/10 text-[#0B4F5C] shadow-[0_2px_12px_rgba(11,79,92,0.08)] hover:border-[#C5A059]/35 transition-all"
+            className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/90 border border-[#0B4F5C]/10 text-[#0B4F5C] shadow-[0_2px_12px_rgba(11,79,92,0.08)] hover:border-[#C5A059]/35 transition-all"
             aria-label="Close assistant"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={20} />
           </button>
 
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-bold text-[#C5A059] tracking-[0.24em] uppercase">
+            <p className="guest-eyebrow">
               24/7 Assistant
             </p>
-            <h2 className="font-luxury text-[1.25rem] leading-tight text-[#051F26] font-medium mt-0.5 truncate">
+            <h2 className="font-luxury text-lg sm:text-xl leading-tight text-[#051F26] font-medium mt-0.5 truncate">
               AI Vacation Assistant
             </h2>
           </div>
 
+          <GuestLanguageMenu locale={locale} onChange={setLocale} options={localeOptions} />
           <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shadow-lg shrink-0">
             <Bot size={18} className="text-white" />
           </div>
@@ -417,13 +433,13 @@ export default function GuestPropertyAssistant({
             <h3 className="font-luxury text-xl text-[#051F26] font-medium mb-2">
               Before we start
             </h3>
-            <p className="text-sm text-gray-600 leading-relaxed">
+            <p className="text-base text-gray-600 leading-relaxed">
               This is an AI assistant. Information is provided for convenience and may not always
               be accurate. No confidential data is stored. For emergencies, please call your host
               or local emergency services directly.
             </p>
 
-            <div className="mt-4 bg-white border border-gray-100 rounded-2xl p-4 text-sm text-gray-600 leading-relaxed">
+            <div className="mt-4 bg-white border border-gray-100 rounded-2xl p-4 text-base text-gray-600 leading-relaxed">
               <p className="font-semibold text-[#051F26] mb-1.5">Scope</p>
               <p>
                 Replies are limited to questions about your stay at{' '}
@@ -433,7 +449,7 @@ export default function GuestPropertyAssistant({
               </p>
             </div>
 
-            <p className="text-xs text-gray-500 mt-5 leading-relaxed">
+            <p className="text-sm text-gray-500 mt-5 leading-relaxed">
               By continuing you accept our{' '}
               <button
                 type="button"
@@ -457,14 +473,14 @@ export default function GuestPropertyAssistant({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+                className="flex-1 py-4 min-h-[48px] rounded-xl border border-gray-200 text-base font-semibold text-gray-600 bg-white hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={acceptConsent}
-                className="flex-1 py-3 rounded-xl bg-[#0B4F5C] text-[#C5A059] text-sm font-bold hover:bg-[#083a43] transition-colors"
+                className="flex-1 py-4 min-h-[48px] rounded-xl bg-[#0B4F5C] text-[#C5A059] text-base font-bold hover:bg-[#083a43] transition-colors"
               >
                 Accept &amp; Continue
               </button>
@@ -479,23 +495,23 @@ export default function GuestPropertyAssistant({
                 <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[#0B4F5C] to-[#083a43] flex items-center justify-center shrink-0">
                   <Sparkles size={15} className="text-[#C5A059]" />
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                <p className="text-base text-gray-700 leading-relaxed whitespace-pre-line">
                   {welcomeText}
                 </p>
               </div>
 
               {messages.length === 0 && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-2">
+                  <p className="guest-eyebrow text-gray-400 mb-2">
                     Try asking
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {SUGGESTED_PROMPTS.map((prompt) => (
+                    {suggestedPrompts.map((prompt) => (
                       <button
                         key={prompt}
                         type="button"
                         onClick={() => handleSuggestionClick(prompt)}
-                        className="px-3 py-1.5 rounded-full text-xs font-medium text-[#0B4F5C] bg-[#0B4F5C]/5 border border-[#0B4F5C]/10 hover:bg-[#C5A059]/10 hover:border-[#C5A059]/30 transition-colors"
+                        className="guest-pill px-4 py-2.5 rounded-full text-sm font-medium text-[#0B4F5C] bg-[#0B4F5C]/5 border border-[#0B4F5C]/10 hover:bg-[#C5A059]/10 hover:border-[#C5A059]/30 transition-colors"
                       >
                         {prompt}
                       </button>
@@ -517,7 +533,7 @@ export default function GuestPropertyAssistant({
                       />
                     )}
                     {msg.text && (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                      <p className="text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                     )}
                   </div>
                 </div>
@@ -527,7 +543,7 @@ export default function GuestPropertyAssistant({
                     <Bot size={14} className="text-white" />
                   </div>
                   <div className="max-w-[85%] bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                     {(msg.showEscalation ?? assistantReplyNeedsEscalation(msg.text)) && (
                       <EscalationHelp
                         onOpenReport={onOpenReport}
@@ -544,7 +560,7 @@ export default function GuestPropertyAssistant({
                 <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0 mt-0.5">
                   <Bot size={14} className="text-white" />
                 </div>
-                <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm flex items-center gap-2 text-sm text-gray-500">
+                <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-md px-4 py-3 shadow-sm flex items-center gap-2 text-base text-gray-500">
                   <Loader2 size={14} className="animate-spin text-[#0B4F5C]" />
                   Thinking…
                 </div>
@@ -554,7 +570,7 @@ export default function GuestPropertyAssistant({
 
           <div className="shrink-0 border-t border-gray-100 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {error && (
-              <p className="text-xs text-red-600 mb-2 px-1" role="alert">
+              <p className="text-sm text-red-600 mb-2 px-1" role="alert">
                 {error}
               </p>
             )}
@@ -583,10 +599,10 @@ export default function GuestPropertyAssistant({
                 type="button"
                 onClick={handleAttachClick}
                 disabled={isSending}
-                className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 bg-white text-[#0B4F5C] hover:border-[#C5A059]/40 hover:text-[#C5A059] disabled:opacity-50 transition-colors shrink-0"
+                className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full border border-gray-200 bg-white text-[#0B4F5C] hover:border-[#C5A059]/40 hover:text-[#C5A059] disabled:opacity-50 transition-colors shrink-0"
                 aria-label="Attach image"
               >
-                <ImageIcon size={18} />
+                <ImageIcon size={20} />
               </button>
               <input
                 ref={fileInputRef}
@@ -604,7 +620,7 @@ export default function GuestPropertyAssistant({
                   placeholder="Ask anything about your stay…"
                   rows={1}
                   disabled={isSending}
-                  className="w-full text-sm text-gray-800 placeholder:text-gray-400 outline-none resize-none bg-transparent max-h-32 leading-relaxed"
+                  className="w-full text-base text-gray-800 placeholder:text-gray-400 outline-none resize-none bg-transparent max-h-32 leading-relaxed"
                 />
               </div>
 
@@ -612,14 +628,14 @@ export default function GuestPropertyAssistant({
                 type="button"
                 onClick={sendMessage}
                 disabled={isSending || (!input.trim() && !pendingImage)}
-                className="h-10 w-10 flex items-center justify-center rounded-full bg-[#0B4F5C] text-[#C5A059] shadow-[0_4px_16px_rgba(11,79,92,0.3)] hover:bg-[#083a43] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-[#0B4F5C] text-[#C5A059] shadow-[0_4px_16px_rgba(11,79,92,0.3)] hover:bg-[#083a43] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
                 aria-label="Send"
               >
-                {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
             </div>
 
-            <p className="text-[10px] text-gray-400 text-center mt-2 leading-relaxed px-3">
+            <p className="text-xs text-gray-400 text-center mt-2 leading-relaxed px-3">
               You are chatting with an AI. Replies are limited to this property. Do not share
               sensitive personal data.
             </p>

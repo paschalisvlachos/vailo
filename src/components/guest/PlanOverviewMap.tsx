@@ -24,7 +24,7 @@ export default function PlanOverviewMap({ planData }: PlanOverviewMapProps) {
       href={googleUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-2xl border border-[#0B4F5C]/15 bg-[#0B4F5C] px-4 py-4 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(11,79,92,0.2)] transition-colors hover:bg-[#0a4550]"
+      className="guest-btn-action mt-6 flex w-full items-center justify-center gap-2.5 rounded-2xl border border-[#0B4F5C]/15 bg-[#0B4F5C] px-4 py-4 text-base font-semibold text-white shadow-[0_4px_16px_rgba(11,79,92,0.2)] transition-colors hover:bg-[#0a4550] min-h-[48px]"
     >
       <MapPin size={18} className="shrink-0 text-[#C5A059]" />
       <span>{label}</span>

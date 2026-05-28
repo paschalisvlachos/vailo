@@ -25,12 +25,12 @@ export default function GuestFloatingActions({
       <button
         type="button"
         onClick={onOpenAssistant}
-        className="pointer-events-auto flex items-center gap-1.5 pl-1.5 pr-2.5 py-1.5 rounded-full bg-[#C5A059] text-[#051F26] shadow-[0_4px_16px_rgba(197,160,89,0.4)] border border-[#b8924f]/35 hover:bg-[#d4ad6a] transition-all active:scale-[0.98]"
+        className="pointer-events-auto flex items-center gap-2 pl-2 pr-3 py-2 min-h-[44px] rounded-full bg-[#C5A059] text-[#051F26] shadow-[0_4px_16px_rgba(197,160,89,0.4)] border border-[#b8924f]/35 hover:bg-[#d4ad6a] transition-all active:scale-[0.98]"
       >
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#051F26]/10 shrink-0">
-          <Sparkles size={13} className="text-[#051F26]" strokeWidth={2.5} />
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#051F26]/10 shrink-0">
+          <Sparkles size={15} className="text-[#051F26]" strokeWidth={2.5} />
         </span>
-        <span className="text-[9px] font-bold uppercase tracking-[0.05em] whitespace-nowrap">
+        <span className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.05em] whitespace-nowrap">
           24/7 Assistant
         </span>
       </button>
@@ -38,12 +38,12 @@ export default function GuestFloatingActions({
       <button
         type="button"
         onClick={onOpenReport}
-        className="pointer-events-auto flex items-center gap-1.5 pl-1.5 pr-2.5 py-1.5 rounded-full bg-[#0B4F5C] text-white shadow-[0_4px_16px_rgba(11,79,92,0.35)] border border-[#083a43]/40 hover:bg-[#083a43] transition-all active:scale-[0.98]"
+        className="pointer-events-auto flex items-center gap-2 pl-2 pr-3 py-2 min-h-[44px] rounded-full bg-[#0B4F5C] text-white shadow-[0_4px_16px_rgba(11,79,92,0.35)] border border-[#083a43]/40 hover:bg-[#083a43] transition-all active:scale-[0.98]"
       >
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 shrink-0">
-          <AlertTriangle size={13} className="text-white" strokeWidth={2.5} />
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 shrink-0">
+          <AlertTriangle size={15} className="text-white" strokeWidth={2.5} />
         </span>
-        <span className="text-[9px] font-bold uppercase tracking-[0.05em] whitespace-nowrap">
+        <span className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.05em] whitespace-nowrap">
           Report Issue
         </span>
       </button>
@@ -53,13 +53,13 @@ export default function GuestFloatingActions({
           href={whatsappHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="pointer-events-auto flex items-center gap-1.5 pl-1.5 pr-2.5 py-1.5 rounded-full bg-[#25D366] text-white shadow-[0_4px_16px_rgba(37,211,102,0.45)] border border-[#1da851]/50 hover:bg-[#20bd5a] transition-all active:scale-[0.98]"
+          className="pointer-events-auto flex items-center gap-2 pl-2 pr-3 py-2 min-h-[44px] rounded-full bg-[#25D366] text-white shadow-[0_4px_16px_rgba(37,211,102,0.45)] border border-[#1da851]/50 hover:bg-[#20bd5a] transition-all active:scale-[0.98]"
           aria-label="Contact host on WhatsApp"
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 shrink-0">
-            <MessageCircle size={13} className="text-white" strokeWidth={2.5} />
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 shrink-0">
+            <MessageCircle size={15} className="text-white" strokeWidth={2.5} />
           </span>
-          <span className="text-[9px] font-bold uppercase tracking-[0.05em] whitespace-nowrap">
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.05em] whitespace-nowrap">
             WhatsApp
           </span>
         </a>

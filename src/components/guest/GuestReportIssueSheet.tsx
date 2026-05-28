@@ -117,7 +117,7 @@ Return plain text only — no markdown.`;
             <h2 id="report-issue-title" className="font-luxury text-xl text-[#051F26] font-medium">
               Report an Issue
             </h2>
-            <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+            <p className="text-base text-gray-500 mt-1 leading-relaxed">
               Describe the problem and I&apos;ll try to help you immediately.
             </p>
           </div>
@@ -134,7 +134,7 @@ Return plain text only — no markdown.`;
         <div className="overflow-y-auto px-5 py-5 flex-1">
           {!saved ? (
             <>
-              <label htmlFor="issue-description" className="block text-sm font-semibold text-[#051F26] mb-2">
+              <label htmlFor="issue-description" className="block text-base font-semibold text-[#051F26] mb-2">
                 What&apos;s the problem?
               </label>
               <textarea
@@ -147,7 +147,7 @@ Return plain text only — no markdown.`;
                 rows={5}
                 placeholder="e.g., The hot water isn't working in the master bathroom..."
                 disabled={isChecking}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder:text-gray-400 outline-none focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10 resize-y min-h-[120px]"
+                className="guest-input w-full border border-gray-200 text-gray-800 placeholder:text-gray-400 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10 resize-y min-h-[120px]"
               />
               <p className="text-right text-xs text-gray-400 mt-1.5 tabular-nums">
                 {charCount}/{GUEST_ISSUE_MAX_LENGTH}
@@ -160,13 +160,13 @@ Return plain text only — no markdown.`;
             </>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5 text-sm">
+              <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5 text-base">
                 <Sparkles size={16} className="shrink-0" />
                 <span>
                   Your host has been notified and will contact you ASAP. Here&apos;s what you can try now
                 </span>
               </div>
-              <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap border-l-2 border-[#C5A059]/50 pl-3">
+              <div className="text-base text-gray-700 leading-relaxed whitespace-pre-wrap border-l-2 border-[#C5A059]/50 pl-3">
                 {aiResponse}
               </div>
             </div>
@@ -180,7 +180,7 @@ Return plain text only — no markdown.`;
                 type="button"
                 onClick={onClose}
                 disabled={isChecking}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-white transition-colors disabled:opacity-50"
+                className="flex-1 py-4 min-h-[48px] rounded-xl border border-gray-200 text-base font-semibold text-gray-600 hover:bg-white transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -188,7 +188,7 @@ Return plain text only — no markdown.`;
                 type="button"
                 onClick={handleQuickAiCheck}
                 disabled={isChecking || !trimmed}
-                className="flex-1 py-3 rounded-xl bg-[#0B4F5C] text-[#C5A059] text-sm font-bold hover:bg-[#083a43] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 py-4 min-h-[48px] rounded-xl bg-[#0B4F5C] text-[#C5A059] text-base font-bold hover:bg-[#083a43] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isChecking ? (
                   <>
@@ -204,7 +204,7 @@ Return plain text only — no markdown.`;
             <button
               type="button"
               onClick={onClose}
-              className="w-full py-3 rounded-xl bg-[#0B4F5C] text-white text-sm font-bold hover:bg-[#083a43] transition-colors"
+              className="w-full py-4 min-h-[48px] rounded-xl bg-[#0B4F5C] text-white text-base font-bold hover:bg-[#083a43] transition-colors"
             >
               Done
             </button>

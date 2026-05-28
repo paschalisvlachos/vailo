@@ -18,6 +18,11 @@ import RichTextEditor, { type RichTextEditorHandle } from '../../components/admi
 import { db, storage } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
+import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
+import {
+  filterDocumentsForLocale,
+  resolveLegalHtmlForLocale,
+} from '../../lib/platformLegal';
 import {
   legalPlainTextLength,
   normalizeLegalContentForEditor,
@@ -54,7 +59,9 @@ function cloneCategories(cats: LegalCategory[]): LegalCategory[] {
 export default function LegalDocuments() {
   const toast = useToast();
   const { content, loading, error } = usePlatformLegal();
+  const { languages } = usePlatformLanguages();
   const [activeTab, setActiveTab] = useState<MainTab>('legal');
+  const [contentLocale, setContentLocale] = useState('en');
   const [privacyPolicy, setPrivacyPolicy] = useState('');
   const [termsOfUse, setTermsOfUse] = useState('');
   const [agreement, setAgreement] = useState('');
@@ -73,23 +80,71 @@ export default function LegalDocuments() {
   const editorSyncKey = content.updatedAt?.getTime() ?? 0;
   const storedPrivacyChars = legalPlainTextLength(content.privacyPolicy);
   const storedTermsChars = legalPlainTextLength(content.termsOfUse);
-  const storedAgreementChars = legalPlainTextLength(content.agreement);
+  const storedAgreementChars = legalPlainTextLength(
+    resolveLegalHtmlForLocale(
+      content.agreementByLocale,
+      content.agreement,
+      contentLocale
+    )
+  );
 
   const legalCategory = categories.find((c) => c.id === LEGAL_CATEGORY_ID);
   const customCategories = categories.filter((c) => c.id !== LEGAL_CATEGORY_ID);
 
-  /** Load published pages from Firestore unless the admin has unsaved edits. */
+  /** Load published pages for the selected language unless the admin has unsaved edits. */
   useEffect(() => {
     if (loading || publishedDirty) return;
-    setPrivacyPolicy(normalizeLegalContentForEditor(content.privacyPolicy));
-    setTermsOfUse(normalizeLegalContentForEditor(content.termsOfUse));
-  }, [loading, content.privacyPolicy, content.termsOfUse, editorSyncKey, publishedDirty]);
+    const code = contentLocale.trim().toLowerCase() || 'en';
+    setPrivacyPolicy(
+      normalizeLegalContentForEditor(
+        resolveLegalHtmlForLocale(
+          content.privacyPolicyByLocale,
+          content.privacyPolicy,
+          code
+        )
+      )
+    );
+    setTermsOfUse(
+      normalizeLegalContentForEditor(
+        resolveLegalHtmlForLocale(
+          content.termsOfUseByLocale,
+          content.termsOfUse,
+          code
+        )
+      )
+    );
+  }, [
+    loading,
+    content.privacyPolicy,
+    content.termsOfUse,
+    content.privacyPolicyByLocale,
+    content.termsOfUseByLocale,
+    editorSyncKey,
+    publishedDirty,
+    contentLocale,
+  ]);
 
-  /** Load agreement from Firestore unless the admin has unsaved edits. */
+  /** Load agreement for the selected language unless the admin has unsaved edits. */
   useEffect(() => {
     if (loading || agreementDirty) return;
-    setAgreement(normalizeLegalContentForEditor(content.agreement));
-  }, [loading, content.agreement, editorSyncKey, agreementDirty]);
+    const code = contentLocale.trim().toLowerCase() || 'en';
+    setAgreement(
+      normalizeLegalContentForEditor(
+        resolveLegalHtmlForLocale(
+          content.agreementByLocale,
+          content.agreement,
+          code
+        )
+      )
+    );
+  }, [
+    loading,
+    content.agreement,
+    content.agreementByLocale,
+    editorSyncKey,
+    agreementDirty,
+    contentLocale,
+  ]);
 
   /** Load file categories from Firestore unless the admin has unsaved category edits. */
   useEffect(() => {
@@ -100,6 +155,10 @@ export default function LegalDocuments() {
   const activeCategory = isFileCategoryTab(activeTab)
     ? categories.find((c) => c.id === activeTab) ?? null
     : null;
+
+  const visibleDocuments = activeCategory
+    ? filterDocumentsForLocale(activeCategory.documents, contentLocale)
+    : [];
 
   const syncPublishedFromEditors = () => {
     setPrivacyPolicy(sanitizeLegalHtml(privacyEditorRef.current?.getHtml() ?? privacyPolicy));
@@ -134,13 +193,24 @@ export default function LegalDocuments() {
 
     setIsSavingPublished(true);
     try {
-      await persistLegal(
-        {
-          privacyPolicy: privacyHtml,
-          termsOfUse: termsHtml,
-        },
-        'Published pages saved.'
-      );
+      const code = contentLocale.trim().toLowerCase() || 'en';
+      const privacyByLocale = {
+        ...(content.privacyPolicyByLocale || {}),
+        [code]: privacyHtml,
+      };
+      const termsByLocale = {
+        ...(content.termsOfUseByLocale || {}),
+        [code]: termsHtml,
+      };
+      const payload: Record<string, unknown> = {
+        privacyPolicyByLocale: privacyByLocale,
+        termsOfUseByLocale: termsByLocale,
+      };
+      if (code === 'en') {
+        payload.privacyPolicy = privacyHtml;
+        payload.termsOfUse = termsHtml;
+      }
+      await persistLegal(payload, `Published pages saved (${code}).`);
       setPublishedDirty(false);
     } catch (err) {
       console.error('save published legal:', err);
@@ -153,10 +223,19 @@ export default function LegalDocuments() {
   const handleSaveAgreement = async () => {
     syncAgreementFromEditor();
     const agreementHtml = sanitizeLegalHtml(agreement);
+    const code = contentLocale.trim().toLowerCase() || 'en';
+    const agreementByLocale = {
+      ...(content.agreementByLocale || {}),
+      [code]: agreementHtml,
+    };
+    const payload: Record<string, unknown> = { agreementByLocale };
+    if (code === 'en') {
+      payload.agreement = agreementHtml;
+    }
 
     setIsSavingAgreement(true);
     try {
-      await persistLegal({ agreement: agreementHtml }, 'Agreement saved.');
+      await persistLegal(payload, `Agreement saved (${code}).`);
       setAgreementDirty(false);
     } catch (err) {
       console.error('save agreement:', err);
@@ -236,6 +315,7 @@ export default function LegalDocuments() {
 
   const addDocumentRow = (categoryId: string) => {
     const docId = createLegalId();
+    const locale = contentLocale.trim().toLowerCase() || 'en';
     updateCategories((prev) =>
       prev.map((c) =>
         c.id === categoryId
@@ -249,12 +329,26 @@ export default function LegalDocuments() {
                   fileUrl: '',
                   fileName: '',
                   storagePath: '',
+                  locale,
                 },
               ],
             }
           : c
       )
     );
+  };
+
+  const trySetContentLocale = (next: string) => {
+    if (next === contentLocale) return;
+    if (publishedDirty || agreementDirty) {
+      const ok = window.confirm(
+        'Discard unsaved published or agreement edits and switch language?'
+      );
+      if (!ok) return;
+      setPublishedDirty(false);
+      setAgreementDirty(false);
+    }
+    setContentLocale(next);
   };
 
   const updateDocumentTitle = (
@@ -303,7 +397,8 @@ export default function LegalDocuments() {
   ) => {
     setUploadingDocId(documentId);
     try {
-      const storagePath = `platform/legal/${categoryId}/${documentId}/${Date.now()}_${file.name}`;
+      const locale = contentLocale.trim().toLowerCase() || 'en';
+      const storagePath = `platform/legal/${categoryId}/${locale}/${documentId}/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, storagePath);
       await uploadBytes(storageRef, file);
       const fileUrl = await getDownloadURL(storageRef);
@@ -332,6 +427,7 @@ export default function LegalDocuments() {
                         fileUrl,
                         fileName: file.name,
                         storagePath,
+                        locale,
                         contentType: file.type,
                         updatedAt: new Date().toISOString(),
                         title: d.title.trim() || file.name.replace(/\.[^.]+$/, ''),
@@ -427,11 +523,34 @@ export default function LegalDocuments() {
         ))}
       </div>
 
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-vailo-teal/15 bg-vailo-teal/5 px-4 py-3">
+        <p className="text-sm text-vailo-dark">
+          <span className="font-semibold">Editing language:</span>{' '}
+          <span className="text-gray-600">
+            Published pages, Agreement, and file uploads use this locale.
+          </span>
+        </p>
+        <label className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-bold text-gray-500 uppercase">Language</span>
+          <select
+            value={contentLocale}
+            onChange={(e) => trySetContentLocale(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium bg-white outline-none focus:ring-2 focus:ring-vailo-teal/20 min-w-[160px]"
+          >
+            {languages.map((lang) => (
+              <option key={lang.id} value={lang.shortName}>
+                {lang.title} ({lang.shortName})
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <AdminCard className={`p-6 ${activeTab === 'agreement' ? '' : 'hidden'}`}>
         <div className="mb-6">
           <h3 className="text-sm font-bold text-vailo-dark">Agreement</h3>
           <p className="text-xs text-gray-500 mt-1">
-            Owner or partner agreement text (rich text). Stored separately from guest Privacy Policy and
+            Owner or partner agreement text per language. Stored separately from guest Privacy Policy and
             Terms of Use.
           </p>
         </div>
@@ -443,7 +562,7 @@ export default function LegalDocuments() {
           </div>
         ) : (
           <RichTextEditor
-            key={`agreement-${editorSyncKey}`}
+            key={`agreement-${editorSyncKey}-${contentLocale}`}
             ref={agreementEditorRef}
             value={agreement}
             onChange={(html) => {
@@ -482,7 +601,7 @@ export default function LegalDocuments() {
         <div className="mb-6">
           <h3 className="text-sm font-bold text-vailo-dark">Published pages</h3>
           <p className="text-xs text-gray-500 mt-1">
-            Same content guests see when they tap Privacy Policy or Terms of Use in the portal footer.
+            Privacy Policy and Terms of Use for guests — one version per language (see language bar above).
           </p>
         </div>
 
@@ -547,7 +666,8 @@ export default function LegalDocuments() {
                 <>
                   <h3 className="text-lg font-bold text-vailo-dark">{LEGAL_CATEGORY_NAME}</h3>
                   <p className="text-xs text-gray-500 mt-2">
-                    Fixed category for downloadable legal files (contracts, DPAs, GDPR briefs, etc.).
+                    Downloadable legal files per language (contracts, DPAs, GDPR briefs, etc.). Use the
+                    language bar above to manage each locale.
                   </p>
                 </>
               ) : (
@@ -563,7 +683,8 @@ export default function LegalDocuments() {
                     placeholder="e.g. Compliance"
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Upload PDF, Word, Markdown, or text files. Set a display title for each document.
+                    Upload PDF, Word, Markdown, or text files per language. Set a display title for each
+                    document.
                   </p>
                 </>
               )}
@@ -585,11 +706,19 @@ export default function LegalDocuments() {
               <Loader2 size={20} className="animate-spin text-vailo-teal" />
               Loading…
             </div>
-          ) : activeCategory.documents.length === 0 ? (
+          ) : visibleDocuments.length === 0 ? (
             <div className="text-center py-12 rounded-xl border border-dashed border-gray-200 bg-gray-50">
               <FileText size={32} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-700">No documents in this category</p>
-              <p className="text-xs text-gray-500 mt-1 mb-4">Add a document, set its title, and upload a file.</p>
+              <p className="text-sm font-medium text-gray-700">
+                {activeCategory.documents.length === 0
+                  ? 'No documents in this category'
+                  : `No documents for ${contentLocale.toUpperCase()} in this category`}
+              </p>
+              <p className="text-xs text-gray-500 mt-1 mb-4">
+                {activeCategory.documents.length === 0
+                  ? 'Add a document, set its title, and upload a file.'
+                  : 'Switch language above or add a new document for this language.'}
+              </p>
               <AdminButton onClick={() => addDocumentRow(activeCategory.id)}>
                 <Plus size={16} />
                 Add document
@@ -597,7 +726,7 @@ export default function LegalDocuments() {
             </div>
           ) : (
             <ul className="space-y-4">
-              {activeCategory.documents.map((document) => (
+              {visibleDocuments.map((document) => (
                 <li
                   key={document.id}
                   className="p-4 rounded-xl border border-gray-100 bg-vailo-surface-elevated/50 flex flex-col gap-3"
@@ -666,32 +795,39 @@ export default function LegalDocuments() {
                       </button>
                     </div>
                   </div>
-                  {document.fileName && (
-                    <p className="text-xs text-gray-500 truncate">
-                      File: <span className="font-medium text-gray-700">{document.fileName}</span>
-                    </p>
-                  )}
+                  <p className="text-xs text-gray-500 flex flex-wrap items-center gap-2">
+                    <span className="font-bold uppercase tracking-wide text-vailo-teal/80">
+                      {(document.locale || 'en').toUpperCase()}
+                    </span>
+                    {document.fileName && (
+                      <span className="truncate">
+                        File: <span className="font-medium text-gray-700">{document.fileName}</span>
+                      </span>
+                    )}
+                  </p>
                 </li>
               ))}
             </ul>
           )}
 
-          {activeCategory.documents.length > 0 && (
+          {visibleDocuments.length > 0 && (
             <button
               type="button"
               onClick={() => addDocumentRow(activeCategory.id)}
               className="mt-4 flex items-center text-sm font-semibold text-vailo-teal hover:text-vailo-dark"
             >
               <Plus size={16} className="mr-1.5" />
-              Add another document
+              Add another document ({contentLocale.toUpperCase()})
             </button>
           )}
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 pt-6 border-t border-gray-100">
             <p className="text-xs text-gray-500">
-              {activeCategory.documents.length} document
-              {activeCategory.documents.length !== 1 ? 's' : ''} in{' '}
+              {visibleDocuments.length} document
+              {visibleDocuments.length !== 1 ? 's' : ''} for {contentLocale.toUpperCase()} in{' '}
               {legalCategoryDisplayName(activeCategory)}
+              {activeCategory.documents.length > visibleDocuments.length &&
+                ` · ${activeCategory.documents.length - visibleDocuments.length} in other languages`}
               {categoriesDirty ? ' · Unsaved changes' : ''}
             </p>
             <AdminButton

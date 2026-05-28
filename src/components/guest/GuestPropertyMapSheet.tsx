@@ -52,14 +52,14 @@ export default function GuestPropertyMapSheet({
         <div className="px-5 pt-2 pb-4 border-b border-gray-100 shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.2em] uppercase mb-1">
+              <p className="guest-eyebrow mb-1">
                 {subtitle}
               </p>
               <h2 id="property-map-title" className="font-luxury text-xl text-[#051F26] font-medium truncate">
                 {title}
               </h2>
               {addressLine && (
-                <p className="text-xs text-gray-500 mt-1.5 flex items-start gap-1.5">
+                <p className="text-sm text-gray-500 mt-1.5 flex items-start gap-1.5 leading-relaxed">
                   <MapPin size={12} className="text-[#C5A059] shrink-0 mt-0.5" />
                   <span>{addressLine}</span>
                 </p>
@@ -93,7 +93,7 @@ export default function GuestPropertyMapSheet({
             href={openUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3 rounded-xl bg-[#0B4F5C] hover:bg-[#083A43] text-white text-[10px] font-bold uppercase tracking-[0.14em] transition-colors flex items-center justify-center gap-2"
+            className="guest-btn-action w-full py-3.5 rounded-xl bg-[#0B4F5C] hover:bg-[#083A43] text-white transition-colors flex items-center justify-center gap-2"
           >
             <MapPin size={14} className="text-[#C5A059]" />
             {t('openInMaps')}
@@ -102,7 +102,7 @@ export default function GuestPropertyMapSheet({
             href={directionsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] text-[10px] font-bold uppercase tracking-[0.14em] transition-colors flex items-center justify-center gap-2 border border-gray-200"
+            className="guest-btn-action w-full py-3.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] transition-colors flex items-center justify-center gap-2 border border-gray-200"
           >
             <Navigation size={14} />
             {t('getDirections')}

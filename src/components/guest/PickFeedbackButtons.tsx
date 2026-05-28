@@ -87,7 +87,7 @@ export default function PickFeedbackButtons({ propertyId, item, size = 'sm' }: P
         )}
       </button>
       {error && (
-        <span className="text-[10px] text-red-500" role="alert">
+        <span className="text-xs text-red-500" role="alert">
           Could not save
         </span>
       )}

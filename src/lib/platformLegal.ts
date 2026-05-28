@@ -6,6 +6,8 @@ export type LegalFileDocument = {
   fileUrl: string;
   fileName: string;
   storagePath: string;
+  /** BCP-47 short code (e.g. en, el). Legacy docs without locale count as English. */
+  locale?: string;
   contentType?: string;
   updatedAt?: string;
 };
@@ -17,9 +19,16 @@ export type LegalCategory = {
 };
 
 export type PlatformLegalContent = {
+  /** @deprecated Legacy single-language HTML; treated as English. */
   privacyPolicy: string;
+  /** @deprecated Legacy single-language HTML; treated as English. */
   termsOfUse: string;
+  /** @deprecated Legacy single-language HTML; treated as English. */
   agreement: string;
+  /** Per-locale published HTML (BCP-47 short codes, e.g. en, el). */
+  privacyPolicyByLocale?: Record<string, string>;
+  termsOfUseByLocale?: Record<string, string>;
+  agreementByLocale?: Record<string, string>;
   categories: LegalCategory[];
   updatedAt: Date | null;
 };
@@ -66,15 +75,39 @@ function parseDocument(raw: unknown): LegalFileDocument | null {
   const fileName = typeof d.fileName === 'string' ? d.fileName : '';
   const storagePath = typeof d.storagePath === 'string' ? d.storagePath : '';
   if (!id || !fileUrl) return null;
+  const localeRaw = typeof d.locale === 'string' ? d.locale.trim().toLowerCase() : '';
   return {
     id,
     title: title || fileName || 'Untitled document',
     fileUrl,
     fileName: fileName || 'file',
     storagePath,
+    locale: localeRaw || undefined,
     contentType: typeof d.contentType === 'string' ? d.contentType : undefined,
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : undefined,
   };
+}
+
+export function documentLocale(doc: LegalFileDocument): string {
+  return (doc.locale || 'en').trim().toLowerCase() || 'en';
+}
+
+export function filterDocumentsForLocale(
+  documents: LegalFileDocument[],
+  locale: string
+): LegalFileDocument[] {
+  const code = String(locale || 'en').trim().toLowerCase() || 'en';
+  return documents.filter((d) => documentLocale(d) === code);
+}
+
+export function resolveLegalCategoryDocuments(
+  categories: LegalCategory[],
+  categoryId: string,
+  locale: string
+): LegalFileDocument[] {
+  const cat = categories.find((c) => c.id === categoryId);
+  if (!cat) return [];
+  return filterDocumentsForLocale(cat.documents, locale);
 }
 
 function parseCategory(raw: unknown): LegalCategory | null {
@@ -94,6 +127,30 @@ function parseCategory(raw: unknown): LegalCategory | null {
   return { id, name: resolvedName, documents };
 }
 
+function parseLocaleHtmlMap(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof val === 'string' && val.trim()) {
+      out[key.trim().toLowerCase()] = val;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+export function resolveLegalHtmlForLocale(
+  byLocale: Record<string, string> | undefined,
+  legacy: string,
+  locale: string
+): string {
+  const code = String(locale || 'en').trim().toLowerCase() || 'en';
+  if (byLocale?.[code]?.trim()) return byLocale[code];
+  if (byLocale?.en?.trim()) return byLocale.en;
+  const first = byLocale && Object.values(byLocale).find((h) => h?.trim());
+  if (first) return first;
+  return legacy || '';
+}
+
 export function parsePlatformLegal(data: Record<string, unknown> | undefined): PlatformLegalContent {
   if (!data) return EMPTY_PLATFORM_LEGAL;
   const updatedAt = data.updatedAt;
@@ -102,10 +159,31 @@ export function parsePlatformLegal(data: Record<string, unknown> | undefined): P
     .map(parseCategory)
     .filter((c): c is LegalCategory => c !== null);
 
+  const legacyPrivacy = typeof data.privacyPolicy === 'string' ? data.privacyPolicy : '';
+  const legacyTerms = typeof data.termsOfUse === 'string' ? data.termsOfUse : '';
+  let privacyPolicyByLocale = parseLocaleHtmlMap(data.privacyPolicyByLocale);
+  let termsOfUseByLocale = parseLocaleHtmlMap(data.termsOfUseByLocale);
+
+  if (legacyPrivacy.trim() && !privacyPolicyByLocale?.en) {
+    privacyPolicyByLocale = { ...(privacyPolicyByLocale || {}), en: legacyPrivacy };
+  }
+  if (legacyTerms.trim() && !termsOfUseByLocale?.en) {
+    termsOfUseByLocale = { ...(termsOfUseByLocale || {}), en: legacyTerms };
+  }
+
+  const legacyAgreement = typeof data.agreement === 'string' ? data.agreement : '';
+  let agreementByLocale = parseLocaleHtmlMap(data.agreementByLocale);
+  if (legacyAgreement.trim() && !agreementByLocale?.en) {
+    agreementByLocale = { ...(agreementByLocale || {}), en: legacyAgreement };
+  }
+
   return {
-    privacyPolicy: typeof data.privacyPolicy === 'string' ? data.privacyPolicy : '',
-    termsOfUse: typeof data.termsOfUse === 'string' ? data.termsOfUse : '',
-    agreement: typeof data.agreement === 'string' ? data.agreement : '',
+    privacyPolicy: legacyPrivacy,
+    termsOfUse: legacyTerms,
+    privacyPolicyByLocale,
+    termsOfUseByLocale,
+    agreement: legacyAgreement,
+    agreementByLocale,
     categories: parsed.length > 0 ? parsed : [DEFAULT_LEGAL_CATEGORY],
     updatedAt:
       updatedAt && typeof updatedAt === 'object' && 'toDate' in updatedAt
@@ -124,6 +202,7 @@ export function serializeCategoriesForFirestore(categories: LegalCategory[]): Le
       fileUrl: doc.fileUrl,
       fileName: doc.fileName,
       storagePath: doc.storagePath,
+      locale: documentLocale(doc),
       contentType: doc.contentType || '',
       updatedAt: doc.updatedAt || new Date().toISOString(),
     })),

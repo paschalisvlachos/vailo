@@ -2,6 +2,13 @@
 
 export const GUEST_SESSION_STORAGE_KEY = 'vailo_guest_portal_session';
 
+/** Canonical public origin for guest-facing URLs (override in dev via VITE_GUEST_PORTAL_ORIGIN). */
+export function getGuestPortalPublicOrigin(): string {
+  const fromEnv = String(import.meta.env.VITE_GUEST_PORTAL_ORIGIN || '').trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  return 'https://vailo.app';
+}
+
 export type GuestAccessSource = 'invite' | 'on_site' | 'tester' | 'admin_preview';
 
 export type GuestInviteStatus = 'not_sent' | 'waiting' | 'opened';
@@ -15,6 +22,8 @@ export type GuestPortalSession = {
   accessUntil: string;
   source: GuestAccessSource;
   guestName?: string;
+  /** Invitation / stay default language (e.g. en, el). */
+  guestLocale?: string | null;
 };
 
 export type SyncedBookingAccessFields = {
@@ -109,10 +118,13 @@ export function buildInvitePortalUrl(
   propertySlug: string,
   typeSlug: string,
   inviteToken: string,
-  typeId?: string
+  typeId?: string,
+  guestLocale?: string
 ): string {
   const base = origin.replace(/\/$/, '');
   const qs = new URLSearchParams({ invite: inviteToken });
   if (typeId) qs.set('typeId', typeId);
+  const lang = String(guestLocale || '').trim().toLowerCase();
+  if (lang) qs.set('lang', lang);
   return `${base}/${propertySlug}/${typeSlug}?${qs.toString()}`;
 }

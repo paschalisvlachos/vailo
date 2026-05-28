@@ -33,6 +33,9 @@ import ExpandableDescription from '../../components/guest/ExpandableDescription'
 import PlanImage from '../../components/guest/PlanImage';
 import PickFeedbackButtons from '../../components/guest/PickFeedbackButtons';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { guestAiLanguageBlock } from '../../lib/guestAiLanguage';
+import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Compass, Heart, Eye } from 'lucide-react';
 
@@ -289,6 +292,7 @@ function countPlanStops(plan: unknown): number {
 
 export default function AiExpertView({ onClose, property, propertyType, features, gems }: AiExpertViewProps) {
   const { track } = useGuestAnalytics();
+  const { locale, setLocale, localeOptions } = useGuestLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [step, setStep] = useState<Step>('LOCATION');
   const [chatInput, setChatInput] = useState('');
@@ -928,6 +932,8 @@ export default function AiExpertView({ onClose, property, propertyType, features
 
       const systemInstruction = `You are Vailo, an elite local concierge. Reply only with a valid JSON object (no markdown, no prose outside JSON).
 
+${guestAiLanguageBlock(locale)}
+
 Rules:
 - HARD DISTANCE LIMIT: NEVER suggest a place farther than ${hardCapKm.toFixed(0)}km from the starting point. If you cannot think of a real, named local place within that limit, return FEWER items — never pad with far-away alternatives. A small radius (e.g. 9km) must never return a 200km+ suggestion.
 - 50 / 50 SPLIT: When the VAILO DATABASE has items in the requested categories, mix roughly half host-curated database picks with half your own AI picks of specific, real, named businesses or natural landmarks LOCALS actually use. Never pad with duplicates and never repeat a business that is already in the database pool.
@@ -1139,6 +1145,8 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
 
       const systemInstruction = `You are Vailo, an elite local concierge. Always reply with a single valid JSON object (no markdown).
 
+${guestAiLanguageBlock(locale)}
+
 Rules:
 - Only answer questions about local travel, day planning, itineraries, and "live like a local" advice.
 - 50 / 50 SPLIT when providing a plan: mix roughly half host-curated VAILO DATABASE picks with half your own specific, real, named AI picks (NEVER duplicate a business already in the database).
@@ -1283,7 +1291,7 @@ User: ${userText}`;
       if (msg.type === 'selection') return null;
       return (
         <div key={msg.id} className="flex justify-end mb-5 animate-in fade-in slide-in-from-bottom-2">
-          <div className="max-w-[90%] bg-[#0B4F5C] text-white px-4 py-3 rounded-2xl rounded-tr-md shadow-[0_4px_20px_rgba(11,79,92,0.2)] text-sm leading-relaxed whitespace-pre-wrap">
+          <div className="max-w-[90%] bg-[#0B4F5C] text-white px-4 py-3 rounded-2xl rounded-tr-md shadow-[0_4px_20px_rgba(11,79,92,0.2)] text-base leading-relaxed whitespace-pre-wrap">
             {msg.text}
           </div>
         </div>
@@ -1302,14 +1310,14 @@ User: ${userText}`;
         <div key={msg.id} className="mb-6 animate-in fade-in slide-in-from-bottom-2">
           <div className="rounded-3xl overflow-hidden border border-[#C5A059]/15 shadow-[0_12px_40px_rgba(197,160,89,0.12)]">
             <div className="bg-gradient-to-br from-[#FFFCF7] via-white to-[#F4FAFA] px-5 py-4">
-              <p className="text-[9px] font-bold text-[#C5A059] tracking-[0.2em] uppercase mb-1.5">
+              <p className="guest-eyebrow mb-1.5">
                 You&apos;re in
               </p>
-              <p className="font-luxury text-xl leading-snug text-[#051F26] font-medium">
+              <p className="font-luxury text-xl sm:text-2xl leading-snug text-[#051F26] font-medium">
                 {propertyNameOnly}
               </p>
               {typeName && (
-                <p className="text-xs font-semibold text-[#0B4F5C]/55 tracking-[0.12em] uppercase mt-1">
+                <p className="text-sm font-semibold text-[#0B4F5C]/55 tracking-[0.08em] uppercase mt-1">
                   {typeName}
                 </p>
               )}
@@ -1317,10 +1325,10 @@ User: ${userText}`;
                 <div className="h-px flex-1 bg-gradient-to-r from-[#C5A059]/45 to-transparent" />
                 <Sparkles size={11} className="text-[#C5A059]/70 shrink-0" />
               </div>
-              <p className="text-sm text-[#0B4F5C]/90 leading-relaxed">
+              <p className="text-base text-[#0B4F5C]/90 leading-relaxed">
                 Forget the guidebooks — I&apos;ll show you where people in {area} actually go. The tavernas they pick, the coves they keep quiet, the corners tourists walk past every day.
               </p>
-              <p className="text-sm font-medium text-[#0B4F5C] mt-2.5 leading-relaxed">
+              <p className="text-base font-medium text-[#0B4F5C] mt-2.5 leading-relaxed">
                 No tourist traps. Just real days. Where shall we begin?
               </p>
             </div>
@@ -1341,10 +1349,10 @@ User: ${userText}`;
                   {isPicks ? <Heart size={18} className="text-[#C5A059]" /> : <Compass size={18} className="text-[#C5A059]" />}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-base tracking-tight">
+                  <h3 className="font-semibold text-lg tracking-tight">
                     {isPicks ? 'Local favorites, curated for you' : 'Your day, thoughtfully planned'}
                   </h3>
-                  <p className="text-white/70 text-xs mt-1 leading-relaxed">
+                  <p className="text-white/70 text-sm mt-1 leading-relaxed">
                     {isPicks
                       ? 'Places locals genuinely choose — not tourist traps. Ordered by distance from your starting point.'
                       : 'A timeline built around authentic local experiences, from departure to return.'}
@@ -1359,7 +1367,7 @@ User: ${userText}`;
                 {msg.data.plan?.map((item: any, idx: number) => (
                   <div key={idx} className="relative pl-6 pb-6 border-l-2 border-[#C5A059]/30 last:border-0 last:pb-0">
                     <div className="absolute w-3 h-3 bg-[#C5A059] rounded-full -left-[7px] top-1 ring-4 ring-[#C5A059]/15" />
-                    <p className="font-semibold text-[#0B4F5C] text-sm mb-2">{item.time}</p>
+                    <p className="font-semibold text-[#0B4F5C] text-base mb-2">{item.time}</p>
                     
                     <div className="bg-white border border-[#0B4F5C]/8 rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(11,79,92,0.06)]">
                       <div className="relative">
@@ -1370,8 +1378,8 @@ User: ${userText}`;
                           fallbackClassName="w-full h-36"
                         />
                         {item.previouslyShown && (
-                          <span className="absolute top-3 right-3 bg-white/90 text-[#0B4F5C] text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
-                            <Eye size={10} strokeWidth={2.2} /> Seen before
+                          <span className="guest-badge absolute top-3 right-3 bg-white/90 text-[#0B4F5C] px-2.5 py-1 shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
+                            <Eye size={11} strokeWidth={2.2} /> Seen before
                           </span>
                         )}
                       </div>
@@ -1379,11 +1387,11 @@ User: ${userText}`;
                         <h4 className="font-semibold text-gray-900 text-base flex flex-wrap items-center gap-2 mb-2">
                           {item.title}
                           {(item.isProperty || item.source === 'property') ? (
-                            <span className="bg-[#0B4F5C]/10 text-[#0B4F5C] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">
+                            <span className="guest-badge bg-[#0B4F5C]/10 text-[#0B4F5C]">
                               Your stay
                             </span>
                           ) : item.source === 'database' ? (
-                            <span className="bg-[#C5A059]/12 text-[#8a6d2e] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">
+                            <span className="guest-badge bg-[#C5A059]/12 text-[#8a6d2e]">
                               Vailo pick
                             </span>
                           ) : null}
@@ -1414,11 +1422,11 @@ User: ${userText}`;
                               const links = getItemMapLinks(item, mapAreaHint);
                               return (
                                 <>
-                                  <a href={links.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors">
-                                    <MapIcon size={13} className="mr-1" /> View
+                                  <a href={links.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="guest-btn-action flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg flex items-center justify-center transition-colors">
+                                    <MapIcon size={14} className="mr-1" /> View
                                   </a>
-                                  <a href={links.navigateUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors shadow-sm">
-                                    <Navigation size={13} className="mr-1" /> Go
+                                  <a href={links.navigateUrl} target="_blank" rel="noopener noreferrer" className="guest-btn-action flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg flex items-center justify-center transition-colors shadow-sm">
+                                    <Navigation size={14} className="mr-1" /> Go
                                   </a>
                                 </>
                               );
@@ -1429,7 +1437,7 @@ User: ${userText}`;
                     </div>
 
                     {item.transportToNext && (
-                      <div className="mt-3 inline-flex items-center text-xs font-medium text-[#0B4F5C]/60 bg-[#f8faf9] px-3 py-1.5 rounded-lg border border-[#0B4F5C]/8">
+                      <div className="mt-3 inline-flex items-center text-sm font-medium text-[#0B4F5C]/60 bg-[#f8faf9] px-3 py-2 rounded-lg border border-[#0B4F5C]/8">
                         <Navigation size={12} className="mr-2 text-[#C5A059]" /> {item.transportToNext}
                       </div>
                     )}
@@ -1456,7 +1464,7 @@ User: ${userText}`;
 
             <button
               onClick={planAnotherDay}
-              className="w-full mt-6 py-3.5 bg-[#f8faf9] hover:bg-[#eef3f2] text-[#0B4F5C] font-semibold text-sm rounded-2xl transition-colors border border-[#0B4F5C]/10"
+              className="w-full mt-6 py-4 min-h-[48px] bg-[#f8faf9] hover:bg-[#eef3f2] text-[#0B4F5C] font-semibold text-base rounded-2xl transition-colors border border-[#0B4F5C]/10"
             >
               Plan another day
             </button>
@@ -1468,7 +1476,7 @@ User: ${userText}`;
 
     return (
       <div key={msg.id} className="mb-5 animate-in fade-in slide-in-from-bottom-2">
-        <div className="bg-white border border-[#0B4F5C]/8 text-gray-700 px-4 py-3.5 rounded-2xl shadow-[0_4px_20px_rgba(11,79,92,0.06)] text-sm leading-relaxed whitespace-pre-wrap">
+        <div className="bg-white border border-[#0B4F5C]/8 text-gray-700 px-4 py-3.5 rounded-2xl shadow-[0_4px_20px_rgba(11,79,92,0.06)] text-base leading-relaxed whitespace-pre-wrap">
           {msg.text}
         </div>
       </div>
@@ -1492,13 +1500,13 @@ User: ${userText}`;
     return (
       <div className="mb-4 rounded-2xl border border-[#0B4F5C]/10 bg-white/80 backdrop-blur-sm overflow-hidden shadow-[0_4px_24px_rgba(11,79,92,0.06)]">
         <div className="px-4 py-2.5 bg-gradient-to-r from-[#0B4F5C]/5 to-[#C5A059]/5 border-b border-[#0B4F5C]/8">
-          <p className="text-[10px] font-bold text-[#0B4F5C]/70 uppercase tracking-[0.18em]">Your choices</p>
+          <p className="guest-eyebrow text-[#0B4F5C]/70">Your choices</p>
         </div>
         <div className="px-4 py-3 space-y-2.5">
           {hasLocation && (
             <div className="flex items-start gap-2.5">
               <MapPin size={14} className="text-[#C5A059] shrink-0 mt-0.5" />
-              <span className="text-sm text-[#0B4F5C] leading-snug">{preferences.location}</span>
+              <span className="text-base text-[#0B4F5C] leading-snug">{preferences.location}</span>
             </div>
           )}
           {hasCategories && (
@@ -1506,7 +1514,7 @@ User: ${userText}`;
               {preferences.categories.map((cat) => (
                 <span
                   key={cat}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-[#0B4F5C]/8 text-[#0B4F5C] font-semibold"
+                  className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-[#0B4F5C]/8 text-[#0B4F5C] font-semibold"
                 >
                   {cat}
                 </span>
@@ -1516,13 +1524,13 @@ User: ${userText}`;
           {hasDistance && (
             <div className="flex items-center gap-2.5">
               <Compass size={14} className="text-[#C5A059] shrink-0" />
-              <span className="text-sm text-[#0B4F5C]">Within {preferences.distance}</span>
+              <span className="text-base text-[#0B4F5C]">Within {preferences.distance}</span>
             </div>
           )}
           {(hasSchedule || pendingSchedule) && (
             <div className="flex items-center gap-2.5">
               <Clock size={14} className="text-[#C5A059] shrink-0" />
-              <span className="text-sm text-[#0B4F5C]">
+              <span className="text-base text-[#0B4F5C]">
                 {hasSchedule
                   ? preferences.timeFrame === 'flexible'
                     ? 'Flexible · no fixed schedule'
@@ -1551,7 +1559,7 @@ User: ${userText}`;
                 }`}
               />
               <span
-                className={`text-[9px] mt-1.5 text-center leading-tight hidden sm:block ${
+                className={`text-[10px] sm:text-xs mt-1.5 text-center leading-tight ${
                   i === wizardStepIndex ? 'text-[#0B4F5C] font-semibold' : 'text-gray-400'
                 }`}
               >
@@ -1571,7 +1579,7 @@ User: ${userText}`;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
         .font-luxury { font-family: 'Lora', serif; }
@@ -1583,24 +1591,29 @@ User: ${userText}`;
         <div className="absolute -top-12 -right-8 w-44 h-44 bg-[#C5A059]/14 blur-3xl rounded-full pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-[#0B4F5C]/10 blur-3xl rounded-full pointer-events-none" />
 
-        <div className="relative px-4 py-3.5 flex items-center gap-3">
+        <div className="relative px-4 py-3 flex items-center gap-2.5 sm:gap-3">
           <button
             onClick={onClose}
-            className="h-10 w-10 flex items-center justify-center rounded-full bg-white/90 border border-[#0B4F5C]/10 text-[#0B4F5C] shadow-[0_2px_12px_rgba(11,79,92,0.08)] hover:border-[#C5A059]/35 hover:shadow-md transition-all"
+            className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/90 border border-[#0B4F5C]/10 text-[#0B4F5C] shadow-[0_2px_12px_rgba(11,79,92,0.08)] hover:border-[#C5A059]/35 hover:shadow-md transition-all"
             aria-label="Go back"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={20} />
           </button>
 
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-bold text-[#C5A059] tracking-[0.24em] uppercase">
+            <p className="guest-eyebrow text-[10px] sm:text-xs">
               Vailo Concierge
             </p>
-            <h2 className="font-luxury text-[1.35rem] leading-tight text-[#051F26] font-medium mt-0.5">
+            <h2 className="font-luxury text-lg sm:text-xl leading-tight text-[#051F26] font-medium mt-0.5">
               Live Like a <span className="text-[#0B4F5C] italic">Local</span>
             </h2>
           </div>
 
+          <GuestLanguageMenu
+            locale={locale}
+            onChange={setLocale}
+            options={localeOptions}
+          />
           <img
             src="../../../vailoLogo.png"
             alt="Vailo"
@@ -1619,22 +1632,22 @@ User: ${userText}`;
             
             {step === 'LOCATION' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-sm font-semibold text-[#0B4F5C] mb-1">Where does your day begin?</p>
-                <p className="text-xs text-gray-500 mb-4">Your starting point shapes every recommendation we make.</p>
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">Where does your day begin?</p>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">Your starting point shapes every recommendation we make.</p>
                 {locationCandidates.length > 0 ? (
                   <div className="flex flex-col gap-2.5">
-                    <p className="text-xs text-gray-500 mb-1">Which location did you mean?</p>
+                    <p className="text-sm text-gray-500 mb-1">Which location did you mean?</p>
                     {locationCandidates.map((place) => (
                       <button
                         key={`${place.lat}-${place.lng}`}
                         onClick={() => confirmLocationChoice(place, place.label)}
-                        className="group flex items-start gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-3.5 rounded-xl text-sm font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
+                        className="group flex items-start gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
                       >
                         <MapPin size={16} className="text-[#C5A059] shrink-0 mt-0.5" />
                         <span>
                           {place.label}
                           {place.distanceFromPropertyKm != null && (
-                            <span className="block text-[11px] font-normal text-gray-500 mt-0.5">
+                            <span className="block text-sm font-normal text-gray-500 mt-0.5">
                               ~{Math.round(place.distanceFromPropertyKm)} km from {getPropertyDisplayName()}
                             </span>
                           )}
@@ -1644,7 +1657,7 @@ User: ${userText}`;
                     <button
                       type="button"
                       onClick={() => setLocationCandidates([])}
-                      className="text-xs text-[#0B4F5C]/60 hover:text-[#0B4F5C] mt-1 text-left transition-colors"
+                      className="text-sm text-[#0B4F5C]/60 hover:text-[#0B4F5C] mt-1 text-left transition-colors min-h-[44px]"
                     >
                       Try a different spelling
                     </button>
@@ -1653,25 +1666,25 @@ User: ${userText}`;
                   <div className="flex flex-col gap-2.5">
                     <button
                       onClick={() => advanceStep('LOCATION', getNearPropertyLabel(), getNearPropertyLabel())}
-                      className="group flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-3.5 rounded-xl text-sm font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
+                      className="group flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
                     >
                       <MapPin size={16} className="text-[#C5A059] shrink-0" />
                       {getPropertyDisplayName()}
                     </button>
                     <div className="relative">
-                      <p className="text-[11px] text-gray-400 mb-2 text-center">or enter a town or village</p>
+                      <p className="text-sm text-gray-500 mb-2 text-center">or enter a town or village</p>
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={customLoc}
                           onChange={(e) => setCustomLoc(e.target.value)}
                           placeholder="i.e location, area"
-                          className="flex-1 px-4 py-3 bg-white border border-[#0B4F5C]/10 rounded-xl text-sm outline-none focus:border-[#C5A059]/50 focus:ring-2 focus:ring-[#C5A059]/15 transition-shadow"
+                          className="guest-input flex-1 bg-white border border-[#0B4F5C]/10 focus:border-[#C5A059]/50 focus:ring-2 focus:ring-[#C5A059]/15 transition-shadow"
                         />
                         <button
                           disabled={!customLoc.trim()}
                           onClick={() => advanceStep('LOCATION', customLoc, customLoc)}
-                          className="px-5 bg-[#0B4F5C] text-white font-semibold rounded-xl disabled:opacity-40 hover:bg-[#0a4550] transition-colors"
+                          className="px-5 min-h-[48px] bg-[#0B4F5C] text-white text-base font-semibold rounded-xl disabled:opacity-40 hover:bg-[#0a4550] transition-colors"
                         >
                           Set
                         </button>
@@ -1684,11 +1697,11 @@ User: ${userText}`;
 
             {step === 'CATEGORIES' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-sm font-semibold text-[#0B4F5C] mb-1">What would locals choose today?</p>
-                <p className="text-xs text-gray-500 mb-4">Select up to three interests — we will surface the places residents actually go.</p>
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">What would locals choose today?</p>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">Select up to three interests — we will surface the places residents actually go.</p>
                 <div className="flex flex-wrap gap-2 mb-5">
                   {categoriesLoading && availableCategories.length === 0 ? (
-                    <p className="text-xs text-gray-400 flex items-center gap-2">
+                    <p className="text-sm text-gray-400 flex items-center gap-2">
                       <Loader2 size={14} className="animate-spin" /> Loading local categories…
                     </p>
                   ) : availableCategories.length > 0 ? (
@@ -1704,7 +1717,7 @@ User: ${userText}`;
                                 : prev
                           )
                         }
-                        className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all border ${
+                        className={`guest-pill px-4 py-2.5 rounded-full text-sm font-semibold transition-all border ${
                           selectedCats.includes(cat)
                             ? 'bg-[#0B4F5C] text-white border-[#0B4F5C] shadow-md'
                             : 'bg-[#f8faf9] text-[#0B4F5C]/70 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
@@ -1714,7 +1727,7 @@ User: ${userText}`;
                       </button>
                     ))
                   ) : (
-                    <p className="text-xs text-gray-500 leading-relaxed">
+                    <p className="text-sm text-gray-500 leading-relaxed">
                       {areaConfigIssue === 'invalid-master' ? (
                         <>
                           City/Master Area on this listing is set to &ldquo;{invalidMasterAreaRaw}&rdquo;,
@@ -1740,7 +1753,7 @@ User: ${userText}`;
                 <button
                   disabled={selectedCats.length === 0}
                   onClick={() => advanceStep('CATEGORIES', selectedCats, selectedCats.join(', '))}
-                  className="w-full py-3.5 bg-[#C5A059] hover:bg-[#b8924f] text-white rounded-xl text-sm font-semibold disabled:opacity-40 transition-colors shadow-sm"
+                  className="w-full py-4 min-h-[48px] bg-[#C5A059] hover:bg-[#b8924f] text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors shadow-sm"
                 >
                   Continue · {selectedCats.length} selected
                 </button>
@@ -1749,8 +1762,8 @@ User: ${userText}`;
 
             {step === 'DISTANCE' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-sm font-semibold text-[#0B4F5C] mb-1">How far will you venture?</p>
-                <p className="text-xs text-gray-500 mb-4">
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">How far will you venture?</p>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
                   From <span className="font-medium text-[#0B4F5C]">{preferences.location}</span> — locals know the best spots are often closer than you think.
                 </p>
                 <div className="flex flex-col gap-2.5">
@@ -1759,7 +1772,7 @@ User: ${userText}`;
                       <button
                         key={i}
                         onClick={() => advanceStep('DISTANCE', dist, dist)}
-                        className="flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-3.5 rounded-xl text-sm font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
+                        className="flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
                       >
                         <Compass size={16} className="text-[#C5A059] shrink-0" />
                         Within {dist}
@@ -1777,12 +1790,12 @@ User: ${userText}`;
 
             {step === 'TIME' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-sm font-semibold text-[#0B4F5C] mb-1">How would you like to explore?</p>
-                <p className="text-xs text-gray-500 mb-4">
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">How would you like to explore?</p>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
                   Pick a start time and how long you&apos;re out — we&apos;ll build your day around it.
                 </p>
 
-                <p className="text-[10px] font-semibold text-[#0B4F5C]/50 uppercase tracking-wider mb-2">
+                <p className="guest-eyebrow text-[#0B4F5C]/50 mb-2">
                   Start your day
                 </p>
                 <div className="flex flex-wrap gap-2 mb-5">
@@ -1794,7 +1807,7 @@ User: ${userText}`;
                         setStartTime(t);
                         if (tripDurationHours == null) setTripDurationHours(6);
                       }}
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                      className={`px-4 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
                         startTime === t
                           ? 'bg-[#0B4F5C] text-white border-[#0B4F5C] shadow-sm'
                           : 'bg-[#f8faf9] text-[#0B4F5C]/75 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
@@ -1807,7 +1820,7 @@ User: ${userText}`;
 
                 {startTime && (
                   <>
-                    <p className="text-[10px] font-semibold text-[#0B4F5C]/50 uppercase tracking-wider mb-2">
+                    <p className="guest-eyebrow text-[#0B4F5C]/50 mb-2">
                       How long are you out?
                     </p>
                     <div className="flex flex-wrap gap-2 mb-4">
@@ -1816,7 +1829,7 @@ User: ${userText}`;
                           key={opt.hours}
                           type="button"
                           onClick={() => setTripDurationHours(opt.hours)}
-                          className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                          className={`px-4 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
                             tripDurationHours === opt.hours
                               ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-sm'
                               : 'bg-[#f8faf9] text-[#0B4F5C]/75 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
@@ -1827,7 +1840,7 @@ User: ${userText}`;
                       ))}
                     </div>
                     {tripDurationHours != null && (
-                      <p className="text-xs text-[#0B4F5C]/70 mb-4 px-3 py-2 rounded-xl bg-[#f8faf9] border border-[#0B4F5C]/8">
+                      <p className="text-sm text-[#0B4F5C]/70 mb-4 px-3 py-2.5 rounded-xl bg-[#f8faf9] border border-[#0B4F5C]/8 leading-relaxed">
                         {formatTripWindow(startTime, tripDurationHours)}
                       </p>
                     )}
@@ -1838,14 +1851,14 @@ User: ${userText}`;
                   <button
                     disabled={!startTime || tripDurationHours == null}
                     onClick={() => executePlan('timeline')}
-                    className="w-full py-3.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-xl text-sm font-semibold disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
+                    className="w-full py-4 min-h-[48px] bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
                   >
                     <Clock size={16} />
                     Plan my day with a timeline
                   </button>
                   <button
                     onClick={() => executePlan('')}
-                    className="w-full py-3.5 bg-[#f8faf9] text-[#0B4F5C]/80 hover:text-[#0B4F5C] hover:bg-[#eef3f2] rounded-xl text-sm font-semibold transition-colors border border-[#0B4F5C]/10"
+                    className="w-full py-4 min-h-[48px] bg-[#f8faf9] text-[#0B4F5C]/80 hover:text-[#0B4F5C] hover:bg-[#eef3f2] rounded-xl text-base font-semibold transition-colors border border-[#0B4F5C]/10"
                   >
                     Browse local favorites · no fixed schedule
                   </button>
@@ -1857,7 +1870,7 @@ User: ${userText}`;
         )}
 
         {isThinking && (
-          <div className="flex items-center gap-2 text-sm text-[#0B4F5C] font-medium mt-4 bg-white/80 backdrop-blur-sm px-4 py-3 rounded-2xl w-max border border-[#C5A059]/20 shadow-sm">
+          <div className="flex items-center gap-2 text-base text-[#0B4F5C] font-medium mt-4 bg-white/80 backdrop-blur-sm px-4 py-3 rounded-2xl w-max border border-[#C5A059]/20 shadow-sm">
             <Loader2 size={16} className="animate-spin text-[#C5A059]" />
             {thinkingLabel}
           </div>
@@ -1874,17 +1887,17 @@ User: ${userText}`;
             onChange={(e) => setChatInput(e.target.value)}
             disabled={isThinking}
             placeholder="Ask about a place, refine your plan, or request alternatives…"
-            className="flex-1 bg-[#f8faf9] border border-[#0B4F5C]/10 text-gray-900 text-sm rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#C5A059]/25 focus:border-[#C5A059]/40 transition-shadow disabled:opacity-50"
+            className="guest-input flex-1 bg-[#f8faf9] border border-[#0B4F5C]/10 text-gray-900 focus:ring-2 focus:ring-[#C5A059]/25 focus:border-[#C5A059]/40 transition-shadow disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={!chatInput.trim() || isThinking}
-            className="bg-[#0B4F5C] text-white p-3 rounded-xl hover:bg-[#0a4550] disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center"
+            className="bg-[#0B4F5C] text-white min-h-[48px] min-w-[48px] p-3 rounded-xl hover:bg-[#0a4550] disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center shrink-0"
           >
-            <Send size={18} />
+            <Send size={20} />
           </button>
         </form>
-        <p className="text-center text-[10px] text-gray-400 mt-2.5 leading-relaxed">
+        <p className="text-center text-xs text-gray-400 mt-2.5 leading-relaxed">
           Recommendations reflect local knowledge. Always verify opening hours and routes before you go.
         </p>
       </div>

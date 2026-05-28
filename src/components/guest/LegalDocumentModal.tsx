@@ -37,7 +37,7 @@ export default function LegalDocumentModal({ title, body, onClose }: Props) {
             <X size={20} />
           </button>
         </div>
-        <div className="overflow-y-auto px-5 py-5 text-sm text-gray-700 leading-relaxed">
+        <div className="overflow-y-auto px-5 py-5 text-base text-gray-700 leading-relaxed">
           {isEmpty ? (
             <p className="text-gray-500 italic">This document is not available yet. Please check back later.</p>
           ) : (

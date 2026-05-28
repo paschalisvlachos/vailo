@@ -19,7 +19,8 @@ import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
 import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
-import { useGuestLocale } from '../../hooks/useGuestLocale';
+import { GuestLocaleProvider, useGuestLocale } from '../../context/GuestLocaleContext';
+import GuestTranslatedText from '../../components/guest/GuestTranslatedText';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
@@ -49,6 +50,7 @@ function GemDescriptionToggle({
   onToggle: () => void;
 }) {
   const { track } = useGuestAnalytics();
+  const { t } = useGuestLocale();
   return (
     <button
       type="button"
@@ -58,9 +60,9 @@ function GemDescriptionToggle({
         }
         onToggle();
       }}
-      className="text-[#C5A059] text-[9px] font-bold mt-1 hover:underline uppercase tracking-wide"
+      className="text-[#C5A059] text-sm font-bold mt-1 hover:underline uppercase tracking-wide min-h-[44px]"
     >
-      {expanded ? 'Less' : 'More'}
+      {expanded ? t('less') : t('more')}
     </button>
   );
 }
@@ -89,7 +91,11 @@ function LiveLikeLocalCTA({
   );
 }
 
-export default function GuestPortal() {
+function GuestPortalPage({
+  onSessionLocale,
+}: {
+  onSessionLocale?: (locale: string | null) => void;
+}) {
   const { propertySlug, typeSlug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -115,6 +121,7 @@ export default function GuestPortal() {
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [propertyMapOpen, setPropertyMapOpen] = useState(false);
   const { locale, setLocale, t, localeOptions } = useGuestLocale();
+  const { resolved: platformLegalResolved } = usePlatformLegal(locale);
   const pwaInstall = usePwaInstall();
   
   const [gemFilters, setGemFilters] = useState<string[]>([]);
@@ -123,7 +130,6 @@ export default function GuestPortal() {
   const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
-  const { content: platformLegal } = usePlatformLegal();
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
@@ -374,7 +380,7 @@ export default function GuestPortal() {
         <div className="absolute inset-0 rounded-full border-2 border-[#C5A059]/30 border-t-[#C5A059] animate-spin" />
         <img src="/vailoLogo.png" alt="" className="absolute inset-2 w-auto h-auto object-contain opacity-90" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       </div>
-      <p className="text-[#C5A059] tracking-[0.25em] text-[10px] uppercase font-semibold">Preparing your stay</p>
+      <p className="guest-eyebrow">Preparing your stay</p>
     </div>
   );
   if (error) return (
@@ -408,7 +414,7 @@ export default function GuestPortal() {
         </button>
       </div>
 
-      <div className={`w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col relative ${
+      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col relative ${
         viewMode === 'mobile' 
           ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden' 
           : 'max-w-none min-h-screen'
@@ -436,7 +442,7 @@ export default function GuestPortal() {
                 <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/25 to-[#F3F4F6]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/80 via-transparent to-black/30" />
 
-                <div className={`relative mx-auto px-5 pt-5 pb-28 min-h-[420px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+                <div className={`relative mx-auto px-4 sm:px-5 pt-5 pb-28 min-h-[380px] sm:min-h-[420px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
                   {pwaInstall.showBanner && (
                     <GuestAddToHomeBanner
                       t={t}
@@ -466,9 +472,9 @@ export default function GuestPortal() {
                         type="button"
                         onClick={() => hasPropertyCoords && setPropertyMapOpen(true)}
                         disabled={!hasPropertyCoords}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-[10px] font-semibold uppercase tracking-wider hover:bg-white/20 transition-all disabled:opacity-40 disabled:pointer-events-none"
+                        className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[40px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-xs font-semibold uppercase tracking-wider hover:bg-white/20 transition-all disabled:opacity-40 disabled:pointer-events-none"
                       >
-                        <MapPin size={13} className="text-[#C5A059]" />
+                        <MapPin size={14} className="text-[#C5A059]" />
                         {t('map')}
                       </button>
                       {websiteUrl && (
@@ -476,7 +482,7 @@ export default function GuestPortal() {
                           href={websiteUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center h-9 w-9 rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all"
+                          className="flex items-center justify-center h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all"
                           aria-label="Website"
                         >
                           <Globe size={15} className="text-[#C5A059]" />
@@ -487,18 +493,18 @@ export default function GuestPortal() {
 
                   {/* Hero copy */}
                   <div className="mt-8 text-center hero-text-shadow">
-                    <p className="text-[10px] font-semibold text-[#C5A059] tracking-[0.3em] uppercase mb-2">{t('welcomeTo')}</p>
-                    <h1 className="font-luxury text-[2rem] md:text-4xl lg:text-[2.75rem] text-white leading-[1.15] font-medium">
+                    <p className="guest-eyebrow text-white/90 mb-2">{t('welcomeTo')}</p>
+                    <h1 className="font-luxury text-[1.625rem] sm:text-[2rem] md:text-4xl text-white leading-[1.12] font-medium">
                       {property?.propertyName}
                     </h1>
                     {typeData?.propertyTypeName && (
-                      <p className="font-luxury text-lg md:text-xl text-white/85 mt-2 italic">
+                      <p className="font-luxury text-base sm:text-lg text-white/85 mt-2 italic">
                         {typeData.propertyTypeName}
                       </p>
                     )}
                     {heroLocation && (
-                      <p className="text-white/60 text-xs mt-3 flex items-center justify-center gap-1.5">
-                        <MapPin size={12} className="text-[#C5A059]" /> {heroLocation}
+                      <p className="text-white/60 text-sm mt-3 flex items-center justify-center gap-1.5">
+                        <MapPin size={14} className="text-[#C5A059] shrink-0" /> {heroLocation}
                       </p>
                     )}
                   </div>
@@ -509,20 +515,20 @@ export default function GuestPortal() {
                       onActivate={() => setActiveView('aiExpert')}
                       className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition-all duration-300 hover:-translate-y-0.5"
                     >
-                      <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0 shadow-lg">
-                            <Sparkles size={20} className="text-white" />
+                      <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 min-h-[72px] flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0 shadow-lg">
+                            <Sparkles size={22} className="text-white" />
                           </div>
-                          <div className="text-left">
-                            <p className="text-white text-[15px] font-semibold tracking-wide">
+                          <div className="text-left min-w-0">
+                            <p className="text-white text-base font-semibold leading-tight">
                               {t('liveLikeLocal')}
                             </p>
-                            <p className="text-white/65 text-[11px] mt-0.5">{t('liveLikeLocalSub')}</p>
+                            <p className="text-white/70 text-sm mt-1 leading-snug">{t('liveLikeLocalSub')}</p>
                           </div>
                         </div>
-                        <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/25 transition-colors">
-                          <ChevronDown size={18} className="-rotate-90" />
+                        <div className="h-10 w-10 shrink-0 rounded-full bg-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/25 transition-colors">
+                          <ChevronDown size={20} className="-rotate-90" />
                         </div>
                       </div>
                     </LiveLikeLocalCTA>
@@ -540,18 +546,18 @@ export default function GuestPortal() {
                       <CloudSun className="text-[#C5A059] w-5 h-5" />
                     </div>
                     <div>
-                      <p className="font-luxury text-2xl text-[#0B4F5C] leading-none font-medium">
+                      <p className="font-luxury text-xl sm:text-2xl text-[#0B4F5C] leading-none font-medium">
                         {weather ? `${weather.temp}°` : '—°'}
                       </p>
-                      <p className="text-[10px] text-gray-500 font-semibold tracking-wider uppercase mt-1 flex items-center">
-                        <MapPin size={10} className="mr-1 text-[#C5A059]" />
+                      <p className="text-sm text-gray-500 font-semibold tracking-wider uppercase mt-1 flex items-center">
+                        <MapPin size={12} className="mr-1 text-[#C5A059]" />
                         {weather ? weather.city : 'Loading…'}
                       </p>
                     </div>
                   </div>
                   <div className="text-right pl-4 border-l border-gray-100">
-                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Today</p>
-                    <p className="text-sm font-luxury text-[#0B4F5C] font-medium">
+                    <p className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-0.5">Today</p>
+                    <p className="text-base font-luxury text-[#0B4F5C] font-medium">
                       {weather ? `${weather.max}° / ${weather.min}°` : '— / —'}
                     </p>
                   </div>
@@ -566,16 +572,16 @@ export default function GuestPortal() {
                         <Wifi size={18} className="text-[#0B4F5C]" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider leading-none mb-1">Wi‑Fi</p>
-                        <p className="text-sm font-semibold text-gray-900 truncate">{wifiName}</p>
+                        <p className="text-sm font-bold text-gray-400 uppercase tracking-wider leading-none mb-1">Wi‑Fi</p>
+                        <p className="text-base font-semibold text-gray-900 truncate">{wifiName}</p>
                       </div>
                     </div>
                     {wifiPassword && (
                       <div className="flex items-center gap-2 bg-gray-50 pl-3 pr-1.5 py-1.5 rounded-xl border border-gray-100 shrink-0">
-                        <p className="text-xs font-mono font-semibold text-gray-600">{wifiPassword}</p>
+                        <p className="text-sm font-mono font-semibold text-gray-600">{wifiPassword}</p>
                         <button
                           onClick={copyWifi}
-                          className={`p-1.5 rounded-lg transition-colors ${copiedWifi ? 'bg-emerald-100 text-emerald-700' : 'bg-white hover:bg-gray-100 text-[#0B4F5C] shadow-sm'}`}
+                          className={`p-2.5 min-h-[40px] min-w-[40px] rounded-lg transition-colors ${copiedWifi ? 'bg-emerald-100 text-emerald-700' : 'bg-white hover:bg-gray-100 text-[#0B4F5C] shadow-sm'}`}
                           aria-label="Copy Wi-Fi password"
                         >
                           {copiedWifi ? <Check size={14} /> : <Copy size={14} />}
@@ -619,7 +625,6 @@ export default function GuestPortal() {
                 featuredOnPortal={featuredOnPortal}
                 previews={featuredPreviews}
                 onAskAssistant={() => setActiveView('assistant')}
-                t={t}
               />
 
               {portalFeatures.length > 0 && (
@@ -641,9 +646,9 @@ export default function GuestPortal() {
                   }
                 >
                   <div className="mb-5">
-                    <p className="text-[10px] font-bold text-[#C5A059] tracking-[0.25em] uppercase mb-1">Curated by your host</p>
-                    <h2 className="font-luxury text-2xl text-[#051F26] font-medium">Local Gems</h2>
-                    <p className="text-gray-500 text-xs mt-1.5">
+                    <p className="guest-eyebrow mb-1">Curated by your host</p>
+                    <h2 className="guest-heading-section">Local Gems</h2>
+                    <p className="text-gray-500 text-sm mt-1.5">
                       {filteredGems.length} spot{filteredGems.length !== 1 ? 's' : ''}
                       {hasMoreGems
                         ? ` · showing ${visibleGems.length}`
@@ -661,7 +666,7 @@ export default function GuestPortal() {
                         <button 
                           key={filter}
                           onClick={() => handleGemFilterClick(filter)}
-                          className={`whitespace-nowrap px-3.5 py-2 rounded-full text-[10px] uppercase tracking-wider font-semibold transition-all ${
+                          className={`guest-pill whitespace-nowrap transition-all ${
                             isActive 
                               ? 'bg-[#0B4F5C] text-white shadow-md' 
                               : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#C5A059]/50 hover:text-[#0B4F5C]'
@@ -697,27 +702,27 @@ export default function GuestPortal() {
                           
                           <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 max-w-[85%]">
                             {gem.isLegitPick && (
-                              <span className="bg-white/95 text-[#0B4F5C] border border-white/50 text-[8px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center w-fit">
-                                <Award size={8} className="mr-1 text-[#C5A059]" /> Pick
+                              <span className="guest-badge bg-white/95 text-[#0B4F5C] border border-white/50 shadow-sm flex items-center w-fit">
+                                <Award size={10} className="mr-1 text-[#C5A059]" /> Pick
                               </span>
                             )}
                             {gem.isDailyTrip && (
-                              <span className="bg-[#0B4F5C]/95 text-white text-[8px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full shadow-sm flex items-center w-fit">
-                                <Clock size={8} className="mr-1 text-[#C5A059]" /> Trip
+                              <span className="guest-badge bg-[#0B4F5C]/95 text-white shadow-sm flex items-center w-fit">
+                                <Clock size={10} className="mr-1 text-[#C5A059]" /> Trip
                               </span>
                             )}
                           </div>
                           
                           <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-end gap-1">
                             {gem.rating ? (
-                              <span className="bg-white text-gray-900 text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-md flex items-center">
-                                <Star size={9} className="mr-0.5 text-amber-400 fill-current" /> {gem.rating}
+                              <span className="guest-badge bg-white text-gray-900 shadow-md flex items-center">
+                                <Star size={11} className="mr-0.5 text-amber-400 fill-current" /> {gem.rating}
                               </span>
                             ) : <div></div>}
                             
                             {gem.distanceKm && (
-                              <span className="bg-[#C5A059] text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-md flex items-center shrink-0">
-                                <Navigation size={8} className="mr-0.5" /> {gem.distanceKm}km
+                              <span className="guest-badge bg-[#C5A059] text-white shadow-md flex items-center shrink-0">
+                                <Navigation size={10} className="mr-0.5" /> {gem.distanceKm}km
                               </span>
                             )}
                           </div>
@@ -732,15 +737,19 @@ export default function GuestPortal() {
                           </div>
                         )}
 
-                        <div className="p-3 flex-1 flex flex-col min-w-0">
-                          <p className="text-[8px] text-[#C5A059] font-bold uppercase tracking-wider mb-1 truncate">{gem.category || 'Location'}</p>
-                          <h3 className="font-luxury text-sm font-medium text-[#051F26] leading-snug mb-2 line-clamp-2">{gem.name}</h3>
+                        <div className="p-4 flex-1 flex flex-col min-w-0">
+                          <p className="text-sm text-[#C5A059] font-bold uppercase tracking-wider mb-1 truncate">{gem.category || 'Location'}</p>
+                          <h3 className="guest-card-title mb-2 line-clamp-2">
+                            <GuestTranslatedText text={gem.name || ''} />
+                          </h3>
                           
                           {gem.description && (
                             <div className="mb-3">
-                              <p className={`text-[11px] text-gray-600 font-normal leading-snug ${!expandedDesc[gem.id] && 'line-clamp-2'}`}>
-                                {gem.description}
-                              </p>
+                              <GuestTranslatedText
+                                text={gem.description}
+                                as="p"
+                                className={`guest-body-sm ${!expandedDesc[gem.id] && 'line-clamp-2'}`}
+                              />
                               {gem.description.length > 60 && (
                                 <GemDescriptionToggle
                                   gemId={gem.id}
@@ -755,16 +764,16 @@ export default function GuestPortal() {
                           <div className="mt-auto pt-3 border-t border-gray-100 flex flex-col gap-1.5">
                             <button 
                               onClick={() => setActiveGemMap(activeGemMap === gem.id ? null : gem.id)}
-                              className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] rounded-lg text-[9px] uppercase tracking-wider font-bold transition-all flex items-center justify-center border border-gray-200"
+                              className="guest-btn-action w-full bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] border border-gray-200"
                             >
-                              <Map size={12} className="mr-1"/> Map
+                              <Map size={14} className="mr-1.5"/> Map
                             </button>
                             <a 
                               href={`https://www.google.com/maps/dir/?api=1&destination=${gem.latitude},${gem.longitude}`} 
                               target="_blank" rel="noopener noreferrer" 
-                              className="w-full py-2 bg-[#0B4F5C] hover:bg-[#C5A059] text-white rounded-lg text-[9px] uppercase tracking-wider font-bold transition-all flex items-center justify-center shadow-sm"
+                              className="guest-btn-action w-full bg-[#0B4F5C] hover:bg-[#C5A059] text-white shadow-sm"
                             >
-                              <Navigation size={12} className="mr-1"/> Route
+                              <Navigation size={14} className="mr-1.5"/> Route
                             </a>
                           </div>
                         </div>
@@ -775,7 +784,7 @@ export default function GuestPortal() {
                     <button
                       type="button"
                       onClick={() => setGemsVisibleCount((n) => n + GEMS_PAGE_SIZE)}
-                      className="mt-4 w-full py-3.5 rounded-xl border border-[#0B4F5C]/20 bg-white text-[#0B4F5C] text-xs font-bold uppercase tracking-wider hover:bg-[#0B4F5C]/5 transition-colors shadow-sm"
+                      className="guest-btn-action mt-4 w-full py-4 rounded-xl border border-[#0B4F5C]/20 bg-white text-[#0B4F5C] hover:bg-[#0B4F5C]/5 transition-colors shadow-sm"
                     >
                       Load more · {filteredGems.length - visibleGems.length} left
                     </button>
@@ -794,7 +803,7 @@ export default function GuestPortal() {
 
           </>
         ) : activeView === 'aiExpert' ? (
-          <AiExpertView 
+          <AiExpertView
             onClose={() => setActiveView('portal')}
             property={property}
             propertyType={typeData}
@@ -829,15 +838,15 @@ export default function GuestPortal() {
 
       {legalModal === 'privacy' && (
         <LegalDocumentModal
-          title="Privacy Policy"
-          body={platformLegal.privacyPolicy}
+          title={t('privacyPolicy')}
+          body={platformLegalResolved.privacyPolicy}
           onClose={() => setLegalModal(null)}
         />
       )}
       {legalModal === 'terms' && (
         <LegalDocumentModal
-          title="Terms of Use"
-          body={platformLegal.termsOfUse}
+          title={t('termsOfUse')}
+          body={platformLegalResolved.termsOfUse}
           onClose={() => setLegalModal(null)}
         />
       )}
@@ -871,6 +880,9 @@ export default function GuestPortal() {
         typeId={typeId}
         inviteToken={inviteTokenFromQuery}
         adminPreview={adminPreviewFromQuery}
+        onSessionGranted={(session) =>
+          onSessionLocale?.(session.guestLocale?.trim() || null)
+        }
       >
         {portalContent}
       </GuestPortalAccessGate>
@@ -878,4 +890,16 @@ export default function GuestPortal() {
   }
 
   return portalContent;
+}
+
+export default function GuestPortal() {
+  const [searchParams] = useSearchParams();
+  const langFromUrl = searchParams.get('lang');
+  const [sessionLocale, setSessionLocale] = useState<string | null>(langFromUrl);
+
+  return (
+    <GuestLocaleProvider sessionGuestLocale={sessionLocale ?? langFromUrl}>
+      <GuestPortalPage onSessionLocale={setSessionLocale} />
+    </GuestLocaleProvider>
+  );
 }

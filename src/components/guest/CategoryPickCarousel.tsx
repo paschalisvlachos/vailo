@@ -66,7 +66,7 @@ export default function CategoryPickCarousel({
         <h4 className="font-semibold text-[#0B4F5C] text-base tracking-tight">
           {categoryName}
         </h4>
-        <p className="text-xs text-[#0B4F5C]/55 mt-0.5">
+        <p className="text-sm text-[#0B4F5C]/55 mt-0.5">
           {items.length} local {items.length === 1 ? 'pick' : 'picks'} · nearest first
         </p>
       </div>
@@ -89,13 +89,13 @@ export default function CategoryPickCarousel({
                 fallbackClassName="w-full h-40"
               />
               {item.beyondRadius && (
-                <span className="absolute top-3 left-3 bg-amber-500/95 text-white text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                <span className="guest-badge absolute top-3 left-3 bg-amber-500/95 text-white shadow-sm">
                   Extended range
                 </span>
               )}
               {item.previouslyShown && (
-                <span className="absolute top-3 right-3 bg-white/90 text-[#0B4F5C] text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
-                  <Eye size={10} strokeWidth={2.2} /> Seen before
+                <span className="guest-badge absolute top-3 right-3 bg-white/90 text-[#0B4F5C] shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
+                  <Eye size={11} strokeWidth={2.2} /> Seen before
                 </span>
               )}
             </div>
@@ -106,7 +106,7 @@ export default function CategoryPickCarousel({
                   {item.title}
                 </h5>
                 {item.source === 'database' && (
-                  <span className="bg-[#C5A059]/12 text-[#8a6d2e] text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold shrink-0">
+                  <span className="guest-badge bg-[#C5A059]/12 text-[#8a6d2e] shrink-0">
                     Vailo pick
                   </span>
                 )}
@@ -119,7 +119,7 @@ export default function CategoryPickCarousel({
               />
 
               <p
-                className={`text-[11px] font-semibold flex items-center mb-3 ${
+                className={`text-sm font-semibold flex items-center mb-3 ${
                   item.beyondRadius ? 'text-amber-700' : 'text-[#0B4F5C]/70'
                 }`}
               >
@@ -150,15 +150,15 @@ export default function CategoryPickCarousel({
                           href={links.googleMapsUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex-1 py-2 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors"
+                          className="guest-btn-action flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg flex items-center justify-center transition-colors"
                         >
-                          <MapIcon size={13} className="mr-1" /> View
+                          <MapIcon size={14} className="mr-1" /> View
                         </a>
                         <a
                           href={links.navigateUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex-1 py-2 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg text-[10px] font-semibold uppercase tracking-wider flex items-center justify-center transition-colors shadow-sm"
+                          className="guest-btn-action flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg flex items-center justify-center transition-colors shadow-sm"
                         >
                           <Navigation size={13} className="mr-1" /> Go
                         </a>

@@ -34,7 +34,7 @@ export default function GuestAddToHomeBanner({
           <button
             type="button"
             onClick={handleInstallClick}
-            className="flex-1 min-w-0 py-3 pl-4 pr-2 text-left text-[#051F26] text-[11px] sm:text-xs font-bold uppercase tracking-[0.1em] hover:bg-white/10 transition-colors"
+            className="flex-1 min-w-0 py-3.5 min-h-[44px] pl-4 pr-2 text-left text-[#051F26] text-xs sm:text-sm font-bold uppercase tracking-[0.08em] hover:bg-white/10 transition-colors"
           >
             {t('installCta')}
           </button>
@@ -69,11 +69,11 @@ export default function GuestAddToHomeBanner({
               </div>
               <div>
                 <p className="font-luxury text-lg text-[#051F26] font-medium">Vailo</p>
-                <p className="text-xs text-gray-500">{propertyLabel || 'Guest portal'}</p>
+                <p className="text-sm text-gray-500">{propertyLabel || 'Guest portal'}</p>
               </div>
             </div>
             <h3 className="font-semibold text-[#051F26] mb-3">{t('installIosTitle')}</h3>
-            <ol className="space-y-3 text-sm text-gray-600 mb-5">
+            <ol className="space-y-3 text-base text-gray-600 mb-5">
               <li className="flex gap-2">
                 <Share size={16} className="text-[#0B4F5C] shrink-0 mt-0.5" />
                 <span>{t('installIosStep1')}</span>
@@ -83,7 +83,7 @@ export default function GuestAddToHomeBanner({
                 <span>{t('installIosStep2')}</span>
               </li>
               <li className="flex gap-2">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#0B4F5C] text-[9px] font-bold text-[#C5A059]">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#0B4F5C] text-xs font-bold text-[#C5A059]">
                   +
                 </span>
                 <span>{t('installIosStep3')}</span>
@@ -92,7 +92,7 @@ export default function GuestAddToHomeBanner({
             <button
               type="button"
               onClick={() => setIosGuideOpen(false)}
-              className="w-full py-2.5 rounded-xl bg-gray-100 text-[#0B4F5C] text-sm font-semibold"
+              className="w-full py-3.5 min-h-[48px] rounded-xl bg-gray-100 text-[#0B4F5C] text-base font-semibold"
             >
               {t('close')}
             </button>

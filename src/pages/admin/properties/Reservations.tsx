@@ -256,7 +256,8 @@ export default function Reservations() {
                 propSlug,
                 unitSlug,
                 inviteToken,
-                booking.typeId
+                booking.typeId,
+                booking.guestLocale
               )
             : '';
         setInviteCredentials({

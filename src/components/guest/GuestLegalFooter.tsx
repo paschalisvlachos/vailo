@@ -1,3 +1,5 @@
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+
 type Props = {
   onPrivacyClick: () => void;
   onTermsClick: () => void;
@@ -5,6 +7,7 @@ type Props = {
 
 /** Footer links for Privacy Policy and Terms of Use at the end of the guest portal. */
 export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props) {
+  const { t } = useGuestLocale();
   return (
     <div className="text-center pt-5 pb-2 border-t border-gray-200/50 !mt-6">
       <nav
@@ -14,19 +17,19 @@ export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props
         <button
           type="button"
           onClick={onPrivacyClick}
-          className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#0B4F5C] hover:text-[#C5A059] underline-offset-4 hover:underline transition-colors"
+          className="text-sm font-bold uppercase tracking-[0.1em] text-[#0B4F5C] hover:text-[#C5A059] underline-offset-4 hover:underline transition-colors min-h-[44px] px-1"
         >
           Privacy Policy
         </button>
-        <span className="text-gray-300 text-xs" aria-hidden>
+        <span className="text-gray-300 text-sm" aria-hidden>
           |
         </span>
         <button
           type="button"
           onClick={onTermsClick}
-          className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#0B4F5C] hover:text-[#C5A059] underline-offset-4 hover:underline transition-colors"
+          className="text-sm font-bold uppercase tracking-[0.1em] text-[#0B4F5C] hover:text-[#C5A059] underline-offset-4 hover:underline transition-colors min-h-[44px] px-1"
         >
-          Terms of Use
+          {t('termsOfUse')}
         </button>
       </nav>
       <img
@@ -37,7 +40,7 @@ export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props
           (e.target as HTMLImageElement).src = '../../../vailoLogo.png';
         }}
       />
-      <p className="text-[9px] font-semibold text-gray-400 tracking-[0.2em] uppercase">Powered by Vailo</p>
+      <p className="guest-eyebrow text-gray-400">Powered by Vailo</p>
     </div>
   );
 }

@@ -99,6 +99,7 @@ async function createSession(firestore, {
   accessUntil,
   source,
   guestName,
+  guestLocale,
 }) {
   const sessionRef = firestore
     .collection("properties")
@@ -140,6 +141,7 @@ function formatSessionPayload(session) {
     accessUntil: session.accessUntil,
     source: session.source,
     guestName: session.guestName,
+    guestLocale: session.guestLocale || null,
   };
 }
 
@@ -352,6 +354,7 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
       accessUntil,
       source: "invite",
       guestName: booking.guestName,
+      guestLocale: booking.guestLocale,
     });
 
     return { session };
@@ -444,6 +447,7 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
       accessUntil,
       source: booking.accessSource === "invite" ? "invite" : "on_site",
       guestName: booking.guestName,
+      guestLocale: booking.guestLocale,
     });
 
     return { session, bookingId: booking.id };

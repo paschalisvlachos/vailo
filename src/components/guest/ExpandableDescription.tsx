@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
 
 type Props = {
   text?: string;
@@ -11,22 +12,39 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
 
 /**
  * Clamps `text` to `lines` lines and shows a "more" / "less" toggle when truncated.
- * Detects truncation by comparing scrollHeight to clientHeight; works with line-clamp.
+ * Host content is auto-translated to the guest's active locale.
  */
 export default function ExpandableDescription({ text, lines = 3, className = '' }: Props) {
+  const { t, translateText } = useGuestLocale();
   const ref = useRef<HTMLParagraphElement>(null);
   const [isClamped, setIsClamped] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [displayText, setDisplayText] = useState(text || '');
+
+  useEffect(() => {
+    const raw = String(text || '').trim();
+    if (!raw) {
+      setDisplayText('');
+      return;
+    }
+    let cancelled = false;
+    setDisplayText(raw);
+    void translateText(raw).then((translated) => {
+      if (!cancelled) setDisplayText(translated);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [text, translateText]);
 
   useIsomorphicLayoutEffect(() => {
     const el = ref.current;
-    if (!el || !text) {
+    if (!el || !displayText) {
       setIsClamped(false);
       return;
     }
-    // Measure with the collapsed style applied.
     setIsClamped(el.scrollHeight - el.clientHeight > 1);
-  }, [text, lines]);
+  }, [displayText, lines]);
 
   if (!text) return null;
 
@@ -34,7 +52,7 @@ export default function ExpandableDescription({ text, lines = 3, className = '' 
     <div className={className}>
       <p
         ref={ref}
-        className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap"
+        className="text-base text-gray-600 leading-relaxed whitespace-pre-wrap"
         style={
           expanded
             ? undefined
@@ -46,15 +64,15 @@ export default function ExpandableDescription({ text, lines = 3, className = '' 
               }
         }
       >
-        {text}
+        {displayText}
       </p>
       {(isClamped || expanded) && (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#0B4F5C] hover:text-[#C5A059] transition-colors"
+          className="mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#0B4F5C] hover:text-[#C5A059] transition-colors min-h-[44px]"
         >
-          {expanded ? 'Show less' : 'More'}
+          {expanded ? t('less') : t('more')}
         </button>
       )}
     </div>

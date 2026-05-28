@@ -191,4 +191,48 @@
   .legal-document-content p:last-child {
     margin-bottom: 0;
   }
+
+  /* Guest portal — mobile-first readability (≥12px labels, 16px inputs) */
+  .guest-mobile {
+    @apply text-[15px] leading-normal antialiased;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .guest-mobile input,
+  .guest-mobile textarea,
+  .guest-mobile select {
+    @apply text-base leading-normal;
+  }
+
+  .guest-eyebrow {
+    @apply text-xs font-bold text-vailo-gold tracking-[0.18em] uppercase;
+  }
+
+  .guest-pill {
+    @apply px-4 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wide min-h-[40px];
+  }
+
+  .guest-btn-action {
+    @apply py-3 rounded-xl text-xs font-bold uppercase tracking-wide min-h-[44px];
+  }
+
+  .guest-input {
+    @apply text-base px-4 py-3 min-h-[48px] rounded-xl outline-none;
+  }
+
+  .guest-heading-section {
+    @apply font-luxury text-xl text-vailo-dark font-medium leading-snug;
+  }
+
+  .guest-card-title {
+    @apply font-luxury text-base font-medium text-vailo-dark leading-snug;
+  }
+
+  .guest-badge {
+    @apply text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full;
+  }
+
+  .guest-body-sm {
+    @apply text-sm leading-relaxed text-gray-600;
+  }
 }

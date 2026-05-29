@@ -61,6 +61,8 @@ export type PropertyRecord = {
   googleMapsUrl?: string;
   createdAt?: string;
   guestPortalAccessRequired?: boolean;
+  contentPrimaryLocale?: string;
+  contentEnabledLocales?: string[];
 };
 
 export type PropertyOutletContext = {

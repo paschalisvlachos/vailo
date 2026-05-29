@@ -29,7 +29,7 @@ import {
 } from '../../lib/houseGuidePortal';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
-import GuestTranslatedText from './GuestTranslatedText';
+import { resolveFeaturedDigest } from '../../lib/propertyContentLocales';
 
 type Props = {
   featuredOnPortal: FeaturedKey[];
@@ -65,7 +65,7 @@ export default function PropertyEssentials({
 }: Props) {
   const [openKey, setOpenKey] = useState<FeaturedKey | null>(null);
   const { track } = useGuestAnalytics();
-  const { t } = useGuestLocale();
+  const { t, locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
 
   const featured: FeaturedKey[] = (featuredOnPortal || [])
     .filter((id) => getFeaturedConfig(id))
@@ -89,7 +89,12 @@ export default function PropertyEssentials({
           const cfg = getFeaturedConfig(key);
           if (!cfg) return null;
           const preview = previews?.[key] || {};
-          const digest = (preview.digest || '').trim();
+          const digest = resolveFeaturedDigest(
+            preview,
+            locale,
+            contentPrimaryLocale,
+            contentReviewedLocales
+          );
           const icon = ICONS[cfg.iconName] || <Sparkles size={18} />;
           const isOpen = openKey === key;
 
@@ -117,7 +122,7 @@ export default function PropertyEssentials({
                     isOpen ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'
                   }`}
                 >
-                  <GuestTranslatedText text={cfg.title} />
+                  {cfg.title}
                 </span>
                 <div
                   className={`p-1.5 rounded-full transition-all ${
@@ -137,11 +142,9 @@ export default function PropertyEssentials({
               >
                 <div className="px-5 pb-5">
                   {digest ? (
-                    <GuestTranslatedText
-                      text={digest}
-                      as="div"
-                      className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
-                    />
+                    <div className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed">
+                      {digest}
+                    </div>
                   ) : (
                     <p className="text-base text-gray-500 italic">
                       Your host has not added details for this section yet.

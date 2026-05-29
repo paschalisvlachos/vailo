@@ -33,6 +33,8 @@ From the SOURCE TEXT below, produce a JSON object with two outputs aimed at a gu
 
 2. digest — A compact "at a glance" summary, MAXIMUM 700 characters. Use short bullet points (use "•" followed by a space) OR two short paragraphs. Include every must-know concrete detail (times, codes, addresses, numbers, rules, instructions). Skip filler, marketing copy, and obvious context.
 
+Write previewLine and digest in the SAME LANGUAGE as the SOURCE TEXT (do not translate to English unless the source is English).
+
 Return ONLY a JSON object with this exact schema:
 {
   "previewLine": "...",

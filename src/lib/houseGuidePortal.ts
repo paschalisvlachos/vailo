@@ -1,3 +1,5 @@
+import { getGuideTextValue } from './houseGuideLocales';
+
 /**
  * Maps the 19 admin House Guide categories to the "featured keys" that can be
  * surfaced as preview chips on the guest portal. Each featured key bundles the
@@ -225,16 +227,22 @@ export function pairedFeaturedKeyForCategory(categoryId: string): FeaturedKey | 
 export function buildSourceTextForFeaturedKey(
   key: FeaturedKey,
   guideData: Record<string, unknown>,
-  fieldsForCategoryId: (categoryId: string) => Array<{ id: string; label: string; type: string }>
+  fieldsForCategoryId: (categoryId: string) => Array<{ id: string; label: string; type: string }>,
+  locale?: string,
+  primaryLocale?: string
 ): string {
   const cfg = getFeaturedConfig(key);
   if (!cfg) return '';
   const parts: string[] = [];
+  const useLocale = locale && primaryLocale;
 
   for (const categoryId of cfg.sourceCategoryIds) {
     const fields = fieldsForCategoryId(categoryId);
     for (const field of fields) {
-      const value = guideData[field.id];
+      const value =
+        useLocale && field.type === 'textarea'
+          ? getGuideTextValue(guideData, field.id, locale, primaryLocale)
+          : guideData[field.id];
       if (typeof value === 'string' && value.trim()) {
         parts.push(`${field.label}: ${value.trim()}`);
       } else if (Array.isArray(value) && value.length > 0) {
@@ -279,6 +287,13 @@ export async function shortContentHash(input: string): Promise<string> {
 export type FeaturedPreviewRecord = {
   previewLine?: string;
   digest?: string;
+  /** Per-locale guest portal chip line (BCP-47 short codes). */
+  previewLineByLocale?: Record<string, string>;
+  /** Per-locale guest portal digest (BCP-47 short codes). */
+  digestByLocale?: Record<string, string>;
+  /** Per-locale source hash for staleness detection. */
+  contentHashByLocale?: Record<string, string>;
+  /** @deprecated Primary-locale hash; use contentHashByLocale[primary]. */
   contentHash?: string;
   generatedAt?: string;
   customPreviewLine?: string;

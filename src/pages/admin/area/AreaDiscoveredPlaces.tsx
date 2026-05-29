@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useAreaRouteParams } from '../../../hooks/useAreaRouteParams';
 import { collection, addDoc, updateDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
@@ -90,12 +90,8 @@ function IconBtn({
 }
 
 export default function AreaDiscoveredPlaces() {
-  const { country, area } = useParams<{ country: string; area: string }>();
   const toast = useToast();
-
-  const decodedCountry = decodeURIComponent(country || '');
-  const decodedArea = decodeURIComponent(area || '');
-  const areaId = decodedArea.toLowerCase().replace(/\s+/g, '-');
+  const { country: decodedCountry, areaId, areaName: decodedArea } = useAreaRouteParams();
 
   const [places, setPlaces] = useState<DiscoveredPlace[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);

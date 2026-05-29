@@ -17,6 +17,8 @@ import {
   buildServiceWhatsAppLink,
 } from '../../lib/guestServiceContact';
 import { normalizeWhatsAppPhone } from '../../lib/whatsappLink';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 
 export type GuestPortalFeature = {
   id: string;
@@ -37,8 +39,17 @@ type Props = {
   propertyTypeName?: string;
 };
 
-function featureTitle(f: GuestPortalFeature) {
-  return f.name || f.businessName || 'Service';
+function featureTitle(
+  f: GuestPortalFeature,
+  locale: string,
+  primaryLocale: string
+) {
+  return (
+    resolveLocalizedString(f, 'name', locale, primaryLocale) ||
+    f.name ||
+    f.businessName ||
+    'Service'
+  );
 }
 
 function categoryIcon(name: string) {
@@ -83,7 +94,14 @@ function ServiceDetailSheet({
   propertyTypeName?: string;
   onClose: () => void;
 }) {
-  const title = featureTitle(feature);
+  const { locale, contentPrimaryLocale } = useGuestLocale();
+  const title = featureTitle(feature, locale, contentPrimaryLocale);
+  const description = resolveLocalizedString(
+    feature,
+    'description',
+    locale,
+    contentPrimaryLocale
+  ) || feature.description || '';
   const category = feature.categories?.[0] || 'Service';
   const CatIcon = categoryIcon(category);
   const inquiryMessage = buildServiceInquiryMessage(propertyName, propertyTypeName, title);
@@ -142,9 +160,9 @@ function ServiceDetailSheet({
             </span>
           </div>
 
-          {feature.description && (
+          {description && (
             <p className="text-sm text-gray-600 text-center leading-relaxed mb-5 px-1">
-              {feature.description}
+              {description}
             </p>
           )}
 
@@ -198,6 +216,7 @@ export default function GuestLocalServices({
   propertyName,
   propertyTypeName,
 }: Props) {
+  const { locale, contentPrimaryLocale } = useGuestLocale();
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [selected, setSelected] = useState<GuestPortalFeature | null>(null);
 
@@ -250,7 +269,13 @@ export default function GuestLocalServices({
 
         <div className="space-y-2">
           {filtered.map((feature) => {
-            const title = featureTitle(feature);
+            const title = featureTitle(feature, locale, contentPrimaryLocale);
+            const listDescription = resolveLocalizedString(
+              feature,
+              'description',
+              locale,
+              contentPrimaryLocale
+            );
             const category = feature.categories?.[0] || 'Service';
             const CatIcon = categoryIcon(category);
             const hasWhatsApp = !!normalizeWhatsAppPhone(feature.whatsapp || '');
@@ -284,9 +309,9 @@ export default function GuestLocalServices({
                     <h3 className="guest-card-title mb-1 truncate">
                       {title}
                     </h3>
-                    {feature.description && (
+                    {listDescription && (
                       <p className="text-sm text-gray-500 line-clamp-2 leading-snug mb-2">
-                        {feature.description}
+                        {listDescription}
                       </p>
                     )}
                     {(hasWhatsApp || hasEmail) && (

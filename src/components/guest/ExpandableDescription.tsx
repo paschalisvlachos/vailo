@@ -1,8 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 
 type Props = {
   text?: string;
+  doc?: Record<string, unknown> | null;
+  field?: string;
   /** Number of lines to show when collapsed. */
   lines?: number;
   className?: string;
@@ -15,37 +18,29 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
 
 /**
  * Clamps `text` to `lines` lines and shows a "more" / "less" toggle when truncated.
- * Host content is auto-translated to the guest's active locale.
+ * Host content is read from stored per-locale fields (see propertyContentLocales).
  */
 export default function ExpandableDescription({
   text,
+  doc,
+  field = 'description',
   lines = 3,
   className = '',
   bodyClassName = 'text-base text-gray-600 leading-relaxed',
   toggleClassName = 'mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#0B4F5C] hover:text-[#C5A059] transition-colors min-h-[44px]',
   onExpand,
 }: Props) {
-  const { t, translateText } = useGuestLocale();
+  const { t, locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
   const ref = useRef<HTMLParagraphElement>(null);
   const [isClamped, setIsClamped] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [displayText, setDisplayText] = useState(text || '');
 
-  useEffect(() => {
-    const raw = String(text || '').trim();
-    if (!raw) {
-      setDisplayText('');
-      return;
+  const displayText = useMemo(() => {
+    if (doc) {
+      return resolveLocalizedString(doc, field, locale, contentPrimaryLocale, contentReviewedLocales);
     }
-    let cancelled = false;
-    setDisplayText(raw);
-    void translateText(raw).then((translated) => {
-      if (!cancelled) setDisplayText(translated);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [text, translateText]);
+    return String(text || '').trim();
+  }, [doc, field, locale, contentPrimaryLocale, contentReviewedLocales, text]);
 
   useIsomorphicLayoutEffect(() => {
     const el = ref.current;
@@ -56,7 +51,7 @@ export default function ExpandableDescription({
     setIsClamped(el.scrollHeight - el.clientHeight > 1);
   }, [displayText, lines]);
 
-  if (!text) return null;
+  if (!displayText) return null;
 
   return (
     <div className={className}>

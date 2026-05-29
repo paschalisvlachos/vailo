@@ -20,7 +20,10 @@ export default function GuestLanguageMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const list = options && options.length > 0 ? options : FALLBACK_GUEST_LOCALES;
+  const list = options !== undefined ? options : FALLBACK_GUEST_LOCALES;
+
+  if (list.length <= 1) return null;
+
   const current = list.find((l) => l.code === locale) ?? list[0];
 
   const triggerClass =

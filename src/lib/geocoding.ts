@@ -430,6 +430,22 @@ function buildNavigateFromMapsUrl(
   return googleMapsUrl;
 }
 
+export function isValidExternalUrl(url?: string): boolean {
+  if (!url?.trim()) return false;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Opens maps / external links reliably (mobile in-app browsers often ignore empty href). */
+export function openExternalUrl(url: string): void {
+  if (!isValidExternalUrl(url)) return;
+  window.open(url.trim(), '_blank', 'noopener,noreferrer');
+}
+
 export function getItemMapLinks(item: {
   title?: string;
   googleMapsUrl?: string;
@@ -446,9 +462,12 @@ export function getItemMapLinks(item: {
   const hasCoords =
     typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 
+  const placeId =
+    bareGooglePlaceId(item.googlePlaceId) || extractPlaceIdFromMapsUrl(item.googleMapsUrl);
+
   // 1. Best — Google Place ID resolves to the exact business card.
-  if (item.googlePlaceId || bareGooglePlaceId(item.googlePlaceId)) {
-    return { ...buildPlaceMapUrls(item.googlePlaceId, lat, lng, title), resolved: true };
+  if (placeId) {
+    return { ...buildPlaceMapUrls(placeId, lat, lng, title), resolved: true };
   }
 
   // 2. Direct /place/ URL — already resolves to a business card. Pass through.
@@ -491,9 +510,15 @@ export function getItemMapLinks(item: {
     return { ...buildPreciseMapUrls(lat, lng), resolved: true };
   }
 
-  // 6. Whatever the item brought along.
-  if (item.navigateUrl && item.googleMapsUrl) {
-    return { googleMapsUrl: item.googleMapsUrl, navigateUrl: item.navigateUrl, resolved: true };
+  // 6. Stored URLs (even if not “direct” place URLs).
+  if (isValidExternalUrl(item.googleMapsUrl)) {
+    return {
+      googleMapsUrl: item.googleMapsUrl!.trim(),
+      navigateUrl: isValidExternalUrl(item.navigateUrl)
+        ? item.navigateUrl!.trim()
+        : buildNavigateFromMapsUrl(item.googleMapsUrl!, undefined, lat, lng),
+      resolved: true,
+    };
   }
 
   // 7. Area hint only.

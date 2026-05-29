@@ -6,7 +6,6 @@ import { ai, db } from '../../lib/firebase';
 import {
   resolveCustomLocation,
   enrichPlanWithMapLinks,
-  getItemMapLinks,
   type GeocodedPlace,
 } from '../../lib/geocoding';
 import { enrichPlanWithAllPhotos, type PlanPhotoContext } from '../../lib/planPhotos';
@@ -28,6 +27,7 @@ import {
 } from '../../lib/timelinePropertyBookends';
 import { scheduleTimelinePlan } from '../../lib/timelineScheduling';
 import CategoryPickCarousel from '../../components/guest/CategoryPickCarousel';
+import MapLinkButtons from '../../components/guest/MapLinkButtons';
 import PlanOverviewMap from '../../components/guest/PlanOverviewMap';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
 import PlanImage from '../../components/guest/PlanImage';
@@ -36,14 +36,40 @@ import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestAiLanguageBlock } from '../../lib/guestAiLanguage';
 import type { GuestLocale } from '../../lib/guestLocale';
+import { resolveLocalizedString } from '../../lib/propertyContentLocales';
+import { usePropertyContentLocaleSettings } from '../../hooks/usePropertyContentLocaleSettings';
+import { categoryPrimaryName, resolveCategoryLabel } from '../../lib/categoryLocale';
 import { guestUiTFormat, type GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
+import AiExpertCuratingLoader from '../../components/guest/AiExpertCuratingLoader';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
-import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Compass, Heart, Eye } from 'lucide-react';
+import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Compass, Heart, Eye } from 'lucide-react';
 
 type GuestLocaleOption = { code: string; label: string; nativeLabel: string };
+type GemCategoryOption = { primary: string; label: string };
 
 const WIZARD_STEP_KEYS = ['LOCATION', 'CATEGORIES', 'DISTANCE', 'TIME'] as const;
+
+const CURATING_STEP_KEYS: GuestLocaleUiKey[] = [
+  'aiExpertCuratingStepExplore',
+  'aiExpertCuratingStepMatch',
+  'aiExpertCuratingStepBuild',
+  'aiExpertCuratingStepFinishing',
+];
+
+const AI_EXPERT_DESC_BODY = 'text-sm text-white/70 leading-relaxed';
+const AI_EXPERT_DESC_TOGGLE =
+  'mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-vailo-gold hover:text-white transition-colors min-h-[44px]';
+const AI_EXPERT_PANEL =
+  'rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm p-5 shadow-[0_8px_30px_rgba(5,31,38,0.2)]';
+const AI_EXPERT_PANEL_TITLE = 'text-base font-semibold text-white mb-1';
+const AI_EXPERT_PANEL_SUB = 'text-sm text-white/60 mb-4 leading-relaxed';
+const AI_EXPERT_BTN_PRIMARY =
+  'bg-gradient-to-br from-vailo-gold to-[#a88648] text-white font-semibold shadow-[0_4px_16px_rgba(197,160,89,0.4)] hover:from-[#d4ad65] hover:to-vailo-gold hover:shadow-[0_6px_22px_rgba(197,160,89,0.5)] disabled:opacity-40 transition-all';
+const AI_EXPERT_BTN_PRIMARY_PILL =
+  'bg-gradient-to-br from-vailo-gold to-[#a88648] text-white border border-vailo-gold/80 shadow-[0_2px_12px_rgba(197,160,89,0.35)]';
+const AI_EXPERT_BTN_SECONDARY =
+  'bg-vailo-gold/20 text-white border border-vailo-gold/50 font-semibold hover:bg-vailo-gold/30 hover:border-vailo-gold/70 shadow-[0_2px_12px_rgba(197,160,89,0.2)] transition-all';
 
 interface AiExpertViewProps {
   onClose: () => void;
@@ -285,6 +311,9 @@ export default function AiExpertView({
 }: AiExpertViewProps) {
   const { track } = useGuestAnalytics();
   const { t } = useGuestLocale();
+  const contentSettings = usePropertyContentLocaleSettings(
+    property as Record<string, unknown> | undefined
+  );
   const tf = (key: GuestLocaleUiKey, vars: Record<string, string | number>) =>
     guestUiTFormat(locale, key, vars);
 
@@ -338,9 +367,13 @@ export default function AiExpertView({
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingLabel, setThinkingLabel] = useState<GuestLocaleUiKey>('aiExpertThinking');
+  const [curatingStepIndex, setCuratingStepIndex] = useState(0);
   const [locationCandidates, setLocationCandidates] = useState<GeocodedPlace[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const isFirstScrollRef = useRef(true);
+  const prevMessagesLenRef = useRef(0);
 
   const CHAT_TEXTAREA_MAX_PX = 128;
 
@@ -353,7 +386,7 @@ export default function AiExpertView({
     el.style.overflowY = el.scrollHeight > CHAT_TEXTAREA_MAX_PX ? 'auto' : 'hidden';
   }, []);
 
-  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<GemCategoryOption[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [listingAreaCtx, setListingAreaCtx] = useState<ListingAreaContext | null>(null);
   const [areaConfigIssue, setAreaConfigIssue] = useState<AreaConfigIssue>(null);
@@ -459,12 +492,23 @@ export default function AiExpertView({
             'localGemsCategories'
           )
         );
-        const names = gemsCatSnap.docs
-          .map((d) => d.data().name)
-          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
-          .map((name) => name.trim());
-
-        setAvailableCategories(Array.from(new Set(names)).sort((a, b) => a.localeCompare(b)));
+        const byPrimary = new Map<string, GemCategoryOption>();
+        for (const d of gemsCatSnap.docs) {
+          const data = d.data() as Record<string, unknown>;
+          const primary = categoryPrimaryName(data, contentSettings.primaryLocale).trim();
+          if (!primary) continue;
+          const label =
+            resolveCategoryLabel(
+              data,
+              locale,
+              contentSettings.primaryLocale,
+              contentSettings.reviewedLocales
+            ).trim() || primary;
+          if (!byPrimary.has(primary)) byPrimary.set(primary, { primary, label });
+        }
+        setAvailableCategories(
+          Array.from(byPrimary.values()).sort((a, b) => a.label.localeCompare(b.label))
+        );
       } catch (error) {
         console.error('Failed to fetch local gem categories:', error);
         setAvailableCategories([]);
@@ -500,7 +544,7 @@ export default function AiExpertView({
 
     fetchCategories();
     fetchRichLocation();
-  }, [property, propertyType]);
+  }, [property, propertyType, locale, contentSettings.primaryLocale, contentSettings.reviewedLocales]);
 
   useEffect(() => {
     if (!listingAreaCtx?.areaId) return;
@@ -523,8 +567,46 @@ export default function AiExpertView({
   }, [listingAreaCtx]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, step, dynamicDistances]);
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    if (isFirstScrollRef.current) {
+      isFirstScrollRef.current = false;
+      requestAnimationFrame(() => {
+        el.scrollTop = 0;
+      });
+      prevMessagesLenRef.current = messages.length;
+      return;
+    }
+
+    const messagesGrew = messages.length > prevMessagesLenRef.current;
+    prevMessagesLenRef.current = messages.length;
+
+    if (messagesGrew || isThinking) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }, [messages, isThinking]);
+
+  useEffect(() => {
+    const hasPlanMessage = messages.some((message) => message.type === 'plan');
+    if (!isThinking || step !== 'DONE' || hasPlanMessage) {
+      setCuratingStepIndex(0);
+      return;
+    }
+
+    setThinkingLabel(CURATING_STEP_KEYS[0]);
+    const id = window.setInterval(() => {
+      setCuratingStepIndex((prev) => {
+        const next = (prev + 1) % CURATING_STEP_KEYS.length;
+        setThinkingLabel(CURATING_STEP_KEYS[next]);
+        return next;
+      });
+    }, 2800);
+
+    return () => window.clearInterval(id);
+  }, [isThinking, step, messages]);
 
   const getLocationContext = () => {
     const propertyDisplayName = getPropertyDisplayName();
@@ -764,10 +846,31 @@ export default function AiExpertView({
     const { coords: propCoords } = getLocationContext();
     const startCoords = startCoordsOverride ?? getStartCoords();
 
+    const primary = contentSettings.primaryLocale;
+    const reviewed = contentSettings.reviewedLocales;
+
+    const localizeGem = (g: any) => ({
+      ...g,
+      name: resolveLocalizedString(g, 'name', locale, primary, reviewed),
+      description: resolveLocalizedString(g, 'description', locale, primary, reviewed),
+      category: resolveLocalizedString(g, 'category', locale, primary, reviewed),
+    });
+    const localizeFeature = (f: any) => ({
+      ...f,
+      name: resolveLocalizedString(f, 'name', locale, primary, reviewed) || f.businessName,
+      description: resolveLocalizedString(f, 'description', locale, primary, reviewed),
+    });
+
     if (!startCoords || isNaN(maxKmLimit)) {
       return {
-        gems: gems?.map(g => ({ name: g.name, category: g.category, distance: g.distanceKm ? `${g.distanceKm}km` : 'Local', description: g.description, photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })) || [],
-        features: features?.map(f => ({ name: f.businessName || f.name, category: f.categories?.join(', '), distance: 'Local', description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' })) || []
+        gems: gems?.map((g) => {
+          const lg = localizeGem(g);
+          return { name: lg.name, category: lg.category, distance: g.distanceKm ? `${g.distanceKm}km` : 'Local', description: lg.description, photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' };
+        }) || [],
+        features: features?.map((f) => {
+          const lf = localizeFeature(f);
+          return { name: lf.name, category: f.categories?.join(', '), distance: 'Local', description: lf.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' };
+        }) || []
       };
     }
 
@@ -785,8 +888,28 @@ export default function AiExpertView({
     const filteredFeatures = fairSort(filterItems(features), recentlyShown);
 
     return {
-      gems: filteredGems.map(g => ({ name: g.name, category: g.category, distance: g.calculatedKm !== null ? `${g.calculatedKm.toFixed(1)}km` : (g.distanceKm ? `${g.distanceKm}km` : 'Local'), description: g.description, photoUrl: g.photoUrl || '', googleMapsUrl: g.googleMapsUrl || '' })),
-      features: filteredFeatures.map(f => ({ name: f.businessName || f.name, category: f.categories?.join(', '), distance: f.calculatedKm !== null ? `${f.calculatedKm.toFixed(1)}km` : 'Local', description: f.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' }))
+      gems: filteredGems.map((g) => {
+        const lg = localizeGem(g);
+        return {
+          name: lg.name,
+          category: lg.category,
+          distance: g.calculatedKm !== null ? `${g.calculatedKm.toFixed(1)}km` : (g.distanceKm ? `${g.distanceKm}km` : 'Local'),
+          description: lg.description,
+          photoUrl: g.photoUrl || '',
+          googleMapsUrl: g.googleMapsUrl || '',
+        };
+      }),
+      features: filteredFeatures.map((f) => {
+        const lf = localizeFeature(f);
+        return {
+          name: lf.name,
+          category: f.categories?.join(', '),
+          distance: f.calculatedKm !== null ? `${f.calculatedKm.toFixed(1)}km` : 'Local',
+          description: lf.description,
+          photoUrl: f.photoUrl || '',
+          googleMapsUrl: f.googleMapsUrl || '',
+        };
+      }),
     };
   };
 
@@ -957,7 +1080,8 @@ export default function AiExpertView({
     
     setStep('DONE');
     setIsThinking(true);
-    setThinkingLabel('aiExpertThinking');
+    setCuratingStepIndex(0);
+    setThinkingLabel(CURATING_STEP_KEYS[0]);
 
     try {
       const aiTimeFrame = timeFrameStr
@@ -1379,8 +1503,8 @@ User: ${userText}`;
     if (msg.role === 'user') {
       if (msg.type === 'selection') return null;
       return (
-        <div key={msg.id} className="flex justify-end mb-5 animate-in fade-in slide-in-from-bottom-2">
-          <div className="max-w-[90%] bg-[#0B4F5C] text-white px-4 py-3 rounded-2xl rounded-tr-md shadow-[0_4px_20px_rgba(11,79,92,0.2)] text-base leading-relaxed whitespace-pre-wrap">
+        <div key={msg.id} className="flex justify-end mb-5 animate-in fade-in duration-300">
+          <div className="max-w-[90%] bg-white/12 text-white px-4 py-3 rounded-2xl rounded-tr-md border border-white/10 shadow-sm text-base leading-relaxed whitespace-pre-wrap">
             {msg.text}
           </div>
         </div>
@@ -1396,28 +1520,28 @@ User: ${userText}`;
       const area = getAreaName();
 
       return (
-        <div key={msg.id} className="mb-6 animate-in fade-in slide-in-from-bottom-2">
-          <div className="rounded-3xl overflow-hidden border border-[#C5A059]/15 shadow-[0_12px_40px_rgba(197,160,89,0.12)]">
-            <div className="bg-gradient-to-br from-[#FFFCF7] via-white to-[#F4FAFA] px-5 py-4">
-              <p className="guest-eyebrow mb-1.5">
+        <div key={msg.id} className="mb-6 animate-in fade-in duration-300">
+          <div className="rounded-3xl overflow-hidden border border-white/15 bg-white/10 backdrop-blur-sm shadow-[0_12px_40px_rgba(5,31,38,0.2)]">
+            <div className="px-5 py-4">
+              <p className="guest-eyebrow mb-1.5 text-white/45">
                 {t('aiExpertYoureIn')}
               </p>
-              <p className="font-luxury text-xl sm:text-2xl leading-snug text-[#051F26] font-medium">
+              <p className="font-luxury text-xl sm:text-2xl leading-snug text-white font-medium">
                 {propertyNameOnly}
               </p>
               {typeName && (
-                <p className="text-sm font-semibold text-[#0B4F5C]/55 tracking-[0.08em] uppercase mt-1">
+                <p className="text-sm font-semibold text-white/55 tracking-[0.08em] uppercase mt-1">
                   {typeName}
                 </p>
               )}
               <div className="flex items-center gap-2 my-3">
-                <div className="h-px flex-1 bg-gradient-to-r from-[#C5A059]/45 to-transparent" />
-                <Sparkles size={11} className="text-[#C5A059]/70 shrink-0" />
+                <div className="h-px flex-1 bg-gradient-to-r from-vailo-gold/45 to-transparent" />
+                <Sparkles size={11} className="text-vailo-gold/70 shrink-0" />
               </div>
-              <p className="text-base text-[#0B4F5C]/90 leading-relaxed">
+              <p className="text-base text-white/85 leading-relaxed">
                 {tf('aiExpertWelcomeBody', { area })}
               </p>
-              <p className="text-base font-medium text-[#0B4F5C] mt-2.5 leading-relaxed">
+              <p className="text-base font-medium text-white mt-2.5 leading-relaxed">
                 {t('aiExpertWelcomeCta')}
               </p>
             </div>
@@ -1430,12 +1554,12 @@ User: ${userText}`;
       const isPicks = msg.data.type === 'picks';
 
       return (
-        <div key={msg.id} className="mb-8 animate-in fade-in slide-in-from-bottom-2">
-          <div className="bg-white/90 backdrop-blur-sm border border-[#C5A059]/20 rounded-3xl overflow-hidden shadow-[0_12px_40px_rgba(11,79,92,0.08)]">
-            <div className="bg-gradient-to-r from-[#0B4F5C] to-[#0a6574] px-5 py-4 text-white">
+        <div key={msg.id} className="mb-8 animate-in fade-in duration-300">
+          <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-3xl overflow-hidden shadow-[0_12px_40px_rgba(5,31,38,0.25)]">
+            <div className="bg-gradient-to-r from-vailo-teal/80 to-vailo-teal-light/90 px-5 py-4 text-white border-b border-white/10">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-white/10 rounded-xl shrink-0">
-                  {isPicks ? <Heart size={18} className="text-[#C5A059]" /> : <Compass size={18} className="text-[#C5A059]" />}
+                  {isPicks ? <Heart size={18} className="text-vailo-gold" /> : <Compass size={18} className="text-vailo-gold" />}
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg tracking-tight">
@@ -1452,11 +1576,11 @@ User: ${userText}`;
             {msg.data.type === 'timeline' && (
               <div className="space-y-6 pt-1">
                 {msg.data.plan?.map((item: any, idx: number) => (
-                  <div key={idx} className="relative pl-6 pb-6 border-l-2 border-[#C5A059]/30 last:border-0 last:pb-0">
-                    <div className="absolute w-3 h-3 bg-[#C5A059] rounded-full -left-[7px] top-1 ring-4 ring-[#C5A059]/15" />
-                    <p className="font-semibold text-[#0B4F5C] text-base mb-2">{item.time}</p>
+                  <div key={idx} className="relative pl-6 pb-6 border-l-2 border-vailo-gold/30 last:border-0 last:pb-0">
+                    <div className="absolute w-3 h-3 bg-vailo-gold rounded-full -left-[7px] top-1 ring-4 ring-vailo-gold/15" />
+                    <p className="font-semibold text-vailo-gold text-base mb-2">{item.time}</p>
                     
-                    <div className="bg-white border border-[#0B4F5C]/8 rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(11,79,92,0.06)]">
+                    <div className="bg-white/8 border border-white/10 rounded-2xl overflow-hidden">
                       <div className="relative">
                         <PlanImage
                           src={item.photoUrl}
@@ -1465,20 +1589,20 @@ User: ${userText}`;
                           fallbackClassName="w-full h-36"
                         />
                         {item.previouslyShown && (
-                          <span className="guest-badge absolute top-3 right-3 bg-white/90 text-[#0B4F5C] px-2.5 py-1 shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
+                          <span className="guest-badge absolute top-3 right-3 bg-vailo-teal/90 text-white px-2.5 py-1 shadow-sm border border-white/15 flex items-center gap-1">
                             <Eye size={11} strokeWidth={2.2} /> {t('aiExpertSeenBefore')}
                           </span>
                         )}
                       </div>
                       <div className="p-4">
-                        <h4 className="font-semibold text-gray-900 text-base flex flex-wrap items-center gap-2 mb-2">
+                        <h4 className="font-semibold text-white text-base flex flex-wrap items-center gap-2 mb-2">
                           {item.title}
                           {(item.isProperty || item.source === 'property') ? (
-                            <span className="guest-badge bg-[#0B4F5C]/10 text-[#0B4F5C]">
+                            <span className="guest-badge bg-white/12 text-white border border-white/15">
                               {t('aiExpertBadgeYourStay')}
                             </span>
                           ) : item.source === 'database' ? (
-                            <span className="guest-badge bg-[#C5A059]/12 text-[#8a6d2e]">
+                            <span className="guest-badge bg-vailo-gold/20 text-vailo-gold border border-vailo-gold/25">
                               {t('aiExpertBadgeVailoPick')}
                             </span>
                           ) : null}
@@ -1487,9 +1611,11 @@ User: ${userText}`;
                           text={item.description}
                           lines={3}
                           className="mb-4"
+                          bodyClassName={AI_EXPERT_DESC_BODY}
+                          toggleClassName={AI_EXPERT_DESC_TOGGLE}
                         />
 
-                        <div className="flex items-center justify-between gap-2 pt-4 border-t border-[#0B4F5C]/8">
+                        <div className="flex items-center justify-between gap-2 pt-4 border-t border-white/10">
                           {!(item.isProperty || item.source === 'property') && (
                           <PickFeedbackButtons
                             propertyId={property?.id}
@@ -1504,28 +1630,19 @@ User: ${userText}`;
                             }}
                           />
                           )}
-                          <div className="flex gap-2 flex-1">
-                            {(() => {
-                              const links = getItemMapLinks(item, mapAreaHint);
-                              return (
-                                <>
-                                  <a href={links.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="guest-btn-action flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg flex items-center justify-center transition-colors">
-                                    <MapIcon size={14} className="mr-1" /> {t('aiExpertView')}
-                                  </a>
-                                  <a href={links.navigateUrl} target="_blank" rel="noopener noreferrer" className="guest-btn-action flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg flex items-center justify-center transition-colors shadow-sm">
-                                    <Navigation size={14} className="mr-1" /> {t('aiExpertGo')}
-                                  </a>
-                                </>
-                              );
-                            })()}
-                          </div>
+                          <MapLinkButtons
+                            item={item}
+                            mapAreaHint={mapAreaHint}
+                            viewLabel={t('aiExpertView')}
+                            goLabel={t('aiExpertGo')}
+                          />
                         </div>
                       </div>
                     </div>
 
                     {item.transportToNext && (
-                      <div className="mt-3 inline-flex items-center text-sm font-medium text-[#0B4F5C]/60 bg-[#f8faf9] px-3 py-2 rounded-lg border border-[#0B4F5C]/8">
-                        <Navigation size={12} className="mr-2 text-[#C5A059]" /> {item.transportToNext}
+                      <div className="mt-3 inline-flex items-center text-sm font-medium text-white/70 bg-white/8 px-3 py-2 rounded-lg border border-white/10">
+                        <Navigation size={12} className="mr-2 text-vailo-gold" /> {item.transportToNext}
                       </div>
                     )}
                   </div>
@@ -1542,6 +1659,8 @@ User: ${userText}`;
                     items={cat.items || []}
                     mapAreaHint={mapAreaHint}
                     propertyId={property?.id}
+                    viewMapLabel={t('aiExpertView')}
+                    goMapLabel={t('aiExpertGo')}
                   />
                 ))}
               </div>
@@ -1551,7 +1670,7 @@ User: ${userText}`;
 
             <button
               onClick={planAnotherDay}
-              className="w-full mt-6 py-4 min-h-[48px] bg-[#f8faf9] hover:bg-[#eef3f2] text-[#0B4F5C] font-semibold text-base rounded-2xl transition-colors border border-[#0B4F5C]/10"
+              className="w-full mt-6 py-4 min-h-[48px] rounded-2xl text-base transition-all border border-vailo-gold/45 bg-vailo-gold/15 text-white font-semibold hover:bg-vailo-gold/25 hover:border-vailo-gold/65 shadow-[0_2px_12px_rgba(197,160,89,0.2)]"
             >
               {t('aiExpertPlanAnotherDay')}
             </button>
@@ -1562,8 +1681,8 @@ User: ${userText}`;
     }
 
     return (
-      <div key={msg.id} className="mb-5 animate-in fade-in slide-in-from-bottom-2">
-        <div className="bg-white border border-[#0B4F5C]/8 text-gray-700 px-4 py-3.5 rounded-2xl shadow-[0_4px_20px_rgba(11,79,92,0.06)] text-base leading-relaxed whitespace-pre-wrap">
+      <div key={msg.id} className="mb-5 animate-in fade-in duration-300">
+        <div className="bg-white/10 border border-white/15 text-white/90 px-4 py-3.5 rounded-2xl text-base leading-relaxed whitespace-pre-wrap">
           {msg.text}
         </div>
       </div>
@@ -1585,15 +1704,15 @@ User: ${userText}`;
     }
 
     return (
-      <div className="mb-4 rounded-2xl border border-[#0B4F5C]/10 bg-white/80 backdrop-blur-sm overflow-hidden shadow-[0_4px_24px_rgba(11,79,92,0.06)]">
-        <div className="px-4 py-2.5 bg-gradient-to-r from-[#0B4F5C]/5 to-[#C5A059]/5 border-b border-[#0B4F5C]/8">
-          <p className="guest-eyebrow text-[#0B4F5C]/70">{t('aiExpertYourChoices')}</p>
+      <div className="mb-4 rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-white/10">
+          <p className="guest-eyebrow text-white/45">{t('aiExpertYourChoices')}</p>
         </div>
         <div className="px-4 py-3 space-y-2.5">
           {hasLocation && (
             <div className="flex items-start gap-2.5">
-              <MapPin size={14} className="text-[#C5A059] shrink-0 mt-0.5" />
-              <span className="text-base text-[#0B4F5C] leading-snug">{preferences.location}</span>
+              <MapPin size={14} className="text-vailo-gold shrink-0 mt-0.5" />
+              <span className="text-base text-white leading-snug">{preferences.location}</span>
             </div>
           )}
           {hasCategories && (
@@ -1601,7 +1720,7 @@ User: ${userText}`;
               {preferences.categories.map((cat) => (
                 <span
                   key={cat}
-                  className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-[#0B4F5C]/8 text-[#0B4F5C] font-semibold"
+                  className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-white/12 text-white font-semibold border border-white/10"
                 >
                   {cat}
                 </span>
@@ -1610,16 +1729,16 @@ User: ${userText}`;
           )}
           {hasDistance && (
             <div className="flex items-center gap-2.5">
-              <Compass size={14} className="text-[#C5A059] shrink-0" />
-              <span className="text-base text-[#0B4F5C]">
+              <Compass size={14} className="text-vailo-gold shrink-0" />
+              <span className="text-base text-white">
                 {tf('aiExpertWithinDistance', { distance: preferences.distance })}
               </span>
             </div>
           )}
           {(hasSchedule || pendingSchedule) && (
             <div className="flex items-center gap-2.5">
-              <Clock size={14} className="text-[#C5A059] shrink-0" />
-              <span className="text-base text-[#0B4F5C]">
+              <Clock size={14} className="text-vailo-gold shrink-0" />
+              <span className="text-base text-white">
                 {hasSchedule
                   ? preferences.timeFrame === 'flexible'
                     ? t('aiExpertFlexibleSchedule')
@@ -1644,12 +1763,12 @@ User: ${userText}`;
             <div key={s.key} className="flex flex-col items-center flex-1">
               <div
                 className={`w-2 h-2 rounded-full transition-colors ${
-                  i <= wizardStepIndex ? 'bg-[#C5A059]' : 'bg-[#0B4F5C]/15'
+                  i <= wizardStepIndex ? 'bg-vailo-gold' : 'bg-white/20'
                 }`}
               />
               <span
                 className={`text-[10px] sm:text-xs mt-1.5 text-center leading-tight ${
-                  i === wizardStepIndex ? 'text-[#0B4F5C] font-semibold' : 'text-gray-400'
+                  i === wizardStepIndex ? 'text-white font-semibold' : 'text-white/40'
                 }`}
               >
                 {s.label}
@@ -1657,9 +1776,9 @@ User: ${userText}`;
             </div>
           ))}
         </div>
-        <div className="h-0.5 bg-[#0B4F5C]/10 rounded-full overflow-hidden">
+        <div className="h-0.5 bg-white/15 rounded-full overflow-hidden">
           <div
-            className="h-full bg-[#C5A059] transition-all duration-500 rounded-full"
+            className="h-full bg-vailo-gold transition-all duration-500 rounded-full"
             style={{ width: `${((wizardStepIndex + 1) / wizardSteps.length) * 100}%` }}
           />
         </div>
@@ -1667,77 +1786,122 @@ User: ${userText}`;
     );
   };
 
+  const renderThinkingLoader = () => {
+    if (!isThinking) return null;
+
+    const isInitialCurating =
+      step === 'DONE' && !messages.some((message) => message.type === 'plan');
+
+    if (isInitialCurating) {
+      const steps = CURATING_STEP_KEYS.map((key) => ({ key, label: t(key) }));
+      return (
+        <AiExpertCuratingLoader
+          headline={t(thinkingLabel)}
+          hint={t('aiExpertCuratingHint')}
+          steps={steps}
+          activeStepIndex={curatingStepIndex}
+        />
+      );
+    }
+
+    return <AiExpertCuratingLoader headline={t(thinkingLabel)} compact />;
+  };
+
   return (
-    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+    <div className="guest-mobile fixed inset-0 z-50 flex flex-col overflow-hidden bg-gradient-to-b from-vailo-teal to-vailo-teal-hover md:relative md:h-[800px] md:rounded-3xl md:shadow-[4px_0_48px_-8px_rgba(5,31,38,0.45)] md:border md:border-white/10">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
         .font-luxury { font-family: 'Lora', serif; }
+        @keyframes ai-expert-shimmer {
+          0% { transform: translateX(-120%); }
+          100% { transform: translateX(320%); }
+        }
+        .ai-expert-shimmer-bar {
+          animation: ai-expert-shimmer 1.8s ease-in-out infinite;
+        }
+        .ai-expert-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(197, 160, 89, 0.45) rgba(255, 255, 255, 0.08);
+        }
+        .ai-expert-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .ai-expert-scroll::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.06);
+          border-radius: 9999px;
+        }
+        .ai-expert-scroll::-webkit-scrollbar-thumb {
+          background: rgba(197, 160, 89, 0.45);
+          border-radius: 9999px;
+        }
+        .ai-expert-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(197, 160, 89, 0.65);
+        }
       `}</style>
 
-      <div className="relative shrink-0 z-30 overflow-visible border-b border-[#0B4F5C]/8 isolate">
-        <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-[#EAF2F2] via-white to-[#FDF9F3]" />
-        <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(#0B4F5C_1px,transparent_1px)] [background-size:28px_28px] opacity-[0.04] pointer-events-none" />
-        <div className="absolute -top-12 -right-8 w-44 h-44 bg-[#C5A059]/14 blur-3xl rounded-full pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-[#0B4F5C]/10 blur-3xl rounded-full pointer-events-none" />
+      <div className="relative shrink-0 z-30 overflow-hidden border-b border-white/10 isolate">
+        <div className="absolute -top-12 -right-8 w-44 h-44 bg-vailo-gold/10 blur-3xl rounded-full pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-white/5 blur-3xl rounded-full pointer-events-none" />
 
-        <div className="relative z-10 px-4 py-3 flex items-center gap-2.5 sm:gap-3">
+        <div className="relative z-10 px-4 py-3.5 flex items-center gap-2.5 sm:gap-3">
           <button
             onClick={onClose}
-            className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/90 border border-[#0B4F5C]/10 text-[#0B4F5C] shadow-[0_2px_12px_rgba(11,79,92,0.08)] hover:border-[#C5A059]/35 hover:shadow-md transition-all"
+            className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-white/10 border border-white/15 text-white hover:bg-white/15 transition-all"
             aria-label={t('aiExpertBackAria')}
           >
             <ArrowLeft size={20} />
           </button>
 
           <div className="flex-1 min-w-0">
-            <p className="guest-eyebrow text-[10px] sm:text-xs">
+            <p className="guest-eyebrow text-[10px] sm:text-xs text-white/45">
               {t('aiExpertConcierge')}
             </p>
-            <h2 className="font-luxury text-lg sm:text-xl leading-tight text-[#051F26] font-medium mt-0.5">
+            <h2 className="font-luxury text-lg sm:text-xl leading-tight text-white font-medium mt-0.5">
               {t('aiExpertTitle')}
             </h2>
           </div>
 
           <GuestLanguageMenu
-            variant="surface"
+            variant="hero"
             locale={locale}
             onChange={setLocale}
             options={localeOptions}
           />
-          <img
-            src="../../../vailoLogo.png"
-            alt="Vailo"
-            className="h-9 w-auto shrink-0 drop-shadow-sm hidden sm:block"
-          />
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner hidden sm:flex">
+            <span className="font-bold text-vailo-gold text-sm font-luxury">V</span>
+          </div>
         </div>
       </div>
 
-      <div className="relative z-0 flex-1 overflow-y-auto p-4 md:p-6 [scrollbar-width:thin] flex flex-col">
+      <div
+        ref={scrollContainerRef}
+        className="relative z-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden ai-expert-scroll p-4 md:p-6 flex flex-col"
+      >
         {messages.map(renderMessage)}
 
         {!isThinking && step !== 'DONE' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 mt-1 max-w-full">
+          <div className="animate-in fade-in mt-1 w-full min-w-0 max-w-full">
             {renderWizardSummary()}
             {renderWizardProgress()}
             
             {step === 'LOCATION' && (
-              <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertLocationTitle')}</p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">{t('aiExpertLocationSub')}</p>
+              <div className={AI_EXPERT_PANEL}>
+                <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertLocationTitle')}</p>
+                <p className={AI_EXPERT_PANEL_SUB}>{t('aiExpertLocationSub')}</p>
                 {locationCandidates.length > 0 ? (
                   <div className="flex flex-col gap-2.5">
-                    <p className="text-sm text-gray-500 mb-1">{t('aiExpertWhichLocation')}</p>
+                    <p className="text-sm text-white/60 mb-1">{t('aiExpertWhichLocation')}</p>
                     {locationCandidates.map((place) => (
                       <button
                         key={`${place.lat}-${place.lng}`}
                         onClick={() => confirmLocationChoice(place, place.label)}
-                        className="group flex items-start gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
+                        className="group flex items-start gap-3 bg-white/8 border border-white/15 text-white px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-vailo-gold/40 hover:bg-vailo-gold/10 transition-all"
                       >
-                        <MapPin size={16} className="text-[#C5A059] shrink-0 mt-0.5" />
+                        <MapPin size={16} className="text-vailo-gold shrink-0 mt-0.5" />
                         <span>
                           {place.label}
                           {place.distanceFromPropertyKm != null && (
-                            <span className="block text-sm font-normal text-gray-500 mt-0.5">
+                            <span className="block text-sm font-normal text-white/55 mt-0.5">
                               {tf('aiExpertKmFromProperty', {
                                 km: Math.round(place.distanceFromPropertyKm),
                                 name: getPropertyDisplayName(),
@@ -1750,7 +1914,7 @@ User: ${userText}`;
                     <button
                       type="button"
                       onClick={() => setLocationCandidates([])}
-                      className="text-sm text-[#0B4F5C]/60 hover:text-[#0B4F5C] mt-1 text-left transition-colors min-h-[44px]"
+                      className="text-sm text-white/55 hover:text-white mt-1 text-left transition-colors min-h-[44px]"
                     >
                       {t('aiExpertTryDifferentSpelling')}
                     </button>
@@ -1759,25 +1923,25 @@ User: ${userText}`;
                   <div className="flex flex-col gap-2.5">
                     <button
                       onClick={() => advanceStep('LOCATION', getNearPropertyLabel(), getNearPropertyLabel())}
-                      className="group flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
+                      className="group flex items-center gap-3 bg-white/8 border border-white/15 text-white px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-vailo-gold/40 hover:bg-vailo-gold/10 transition-all"
                     >
-                      <MapPin size={16} className="text-[#C5A059] shrink-0" />
+                      <MapPin size={16} className="text-vailo-gold shrink-0" />
                       {getPropertyDisplayName()}
                     </button>
                     <div className="relative">
-                      <p className="text-sm text-gray-500 mb-2 text-center">{t('aiExpertOrEnterTown')}</p>
+                      <p className="text-sm text-white/60 mb-2 text-center">{t('aiExpertOrEnterTown')}</p>
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={customLoc}
                           onChange={(e) => setCustomLoc(e.target.value)}
                           placeholder={t('aiExpertLocationPlaceholder')}
-                          className="guest-input flex-1 bg-white border border-[#0B4F5C]/10 focus:border-[#C5A059]/50 focus:ring-2 focus:ring-[#C5A059]/15 transition-shadow"
+                          className="guest-input flex-1 bg-white/8 border border-white/15 text-white placeholder:text-white/40 focus:border-vailo-gold/50 focus:ring-2 focus:ring-vailo-gold/15 transition-shadow"
                         />
                         <button
                           disabled={!customLoc.trim()}
                           onClick={() => advanceStep('LOCATION', customLoc, customLoc)}
-                          className="px-5 min-h-[48px] bg-[#0B4F5C] text-white text-base font-semibold rounded-xl disabled:opacity-40 hover:bg-[#0a4550] transition-colors"
+                          className={`px-5 min-h-[48px] rounded-xl text-base ${AI_EXPERT_BTN_PRIMARY}`}
                         >
                           {t('aiExpertSet')}
                         </button>
@@ -1789,38 +1953,38 @@ User: ${userText}`;
             )}
 
             {step === 'CATEGORIES' && (
-              <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertCategoriesTitle')}</p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">{t('aiExpertCategoriesSub')}</p>
+              <div className={AI_EXPERT_PANEL}>
+                <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertCategoriesTitle')}</p>
+                <p className={AI_EXPERT_PANEL_SUB}>{t('aiExpertCategoriesSub')}</p>
                 <div className="flex flex-wrap gap-2 mb-5">
                   {categoriesLoading && availableCategories.length === 0 ? (
-                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> {t('aiExpertLoadingCategories')}
+                    <p className="text-sm text-white/50 flex items-center gap-2">
+                      <Loader2 size={14} className="animate-spin text-vailo-gold" /> {t('aiExpertLoadingCategories')}
                     </p>
                   ) : availableCategories.length > 0 ? (
                     availableCategories.map((cat) => (
                       <button
-                        key={cat}
+                        key={cat.primary}
                         onClick={() =>
                           setSelectedCats((prev) =>
-                            prev.includes(cat)
-                              ? prev.filter((c) => c !== cat)
+                            prev.includes(cat.primary)
+                              ? prev.filter((c) => c !== cat.primary)
                               : prev.length < 3
-                                ? [...prev, cat]
+                                ? [...prev, cat.primary]
                                 : prev
                           )
                         }
                         className={`guest-pill px-4 py-2.5 rounded-full text-sm font-semibold transition-all border ${
-                          selectedCats.includes(cat)
-                            ? 'bg-[#0B4F5C] text-white border-[#0B4F5C] shadow-md'
-                            : 'bg-[#f8faf9] text-[#0B4F5C]/70 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
+                          selectedCats.includes(cat.primary)
+                            ? AI_EXPERT_BTN_PRIMARY_PILL
+                            : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
                         }`}
                       >
-                        {cat}
+                        {cat.label}
                       </button>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500 leading-relaxed">
+                    <p className="text-sm text-white/60 leading-relaxed">
                       {areaConfigIssue === 'invalid-master' ? (
                         tf('aiExpertAreaInvalidMaster', { area: invalidMasterAreaRaw })
                       ) : areaConfigIssue === 'missing' ? (
@@ -1836,8 +2000,19 @@ User: ${userText}`;
                 </div>
                 <button
                   disabled={selectedCats.length === 0}
-                  onClick={() => advanceStep('CATEGORIES', selectedCats, selectedCats.join(', '))}
-                  className="w-full py-4 min-h-[48px] bg-[#C5A059] hover:bg-[#b8924f] text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors shadow-sm"
+                  onClick={() =>
+                    advanceStep(
+                      'CATEGORIES',
+                      selectedCats,
+                      selectedCats
+                        .map(
+                          (p) =>
+                            availableCategories.find((c) => c.primary === p)?.label ?? p
+                        )
+                        .join(', ')
+                    )
+                  }
+                  className={`w-full py-4 min-h-[48px] rounded-xl text-base disabled:opacity-40 ${AI_EXPERT_BTN_PRIMARY}`}
                 >
                   {tf('aiExpertContinueSelected', { count: selectedCats.length })}
                 </button>
@@ -1845,9 +2020,9 @@ User: ${userText}`;
             )}
 
             {step === 'DISTANCE' && (
-              <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertDistanceTitle')}</p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
+              <div className={AI_EXPERT_PANEL}>
+                <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertDistanceTitle')}</p>
+                <p className={AI_EXPERT_PANEL_SUB}>
                   {tf('aiExpertDistanceSub', { location: preferences.location })}
                 </p>
                 <div className="flex flex-col gap-2.5">
@@ -1856,15 +2031,15 @@ User: ${userText}`;
                       <button
                         key={i}
                         onClick={() => advanceStep('DISTANCE', dist, dist)}
-                        className="flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
+                        className="flex items-center gap-3 bg-white/8 border border-white/15 text-white px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-vailo-gold/40 hover:bg-vailo-gold/10 transition-all"
                       >
-                        <Compass size={16} className="text-[#C5A059] shrink-0" />
+                        <Compass size={16} className="text-vailo-gold shrink-0" />
                         {tf('aiExpertWithinDistance', { distance: dist })}
                       </button>
                     ))
                   ) : (
-                    <div className="flex items-center text-sm text-gray-500 py-4 px-2">
-                      <Loader2 size={16} className="animate-spin mr-2 text-[#C5A059]" />
+                    <div className="flex items-center text-sm text-white/60 py-4 px-2">
+                      <Loader2 size={16} className="animate-spin mr-2 text-vailo-gold" />
                       {t('aiExpertMappingDistances')}
                     </div>
                   )}
@@ -1873,13 +2048,13 @@ User: ${userText}`;
             )}
 
             {step === 'TIME' && (
-              <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertTimeTitle')}</p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">
+              <div className={AI_EXPERT_PANEL}>
+                <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertTimeTitle')}</p>
+                <p className={AI_EXPERT_PANEL_SUB}>
                   {t('aiExpertTimeSub')}
                 </p>
 
-                <p className="guest-eyebrow text-[#0B4F5C]/50 mb-2">
+                <p className="guest-eyebrow text-white/45 mb-2">
                   {t('aiExpertStartDay')}
                 </p>
                 <div className="grid grid-cols-3 gap-2 mb-5">
@@ -1893,8 +2068,8 @@ User: ${userText}`;
                       }}
                       className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
                         startTime === timeOption
-                          ? 'bg-[#0B4F5C] text-white border-[#0B4F5C] shadow-sm'
-                          : 'bg-[#f8faf9] text-[#0B4F5C]/75 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
+                          ? AI_EXPERT_BTN_PRIMARY_PILL
+                          : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
                       }`}
                     >
                       {formatTime12(parseTimeToMinutes(timeOption))}
@@ -1904,7 +2079,7 @@ User: ${userText}`;
 
                 {startTime && (
                   <>
-                    <p className="guest-eyebrow text-[#0B4F5C]/50 mb-2">
+                    <p className="guest-eyebrow text-white/45 mb-2">
                       {t('aiExpertHowLongOut')}
                     </p>
                     <div className="grid grid-cols-3 gap-2 mb-4">
@@ -1915,8 +2090,8 @@ User: ${userText}`;
                           onClick={() => setTripDurationHours(opt.hours)}
                           className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
                             tripDurationHours === opt.hours
-                              ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-sm'
-                              : 'bg-[#f8faf9] text-[#0B4F5C]/75 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
+                              ? AI_EXPERT_BTN_PRIMARY_PILL
+                              : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
                           }`}
                         >
                           {opt.label}
@@ -1924,27 +2099,27 @@ User: ${userText}`;
                       ))}
                     </div>
                     {tripDurationHours != null && (
-                      <p className="text-sm text-[#0B4F5C]/70 mb-4 px-3 py-2.5 rounded-xl bg-[#f8faf9] border border-[#0B4F5C]/8 leading-relaxed">
+                      <p className="text-sm text-white/75 mb-4 px-3 py-2.5 rounded-xl bg-white/8 border border-white/10 leading-relaxed">
                         {formatTripWindow(startTime, tripDurationHours)}
                       </p>
                     )}
                   </>
                 )}
 
-                <div className="flex flex-col gap-2.5 pt-4 border-t border-[#0B4F5C]/8">
+                <div className="flex flex-col gap-2.5 pt-4 border-t border-white/10">
                   <button
                     disabled={!startTime || tripDurationHours == null}
                     onClick={() => executePlan('timeline')}
-                    className="w-full py-4 min-h-[48px] bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
+                    className={`w-full py-4 min-h-[48px] rounded-xl text-base disabled:opacity-40 flex items-center justify-center gap-2 ${AI_EXPERT_BTN_PRIMARY}`}
                   >
-                    <Clock size={16} className="text-[#C5A059] shrink-0" />
+                    <Clock size={16} className="text-white shrink-0" />
                     {t('aiExpertPlanTimelineBtn')}
                   </button>
                   <button
                     onClick={() => executePlan('')}
-                    className="w-full py-4 min-h-[48px] bg-[#C5A059] hover:bg-[#b8924f] text-white rounded-xl text-base font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
+                    className={`w-full py-4 min-h-[48px] rounded-xl text-base flex items-center justify-center gap-2 ${AI_EXPERT_BTN_SECONDARY}`}
                   >
-                    <Heart size={16} className="text-white shrink-0" />
+                    <Heart size={16} className="text-vailo-gold shrink-0" />
                     {t('aiExpertBrowseFavoritesBtn')}
                   </button>
                 </div>
@@ -1954,17 +2129,12 @@ User: ${userText}`;
           </div>
         )}
 
-        {isThinking && (
-          <div className="flex items-center gap-2 text-base text-[#0B4F5C] font-medium mt-4 bg-white/80 backdrop-blur-sm px-4 py-3 rounded-2xl w-max border border-[#C5A059]/20 shadow-sm">
-            <Loader2 size={16} className="animate-spin text-[#C5A059]" />
-            {t(thinkingLabel)}
-          </div>
-        )}
+        {renderThinkingLoader()}
         
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="bg-white/95 backdrop-blur-sm p-3 md:p-4 shrink-0 shadow-[0_-8px_30px_rgba(11,79,92,0.06)] border-t border-[#0B4F5C]/8 z-20 relative">
+      <div className="bg-vailo-teal-hover/95 backdrop-blur-sm p-3 md:p-4 shrink-0 border-t border-white/10 z-20 relative">
         <form onSubmit={handleChatSubmit} className="flex gap-2 items-end">
           <textarea
             ref={chatTextareaRef}
@@ -1976,18 +2146,18 @@ User: ${userText}`;
             rows={1}
             placeholder={t('aiExpertChatPlaceholder')}
             aria-label={t('aiExpertChatAria')}
-            className="flex-1 text-base leading-normal px-4 py-2.5 rounded-xl outline-none bg-[#f8faf9] border border-[#0B4F5C]/10 text-gray-900 focus:ring-2 focus:ring-[#C5A059]/25 focus:border-[#C5A059]/40 transition-[height,box-shadow] disabled:opacity-50 resize-none overflow-y-auto max-h-32"
+            className="flex-1 text-base leading-normal px-4 py-2.5 rounded-xl outline-none bg-white/10 border border-white/15 text-white placeholder:text-white/40 focus:ring-2 focus:ring-vailo-gold/25 focus:border-vailo-gold/40 transition-[height,box-shadow] disabled:opacity-50 resize-none overflow-y-auto max-h-32"
           />
           <button
             type="submit"
             disabled={!chatInput.trim() || isThinking}
-            className="bg-[#0B4F5C] text-white min-h-[48px] min-w-[48px] p-3 rounded-xl hover:bg-[#0a4550] disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center shrink-0 self-end"
+            className={`min-h-[48px] min-w-[48px] p-3 rounded-xl flex items-center justify-center shrink-0 self-end ${AI_EXPERT_BTN_PRIMARY}`}
             aria-label={t('aiExpertSendAria')}
           >
             <Send size={20} />
           </button>
         </form>
-        <p className="text-center text-xs text-gray-400 mt-2.5 leading-relaxed">
+        <p className="text-center text-xs text-white/40 mt-2.5 leading-relaxed">
           {t('aiExpertChatDisclaimer')}
         </p>
       </div>

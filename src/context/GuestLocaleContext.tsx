@@ -9,16 +9,21 @@ import {
 } from 'react';
 import {
   GUEST_LOCALE_STORAGE_KEY,
-  guestT,
   normalizeGuestLocale,
   type GuestLocale,
   type GuestLocaleKey,
 } from '../lib/guestLocale';
-import { GUEST_UI_KEY_SET, guestUiT, type GuestLocaleUiKey } from '../lib/guestLocaleUi';
-import { translateGuestText, clearGuestTranslationCache } from '../lib/guestAutoTranslate';
+import type { GuestLocaleUiKey } from '../lib/guestLocaleUi';
+import { resolveGuestUiString, setPlatformGuestUiStringsCache } from '../lib/platformGuestUiStrings';
 import { guestLocaleDisplayName } from '../lib/guestAiLanguage';
 import { toGuestLocaleOptions } from '../lib/platformLanguages';
 import { usePlatformLanguages } from '../hooks/usePlatformLanguages';
+import {
+  clampContentLocalesToPlatform,
+  DEFAULT_PRIMARY_LOCALE,
+  filterLocaleOptions,
+  normalizeLocaleCode,
+} from '../lib/propertyContentLocales';
 
 export type GuestTKey = GuestLocaleKey | GuestLocaleUiKey;
 
@@ -29,27 +34,61 @@ type GuestLocaleContextValue = {
   localeOptions: ReturnType<typeof toGuestLocaleOptions>;
   languagesLoading: boolean;
   localeLabel: string;
+  contentPrimaryLocale: string;
+  contentReviewedLocales: string[];
+  /** @deprecated Runtime MT removed; returns text unchanged. */
   translateText: (text: string) => Promise<string>;
 };
 
 const GuestLocaleContext = createContext<GuestLocaleContextValue | null>(null);
 
-function isUiKey(key: string): key is GuestLocaleUiKey {
-  return GUEST_UI_KEY_SET.has(key);
-}
-
 export function GuestLocaleProvider({
   children,
   sessionGuestLocale,
+  contentEnabledLocales,
+  contentPrimaryLocale = DEFAULT_PRIMARY_LOCALE,
+  contentReviewedLocales,
 }: {
   children: ReactNode;
   sessionGuestLocale?: string | null;
+  /** Property-enabled guest content languages; limits the language menu. */
+  contentEnabledLocales?: string[] | null;
+  contentPrimaryLocale?: string;
+  contentReviewedLocales?: string[] | null;
 }) {
-  const { languages, loading: languagesLoading } = usePlatformLanguages();
-  const localeOptions = useMemo(() => toGuestLocaleOptions(languages), [languages]);
+  const { languages, guestUiStrings, loading: languagesLoading } = usePlatformLanguages();
+
+  useEffect(() => {
+    setPlatformGuestUiStringsCache(guestUiStrings);
+  }, [guestUiStrings]);
+  const platformCodes = useMemo(() => languages.map((l) => l.shortName), [languages]);
+  const allLocaleOptions = useMemo(() => toGuestLocaleOptions(languages), [languages]);
+  const effectiveContentLocales = useMemo(() => {
+    if (!contentEnabledLocales?.length) return contentEnabledLocales ?? undefined;
+    return clampContentLocalesToPlatform(
+      {
+        primaryLocale: contentPrimaryLocale,
+        enabledLocales: contentEnabledLocales,
+        reviewedLocales: contentReviewedLocales ?? [],
+      },
+      platformCodes
+    ).enabledLocales;
+  }, [contentEnabledLocales, contentPrimaryLocale, contentReviewedLocales, platformCodes]);
+  const localeOptions = useMemo(
+    () => filterLocaleOptions(allLocaleOptions, effectiveContentLocales),
+    [allLocaleOptions, effectiveContentLocales]
+  );
   const availableCodes = useMemo(
     () => localeOptions.map((o) => o.code),
     [localeOptions]
+  );
+  const primaryLocale = normalizeLocaleCode(contentPrimaryLocale) || DEFAULT_PRIMARY_LOCALE;
+  const reviewedLocales = useMemo(
+    () =>
+      contentReviewedLocales && contentReviewedLocales.length > 0
+        ? contentReviewedLocales.map(normalizeLocaleCode)
+        : null,
+    [contentReviewedLocales]
   );
 
   const [locale, setLocaleState] = useState<GuestLocale>('en');
@@ -96,7 +135,6 @@ export function GuestLocaleProvider({
     (next: GuestLocale) => {
       const code = normalizeGuestLocale(next, availableCodes);
       setLocaleState(code);
-      clearGuestTranslationCache();
       try {
         localStorage.setItem(GUEST_LOCALE_STORAGE_KEY, code);
       } catch {
@@ -114,18 +152,12 @@ export function GuestLocaleProvider({
 
   const t = useCallback(
     (key: GuestTKey) => {
-      if (isUiKey(key as string)) {
-        return guestUiT(locale, key as GuestLocaleUiKey);
-      }
-      return guestT(locale, key as GuestLocaleKey);
+      return resolveGuestUiString(locale, key, guestUiStrings, primaryLocale);
     },
-    [locale]
+    [locale, guestUiStrings, primaryLocale]
   );
 
-  const translateText = useCallback(
-    (text: string) => translateGuestText(text, locale),
-    [locale]
-  );
+  const translateText = useCallback(async (text: string) => text, []);
 
   const value = useMemo(
     () => ({
@@ -135,9 +167,11 @@ export function GuestLocaleProvider({
       localeOptions,
       languagesLoading: languagesLoading || !ready,
       localeLabel: guestLocaleDisplayName(locale),
+      contentPrimaryLocale: primaryLocale,
+      contentReviewedLocales: reviewedLocales || [primaryLocale],
       translateText,
     }),
-    [locale, setLocale, t, localeOptions, languagesLoading, ready, translateText]
+    [locale, setLocale, t, localeOptions, languagesLoading, ready, translateText, primaryLocale, reviewedLocales]
   );
 
   return (

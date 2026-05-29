@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -10,6 +10,13 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { formatGuestSlug, getTypePublicSlug } from '../../../lib/guestPortalSlug';
 import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
+import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
+import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
+import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
+import { translateContentFields } from '../../../lib/adminContentTranslate';
+import { resolveLocalizedString } from '../../../lib/propertyContentLocales';
+import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
+import { Languages, Loader2 as Loader2Icon } from 'lucide-react';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -64,6 +71,20 @@ export default function LocalGems() {
   };
   
   const [formData, setFormData] = useState(initialFormState);
+  const [editingSourceDoc, setEditingSourceDoc] = useState<Record<string, unknown> | null>(null);
+  const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+
+  const localeSettings = usePropertyContentLocaleSettings(property);
+  const { languages } = usePlatformLanguages();
+  const languageOptions = useMemo(
+    () => languages.map((l) => ({ code: l.shortName, label: l.title })),
+    [languages]
+  );
+  const localeEditor = useContentLocaleEditor(
+    localeSettings.primaryLocale,
+    ['name', 'description', 'category'],
+    editingSourceDoc
+  );
 
   // 1. Fetch Area Context (from Parent or Types)
   useEffect(() => {
@@ -233,18 +254,26 @@ export default function LocalGems() {
         if (possibleMatch) matchedCategory = possibleMatch;
       }
 
+      const primaryName = googleData.name || placeNameFallback;
+      const primaryCategory = matchedCategory || formData.category;
+      const primaryDescription = finalDescription || formData.description;
       setFormData(prev => ({
         ...prev,
-        name: googleData.name || placeNameFallback,
-        category: matchedCategory || prev.category,
+        name: primaryName,
+        category: primaryCategory,
         rating: googleData.rating ? googleData.rating.toString() : prev.rating,
-        description: finalDescription || prev.description,
+        description: primaryDescription,
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
         distanceKm: distanceKm,
         distanceTime: distanceTime,
         photoUrl: googleData.photoUrl || ''
       }));
+      localeEditor.applyPrimaryFields({
+        name: primaryName,
+        category: primaryCategory,
+        description: primaryDescription,
+      });
 
       // 3. Save Google Photo to Memory
       if (googleData.photoUrl) {
@@ -282,8 +311,10 @@ export default function LocalGems() {
         finalPhotoUrl = await getDownloadURL(fileRef);
       }
 
+      const localized = localeEditor.buildPayload();
       const payload = {
         ...formData,
+        ...localized,
         photoUrl: finalPhotoUrl,
         isLegitPick: Boolean(formData.isLegitPick),
         isDailyTrip: Boolean(formData.isDailyTrip),
@@ -310,6 +341,7 @@ export default function LocalGems() {
   };
 
   const handleEditClick = (gemData: any) => {
+    setEditingSourceDoc(gemData);
     setFormData({
       ...initialFormState,
       ...gemData,
@@ -321,6 +353,34 @@ export default function LocalGems() {
     setImageFile(null);
     setEditingGemId(gemData.id);
     setIsFormOpen(true);
+  };
+
+  const handleAutoTranslateLocale = async () => {
+    const target = localeEditor.contentLocale;
+    const primary = localeSettings.primaryLocale;
+    if (target === primary) {
+      toast.warning('Switch to a non-primary language tab to auto-translate.');
+      return;
+    }
+    const primaryFields = {
+      name: localeEditor.getPrimaryValue('name') || formData.name,
+      description: localeEditor.getPrimaryValue('description') || formData.description,
+      category: localeEditor.getPrimaryValue('category') || formData.category,
+    };
+    if (!primaryFields.name?.trim()) {
+      toast.warning('Fill in the primary language first.');
+      return;
+    }
+    setIsLocaleTranslating(true);
+    try {
+      const translated = await translateContentFields(primaryFields, primary, target);
+      localeEditor.applyTranslatedFields(target, translated);
+      toast.success(`Draft translation added for ${target.toUpperCase()}. Please review before saving.`);
+    } catch {
+      toast.error('Auto-translate failed. Try again or edit manually.');
+    } finally {
+      setIsLocaleTranslating(false);
+    }
   };
 
   const handleDeleteClick = async (gemId: string, gemName: string) => {
@@ -336,10 +396,20 @@ export default function LocalGems() {
   const closeAndResetForm = () => {
     setIsFormOpen(false);
     setEditingGemId(null);
+    setEditingSourceDoc(null);
+    localeEditor.resetMaps();
     setFormData(initialFormState);
     setImagePreview(null);
     setImageFile(null);
     setGooglePhoto(null);
+  };
+
+  const openAddForm = () => {
+    setEditingSourceDoc(null);
+    localeEditor.resetMaps();
+    setFormData(initialFormState);
+    setEditingGemId(null);
+    setIsFormOpen(true);
   };
 
   // --- EDGE CASE: No Property Types Exist ---
@@ -412,7 +482,7 @@ export default function LocalGems() {
               {propertyAreaContext && <span className="ml-1 font-medium text-vailo-teal">(Area: {propertyAreaContext.areaName})</span>}
             </p>
           </div>
-          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+          <button onClick={openAddForm} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Custom Gem
           </button>
         </div>
@@ -449,7 +519,12 @@ export default function LocalGems() {
                         )}
                         <div>
                           <div className="font-medium text-gray-900 flex items-center">
-                            {gem.name}
+                            {resolveLocalizedString(
+                              gem,
+                              'name',
+                              localeSettings.primaryLocale,
+                              localeSettings.primaryLocale
+                            ) || gem.name}
                           </div>
                           <div className="flex mt-1">
                             {gem.isLegitPick && <span className="mr-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-[10px] uppercase font-bold rounded-full">Legit Pick</span>}
@@ -507,6 +582,41 @@ export default function LocalGems() {
         </div>
 
         <div className="p-6 space-y-6 bg-white">
+          <div className="rounded-xl border border-vailo-teal/15 bg-vailo-teal/5 p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
+                  <Languages size={16} /> Content language
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Edit each enabled language. Configure languages in Property Overview.
+                </p>
+              </div>
+              {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+                <button
+                  type="button"
+                  onClick={handleAutoTranslateLocale}
+                  disabled={isLocaleTranslating}
+                  className="flex items-center justify-center h-[38px] px-4 bg-white border border-vailo-teal/30 rounded-lg text-sm font-medium text-vailo-teal hover:bg-white/80 disabled:opacity-50"
+                >
+                  {isLocaleTranslating ? (
+                    <Loader2Icon size={16} className="mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles size={16} className="mr-2" />
+                  )}
+                  Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+                </button>
+              )}
+            </div>
+            <ContentLocaleTabs
+              enabledLocales={localeSettings.enabledLocales}
+              primaryLocale={localeSettings.primaryLocale}
+              activeLocale={localeEditor.contentLocale}
+              onChange={localeEditor.setContentLocale}
+              languageOptions={languageOptions}
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* 1. Maps Link & Smart Calc */}
@@ -535,13 +645,34 @@ export default function LocalGems() {
             {/* 2. Basic Info */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Gem Name *</label>
-              <input type="text" required name="name" value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
+              <input
+                type="text"
+                required
+                value={localeEditor.getValue('name')}
+                onChange={(e) => {
+                  localeEditor.setValue('name', e.target.value);
+                  if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                    setFormData((prev) => ({ ...prev, name: e.target.value }));
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none"
+              />
             </div>
             
             {/* 3. DYNAMIC CATEGORY DROPDOWN */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-              <select required name="category" value={formData.category} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white">
+              <select
+                required
+                value={localeEditor.getValue('category')}
+                onChange={(e) => {
+                  localeEditor.setValue('category', e.target.value);
+                  if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                    setFormData((prev) => ({ ...prev, category: e.target.value }));
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
+              >
                 <option value="" disabled>
                   {localGemsCategories.length === 0 ? "No Area Categories Found" : "Please select"}
                 </option>
@@ -585,7 +716,18 @@ export default function LocalGems() {
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea name="description" value={formData.description} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none resize-none" placeholder="Why do you recommend this place?"></textarea>
+              <textarea
+                value={localeEditor.getValue('description')}
+                onChange={(e) => {
+                  localeEditor.setValue('description', e.target.value);
+                  if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                    setFormData((prev) => ({ ...prev, description: e.target.value }));
+                  }
+                }}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none resize-none"
+                placeholder="Why do you recommend this place?"
+              />
             </div>
 
             {/* 7. PERFECTED PHOTO GALLERY WITH GOOGLE MEMORY */}

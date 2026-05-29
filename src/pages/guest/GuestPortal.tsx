@@ -21,8 +21,15 @@ import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePorta
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { GuestLocaleProvider, useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestUiTFormat } from '../../lib/guestLocaleUi';
-import GuestTranslatedText from '../../components/guest/GuestTranslatedText';
+import GuestLocalizedText from '../../components/guest/GuestLocalizedText';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
+import {
+  clampContentLocalesToPlatform,
+  parsePropertyContentLocaleSettings,
+  resolveLocalizedString,
+  type PropertyContentLocaleSettings,
+} from '../../lib/propertyContentLocales';
+import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
@@ -46,16 +53,17 @@ const GEMS_PAGE_SIZE = 5;
 function GemDescription({
   gemId,
   gemName,
-  description,
+  gem,
 }: {
   gemId: string;
   gemName?: string;
-  description: string;
+  gem: GuestGem;
 }) {
   const { track } = useGuestAnalytics();
   return (
     <ExpandableDescription
-      text={description}
+      doc={gem}
+      field="description"
       lines={2}
       className="mb-3"
       bodyClassName="guest-body-sm"
@@ -69,6 +77,9 @@ type GuestGem = {
   id: string;
   name?: string;
   description?: string;
+  nameByLocale?: Record<string, string>;
+  descriptionByLocale?: Record<string, string>;
+  categoryByLocale?: Record<string, string>;
   photoUrl?: string;
   category?: string;
   rating?: number;
@@ -77,11 +88,12 @@ type GuestGem = {
   longitude?: number;
   isLegitPick?: boolean;
   isDailyTrip?: boolean;
+  [key: string]: unknown;
 };
 
 /** Paginated gem cards — state stays here so "Load more" does not re-render the whole portal. */
 function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string }) {
-  const { locale } = useGuestLocale();
+  const { locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
   const [visibleCount, setVisibleCount] = useState(GEMS_PAGE_SIZE);
   const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
 
@@ -102,18 +114,27 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
   return (
     <>
       <div className="grid grid-cols-1 gap-4">
-        {visibleGems.map((gem) => (
+        {visibleGems.map((gem) => {
+          const gemName =
+            resolveLocalizedString(gem, 'name', locale, contentPrimaryLocale, contentReviewedLocales) ||
+            gem.name ||
+            '';
+          const gemCategory =
+            resolveLocalizedString(gem, 'category', locale, contentPrimaryLocale, contentReviewedLocales) ||
+            gem.category ||
+            '';
+          return (
           <div
             key={gem.id}
             data-gem-id={gem.id}
-            data-gem-name={gem.name || ''}
+            data-gem-name={gemName}
             className="bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300"
           >
             <div className="relative bg-gray-100 overflow-hidden shrink-0 h-36 sm:h-40">
               {gem.photoUrl ? (
                 <img
                   src={gem.photoUrl}
-                  alt={gem.name}
+                  alt={gemName}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                 />
               ) : (
@@ -155,7 +176,7 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
             {activeGemMap === gem.id && (
               <div className="w-full bg-gray-100 border-b border-gray-200 h-48 sm:h-52">
                 <iframe
-                  title={`Map — ${gem.name || 'location'}`}
+                  title={`Map — ${gemName || 'location'}`}
                   width="100%"
                   height="100%"
                   frameBorder="0"
@@ -167,14 +188,20 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
 
             <div className="p-4 flex-1 flex flex-col min-w-0">
               <p className="text-sm text-[#C5A059] font-bold uppercase tracking-wider mb-1 truncate">
-                {gem.category || 'Location'}
+                {gemCategory || 'Location'}
               </p>
               <h3 className="guest-card-title mb-2 line-clamp-2">
-                <GuestTranslatedText text={gem.name || ''} />
+                <GuestLocalizedText
+                  doc={gem}
+                  field="name"
+                  locale={locale}
+                  primaryLocale={contentPrimaryLocale}
+                  reviewedLocales={contentReviewedLocales}
+                />
               </h3>
 
-              {gem.description && (
-                <GemDescription gemId={gem.id} gemName={gem.name} description={gem.description} />
+              {(gem.description || gem.descriptionByLocale) && (
+                <GemDescription gemId={gem.id} gemName={gemName} gem={gem} />
               )}
 
               <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
@@ -196,7 +223,8 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
               </div>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
       {hasMore && (
         <button
@@ -237,14 +265,21 @@ function LiveLikeLocalCTA({
 
 function GuestPortalPage({
   onSessionLocale,
+  onContentLocaleSettings,
 }: {
   onSessionLocale?: (locale: string | null) => void;
+  onContentLocaleSettings?: (settings: PropertyContentLocaleSettings) => void;
 }) {
+  const { languages } = usePlatformLanguages();
+  const platformCodes = useMemo(() => languages.map((l) => l.shortName), [languages]);
   const { propertySlug, typeSlug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   if (propertySlug && RESERVED_PORTAL_SLUGS.has(propertySlug.toLowerCase())) {
+    if (typeSlug?.toLowerCase() === 'area') {
+      return <Navigate to={adminPath('/area')} replace />;
+    }
     return <Navigate to={adminPath()} replace />;
   }
   const typeIdFromQuery = searchParams.get('typeId') || searchParams.get('type');
@@ -312,6 +347,12 @@ function GuestPortalPage({
         const propData = propDoc.data();
         setPropertyId(resolvedPropertyId);
         setProperty({ id: resolvedPropertyId, ...propData });
+        onContentLocaleSettings?.(
+          clampContentLocalesToPlatform(
+            parsePropertyContentLocaleSettings(propData),
+            platformCodes
+          )
+        );
 
         const typesSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'propertyTypes'));
         const typeMatch = resolvePropertyTypeFromUrl(
@@ -926,10 +967,20 @@ export default function GuestPortal() {
   const [searchParams] = useSearchParams();
   const langFromUrl = searchParams.get('lang');
   const [sessionLocale, setSessionLocale] = useState<string | null>(langFromUrl);
+  const [contentLocaleSettings, setContentLocaleSettings] =
+    useState<PropertyContentLocaleSettings | null>(null);
 
   return (
-    <GuestLocaleProvider sessionGuestLocale={sessionLocale ?? langFromUrl}>
-      <GuestPortalPage onSessionLocale={setSessionLocale} />
+    <GuestLocaleProvider
+      sessionGuestLocale={sessionLocale ?? langFromUrl}
+      contentEnabledLocales={contentLocaleSettings?.enabledLocales}
+      contentPrimaryLocale={contentLocaleSettings?.primaryLocale}
+      contentReviewedLocales={contentLocaleSettings?.reviewedLocales}
+    >
+      <GuestPortalPage
+        onSessionLocale={setSessionLocale}
+        onContentLocaleSettings={setContentLocaleSettings}
+      />
     </GuestLocaleProvider>
   );
 }

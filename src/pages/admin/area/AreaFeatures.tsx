@@ -1,27 +1,31 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useAreaRouteParams } from '../../../hooks/useAreaRouteParams';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage, ai } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
-import { adminPath } from '../../../lib/adminRoutes';
-import { ArrowLeft, Plus, Image as ImageIcon, Pencil, Trash2, Loader2, MapPin, Wand2, Briefcase, Link as LinkIcon, Phone, Mail, MessageCircle } from 'lucide-react';
+import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
+import { Plus, Image as ImageIcon, Pencil, Trash2, Loader2, MapPin, Wand2, Briefcase, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles } from 'lucide-react';
+import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
+import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
+import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
+import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
+import { translateContentFields } from '../../../lib/adminContentTranslate';
+import { categoryPrimaryName, resolveCategoryLabel, normalizeCategorySelectionList, categorySelectionIncludes } from '../../../lib/categoryLocale';
+import { normalizeLocaleCode } from '../../../lib/propertyContentLocales';
 
 export default function AreaFeatures() {
-  const { country, area } = useParams<{ country: string, area: string }>();
-  const navigate = useNavigate();
   const toast = useToast();
-  
-  const decodedCountry = decodeURIComponent(country || '');
-  const decodedArea = decodeURIComponent(area || '');
-  const areaId = decodedArea.toLowerCase().replace(/\s+/g, '-');
+  const { country: decodedCountry, areaId, areaName: decodedArea } = useAreaRouteParams();
 
   // Databases
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
-  const [localGemsCategories, setLocalGemsCategories] = useState<string[]>([]);
+  const [localGemsCategories, setLocalGemsCategories] = useState<
+    { id: string; data: Record<string, unknown> }[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Form State
@@ -55,6 +59,127 @@ export default function AreaFeatures() {
   };
 
   const [formData, setFormData] = useState(initialFormState);
+  const [editingSourceDoc, setEditingSourceDoc] = useState<Record<string, unknown> | null>(null);
+  const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+
+  const localeSettings = useAreaContentLocaleSettings(decodedCountry, areaId);
+  const { languages } = usePlatformLanguages();
+  const languageOptions = useMemo(
+    () => languages.map((l) => ({ code: l.shortName, label: l.title })),
+    [languages]
+  );
+  const localeEditor = useContentLocaleEditor(
+    localeSettings.primaryLocale,
+    ['name', 'description'],
+    editingSourceDoc
+  );
+
+  const featureCategoryPrimaryName = (cat: { id: string; [key: string]: unknown }) =>
+    categoryPrimaryName(cat as Record<string, unknown>, localeSettings.primaryLocale) || String(cat.name || '');
+
+  const featureCategoryLabel = (cat: { id: string; [key: string]: unknown }) =>
+    resolveCategoryLabel(cat as Record<string, unknown>, localeEditor.contentLocale, localeSettings.primaryLocale) ||
+    featureCategoryPrimaryName(cat);
+
+  const localGemCategoryPrimaryName = (cat: { id: string; data: Record<string, unknown> }) =>
+    categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+
+  const localGemCategoryLabel = (cat: { id: string; data: Record<string, unknown> }) =>
+    resolveCategoryLabel(cat.data, localeEditor.contentLocale, localeSettings.primaryLocale) ||
+    localGemCategoryPrimaryName(cat);
+
+  const featureCategoryPillOptions = useMemo(
+    () =>
+      featuresCategories.map((cat) => ({
+        value: featureCategoryPrimaryName(cat),
+        label: featureCategoryLabel(cat),
+      })),
+    [featuresCategories, localeEditor.contentLocale, localeSettings.primaryLocale]
+  );
+
+  const localGemCategoryPillOptions = useMemo(
+    () =>
+      localGemsCategories.map((cat) => ({
+        value: localGemCategoryPrimaryName(cat),
+        label: localGemCategoryLabel(cat),
+      })),
+    [localGemsCategories, localeEditor.contentLocale, localeSettings.primaryLocale]
+  );
+
+  const featureCategoryDocs = useMemo(
+    () => featuresCategories as Record<string, unknown>[],
+    [featuresCategories]
+  );
+
+  const localGemCategoryDocs = useMemo(
+    () => localGemsCategories.map((c) => c.data),
+    [localGemsCategories]
+  );
+
+  const normalizedFeatureCategories = useMemo(
+    () =>
+      normalizeCategorySelectionList(
+        formData.categories,
+        featureCategoryDocs,
+        localeSettings.primaryLocale
+      ),
+    [formData.categories, featureCategoryDocs, localeSettings.primaryLocale]
+  );
+
+  const normalizedExperienceTypes = useMemo(
+    () =>
+      normalizeCategorySelectionList(
+        formData.experienceTypes,
+        localGemCategoryDocs,
+        localeSettings.primaryLocale
+      ),
+    [formData.experienceTypes, localGemCategoryDocs, localeSettings.primaryLocale]
+  );
+
+  // Keep pill selections keyed to primary names once category catalogs load.
+  useEffect(() => {
+    if (!isFormOpen) return;
+    const sameSelection = (a: string[], b: string[]) => {
+      if (a.length !== b.length) return false;
+      const setA = new Set(a.map((s) => s.toLowerCase()));
+      return b.every((s) => setA.has(s.toLowerCase()));
+    };
+    const categoriesChanged = !sameSelection(normalizedFeatureCategories, formData.categories);
+    const gemsChanged = !sameSelection(normalizedExperienceTypes, formData.experienceTypes);
+    if (!categoriesChanged && !gemsChanged) return;
+    setFormData((prev) => ({
+      ...prev,
+      categories: normalizedFeatureCategories,
+      experienceTypes: normalizedExperienceTypes,
+    }));
+  }, [
+    isFormOpen,
+    normalizedFeatureCategories,
+    normalizedExperienceTypes,
+    formData.categories,
+    formData.experienceTypes,
+  ]);
+
+  const openFeatureEdit = (feat: Record<string, unknown> & { id: string }) => {
+    setEditingSourceDoc(feat);
+    setFormData({
+      ...initialFormState,
+      ...feat,
+      categories: normalizeCategorySelectionList(
+        feat.categories as string[] | undefined,
+        featureCategoryDocs,
+        localeSettings.primaryLocale
+      ),
+      experienceTypes: normalizeCategorySelectionList(
+        feat.experienceTypes as string[] | undefined,
+        localGemCategoryDocs,
+        localeSettings.primaryLocale
+      ),
+    } as typeof initialFormState);
+    setEditingFeatureId(feat.id);
+    setImagePreview(typeof feat.photoUrl === 'string' ? feat.photoUrl : null);
+    setIsFormOpen(true);
+  };
 
   // 1. Fetch Features Categories
   useEffect(() => {
@@ -62,23 +187,32 @@ export default function AreaFeatures() {
     const catRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'featuresCategories');
     const unsubscribe = onSnapshot(catRef, (snapshot) => {
       const fetchedCats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetchedCats.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      fetchedCats.sort((a: any, b: any) =>
+        featureCategoryPrimaryName(a).localeCompare(featureCategoryPrimaryName(b))
+      );
       setFeaturesCategories(fetchedCats);
     });
     return () => unsubscribe();
-  }, [decodedCountry, areaId]);
+  }, [decodedCountry, areaId, localeSettings.primaryLocale]);
 
   // 2. Fetch Local Gems Categories
   useEffect(() => {
     if (!decodedCountry || !areaId) return;
     const gemsCatRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGemsCategories');
     const unsubscribe = onSnapshot(gemsCatRef, (snapshot) => {
-      const fetched = snapshot.docs.map(doc => doc.data().name).filter(Boolean);
-      fetched.sort((a: string, b: string) => a.localeCompare(b));
+      const fetched = snapshot.docs.map((d) => ({
+        id: d.id,
+        data: d.data() as Record<string, unknown>,
+      }));
+      fetched.sort((a, b) =>
+        categoryPrimaryName(a.data, localeSettings.primaryLocale).localeCompare(
+          categoryPrimaryName(b.data, localeSettings.primaryLocale)
+        )
+      );
       setLocalGemsCategories(fetched);
     });
     return () => unsubscribe();
-  }, [decodedCountry, areaId]);
+  }, [decodedCountry, areaId, localeSettings.primaryLocale]);
 
   // 3. Fetch Master Features
   useEffect(() => {
@@ -94,8 +228,15 @@ export default function AreaFeatures() {
 
   // Derived Master Photos based on selected categories
   const availableMasterPhotos = featuresCategories
-    .filter(cat => formData.categories.includes(cat.name))
-    .flatMap(cat => cat.photos || []);
+    .filter((cat) =>
+      categorySelectionIncludes(
+        normalizedFeatureCategories,
+        featureCategoryPrimaryName(cat),
+        featureCategoryDocs,
+        localeSettings.primaryLocale
+      )
+    )
+    .flatMap((cat) => cat.photos || []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -106,14 +247,23 @@ export default function AreaFeatures() {
     }
   };
 
-  const handlePillToggle = (arrayName: 'categories' | 'experienceTypes', value: string) => {
-    setFormData(prev => {
-      const arr = prev[arrayName];
-      if (arr.includes(value)) {
-        return { ...prev, [arrayName]: arr.filter(item => item !== value) };
-      } else {
-        return { ...prev, [arrayName]: [...arr, value] };
-      }
+  const handlePillToggle = (
+    arrayName: 'categories' | 'experienceTypes',
+    value: string,
+    catalogDocs: Record<string, unknown>[]
+  ) => {
+    setFormData((prev) => {
+      const current = normalizeCategorySelectionList(
+        prev[arrayName],
+        catalogDocs,
+        localeSettings.primaryLocale
+      );
+      const lower = value.toLowerCase();
+      const has = current.some((c) => c.toLowerCase() === lower);
+      const next = has
+        ? current.filter((c) => c.toLowerCase() !== lower)
+        : [...current, value];
+      return { ...prev, [arrayName]: next };
     });
   };
 
@@ -149,7 +299,7 @@ export default function AreaFeatures() {
       let finalDescription = googleData.description;
 
       try {
-        const categoryNames = featuresCategories.map(c => c.name).join(', ');
+        const categoryNames = featuresCategories.map((c) => featureCategoryPrimaryName(c)).join(', ');
         const gType = googleData.category?.replace(/_/g, ' ') || "local business";
 
         // We ask Gemini to return BOTH the description and the category match in a strict JSON format
@@ -167,7 +317,7 @@ export default function AreaFeatures() {
         const parsed = JSON.parse(rawText);
 
         // Ensure the AI didn't hallucinate a category that doesn't exist
-        if (parsed.category && featuresCategories.some(c => c.name === parsed.category)) {
+        if (parsed.category && featuresCategories.some((c) => featureCategoryPrimaryName(c) === parsed.category)) {
           matchedCategory = parsed.category;
         }
         
@@ -178,27 +328,32 @@ export default function AreaFeatures() {
         console.log("AI JSON mapping failed, falling back to basic matching.", e);
         // Absolute fallback if the AI fails
         const gTypeLower = googleData.category?.toLowerCase().replace(/_/g, ' ') || "";
-        const possibleMatch = featuresCategories.find(c => 
-          gTypeLower.includes(c.name.toLowerCase()) || 
-          c.name.toLowerCase().includes(gTypeLower)
-        );
-        if (possibleMatch) matchedCategory = possibleMatch.name;
+        const possibleMatch = featuresCategories.find((c) => {
+          const n = featureCategoryPrimaryName(c).toLowerCase();
+          return gTypeLower.includes(n) || n.includes(gTypeLower);
+        });
+        if (possibleMatch) matchedCategory = featureCategoryPrimaryName(possibleMatch);
       }
 
+      const primaryName = googleData.name || placeNameFallback;
+      const primaryDescription = finalDescription || formData.description;
       setFormData(prev => ({
         ...prev,
-        name: googleData.name || placeNameFallback,
-        // Add the category as a selected pill
+        name: primaryName,
         categories: matchedCategory && !prev.categories.includes(matchedCategory) 
                       ? [...prev.categories, matchedCategory] 
                       : prev.categories,
-        description: finalDescription || prev.description,
+        description: primaryDescription,
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
         phoneNumber: googleData.phoneNumber || prev.phoneNumber,
         website: googleData.websiteUri || prev.website,
         photoUrl: googleData.photoUrl || ''
       }));
+      localeEditor.applyPrimaryFields({
+        name: primaryName,
+        description: primaryDescription,
+      });
 
       if (googleData.photoUrl) {
         setImagePreview(googleData.photoUrl);
@@ -224,21 +379,63 @@ export default function AreaFeatures() {
       const prompt = `Write a short, luxurious 2-sentence description for a ${cats || 'feature'} called "${formData.name}" located in ${decodedArea}. Make it sound exclusive and appealing to high-end travelers. No quotes.`;
       const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
       const result = await model.generateContent(prompt);
-      setFormData(prev => ({ ...prev, description: result.response.text().trim() }));
+      const desc = result.response.text().trim();
+      setFormData(prev => ({ ...prev, description: desc }));
+      localeEditor.applyPrimaryFields({
+        name: localeEditor.getPrimaryValue('name') || formData.name,
+        description: desc,
+      });
     } catch (e) {
       console.error(e);
       toast.error("Failed to generate description.");
     } finally { setIsGeneratingDesc(false); }
   };
 
+  const closeAndResetForm = () => {
+    setIsFormOpen(false);
+    setEditingFeatureId(null);
+    setEditingSourceDoc(null);
+    localeEditor.resetMaps();
+    setFormData(initialFormState);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const handleAutoTranslateLocale = async () => {
+    const target = localeEditor.contentLocale;
+    const primary = localeSettings.primaryLocale;
+    if (target === primary) {
+      toast.warning('Switch to a non-primary language tab to auto-translate.');
+      return;
+    }
+    const primaryFields = {
+      name: localeEditor.getPrimaryValue('name') || formData.name,
+      description: localeEditor.getPrimaryValue('description') || formData.description,
+    };
+    if (!primaryFields.name?.trim()) {
+      toast.warning('Fill in the primary language first.');
+      return;
+    }
+    setIsLocaleTranslating(true);
+    try {
+      const translated = await translateContentFields(primaryFields, primary, target);
+      localeEditor.applyTranslatedFields(target, translated);
+      toast.success(`Draft translation added for ${target.toUpperCase()}. Please review before saving.`);
+    } catch {
+      toast.error('Auto-translate failed. Try again or edit manually.');
+    } finally {
+      setIsLocaleTranslating(false);
+    }
+  };
+
   // --- SUBMIT ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.categories.length === 0) {
+    if (normalizedFeatureCategories.length === 0) {
       toast.warning("Please select at least one Category.");
       return;
     }
-    if (formData.isLocal && formData.experienceTypes.length === 0) {
+    if (formData.isLocal && normalizedExperienceTypes.length === 0) {
       toast.warning("Please select at least one Local Gems category for the Local tag.");
       return;
     }
@@ -253,7 +450,14 @@ export default function AreaFeatures() {
         finalPhotoUrl = await getDownloadURL(storageRef);
       }
 
-      const featureData = { ...formData, photoUrl: finalPhotoUrl, updatedAt: new Date().toISOString() };
+      const featureData = {
+        ...formData,
+        categories: normalizedFeatureCategories,
+        experienceTypes: normalizedExperienceTypes,
+        ...localeEditor.buildPayload(),
+        photoUrl: finalPhotoUrl,
+        updatedAt: new Date().toISOString(),
+      };
 
       if (editingFeatureId) {
         await updateDoc(doc(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures', editingFeatureId), featureData);
@@ -261,11 +465,7 @@ export default function AreaFeatures() {
         await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures'), featureData);
       }
 
-      setIsFormOpen(false); 
-      setEditingFeatureId(null); 
-      setFormData(initialFormState); 
-      setImageFile(null); 
-      setImagePreview(null);
+      closeAndResetForm();
     } catch (error) { 
       toast.error("Failed to save feature."); 
     } finally { 
@@ -280,27 +480,29 @@ export default function AreaFeatures() {
     }
   };
 
+  const isPrimaryLocaleTab =
+    normalizeLocaleCode(localeEditor.contentLocale) === normalizeLocaleCode(localeSettings.primaryLocale);
+
+  const agreementDisplay =
+    (formData.agreement ?? '').trim() === '' ? '0%' : `${formData.agreement}%`;
+
   return (
     <div className="admin-page">
       
-      {/* Header */}
+      <AreaHubBackLink />
+
       <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center">
-          <button onClick={() => navigate(adminPath('/area'))} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
-            <ArrowLeft size={24} />
-          </button>
-          <div>
+        <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-              <Briefcase className="mr-3 text-vailo-teal" size={28} />
+              <Briefcase className="mr-3 text-vailo-teal shrink-0" size={28} />
               Master Features
             </h2>
-            <p className="text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-2">
               Global features & services for <span className="font-bold text-vailo-teal-hover">{decodedArea}, {decodedCountry}</span>
             </p>
-          </div>
         </div>
         {!isFormOpen && (
-          <button onClick={() => { setFormData(initialFormState); setImagePreview(null); setImageFile(null); setIsFormOpen(true); }} className="flex items-center px-4 py-2 bg-vailo-teal text-white text-sm font-bold rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+          <button onClick={() => { setEditingSourceDoc(null); localeEditor.resetMaps(); setFormData(initialFormState); setImagePreview(null); setImageFile(null); setEditingFeatureId(null); setIsFormOpen(true); }} className="flex items-center px-4 py-2 bg-vailo-teal text-white text-sm font-bold rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Feature
           </button>
         )}
@@ -313,11 +515,40 @@ export default function AreaFeatures() {
             <h3 className="text-lg font-bold text-vailo-dark">
               {editingFeatureId ? 'Edit Master Feature' : 'Add New Master Feature'}
             </h3>
-            <button type="button" onClick={() => setIsFormOpen(false)} className="text-vailo-teal hover:text-vailo-teal-hover font-medium text-sm">Cancel</button>
+            <button type="button" onClick={closeAndResetForm} className="text-vailo-teal hover:text-vailo-teal-hover font-medium text-sm">Cancel</button>
           </div>
 
           <div className="p-6">
-            
+            <div className="rounded-xl border border-vailo-teal/15 bg-vailo-teal/5 p-4 space-y-3 mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
+                  <Languages size={16} /> Content language
+                </p>
+                {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+                  <button
+                    type="button"
+                    onClick={handleAutoTranslateLocale}
+                    disabled={isLocaleTranslating}
+                    className="flex items-center justify-center h-[38px] px-4 bg-white border border-vailo-teal/30 rounded-lg text-sm font-medium text-vailo-teal hover:bg-white/80 disabled:opacity-50"
+                  >
+                    {isLocaleTranslating ? (
+                      <Loader2 size={16} className="mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles size={16} className="mr-2" />
+                    )}
+                    Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+                  </button>
+                )}
+              </div>
+              <ContentLocaleTabs
+                enabledLocales={localeSettings.enabledLocales}
+                primaryLocale={localeSettings.primaryLocale}
+                activeLocale={localeEditor.contentLocale}
+                onChange={localeEditor.setContentLocale}
+                languageOptions={languageOptions}
+              />
+            </div>
+
             {/* 1. MAGIC FILL */}
             <div className="flex flex-col md:flex-row gap-4 mb-8 bg-vailo-teal/5/50 p-4 rounded-xl border border-vailo-teal/10 items-center">
               <div className="flex-1 w-full">
@@ -340,19 +571,60 @@ export default function AreaFeatures() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Feature Name *</label>
-                    <input type="text" name="name" required value={formData.name} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none" />
+                    <input
+                      type="text"
+                      required
+                      value={localeEditor.getValue('name')}
+                      onChange={(e) => {
+                        localeEditor.setValue('name', e.target.value);
+                        if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                          setFormData((prev) => ({ ...prev, name: e.target.value }));
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Agreement *</label>
-                    <div className="relative">
-                      <input type="number" step="0.1" name="agreement" required value={formData.agreement} onChange={handleChange} placeholder="0" className="w-full pl-4 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none" />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-500 font-bold">%</div>
-                    </div>
+                    {isPrimaryLocaleTab ? (
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.1"
+                          name="agreement"
+                          required
+                          value={formData.agreement}
+                          onChange={handleChange}
+                          placeholder="0"
+                          className="w-full pl-4 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-500 font-bold">
+                          %
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 font-medium">
+                        {agreementDisplay}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="mb-6">
-                  <PillSelector label="Feature Categories *" options={featuresCategories.map(c => c.name)} selected={formData.categories} onToggle={(v) => handlePillToggle('categories', v)} colorClass="indigo" />
+                  <PillSelector
+                    label="Feature Categories *"
+                    options={featureCategoryPillOptions}
+                    isSelected={(value) =>
+                      categorySelectionIncludes(
+                        normalizedFeatureCategories,
+                        value,
+                        featureCategoryDocs,
+                        localeSettings.primaryLocale
+                      )
+                    }
+                    onToggle={(v) => handlePillToggle('categories', v, featureCategoryDocs)}
+                    colorClass="indigo"
+                  />
                 </div>
               </div>
 
@@ -364,7 +636,18 @@ export default function AreaFeatures() {
                     {isGeneratingDesc ? <Loader2 size={14} className="animate-spin mr-1" /> : <Wand2 size={14} className="mr-1" />} AI Write
                   </button>
                 </div>
-                <textarea name="description" required rows={3} value={formData.description} onChange={handleChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none resize-y" />
+                <textarea
+                  required
+                  rows={3}
+                  value={localeEditor.getValue('description')}
+                  onChange={(e) => {
+                    localeEditor.setValue('description', e.target.value);
+                    if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                      setFormData((prev) => ({ ...prev, description: e.target.value }));
+                    }
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none resize-y"
+                />
               </div>
 
               {/* 4. CONTACT INFORMATION */}
@@ -486,7 +769,20 @@ export default function AreaFeatures() {
                     {localGemsCategories.length === 0 ? (
                       <p className="text-sm text-vailo-teal italic">No Local Gems categories found. Add them under Area Functionality → Local Gems Categories.</p>
                     ) : (
-                      <PillSelector label="Local Gems Category *" options={localGemsCategories} selected={formData.experienceTypes} onToggle={(v) => handlePillToggle('experienceTypes', v)} colorClass="purple" />
+                      <PillSelector
+                        label="Local Gems Category *"
+                        options={localGemCategoryPillOptions}
+                        isSelected={(value) =>
+                          categorySelectionIncludes(
+                            normalizedExperienceTypes,
+                            value,
+                            localGemCategoryDocs,
+                            localeSettings.primaryLocale
+                          )
+                        }
+                        onToggle={(v) => handlePillToggle('experienceTypes', v, localGemCategoryDocs)}
+                        colorClass="purple"
+                      />
                     )}
                   </div>
                 )}
@@ -494,7 +790,7 @@ export default function AreaFeatures() {
 
               {/* SUBMIT BUTTON */}
               <div className="flex justify-end pt-4 border-t border-gray-100">
-                <button type="button" onClick={() => { setIsFormOpen(false); setEditingFeatureId(null); setFormData(initialFormState); setImagePreview(null); }} className="px-6 py-3 mr-4 text-sm font-bold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
+                <button type="button" onClick={closeAndResetForm} className="px-6 py-3 mr-4 text-sm font-bold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
                   Cancel
                 </button>
                 <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-8 py-3 text-sm font-bold text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-xl disabled:opacity-50 transition-colors shadow-md hover:shadow-lg">
@@ -550,7 +846,7 @@ export default function AreaFeatures() {
                 </div>
 
                 <div className="mt-auto flex justify-end gap-2 pt-4 border-t border-gray-100">
-                  <button onClick={() => { setFormData(feat); setEditingFeatureId(feat.id); setImagePreview(feat.photoUrl); setIsFormOpen(true); }} className="p-2 text-vailo-teal hover:bg-vailo-teal/5 rounded-lg transition-colors"><Pencil size={18} /></button>
+                  <button onClick={() => openFeatureEdit(feat)} className="p-2 text-vailo-teal hover:bg-vailo-teal/5 rounded-lg transition-colors"><Pencil size={18} /></button>
                   <button onClick={() => handleDelete(feat.id, feat.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18} /></button>
                 </div>
               </div>
@@ -563,10 +859,22 @@ export default function AreaFeatures() {
 }
 
 // Reusable Multiple-Select Pill Component
-function PillSelector({ label, options, selected, onToggle, colorClass }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, colorClass: 'indigo' | 'purple' }) {
+function PillSelector({
+  label,
+  options,
+  isSelected,
+  onToggle,
+  colorClass,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  isSelected: (value: string) => boolean;
+  onToggle: (val: string) => void;
+  colorClass: 'indigo' | 'purple';
+}) {
   const colorMap = {
     indigo: { bg: 'bg-vailo-teal/10', text: 'text-vailo-teal-hover', border: 'border-vailo-teal/20' },
-    purple: { bg: 'bg-vailo-gold/15', text: 'text-vailo-teal-hover', border: 'border-vailo-gold/30' }
+    purple: { bg: 'bg-vailo-gold/15', text: 'text-vailo-teal-hover', border: 'border-vailo-gold/30' },
   };
   const activeStyle = colorMap[colorClass];
 
@@ -574,20 +882,20 @@ function PillSelector({ label, options, selected, onToggle, colorClass }: { labe
     <div>
       <p className="text-sm font-bold text-gray-700 mb-2">{label}</p>
       <div className="flex flex-wrap gap-2">
-        {options.map(opt => {
-          const isSelected = selected.includes(opt);
+        {options.map((opt) => {
+          const selected = isSelected(opt.value);
           return (
-            <button 
-              key={opt} 
-              type="button" 
-              onClick={() => onToggle(opt)} 
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onToggle(opt.value)}
               className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                isSelected 
-                  ? `${activeStyle.bg} ${activeStyle.text} ${activeStyle.border} shadow-sm` 
+                selected
+                  ? `${activeStyle.bg} ${activeStyle.text} ${activeStyle.border} shadow-sm`
                   : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {opt}
+              {opt.label}
             </button>
           );
         })}

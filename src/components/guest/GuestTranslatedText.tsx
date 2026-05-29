@@ -1,48 +1,27 @@
-import { useEffect, useState } from 'react';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
+import GuestLocalizedText from './GuestLocalizedText';
 
 type Props = {
   text: string;
+  doc?: Record<string, unknown> | null;
+  field?: string;
   className?: string;
   as?: 'span' | 'p' | 'div';
 };
 
-export default function GuestTranslatedText({ text, className, as: Tag = 'span' }: Props) {
-  const { locale, translateText, t } = useGuestLocale();
-  const [display, setDisplay] = useState(text);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const raw = String(text || '').trim();
-    if (!raw) {
-      setDisplay('');
-      setBusy(false);
-      return;
-    }
-
-    let cancelled = false;
-    setBusy(true);
-    setDisplay(raw);
-
-    void translateText(raw).then((translated) => {
-      if (!cancelled) {
-        setDisplay(translated);
-        setBusy(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [text, locale, translateText]);
-
+/** @deprecated Prefer GuestLocalizedText with doc + field. */
+export default function GuestTranslatedText({ text, doc, field = 'name', className, as }: Props) {
+  const { locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
   return (
-    <Tag className={className}>
-      {busy && display === text ? (
-        <span className="text-gray-400 italic text-[0.92em]">{t('translating')}</span>
-      ) : (
-        display
-      )}
-    </Tag>
+    <GuestLocalizedText
+      text={text}
+      doc={doc}
+      field={field}
+      locale={locale}
+      primaryLocale={contentPrimaryLocale}
+      reviewedLocales={contentReviewedLocales}
+      className={className}
+      as={as}
+    />
   );
 }

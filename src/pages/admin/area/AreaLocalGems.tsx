@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAreaRouteParams } from '../../../hooks/useAreaRouteParams';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, ai } from '../../../lib/firebase';
@@ -7,20 +8,24 @@ import { useToast } from '../../../context/ToastContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { getGenerativeModel } from "firebase/ai";
-import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Tag } from 'lucide-react';
+import { Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Tag, Languages, Sparkles } from 'lucide-react';
 import { adminPath } from '../../../lib/adminRoutes';
+import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
+import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
+import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
+import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
+import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
+import { translateContentFields } from '../../../lib/adminContentTranslate';
+import { categoryPrimaryName, resolveCategoryLabel, resolveCategoryToPrimary } from '../../../lib/categoryLocale';
+import { getLocaleFieldValue } from '../../../lib/propertyContentLocales';
 
 export default function AreaLocalGems() {
-  const { country, area } = useParams<{ country: string, area: string }>();
   const navigate = useNavigate();
   const toast = useToast();
-  
-  const decodedCountry = decodeURIComponent(country || '');
-  const decodedArea = decodeURIComponent(area || '');
-  const areaId = decodedArea.toLowerCase().replace(/\s+/g, '-');
+  const { country: decodedCountry, areaId, areaName: decodedArea } = useAreaRouteParams();
 
   const [gems, setGems] = useState<any[]>([]);
-  const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
+  const [categories, setCategories] = useState<{ id: string; data: Record<string, unknown> }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -45,19 +50,39 @@ export default function AreaLocalGems() {
   };
   
   const [formData, setFormData] = useState(initialFormState);
+  const [editingSourceDoc, setEditingSourceDoc] = useState<Record<string, unknown> | null>(null);
+  const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+  const localeSettings = useAreaContentLocaleSettings(decodedCountry, areaId);
+  const { languages } = usePlatformLanguages();
+  const languageOptions = useMemo(
+    () => languages.map((l) => ({ code: l.shortName, label: l.title })),
+    [languages]
+  );
+  const localeEditor = useContentLocaleEditor(
+    localeSettings.primaryLocale,
+    ['name', 'description', 'category'],
+    editingSourceDoc
+  );
 
   // 1. Fetch Dynamic Categories
   useEffect(() => {
     if (!decodedCountry || !areaId) return;
     const catRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGemsCategories');
     const unsubscribe = onSnapshot(catRef, (snapshot) => {
-      const fetchedCats = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
-      fetchedCats.sort((a, b) => a.name.localeCompare(b.name));
+      const fetchedCats = snapshot.docs.map((d) => ({
+        id: d.id,
+        data: d.data() as Record<string, unknown>,
+      }));
+      fetchedCats.sort((a, b) =>
+        categoryPrimaryName(a.data, localeSettings.primaryLocale).localeCompare(
+          categoryPrimaryName(b.data, localeSettings.primaryLocale)
+        )
+      );
       setCategories(fetchedCats);
       // 🔥 Fixed: Removed the code that auto-selected the first category
     });
     return () => unsubscribe();
-  }, [decodedCountry, areaId]);
+  }, [decodedCountry, areaId, localeSettings.primaryLocale]);
 
   // 2. Fetch Area Gems
   useEffect(() => {
@@ -114,10 +139,14 @@ export default function AreaLocalGems() {
       // Try to intelligently map Google's category to one of our dynamic categories
       let matchedCategory = ""; // Default to unselected
       const gType = googleData.category?.toLowerCase() || "";
-      const possibleMatch = categories.find(c => 
-        gType.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(gType)
-      );
-      if (possibleMatch) matchedCategory = possibleMatch.name;
+      const possibleMatch = categories.find((c) => {
+        const name = categoryPrimaryName(c.data, localeSettings.primaryLocale);
+        const lower = name.toLowerCase();
+        return gType.includes(lower) || lower.includes(gType);
+      });
+      if (possibleMatch) {
+        matchedCategory = categoryPrimaryName(possibleMatch.data, localeSettings.primaryLocale);
+      }
 
       // AI Description Fallback
       let finalDescription = googleData.description;
@@ -132,16 +161,24 @@ export default function AreaLocalGems() {
         }
       }
 
+      const primaryName = googleData.name || placeNameFallback;
+      const primaryCategory = matchedCategory || formData.category;
+      const primaryDescription = finalDescription || formData.description;
       setFormData(prev => ({
         ...prev,
-        name: googleData.name || placeNameFallback,
-        category: matchedCategory || prev.category,
+        name: primaryName,
+        category: primaryCategory,
         rating: googleData.rating ? googleData.rating.toString() : prev.rating,
-        description: finalDescription || prev.description,
+        description: primaryDescription,
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
         photoUrl: googleData.photoUrl || ''
       }));
+      localeEditor.applyPrimaryFields({
+        name: primaryName,
+        category: primaryCategory,
+        description: primaryDescription,
+      });
 
       if (googleData.photoUrl) {
         setImagePreview(googleData.photoUrl);
@@ -177,6 +214,12 @@ export default function AreaLocalGems() {
 
       const gemData = {
         ...formData,
+        category: resolveCategoryToPrimary(
+          localeEditor.getPrimaryValue('category').trim() || formData.category.trim(),
+          categories.map((c) => c.data),
+          localeSettings.primaryLocale
+        ),
+        ...localeEditor.buildPayload(),
         photoUrl: finalPhotoUrl,
         updatedAt: new Date().toISOString()
       };
@@ -189,6 +232,8 @@ export default function AreaLocalGems() {
 
       setIsFormOpen(false);
       setEditingGemId(null);
+      setEditingSourceDoc(null);
+      localeEditor.resetMaps();
       setFormData(initialFormState);
       setImageFile(null);
       setImagePreview(null);
@@ -201,11 +246,65 @@ export default function AreaLocalGems() {
     }
   };
 
+  const selectedCategoryPrimary =
+    resolveCategoryToPrimary(
+      localeEditor.getPrimaryValue('category').trim() || formData.category.trim(),
+      categories.map((c) => c.data),
+      localeSettings.primaryLocale
+    );
+
+  const applyCategorySelection = (cat: { id: string; data: Record<string, unknown> }) => {
+    const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+    localeEditor.applyPrimaryFields({ category: primaryName });
+    setFormData((prev) => ({ ...prev, category: primaryName }));
+    for (const locale of localeSettings.enabledLocales) {
+      if (locale === localeSettings.primaryLocale) continue;
+      const label = resolveCategoryLabel(cat.data, locale, localeSettings.primaryLocale);
+      if (label) localeEditor.applyTranslatedFields(locale, { category: label });
+    }
+  };
+
   const handleEdit = (gem: any) => {
-    setFormData(gem);
+    const catalogDocs = categories.map((c) => c.data);
+    const primaryCategory = resolveCategoryToPrimary(
+      getLocaleFieldValue(gem, 'category', localeSettings.primaryLocale, localeSettings.primaryLocale) ||
+        String(gem.category || ''),
+      catalogDocs,
+      localeSettings.primaryLocale
+    );
+    setEditingSourceDoc(gem);
+    setFormData({ ...gem, category: primaryCategory });
     setImagePreview(gem.photoUrl);
     setEditingGemId(gem.id);
     setIsFormOpen(true);
+  };
+
+  const handleAutoTranslateLocale = async () => {
+    const target = localeEditor.contentLocale;
+    const primary = localeSettings.primaryLocale;
+    if (target === primary) {
+      toast.warning('Switch to a non-primary language tab to auto-translate.');
+      return;
+    }
+    const primaryFields = {
+      name: localeEditor.getPrimaryValue('name') || formData.name,
+      description: localeEditor.getPrimaryValue('description') || formData.description,
+      category: localeEditor.getPrimaryValue('category') || formData.category,
+    };
+    if (!primaryFields.name?.trim()) {
+      toast.warning('Fill in the primary language first.');
+      return;
+    }
+    setIsLocaleTranslating(true);
+    try {
+      const translated = await translateContentFields(primaryFields, primary, target);
+      localeEditor.applyTranslatedFields(target, translated);
+      toast.success(`Draft translation added for ${target.toUpperCase()}. Please review before saving.`);
+    } catch {
+      toast.error('Auto-translate failed.');
+    } finally {
+      setIsLocaleTranslating(false);
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -221,7 +320,7 @@ export default function AreaLocalGems() {
           <Tag size={40} className="mx-auto text-gray-300 mb-4" />
           <h3 className="text-lg font-bold text-gray-900 mb-2">No Categories Found</h3>
           <p className="text-gray-500 mb-6">You must create at least one Local Gems Category before adding gems.</p>
-          <button onClick={() => navigate(adminPath(`/area/${country}/${area}/local-gems-categories`))} className="px-6 py-3 bg-vailo-teal text-white font-medium rounded-xl hover:bg-vailo-teal-hover transition-colors">
+          <button onClick={() => navigate(adminPath(`/area/${encodeURIComponent(decodedCountry)}/${encodeURIComponent(areaId)}/local-gems-categories`))} className="px-6 py-3 bg-vailo-teal text-white font-medium rounded-xl hover:bg-vailo-teal-hover transition-colors">
             Go to Categories
           </button>
         </div>
@@ -232,24 +331,20 @@ export default function AreaLocalGems() {
   return (
     <div className="admin-page">
       
-      {/* Header */}
+      <AreaHubBackLink />
+
       <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center">
-          <button onClick={() => navigate(adminPath('/area'))} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
-            <ArrowLeft size={24} />
-          </button>
-          <div>
+        <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-              <Map className="mr-3 text-orange-600" size={28} />
+              <Map className="mr-3 text-orange-600 shrink-0" size={28} />
               Master Local Gems
             </h2>
-            <p className="text-gray-500 mt-1">
+            <p className="text-sm text-gray-500 mt-2">
               Global gems for <span className="font-bold text-orange-700">{decodedArea}, {decodedCountry}</span>
             </p>
-          </div>
         </div>
         {!isFormOpen && (
-          <button onClick={() => { setFormData(initialFormState); setImagePreview(null); setImageFile(null); setIsFormOpen(true); }} className="flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm">
+          <button onClick={() => { setEditingSourceDoc(null); localeEditor.resetMaps(); setFormData(initialFormState); setImagePreview(null); setImageFile(null); setIsFormOpen(true); }} className="flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm">
             <Plus size={18} className="mr-2" /> Add Gem
           </button>
         )}
@@ -262,7 +357,21 @@ export default function AreaLocalGems() {
             <h3 className="text-lg font-bold text-orange-900">
               {editingGemId ? 'Edit Local Gem' : 'Add New Local Gem'}
             </h3>
-            <button type="button" onClick={() => setIsFormOpen(false)} className="text-orange-500 hover:text-orange-700 font-medium text-sm">Cancel</button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsFormOpen(false);
+                setEditingGemId(null);
+                setEditingSourceDoc(null);
+                localeEditor.resetMaps();
+                setFormData(initialFormState);
+                setImageFile(null);
+                setImagePreview(null);
+              }}
+              className="text-orange-500 hover:text-orange-700 font-medium text-sm"
+            >
+              Cancel
+            </button>
           </div>
 
           <div className="p-6">
@@ -281,17 +390,70 @@ export default function AreaLocalGems() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-sm font-bold text-orange-900 flex items-center gap-2">
+                    <Languages size={16} /> Content language
+                  </p>
+                  {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+                    <button type="button" onClick={handleAutoTranslateLocale} disabled={isLocaleTranslating} className="flex items-center px-4 py-2 bg-white border border-orange-300 rounded-lg text-sm font-medium text-orange-800 disabled:opacity-50">
+                      {isLocaleTranslating ? <Loader2 size={16} className="animate-spin mr-2" /> : <Sparkles size={16} className="mr-2" />}
+                      Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+                    </button>
+                  )}
+                </div>
+                <ContentLocaleTabs
+                  enabledLocales={localeSettings.enabledLocales}
+                  primaryLocale={localeSettings.primaryLocale}
+                  activeLocale={localeEditor.contentLocale}
+                  onChange={localeEditor.setContentLocale}
+                  languageOptions={languageOptions}
+                />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Name *</label>
-                  <input type="text" name="name" required value={formData.name} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" />
+                  <input
+                    type="text"
+                    required
+                    value={localeEditor.getValue('name')}
+                    onChange={(e) => {
+                      localeEditor.setValue('name', e.target.value);
+                      if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                        setFormData((prev) => ({ ...prev, name: e.target.value }));
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Category *</label>
-                  <select name="category" required value={formData.category} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white">
-                    {/* 🔥 Fixed: Default unselectable option added */}
+                  <select
+                    required
+                    value={selectedCategoryPrimary}
+                    onChange={(e) => {
+                      const cat = categories.find(
+                        (c) =>
+                          categoryPrimaryName(c.data, localeSettings.primaryLocale) === e.target.value
+                      );
+                      if (cat) applyCategorySelection(cat);
+                    }}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                  >
                     <option value="" disabled>Select a Category...</option>
-                    {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                    {categories.map((cat) => {
+                      const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+                      const label = resolveCategoryLabel(
+                        cat.data,
+                        localeEditor.contentLocale,
+                        localeSettings.primaryLocale
+                      );
+                      return (
+                        <option key={cat.id} value={primaryName}>
+                          {label || primaryName}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div>
@@ -309,7 +471,18 @@ export default function AreaLocalGems() {
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">AI Description *</label>
-                <textarea name="description" required rows={3} value={formData.description} onChange={handleChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-y" />
+                <textarea
+                  required
+                  rows={3}
+                  value={localeEditor.getValue('description')}
+                  onChange={(e) => {
+                    localeEditor.setValue('description', e.target.value);
+                    if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                      setFormData((prev) => ({ ...prev, description: e.target.value }));
+                    }
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-y"
+                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

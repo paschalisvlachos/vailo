@@ -1,6 +1,7 @@
 import type { ReactNode, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { isAdminPathname } from '../../lib/adminRoutes';
 
 type AdminPageHeaderProps = {
   title: string;
@@ -41,12 +42,21 @@ export function AdminBackHeader({
   badge?: ReactNode;
   action?: ReactNode;
 }) {
+  const handleBack = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (isAdminPathname(backTo)) {
+      window.location.assign(backTo);
+      return;
+    }
+    window.location.href = backTo;
+  };
+
   return (
     <div className="mb-6 sm:mb-8">
-      <Link to={backTo} className="admin-back-link">
+      <a href={backTo} onClick={handleBack} className="admin-back-link">
         <ArrowLeft size={16} />
         {backLabel}
-      </Link>
+      </a>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-xl sm:text-2xl font-bold text-vailo-dark font-luxury">{title}</h2>

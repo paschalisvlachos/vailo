@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Map as MapIcon, Navigation, Car, Eye } from 'lucide-react';
-import { getItemMapLinks } from '../../lib/geocoding';
+import { Car, Eye } from 'lucide-react';
+import MapLinkButtons from './MapLinkButtons';
 import ExpandableDescription from './ExpandableDescription';
 import PickFeedbackButtons from './PickFeedbackButtons';
 import PlanImage from './PlanImage';
@@ -28,6 +28,8 @@ type CategoryPickCarouselProps = {
   items: PickItem[];
   mapAreaHint: string;
   propertyId?: string;
+  viewMapLabel?: string;
+  goMapLabel?: string;
 };
 
 export default function CategoryPickCarousel({
@@ -35,6 +37,8 @@ export default function CategoryPickCarousel({
   items,
   mapAreaHint,
   propertyId,
+  viewMapLabel = 'View',
+  goMapLabel = 'Go',
 }: CategoryPickCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -61,12 +65,12 @@ export default function CategoryPickCarousel({
   if (!items?.length) return null;
 
   return (
-    <div className="mb-2">
+    <div className="mb-2 min-w-0 max-w-full">
       <div className="mb-3">
-        <h4 className="font-semibold text-[#0B4F5C] text-base tracking-tight">
+        <h4 className="font-semibold text-white text-base tracking-tight">
           {categoryName}
         </h4>
-        <p className="text-sm text-[#0B4F5C]/55 mt-0.5">
+        <p className="text-sm text-white/55 mt-0.5">
           {items.length} local {items.length === 1 ? 'pick' : 'picks'} · nearest first
         </p>
       </div>
@@ -74,18 +78,18 @@ export default function CategoryPickCarousel({
       <div
         ref={scrollRef}
         onScroll={updateActiveIndex}
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-1 max-w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item, i) => (
           <article
             key={`${item.title}-${i}`}
-            className="w-[288px] shrink-0 snap-start snap-always bg-white border border-[#0B4F5C]/8 rounded-2xl overflow-hidden flex flex-col shadow-[0_8px_30px_rgba(11,79,92,0.08)]"
+            className="w-[min(288px,calc(100vw-3rem))] shrink-0 snap-start snap-always bg-white/8 border border-white/10 rounded-2xl overflow-hidden flex flex-col"
           >
             <div className="relative">
               <PlanImage
                 src={item.photoUrl}
                 alt={item.title}
-                className="w-full h-40 object-cover bg-[#eef3f2]"
+                className="w-full h-40 object-cover bg-vailo-teal-hover/50"
                 fallbackClassName="w-full h-40"
               />
               {item.beyondRadius && (
@@ -94,7 +98,7 @@ export default function CategoryPickCarousel({
                 </span>
               )}
               {item.previouslyShown && (
-                <span className="guest-badge absolute top-3 right-3 bg-white/90 text-[#0B4F5C] shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
+                <span className="guest-badge absolute top-3 right-3 bg-vailo-teal/90 text-white shadow-sm border border-white/15 flex items-center gap-1">
                   <Eye size={11} strokeWidth={2.2} /> Seen before
                 </span>
               )}
@@ -102,11 +106,11 @@ export default function CategoryPickCarousel({
 
             <div className="p-4 flex flex-col flex-1">
               <div className="flex flex-wrap gap-1.5 items-start mb-2">
-                <h5 className="font-semibold text-gray-900 flex-1 min-w-0 leading-snug">
+                <h5 className="font-semibold text-white flex-1 min-w-0 leading-snug">
                   {item.title}
                 </h5>
                 {item.source === 'database' && (
-                  <span className="guest-badge bg-[#C5A059]/12 text-[#8a6d2e] shrink-0">
+                  <span className="guest-badge bg-vailo-gold/20 text-vailo-gold border border-vailo-gold/25 shrink-0">
                     Vailo pick
                   </span>
                 )}
@@ -116,18 +120,20 @@ export default function CategoryPickCarousel({
                 text={item.description}
                 lines={3}
                 className="mb-3 flex-1"
+                bodyClassName="text-sm text-white/70 leading-relaxed"
+                toggleClassName="mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-vailo-gold hover:text-white transition-colors min-h-[44px]"
               />
 
               <p
                 className={`text-sm font-semibold flex items-center mb-3 ${
-                  item.beyondRadius ? 'text-amber-700' : 'text-[#0B4F5C]/70'
+                  item.beyondRadius ? 'text-amber-300' : 'text-white/65'
                 }`}
               >
                 <Car size={12} className="mr-1.5 shrink-0" strokeWidth={2} />
                 {item.estimatedDistance}
               </p>
 
-              <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-white/10">
                 <PickFeedbackButtons
                   propertyId={propertyId}
                   item={{
@@ -141,31 +147,12 @@ export default function CategoryPickCarousel({
                     category: categoryName,
                   }}
                 />
-                <div className="flex gap-2 flex-1">
-                  {(() => {
-                    const links = getItemMapLinks(item, mapAreaHint);
-                    return (
-                      <>
-                        <a
-                          href={links.googleMapsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="guest-btn-action flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg flex items-center justify-center transition-colors"
-                        >
-                          <MapIcon size={14} className="mr-1" /> View
-                        </a>
-                        <a
-                          href={links.navigateUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="guest-btn-action flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg flex items-center justify-center transition-colors shadow-sm"
-                        >
-                          <Navigation size={13} className="mr-1" /> Go
-                        </a>
-                      </>
-                    );
-                  })()}
-                </div>
+                <MapLinkButtons
+                  item={item}
+                  mapAreaHint={mapAreaHint}
+                  viewLabel={viewMapLabel}
+                  goLabel={goMapLabel}
+                />
               </div>
             </div>
           </article>
@@ -182,8 +169,8 @@ export default function CategoryPickCarousel({
               onClick={() => scrollToIndex(i)}
               className={`rounded-full transition-all duration-300 ${
                 i === activeIndex
-                  ? 'w-2 h-2 bg-[#C5A059] scale-110'
-                  : 'w-1.5 h-1.5 bg-[#0B4F5C]/20 hover:bg-[#0B4F5C]/35'
+                  ? 'w-2 h-2 bg-vailo-gold scale-110'
+                  : 'w-1.5 h-1.5 bg-white/25 hover:bg-white/40'
               }`}
             />
           ))}

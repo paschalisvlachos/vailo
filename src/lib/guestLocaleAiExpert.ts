@@ -6,6 +6,11 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertWelcomeCta'
   | 'aiExpertYourStay'
   | 'aiExpertThinking'
+  | 'aiExpertCuratingHint'
+  | 'aiExpertCuratingStepExplore'
+  | 'aiExpertCuratingStepMatch'
+  | 'aiExpertCuratingStepBuild'
+  | 'aiExpertCuratingStepFinishing'
   | 'aiExpertVerifyingLocation'
   | 'aiExpertFindingLocation'
   | 'aiExpertPlanPicksTitle'
@@ -88,6 +93,11 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertWelcomeCta: 'No tourist traps. Just real days. Where shall we begin?',
   aiExpertYourStay: 'your stay',
   aiExpertThinking: 'Curating your local recommendations…',
+  aiExpertCuratingHint: 'This usually takes a few moments — we’re being picky on your behalf.',
+  aiExpertCuratingStepExplore: 'Exploring what locals love nearby',
+  aiExpertCuratingStepMatch: 'Matching your interests & distance',
+  aiExpertCuratingStepBuild: 'Building your personalised picks',
+  aiExpertCuratingStepFinishing: 'Adding the finishing touches',
   aiExpertVerifyingLocation: 'Verifying location…',
   aiExpertFindingLocation: 'Finding your starting point…',
   aiExpertPlanPicksTitle: 'Local favorites, curated for you',
@@ -185,6 +195,11 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertWelcomeCta: 'Χωρίς τουριστικές παγίδες. Αληθινές μέρες. Από πού ξεκινάμε;',
   aiExpertYourStay: 'τη διαμονή σας',
   aiExpertThinking: 'Ετοιμάζουμε τις τοπικές προτάσεις σας…',
+  aiExpertCuratingHint: 'Συνήθως χρειάζονται λίγα λεπτά — επιλέγουμε προσεκτικά για εσάς.',
+  aiExpertCuratingStepExplore: 'Εξερευνούμε τι αγαπούν οι ντόπιοι κοντά σας',
+  aiExpertCuratingStepMatch: 'Ταιριάζουμε τα ενδιαφέροντα & την απόσταση',
+  aiExpertCuratingStepBuild: 'Φτιάχνουμε τις προσωπικές σας επιλογές',
+  aiExpertCuratingStepFinishing: 'Προσθέτουμε τις τελικές πινελιές',
   aiExpertVerifyingLocation: 'Επαλήθευση τοποθεσίας…',
   aiExpertFindingLocation: 'Εύρεση σημείου εκκίνησης…',
   aiExpertPlanPicksTitle: 'Τοπικά αγαπημένα, για εσάς',

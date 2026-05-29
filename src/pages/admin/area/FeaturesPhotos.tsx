@@ -1,27 +1,25 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAreaRouteParams } from '../../../hooks/useAreaRouteParams';
 import { collection, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { adminPath } from '../../../lib/adminRoutes';
-import { Image as ImageIcon, ArrowLeft, Upload, X, Loader2, Tag } from 'lucide-react';
+import { Image as ImageIcon, Upload, X, Loader2, Tag } from 'lucide-react';
+import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
 
 export default function FeaturesPhotos() {
-  const { country, area } = useParams<{ country: string, area: string }>();
   const navigate = useNavigate();
   const toast = useToast();
-  
+  const { country: decodedCountry, areaId, areaName: decodedArea } = useAreaRouteParams();
+
   // Notice we added an optional photos string array to our category type
   const [categories, setCategories] = useState<{id: string, name: string, photos?: string[]}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   // Track which specific category is currently uploading an image
   const [uploadingCatId, setUploadingCatId] = useState<string | null>(null);
-
-  const decodedCountry = decodeURIComponent(country || '');
-  const decodedArea = decodeURIComponent(area || '');
-  const areaId = decodedArea.toLowerCase().replace(/\s+/g, '-');
 
   // Fetch Features Categories from Firestore
   useEffect(() => {
@@ -90,20 +88,16 @@ export default function FeaturesPhotos() {
   return (
     <div className="admin-page">
       
-      {/* Header with Back Button */}
-      <div className="flex items-center mb-8">
-        <button onClick={() => navigate(adminPath('/area'))} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
-          <ArrowLeft size={24} />
-        </button>
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-            <ImageIcon className="mr-3 text-pink-600" size={28} />
-            Features Photos
-          </h2>
-          <p className="text-gray-500 mt-1">
-            Manage global stock photos for features in <span className="font-bold text-pink-700">{decodedArea}, {decodedCountry}</span>
-          </p>
-        </div>
+      <AreaHubBackLink />
+
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+          <ImageIcon className="mr-3 text-pink-600 shrink-0" size={28} />
+          Features Photos
+        </h2>
+        <p className="text-sm text-gray-500 mt-2">
+          Manage global stock photos for features in <span className="font-bold text-pink-700">{decodedArea}, {decodedCountry}</span>
+        </p>
       </div>
 
       {isLoading ? (
@@ -116,7 +110,7 @@ export default function FeaturesPhotos() {
           <Tag size={40} className="mx-auto text-gray-300 mb-4" />
           <h3 className="text-lg font-bold text-gray-900 mb-2">No Features Categories Found</h3>
           <p className="text-gray-500 mb-6">You must create at least one Features Category before adding photos.</p>
-          <button onClick={() => navigate(adminPath(`/area/${country}/${area}/features-categories`))} className="px-6 py-3 bg-pink-600 text-white font-medium rounded-lg hover:bg-pink-700 transition-colors">
+          <button onClick={() => navigate(adminPath(`/area/${encodeURIComponent(decodedCountry)}/${encodeURIComponent(areaId)}/features-categories`))} className="px-6 py-3 bg-pink-600 text-white font-medium rounded-lg hover:bg-pink-700 transition-colors">
             Go to Features Categories
           </button>
         </div>

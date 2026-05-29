@@ -34,6 +34,7 @@ import {
 } from '../../../components/admin/AdminPageHeader';
 import type { PropertyRecord } from './PropertyLayout';
 import type { ListingKind } from './PropertyFormPage';
+import PropertyLanguagesCard from '../../../components/admin/PropertyLanguagesCard';
 
 interface OwnerOption {
   id: string;
@@ -246,6 +247,8 @@ export default function Overview() {
 
   return (
     <div className="space-y-6">
+      <PropertyLanguagesCard propertyId={propertyId} propertyData={property as Record<string, unknown>} />
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-sm text-gray-500">
           {isEditing ? 'Edit property details below, then save.' : 'Property summary and allocation.'}

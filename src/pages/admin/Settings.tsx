@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Globe, Settings as SettingsIcon } from 'lucide-react';
+import { Globe, MessageSquareText, Settings as SettingsIcon } from 'lucide-react';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import PlatformLanguagesEditor from '../../components/admin/PlatformLanguagesEditor';
+import PlatformGuestUiStringsEditor from '../../components/admin/PlatformGuestUiStringsEditor';
 
-type SettingsSection = 'languages';
+type SettingsSection = 'languages' | 'guest-ui';
 
 export default function Settings() {
   const [section, setSection] = useState<SettingsSection>('languages');
@@ -29,9 +30,22 @@ export default function Settings() {
           <Globe size={16} className="mr-2 shrink-0" />
           Languages
         </button>
+        <button
+          type="button"
+          onClick={() => setSection('guest-ui')}
+          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+            section === 'guest-ui'
+              ? 'bg-vailo-teal text-white shadow-sm'
+              : 'text-gray-500 hover:text-vailo-teal hover:bg-vailo-surface-elevated'
+          }`}
+        >
+          <MessageSquareText size={16} className="mr-2 shrink-0" />
+          Guest UI text
+        </button>
       </div>
 
       {section === 'languages' && <PlatformLanguagesEditor />}
+      {section === 'guest-ui' && <PlatformGuestUiStringsEditor />}
     </div>
   );
 }

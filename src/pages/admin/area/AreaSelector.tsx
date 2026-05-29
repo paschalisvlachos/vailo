@@ -17,6 +17,7 @@ import {
   Loader2,
   Radar,
 } from 'lucide-react';
+import AreaLanguagesCard from '../../../components/admin/AreaLanguagesCard';
 import AdminPageHeader, {
   AdminCard,
   AdminButton,
@@ -25,6 +26,8 @@ import AdminPageHeader, {
   AdminInput,
   AdminSection,
 } from '../../../components/admin/AdminPageHeader';
+
+type AreaOption = { id: string; name: string };
 
 const MODULES = [
   { id: 'local-gems-categories', title: 'Local Gems Categories', icon: Grid, desc: 'Category structure for local recommendations' },
@@ -41,8 +44,8 @@ export default function AreaSelector() {
 
   const [countries, setCountries] = useState<string[]>([]);
   const [selectedCountry, setSelectedCountry] = useState(localStorage.getItem('vailo_admin_country') || '');
-  const [dbAreas, setDbAreas] = useState<string[]>([]);
-  const [selectedArea, setSelectedArea] = useState(localStorage.getItem('vailo_admin_area') || '');
+  const [dbAreas, setDbAreas] = useState<AreaOption[]>([]);
+  const [selectedAreaId, setSelectedAreaId] = useState('');
   const [newAreaName, setNewAreaName] = useState('');
   const [isAddingArea, setIsAddingArea] = useState(false);
   const [isLoadingCountries, setIsLoadingCountries] = useState(true);
@@ -70,32 +73,51 @@ export default function AreaSelector() {
     }
 
     const unsubscribe = onSnapshot(collection(db, 'countries', selectedCountry, 'areas'), (snapshot) => {
-      const areasData = snapshot.docs.map((d) => d.data().name as string);
-      areasData.sort((a, b) => a.localeCompare(b));
+      const areasData = snapshot.docs
+        .map((d) => ({
+          id: d.id,
+          name: String(d.data().name || d.id).trim() || d.id,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
       setDbAreas(areasData);
     });
 
     return () => unsubscribe();
   }, [selectedCountry]);
 
+  useEffect(() => {
+    if (dbAreas.length === 0) {
+      setSelectedAreaId('');
+      return;
+    }
+    const stored = localStorage.getItem('vailo_admin_area') || '';
+    const match =
+      dbAreas.find((a) => a.id === stored) ||
+      dbAreas.find((a) => a.name === stored) ||
+      dbAreas.find((a) => a.id === stored.toLowerCase().replace(/\s+/g, '-'));
+    setSelectedAreaId(match?.id || '');
+  }, [dbAreas]);
+
   const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     setSelectedCountry(val);
     localStorage.setItem('vailo_admin_country', val);
-    setSelectedArea('');
+    setSelectedAreaId('');
     localStorage.removeItem('vailo_admin_area');
   };
 
   const handleAreaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    setSelectedArea(val);
+    setSelectedAreaId(val);
     localStorage.setItem('vailo_admin_area', val);
   };
 
   const handleAddArea = async () => {
     if (!newAreaName.trim() || !selectedCountry) return;
 
-    const isDuplicate = dbAreas.some((area) => area.toLowerCase() === newAreaName.trim().toLowerCase());
+    const isDuplicate = dbAreas.some(
+      (area) => area.name.toLowerCase() === newAreaName.trim().toLowerCase()
+    );
     if (isDuplicate) {
       toast.warning('This area already exists in the database.');
       return;
@@ -112,8 +134,8 @@ export default function AreaSelector() {
       });
 
       setNewAreaName('');
-      setSelectedArea(finalName);
-      localStorage.setItem('vailo_admin_area', finalName);
+      setSelectedAreaId(areaId);
+      localStorage.setItem('vailo_admin_area', areaId);
     } catch (error) {
       console.error('Error adding area:', error);
       toast.error('Failed to add area to database.');
@@ -122,13 +144,14 @@ export default function AreaSelector() {
     }
   };
 
-  const isReady = selectedCountry.trim() !== '' && selectedArea.trim() !== '';
+  const selectedArea = dbAreas.find((a) => a.id === selectedAreaId);
+  const isReady = selectedCountry.trim() !== '' && !!selectedArea;
 
   const handleCategoryClick = (categoryPath: string) => {
-    if (!isReady) return;
+    if (!isReady || !selectedArea) return;
     navigate(
       adminPath(
-        `/area/${encodeURIComponent(selectedCountry)}/${encodeURIComponent(selectedArea)}/${categoryPath}`
+        `/area/${encodeURIComponent(selectedCountry)}/${encodeURIComponent(selectedArea.id)}/${categoryPath}`
       )
     );
   };
@@ -159,13 +182,13 @@ export default function AreaSelector() {
 
           <div className={`transition-opacity duration-300 ${selectedCountry ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
             <AdminLabel>2. Select area / municipality</AdminLabel>
-            <AdminSelect value={selectedArea} onChange={handleAreaChange} className="mb-3">
+            <AdminSelect value={selectedAreaId} onChange={handleAreaChange} className="mb-3">
               <option value="" disabled>
                 {dbAreas.length === 0 ? 'No areas found — add one below' : 'Choose an existing area'}
               </option>
               {dbAreas.map((area) => (
-                <option key={area} value={area}>
-                  {area}
+                <option key={area.id} value={area.id}>
+                  {area.name}
                 </option>
               ))}
             </AdminSelect>
@@ -188,6 +211,16 @@ export default function AreaSelector() {
         </div>
       </AdminSection>
 
+      {isReady && (
+        <div className="mb-8">
+          <AreaLanguagesCard
+            country={selectedCountry}
+            areaId={selectedArea.id}
+            areaName={selectedArea.name}
+          />
+        </div>
+      )}
+
       <div>
         <h3 className={`text-lg font-bold font-luxury mb-5 ${isReady ? 'text-vailo-dark' : 'text-gray-400'}`}>
           Configuration modules
@@ -202,11 +235,17 @@ export default function AreaSelector() {
 
         <div
           className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5 transition-all duration-300 ${
-            isReady ? 'opacity-100 pointer-events-auto' : 'opacity-35 pointer-events-none grayscale'
+            isReady ? 'opacity-100' : 'opacity-35 grayscale'
           }`}
         >
           {MODULES.map((mod) => (
-            <button key={mod.id} type="button" onClick={() => handleCategoryClick(mod.id)} className="admin-module-card group">
+            <button
+              key={mod.id}
+              type="button"
+              disabled={!isReady}
+              onClick={() => handleCategoryClick(mod.id)}
+              className="admin-module-card group disabled:cursor-not-allowed disabled:hover:border-gray-100"
+            >
               <div className="admin-icon-box mb-4 group-hover:bg-vailo-gold/15 group-hover:text-vailo-gold transition-colors">
                 <mod.icon size={20} />
               </div>

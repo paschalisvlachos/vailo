@@ -24,6 +24,22 @@ import {
 } from '../../../lib/houseGuidePortal';
 import { generateFeaturedPreview } from '../../../lib/houseGuidePreviewAi';
 import { useToast } from '../../../context/ToastContext';
+import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
+import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
+import { translateContentFields } from '../../../lib/adminContentTranslate';
+import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
+import {
+  resolveFeaturedDigest,
+  resolveFeaturedPreviewLine,
+  normalizeLocaleCode,
+} from '../../../lib/propertyContentLocales';
+import {
+  getGuideTextValue,
+  hydrateGuideFormDataFromFirestore,
+  serializeGuideFormDataForSave,
+  setGuideTextInFormData,
+} from '../../../lib/houseGuideLocales';
+import { Languages } from 'lucide-react';
 
 // --- TYPE DEFINITIONS ---
 type Device = { room: string; device: string; brand: string; model: string };
@@ -85,13 +101,25 @@ const CATEGORIES: CategoryDef[] = [
 ];
 
 export default function HouseGuide() {
-  const { propertyId, propertyAccess, lockedListingId } =
+  const { propertyId, property, propertyAccess, lockedListingId } =
     useOutletContext<PropertyOutletContext>();
   const toast = useToast();
   const isListingOnly = propertyAccess.level === 'listing_only';
-  
+  const localeSettings = usePropertyContentLocaleSettings(property as Record<string, unknown>);
+  const { languages } = usePlatformLanguages();
+  const languageOptions = useMemo(
+    () => languages.map((l) => ({ code: l.shortName, label: l.title })),
+    [languages]
+  );
+  const [contentLocale, setContentLocale] = useState(localeSettings.primaryLocale);
+  const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
+
+  useEffect(() => {
+    setContentLocale(localeSettings.primaryLocale);
+  }, [localeSettings.primaryLocale, selectedTypeId]);
   
   // --- STATE MANAGEMENT ---
   const [formData, setFormData] = useState<FormData>({});
@@ -148,8 +176,11 @@ export default function HouseGuide() {
           previews?: unknown;
         } & Record<string, unknown>;
 
-        const guideRecord = rest as Record<string, unknown>;
-        setFormData(rest as FormData);
+        const guideRecord = hydrateGuideFormDataFromFirestore(
+          rest as Record<string, unknown>,
+          localeSettings.primaryLocale
+        );
+        setFormData(guideRecord as FormData);
         setFeaturedOnPortal(
           Array.isArray(featuredRaw)
             ? (featuredRaw as unknown[])
@@ -176,7 +207,7 @@ export default function HouseGuide() {
       }
     });
     return () => unsubscribe();
-  }, [propertyId, selectedTypeId]);
+  }, [propertyId, selectedTypeId, localeSettings.primaryLocale]);
 
   // --- LOGIC HELPERS ---
   const fieldHasContent = useCallback((field: FieldDef) => {
@@ -221,9 +252,11 @@ export default function HouseGuide() {
       buildSourceTextForFeaturedKey(
         key,
         formData as Record<string, unknown>,
-        fieldsForCategoryId
+        fieldsForCategoryId,
+        localeSettings.primaryLocale,
+        localeSettings.primaryLocale
       ).trim().length > 0,
-    [formData, fieldsForCategoryId]
+    [formData, fieldsForCategoryId, localeSettings.primaryLocale]
   );
 
   // Drop featured keys locally when their source content is cleared (star stays hidden).
@@ -283,46 +316,113 @@ export default function HouseGuide() {
     ): Promise<FeaturedPreviewsMap> => {
       const next: FeaturedPreviewsMap = { ...previews };
       const guideRecord = data as Record<string, unknown>;
+      const locales = localeSettings.enabledLocales;
 
       for (const key of featured) {
         const cfg = getFeaturedConfig(key);
         if (!cfg) continue;
 
-        const sourceText = buildSourceTextForFeaturedKey(key, guideRecord, fieldsForCategoryId);
-        const hash = await shortContentHash(sourceText);
+        const primary = localeSettings.primaryLocale;
+        const sourcePrimary = buildSourceTextForFeaturedKey(
+          key,
+          guideRecord,
+          fieldsForCategoryId,
+          primary,
+          primary
+        );
+        const hash = await shortContentHash(sourcePrimary);
 
         const cached = next[key];
-        const hasFreshCache =
-          cached && cached.contentHash === hash && (cached.previewLine || cached.digest);
+        const digestByLocale: Record<string, string> = {
+          ...(cached?.digestByLocale || {}),
+        };
+        const previewLineByLocale: Record<string, string> = {
+          ...(cached?.previewLineByLocale || {}),
+        };
+        const contentHashByLocale: Record<string, string> = {
+          ...(cached?.contentHashByLocale || {}),
+        };
+        const hasFreshPrimary =
+          cached &&
+          contentHashByLocale[primary] === hash &&
+          ((cached.digest && cached.digest.trim()) ||
+            (digestByLocale[primary] && digestByLocale[primary].trim()));
 
-        if (sourceText.trim() && !hasFreshCache) {
+        if (sourcePrimary.trim() && !hasFreshPrimary) {
           try {
-            const result = await generateFeaturedPreview(cfg.title, sourceText);
+            const result = await generateFeaturedPreview(cfg.title, sourcePrimary);
+            digestByLocale[primary] = result.digest;
+            previewLineByLocale[primary] = result.previewLine;
+            contentHashByLocale[primary] = hash;
             next[key] = {
               ...(cached || {}),
               previewLine: result.previewLine,
               digest: result.digest,
+              digestByLocale,
+              previewLineByLocale,
+              contentHashByLocale,
               contentHash: hash,
               generatedAt: new Date().toISOString(),
             };
           } catch (err) {
             console.error('generateFeaturedPreview failed for', key, err);
-            // Keep any previously cached preview; just leave hash unchanged
           }
-        } else if (!sourceText.trim()) {
+        } else if (!sourcePrimary.trim()) {
           next[key] = {
             ...(cached || {}),
             previewLine: '',
             digest: '',
+            digestByLocale: {},
+            previewLineByLocale: {},
+            contentHashByLocale: {},
             contentHash: hash,
             generatedAt: cached?.generatedAt,
           };
+          continue;
+        } else {
+          contentHashByLocale[primary] = hash;
+          next[key] = {
+            ...(cached || {}),
+            digestByLocale,
+            previewLineByLocale,
+            contentHashByLocale,
+            contentHash: hash,
+          };
+        }
+
+        for (const loc of locales) {
+          if (loc === primary) continue;
+          const sourceLoc = buildSourceTextForFeaturedKey(
+            key,
+            guideRecord,
+            fieldsForCategoryId,
+            loc,
+            primary
+          );
+          if (!sourceLoc.trim()) continue;
+          const locHash = await shortContentHash(sourceLoc);
+          if (digestByLocale[loc]?.trim() && contentHashByLocale[loc] === locHash) continue;
+          try {
+            const result = await generateFeaturedPreview(cfg.title, sourceLoc);
+            digestByLocale[loc] = result.digest;
+            previewLineByLocale[loc] = result.previewLine;
+            contentHashByLocale[loc] = locHash;
+            next[key] = {
+              ...(next[key] || cached || {}),
+              digestByLocale: { ...digestByLocale },
+              previewLineByLocale: { ...previewLineByLocale },
+              contentHashByLocale: { ...contentHashByLocale },
+              generatedAt: new Date().toISOString(),
+            };
+          } catch (err) {
+            console.error('generateFeaturedPreview failed for', key, loc, err);
+          }
         }
       }
 
       return next;
     },
-    [fieldsForCategoryId]
+    [fieldsForCategoryId, localeSettings.enabledLocales, localeSettings.primaryLocale]
   );
 
   const saveToFirebase = async (featuredOverride?: FeaturedKey[]) => {
@@ -336,11 +436,15 @@ export default function HouseGuide() {
       setFeaturedPreviews(updatedPreviews);
       setFeaturedOnPortal(featured);
 
+      const serialized = serializeGuideFormDataForSave(
+        formData,
+        localeSettings.primaryLocale
+      );
       const docRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'houseGuide', 'data');
       await setDoc(
         docRef,
         {
-          ...formData,
+          ...serialized,
           featuredOnPortal: featured,
           previews: updatedPreviews,
           updatedAt: new Date().toISOString(),
@@ -385,13 +489,28 @@ export default function HouseGuide() {
     const value = formData[field.id];
 
     if (field.type === 'textarea') {
-      const textValue = typeof value === 'string' ? value : '';
+      const textValue = getGuideTextValue(
+        formData as Record<string, unknown>,
+        field.id,
+        contentLocale,
+        localeSettings.primaryLocale
+      );
       return (
         <div key={field.id} className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-2">{field.label}</label>
           <textarea 
             value={textValue} 
-            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+            onChange={(e) =>
+              setFormData(
+                setGuideTextInFormData(
+                  formData,
+                  field.id,
+                  contentLocale,
+                  e.target.value,
+                  localeSettings.primaryLocale
+                ) as FormData
+              )
+            }
             placeholder={field.placeholder || ''}
             rows={4} 
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#0B4F5C] outline-none text-sm text-gray-800 transition-shadow bg-gray-50/50 focus:bg-white" 
@@ -484,6 +603,44 @@ export default function HouseGuide() {
     );
   };
 
+  const handleAutoTranslateGuideLocale = async () => {
+    const target = contentLocale;
+    const primary = localeSettings.primaryLocale;
+    if (target === primary) {
+      toast.warning('Switch to a non-primary language tab to auto-translate.');
+      return;
+    }
+    const fields: Record<string, string> = {};
+    for (const fieldId of ['arrivalInfo', 'checkoutInfo', 'wifiInfo', 'houseRules'] as const) {
+      const v = getGuideTextValue(formData as Record<string, unknown>, fieldId, primary, primary);
+      if (v) fields[fieldId] = v;
+    }
+    const allFields = Object.keys(formData).filter((k) => !k.endsWith('ByLocale') && typeof formData[k] === 'string');
+    for (const fieldId of allFields) {
+      if (fields[fieldId]) continue;
+      const v = getGuideTextValue(formData as Record<string, unknown>, fieldId, primary, primary);
+      if (v.trim()) fields[fieldId] = v;
+    }
+    if (Object.keys(fields).length === 0) {
+      toast.warning('Add primary-language content first.');
+      return;
+    }
+    setIsLocaleTranslating(true);
+    try {
+      const translated = await translateContentFields(fields, primary, target);
+      let next = formData;
+      for (const [fieldId, value] of Object.entries(translated)) {
+        next = setGuideTextInFormData(next, fieldId, target, value, primary) as FormData;
+      }
+      setFormData(next);
+      toast.success(`Draft translation added for ${target.toUpperCase()}. Review before saving.`);
+    } catch {
+      toast.error('Auto-translate failed.');
+    } finally {
+      setIsLocaleTranslating(false);
+    }
+  };
+
   // --- RENDERERS ---
   if (allowedPropertyTypes.length === 0) return <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-gray-100"><Building className="mx-auto text-gray-300 mb-4" size={40}/><h3 className="text-xl font-bold">No Property Listings</h3></div>;
 
@@ -513,6 +670,37 @@ export default function HouseGuide() {
             <Sparkles size={18} className="mr-2" /> Run Setup Wizard
           </button>
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-vailo-teal/15 p-4 mb-8 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <div>
+            <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
+              <Languages size={16} /> Guide content language
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Edit each enabled language. Portal previews generate per language on save.
+            </p>
+          </div>
+          {contentLocale !== localeSettings.primaryLocale && (
+            <button
+              type="button"
+              onClick={handleAutoTranslateGuideLocale}
+              disabled={isLocaleTranslating}
+              className="flex items-center justify-center h-[38px] px-4 bg-vailo-teal/5 border border-vailo-teal/30 rounded-lg text-sm font-medium text-vailo-teal disabled:opacity-50"
+            >
+              {isLocaleTranslating ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}
+              Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+            </button>
+          )}
+        </div>
+        <ContentLocaleTabs
+          enabledLocales={localeSettings.enabledLocales}
+          primaryLocale={localeSettings.primaryLocale}
+          activeLocale={contentLocale}
+          onChange={setContentLocale}
+          languageOptions={languageOptions}
+        />
       </div>
 
       {/* Progress Bar */}
@@ -642,6 +830,18 @@ export default function HouseGuide() {
         const toggleDisabled = !featuredKey || (!isFeatured && featuredCapReached);
         const featuredCfg = featuredKey ? getFeaturedConfig(featuredKey) : null;
         const previewRecord: FeaturedPreviewRecord = (featuredKey && featuredPreviews[featuredKey]) || {};
+        const previewCode =
+          normalizeLocaleCode(contentLocale) || normalizeLocaleCode(localeSettings.primaryLocale);
+        const primaryCode = normalizeLocaleCode(localeSettings.primaryLocale);
+        const isPrimaryContentTab = previewCode === primaryCode;
+        const localeDigestDirect = (previewRecord.digestByLocale?.[previewCode] || '').trim();
+        const localeChipDirect = (previewRecord.previewLineByLocale?.[previewCode] || '').trim();
+        const localePreviewDigest = isPrimaryContentTab
+          ? resolveFeaturedDigest(previewRecord, contentLocale, localeSettings.primaryLocale)
+          : localeDigestDirect;
+        const localePreviewChip = isPrimaryContentTab
+          ? resolveFeaturedPreviewLine(previewRecord, contentLocale, localeSettings.primaryLocale)
+          : localeChipDirect;
         return (
         <div className="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -692,37 +892,40 @@ export default function HouseGuide() {
 
                   {isFeatured && (
                     <>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">
-                          Custom preview line (optional)
-                        </label>
-                        <input
-                          type="text"
-                          maxLength={120}
-                          value={previewRecord.customPreviewLine || ''}
-                          onChange={(e) => updateCustomPreview(featuredKey, e.target.value)}
-                          placeholder={previewRecord.previewLine || 'AI will summarise this section when you save.'}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/30 focus:border-vailo-teal/40 transition-shadow"
-                        />
-                        <p className="text-[10px] text-gray-400 mt-1">
-                          Leave blank to use the AI-generated preview. Max 120 characters.
-                        </p>
-                      </div>
+                      {isPrimaryContentTab && (
+                        <div>
+                          <label className="block text-xs font-bold text-gray-600 mb-1.5">
+                            Custom preview line (optional)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={120}
+                            value={previewRecord.customPreviewLine || ''}
+                            onChange={(e) => updateCustomPreview(featuredKey, e.target.value)}
+                            placeholder={localePreviewChip || 'AI will summarise this section when you save.'}
+                            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/30 focus:border-vailo-teal/40 transition-shadow"
+                          />
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Leave blank to use the AI-generated preview. Max 120 characters. Primary language only.
+                          </p>
+                        </div>
+                      )}
 
-                      {(previewRecord.previewLine || previewRecord.digest) && (
+                      {(localePreviewChip || localePreviewDigest) && (
                         <div className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-3 leading-relaxed">
                           <p className="font-bold text-gray-600 mb-1">
-                            AI preview <span className="font-normal text-gray-400">· shown on guest portal card only</span>
+                            AI preview ({contentLocale.toUpperCase()}){' '}
+                            <span className="font-normal text-gray-400">· shown on guest portal card only</span>
                           </p>
-                          {previewRecord.previewLine && (
+                          {localePreviewChip && (
                             <p className="mb-1.5">
-                              <span className="font-semibold text-gray-700">Chip:</span> {previewRecord.previewLine}
+                              <span className="font-semibold text-gray-700">Chip:</span> {localePreviewChip}
                             </p>
                           )}
-                          {previewRecord.digest && (
+                          {localePreviewDigest && (
                             <p className="whitespace-pre-wrap">
                               <span className="font-semibold text-gray-700">Digest:</span>{' '}
-                              {previewRecord.digest}
+                              {localePreviewDigest}
                             </p>
                           )}
                           {previewRecord.generatedAt && (
@@ -731,6 +934,12 @@ export default function HouseGuide() {
                             </p>
                           )}
                         </div>
+                      )}
+                      {!localePreviewChip && !localePreviewDigest && !isPrimaryContentTab && (
+                        <p className="text-xs text-gray-500 italic">
+                          Save this section to generate the {contentLocale.toUpperCase()} portal preview from your
+                          translated text.
+                        </p>
                       )}
                     </>
                   )}

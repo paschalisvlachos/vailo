@@ -4,6 +4,14 @@ import {
   AI_EXPERT_UI_EL,
   type GuestLocaleAiExpertKey,
 } from './guestLocaleAiExpert';
+import {
+  AI_EXPERT_UI_DE,
+  AI_EXPERT_UI_FR,
+  AI_EXPERT_UI_IT,
+  UI_DE,
+  UI_FR,
+  UI_IT,
+} from './guestLocaleBuiltinDeFrIt';
 
 /** Additional guest UI strings (English master; other builtins fall back via guestT). */
 export type GuestLocaleUiKey =
@@ -65,6 +73,17 @@ export type GuestLocaleUiKey =
   | GuestLocaleAiExpertKey;
 
 export const GUEST_UI_KEY_SET = new Set<string>();
+
+export const BUILTIN_GUEST_UI_DEFAULTS: Record<
+  BuiltinGuestLocale,
+  Partial<Record<GuestLocaleUiKey, string>>
+> = {
+  en: {} as Record<GuestLocaleUiKey, string>,
+  el: {},
+  de: {},
+  fr: {},
+  it: {},
+};
 
 const UI_EN: Record<GuestLocaleUiKey, string> = {
   less: 'Less',
@@ -150,24 +169,19 @@ const UI_EL: Partial<Record<GuestLocaleUiKey, string>> = {
   ...AI_EXPERT_UI_EL,
 };
 
-export const GUEST_UI_MESSAGES: Record<
-  BuiltinGuestLocale,
-  Partial<Record<GuestLocaleUiKey, string>>
-> = {
-  en: UI_EN,
-  el: UI_EL,
-  de: {},
-  fr: {},
-  it: {},
-};
+BUILTIN_GUEST_UI_DEFAULTS.en = UI_EN;
+BUILTIN_GUEST_UI_DEFAULTS.el = UI_EL;
+BUILTIN_GUEST_UI_DEFAULTS.de = { ...UI_DE, ...AI_EXPERT_UI_DE };
+BUILTIN_GUEST_UI_DEFAULTS.fr = { ...UI_FR, ...AI_EXPERT_UI_FR };
+BUILTIN_GUEST_UI_DEFAULTS.it = { ...UI_IT, ...AI_EXPERT_UI_IT };
+
+/** @deprecated Use platform guestUiStrings; kept for admin seed reference. */
+export const GUEST_UI_MESSAGES = BUILTIN_GUEST_UI_DEFAULTS;
+
+import { formatGuestUiString, resolveGuestUiString } from './platformGuestUiStrings';
 
 export function guestUiT(locale: string, key: GuestLocaleUiKey): string {
-  const builtin = locale as BuiltinGuestLocale;
-  return (
-    GUEST_UI_MESSAGES[builtin]?.[key] ??
-    UI_EN[key] ??
-    key
-  );
+  return resolveGuestUiString(locale, key);
 }
 
 export function guestUiTFormat(
@@ -175,9 +189,5 @@ export function guestUiTFormat(
   key: GuestLocaleUiKey,
   vars: Record<string, string | number>
 ): string {
-  let s = guestUiT(locale, key);
-  for (const [k, v] of Object.entries(vars)) {
-    s = s.replace(`{${k}}`, String(v));
-  }
-  return s;
+  return formatGuestUiString(locale, key, vars);
 }

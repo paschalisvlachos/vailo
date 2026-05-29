@@ -2,11 +2,24 @@ import {
   collection,
   collectionGroup,
   doc,
+  getDoc,
   getDocs,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import {
+  buildCategoryNamePayload,
+  renameValueInLocaleMap,
+  patchLinkedExperienceTypes,
+  patchLinkedGemCategory,
+  patchLinkedFeatureCategoriesList,
+} from './categoryLocale';
+import {
+  mergeLegacyIntoLocaleMap,
+  AREA_CONTENT_PRIMARY_LOCALE,
+  readLocaleMap,
+} from './propertyContentLocales';
 
 const BATCH_LIMIT = 400;
 
@@ -20,6 +33,31 @@ async function commitBatches(
   }
 }
 
+async function updateCategoryDoc(
+  country: string,
+  areaId: string,
+  collectionName: 'localGemsCategories' | 'featuresCategories',
+  categoryDocId: string,
+  oldName: string,
+  newName: string
+) {
+  const trimmed = newName.trim();
+  const primary = AREA_CONTENT_PRIMARY_LOCALE;
+
+  const ref = doc(db, 'countries', country, 'areas', areaId, collectionName, categoryDocId);
+  const snap = await getDoc(ref);
+  const existing = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
+  const merged = mergeLegacyIntoLocaleMap(
+    readLocaleMap(existing, 'name'),
+    typeof existing.name === 'string' ? (existing.name as string) : oldName,
+    primary
+  );
+  const nextMap = renameValueInLocaleMap(merged, oldName, trimmed) ?? merged;
+  nextMap[primary] = trimmed;
+  const payload = buildCategoryNamePayload({ name: nextMap }, primary);
+  await updateDoc(ref, { ...payload, updatedAt: new Date().toISOString() });
+}
+
 export async function renameLocalGemsCategory(
   country: string,
   areaId: string,
@@ -28,10 +66,7 @@ export async function renameLocalGemsCategory(
   newName: string
 ) {
   const trimmed = newName.trim();
-  await updateDoc(
-    doc(db, 'countries', country, 'areas', areaId, 'localGemsCategories', categoryDocId),
-    { name: trimmed, updatedAt: new Date().toISOString() }
-  );
+  await updateCategoryDoc(country, areaId, 'localGemsCategories', categoryDocId, oldName, trimmed);
 
   const updates: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
 
@@ -39,31 +74,38 @@ export async function renameLocalGemsCategory(
     collection(db, 'countries', country, 'areas', areaId, 'localGems')
   );
   areaGemsSnap.docs.forEach((gemDoc) => {
-    if (gemDoc.data().category === oldName) {
-      updates.push({ ref: gemDoc.ref, data: { category: trimmed } });
-    }
+    const patch = patchLinkedGemCategory(gemDoc.data() as Record<string, unknown>, oldName, trimmed);
+    if (patch) updates.push({ ref: gemDoc.ref, data: patch });
   });
 
   const discoveredSnap = await getDocs(
     collection(db, 'countries', country, 'areas', areaId, 'discoveredPlaces')
   );
   discoveredSnap.docs.forEach((placeDoc) => {
-    if (placeDoc.data().category === oldName) {
-      updates.push({ ref: placeDoc.ref, data: { category: trimmed } });
-    }
+    const patch = patchLinkedGemCategory(placeDoc.data() as Record<string, unknown>, oldName, trimmed);
+    if (patch) updates.push({ ref: placeDoc.ref, data: patch });
   });
 
   const propertyGemsSnap = await getDocs(collectionGroup(db, 'localGems'));
   propertyGemsSnap.docs.forEach((gemDoc) => {
-    if (gemDoc.data().category === oldName) {
-      updates.push({ ref: gemDoc.ref, data: { category: trimmed } });
-    }
+    const patch = patchLinkedGemCategory(gemDoc.data() as Record<string, unknown>, oldName, trimmed);
+    if (patch) updates.push({ ref: gemDoc.ref, data: patch });
   });
 
-  if (updates.length > 0) {
-    await commitBatches(updates);
-  }
+  const areaFeatsSnap = await getDocs(
+    collection(db, 'countries', country, 'areas', areaId, 'areaFeatures')
+  );
+  areaFeatsSnap.docs.forEach((featDoc) => {
+    const data = featDoc.data() as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    const cats = patchLinkedFeatureCategoriesList(data.categories, oldName, trimmed);
+    if (cats) patch.categories = cats;
+    const exp = patchLinkedExperienceTypes(data.experienceTypes, oldName, trimmed);
+    if (exp) patch.experienceTypes = exp;
+    if (Object.keys(patch).length > 0) updates.push({ ref: featDoc.ref, data: patch });
+  });
 
+  if (updates.length > 0) await commitBatches(updates);
   return updates.length;
 }
 
@@ -75,15 +117,7 @@ export async function renameFeaturesCategory(
   newName: string
 ) {
   const trimmed = newName.trim();
-  await updateDoc(
-    doc(db, 'countries', country, 'areas', areaId, 'featuresCategories', categoryDocId),
-    { name: trimmed, updatedAt: new Date().toISOString() }
-  );
-
-  const replaceInList = (categories: unknown) => {
-    if (!Array.isArray(categories)) return categories;
-    return categories.map((c) => (c === oldName ? trimmed : c));
-  };
+  await updateCategoryDoc(country, areaId, 'featuresCategories', categoryDocId, oldName, trimmed);
 
   const updates: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
 
@@ -91,23 +125,22 @@ export async function renameFeaturesCategory(
     collection(db, 'countries', country, 'areas', areaId, 'areaFeatures')
   );
   areaFeatsSnap.docs.forEach((featDoc) => {
-    const categories = featDoc.data().categories;
-    if (Array.isArray(categories) && categories.includes(oldName)) {
-      updates.push({ ref: featDoc.ref, data: { categories: replaceInList(categories) } });
-    }
+    const data = featDoc.data() as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    const cats = patchLinkedFeatureCategoriesList(data.categories, oldName, trimmed);
+    if (cats) patch.categories = cats;
+    if (Object.keys(patch).length > 0) updates.push({ ref: featDoc.ref, data: patch });
   });
 
   const propertyFeatsSnap = await getDocs(collectionGroup(db, 'features'));
   propertyFeatsSnap.docs.forEach((featDoc) => {
-    const categories = featDoc.data().categories;
-    if (Array.isArray(categories) && categories.includes(oldName)) {
-      updates.push({ ref: featDoc.ref, data: { categories: replaceInList(categories) } });
-    }
+    const data = featDoc.data() as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    const cats = patchLinkedFeatureCategoriesList(data.categories, oldName, trimmed);
+    if (cats) patch.categories = cats;
+    if (Object.keys(patch).length > 0) updates.push({ ref: featDoc.ref, data: patch });
   });
 
-  if (updates.length > 0) {
-    await commitBatches(updates);
-  }
-
+  if (updates.length > 0) await commitBatches(updates);
   return updates.length;
 }

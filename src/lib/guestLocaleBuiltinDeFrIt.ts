@@ -1,0 +1,82 @@
+/**
+ * German, French, and Italian portal chrome strings.
+ * AI Expert packs live in guestLocaleAiExpertDeFrIt.ts.
+ */
+export {
+  AI_EXPERT_UI_DE,
+  AI_EXPERT_UI_FR,
+  AI_EXPERT_UI_IT,
+} from './guestLocaleAiExpertDeFrIt';
+import type { GuestLocaleUiKey } from './guestLocaleUi';
+
+/** German — portal chrome (non–AI Expert keys) */
+export const UI_DE: Partial<Record<GuestLocaleUiKey, string>> = {
+  less: 'Weniger',
+  more: 'Mehr',
+  loadMoreLeft: 'Mehr laden · {count} übrig',
+  website: 'Webseite',
+  copyWifi: 'WLAN-Passwort kopieren',
+  wifiCopied: 'Kopiert',
+  failedLoadProperty: 'Unterkunftsdaten konnten nicht geladen werden.',
+  loadingPortal: 'Ihr Aufenthalt wird geladen…',
+  accessChecking: 'Zugang wird geprüft…',
+  accessGuestTitle: 'Gastzugang',
+  accessGuestSub: 'Geben Sie das Passwort aus Ihrer Einladung ein.',
+  accessContinue: 'Weiter',
+  accessInvalidPassword: 'Ungültiges Passwort. Bitte erneut versuchen.',
+  privacyPolicy: 'Datenschutz',
+  termsOfUse: 'Nutzungsbedingungen',
+  filterAll: 'Alle',
+  filterHostsPicks: 'Auswahl des Gastgebers',
+  filterNear: '< 5 km',
+  filterDayTrips: 'Tagesausflüge',
+  localGems: 'Lokale Tipps',
+  features: 'Services',
+  noGems: 'Noch keine lokalen Tipps.',
+  assistantPlaceholder: 'Fragen zu WLAN, Check-out, Geräten…',
+  aiExpertBack: 'Zurück zur Unterkunft',
+  aiExpertTitle: 'Wie ein Einheimischer leben',
+  floatingAssistant: 'Assistent fragen',
+  floatingReport: 'Problem melden',
+  floatingWhatsapp: 'WhatsApp Gastgeber',
+};
+
+export const UI_FR: Partial<Record<GuestLocaleUiKey, string>> = {
+  less: 'Moins',
+  more: 'Plus',
+  loadMoreLeft: 'Charger plus · {count} restant(s)',
+  website: 'Site web',
+  copyWifi: 'Copier le mot de passe Wi-Fi',
+  wifiCopied: 'Copié',
+  loadingPortal: 'Chargement de votre séjour…',
+  accessGuestTitle: 'Accès invité',
+  accessContinue: 'Continuer',
+  privacyPolicy: 'Confidentialité',
+  termsOfUse: 'Conditions d’utilisation',
+  filterAll: 'Tout',
+  filterHostsPicks: 'Coups de cœur de l’hôte',
+  localGems: 'Pépites locales',
+  features: 'Services',
+  aiExpertBack: 'Retour au séjour',
+  aiExpertTitle: 'Vivre comme un local',
+};
+
+export const UI_IT: Partial<Record<GuestLocaleUiKey, string>> = {
+  less: 'Meno',
+  more: 'Altro',
+  loadMoreLeft: 'Carica altri · {count} rimasti',
+  website: 'Sito web',
+  copyWifi: 'Copia password Wi-Fi',
+  wifiCopied: 'Copiato',
+  loadingPortal: 'Caricamento del soggiorno…',
+  accessGuestTitle: 'Accesso ospite',
+  accessContinue: 'Continua',
+  privacyPolicy: 'Privacy',
+  termsOfUse: 'Termini di utilizzo',
+  filterAll: 'Tutti',
+  filterHostsPicks: 'Scelte dell’host',
+  localGems: 'Gemme locali',
+  features: 'Servizi',
+  aiExpertBack: 'Torna al soggiorno',
+  aiExpertTitle: 'Vivi come un local',
+};

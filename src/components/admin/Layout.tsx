@@ -19,6 +19,7 @@ import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesC
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { scopeFromRoute, scopeKey } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
+import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
 type NavItem = {
   icon: typeof LayoutDashboard;
@@ -32,19 +33,19 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
     id: 'general',
     label: 'General',
     items: [
-      { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
-      { icon: Building2, label: 'Properties', to: '/properties' },
-      { icon: Users, label: 'Owners CRM', to: '/owners' },
-      { icon: Globe, label: 'Area Functionality', to: '/area', badgeOnArea: true },
-      { icon: CreditCard, label: 'Billing & Usage', to: '/billing' },
-      { icon: FileText, label: 'Legal Documents', to: '/legal' },
-      { icon: Settings, label: 'Settings', to: '/settings' },
+      { icon: LayoutDashboard, label: 'Dashboard', to: adminPath() },
+      { icon: Building2, label: 'Properties', to: adminPath('/properties') },
+      { icon: Users, label: 'Owners CRM', to: adminPath('/owners') },
+      { icon: Globe, label: 'Area Functionality', to: adminPath('/area'), badgeOnArea: true },
+      { icon: CreditCard, label: 'Billing & Usage', to: adminPath('/billing') },
+      { icon: FileText, label: 'Legal Documents', to: adminPath('/legal') },
+      { icon: Settings, label: 'Settings', to: adminPath('/settings') },
     ],
   },
   {
     id: 'knowledge',
     label: 'Knowledge',
-    items: [{ icon: BookOpen, label: 'Knowledge base', to: '/knowledge' }],
+    items: [{ icon: BookOpen, label: 'Knowledge base', to: adminPath('/knowledge') }],
   },
 ];
 
@@ -67,7 +68,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {
           id: 'portfolio',
           label: 'Your portfolio',
-          items: [{ icon: Building2, label: 'Properties', to: '/properties' }],
+          items: [{ icon: Building2, label: 'Properties', to: adminPath('/properties') }],
         },
       ]
     : NAV_SECTIONS;
@@ -223,8 +224,8 @@ function NavItem({
 }) {
   const location = useLocation();
   const active =
-    to === '/'
-      ? location.pathname === '/'
+    to === ADMIN_BASE
+      ? location.pathname === ADMIN_BASE
       : location.pathname === to || location.pathname.startsWith(`${to}/`);
 
   return (

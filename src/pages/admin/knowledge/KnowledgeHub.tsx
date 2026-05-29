@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, BookOpen, Globe, Users } from 'lucide-react';
 import AdminPageHeader from '../../../components/admin/AdminPageHeader';
+import { adminPath } from '../../../lib/adminRoutes';
 
 const MODULES = [
   {
@@ -8,14 +9,14 @@ const MODULES = [
     title: 'Web Knowledge',
     icon: Globe,
     desc: 'Store information about the Vailo website and platform. Ask questions and get AI answers grounded in your articles.',
-    path: '/knowledge/web',
+    path: adminPath('/knowledge/web'),
   },
   {
     id: 'client',
     title: 'Client Knowledge',
     icon: Users,
     desc: 'Capture questions owners and partners may ask. Use AI to draft strong answers your team can approve for staff training.',
-    path: '/knowledge/client',
+    path: adminPath('/knowledge/client'),
   },
 ] as const;
 

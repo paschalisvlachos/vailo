@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { collection, addDoc, updateDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
+import { adminPath } from '../../../lib/adminRoutes';
 import {
   Radar,
   CheckCircle2,
@@ -312,7 +313,7 @@ export default function AreaDiscoveredPlaces() {
   return (
     <div className="admin-page">
       <AdminBackHeader
-        backTo="/area"
+        backTo={adminPath('/area')}
         backLabel="Back to Area Hub"
         title="Discovered Places"
         description={`${decodedArea}, ${decodedCountry}`}

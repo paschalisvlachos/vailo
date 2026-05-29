@@ -6,12 +6,13 @@ import {
   pathForScope,
   type AdminScope,
 } from '../../lib/adminAccess';
+import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
 export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
   const { profile, loading } = useAdminSession();
   if (loading) return null;
   if (!isPlatformAdmin(profile)) {
-    return <Navigate to="/properties" replace />;
+    return <Navigate to={adminPath('/properties')} replace />;
   }
   return <>{children}</>;
 }
@@ -24,7 +25,7 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
 
   if (isScopedUser && activeScope && activeScope.kind !== 'platform') {
     const target = pathForScope(activeScope);
-    if (location.pathname === '/' || location.pathname === '/properties') {
+    if (location.pathname === ADMIN_BASE || location.pathname === adminPath('/properties')) {
       return <Navigate to={target} replace />;
     }
   }
@@ -58,7 +59,7 @@ export function PropertyAccessGuard({ children }: { children: React.ReactNode })
     if (fallback) {
       return <Navigate to={pathForScope(fallback)} replace />;
     }
-    return <Navigate to="/properties" replace />;
+    return <Navigate to={adminPath('/properties')} replace />;
   }
 
   return <>{children}</>;

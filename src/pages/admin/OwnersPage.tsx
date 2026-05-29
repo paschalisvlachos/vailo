@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { collection, collectionGroup, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
+import { adminPath } from '../../lib/adminRoutes';
 import AdminPageHeader, {
   AdminButtonLink,
   AdminCard,
@@ -104,7 +105,7 @@ export default function OwnersPage() {
         description="Manage property owners and agents"
         icon={<Users size={26} />}
         action={
-          <AdminButtonLink to="/add-owner" className="w-full sm:w-auto">
+          <AdminButtonLink to={adminPath('/add-owner')} className="w-full sm:w-auto">
             <Plus size={18} /> Add Owner
           </AdminButtonLink>
         }
@@ -116,7 +117,7 @@ export default function OwnersPage() {
           title="No users yet"
           description="Add property owners or agents to assign to your portfolio."
           action={
-            <AdminButtonLink to="/add-owner">
+            <AdminButtonLink to={adminPath('/add-owner')}>
               <Plus size={18} /> Add Owner
             </AdminButtonLink>
           }
@@ -150,7 +151,7 @@ export default function OwnersPage() {
                   </div>
                   <div className="flex flex-col gap-1 shrink-0">
                     <Link
-                      to={`/owners/${owner.id}/edit`}
+                      to={adminPath(`/owners/${owner.id}/edit`)}
                       className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
                       title="Edit owner"
                     >
@@ -213,7 +214,7 @@ export default function OwnersPage() {
                       </td>
                       <td className="text-right">
                         <Link
-                          to={`/owners/${owner.id}/edit`}
+                          to={adminPath(`/owners/${owner.id}/edit`)}
                           className="inline-flex p-2 text-gray-400 hover:text-vailo-teal"
                           title="Edit owner"
                         >

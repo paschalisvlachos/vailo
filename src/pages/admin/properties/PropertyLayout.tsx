@@ -27,6 +27,7 @@ import {
   isTabAllowedForAccess,
   type PropertyAccessMode,
 } from '../../../lib/adminAccess';
+import { adminPath } from '../../../lib/adminRoutes';
 
 const TABS = [
   { name: 'Overview', path: '', icon: Home, badgeKey: null },
@@ -136,7 +137,7 @@ export default function PropertyLayout() {
     [propertyAccess]
   );
 
-  const currentSegment = location.pathname.split(`/properties/${id}/`)[1]?.split('/')[0] ?? '';
+  const currentSegment = location.pathname.split(`${adminPath(`/properties/${id}`)}/`)[1]?.split('/')[0] ?? '';
 
   useEffect(() => {
     if (!id || !propertyAccess || loading) return;
@@ -146,8 +147,8 @@ export default function PropertyLayout() {
     if (!allowed && lockedListingId) {
       const target =
         currentSegment === 'house-guide'
-          ? `/properties/${id}/house-guide?listing=${lockedListingId}`
-          : `/properties/${id}/types?listing=${lockedListingId}`;
+          ? adminPath(`/properties/${id}/house-guide?listing=${lockedListingId}`)
+          : adminPath(`/properties/${id}/types?listing=${lockedListingId}`);
       navigate(target, { replace: true });
     }
   }, [id, propertyAccess, currentSegment, lockedListingId, loading, navigate]);
@@ -179,7 +180,7 @@ export default function PropertyLayout() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 sm:mb-8 pb-5 sm:pb-6 border-b border-gray-200/80">
         <div className="flex items-start sm:items-center gap-3 min-w-0">
           <Link
-            to="/properties"
+            to={adminPath('/properties')}
             className="p-2.5 rounded-xl hover:bg-vailo-teal/5 text-gray-400 hover:text-vailo-teal transition-colors shrink-0 border border-transparent hover:border-vailo-teal/10"
           >
             <ArrowLeft size={20} />
@@ -254,7 +255,7 @@ export default function PropertyLayout() {
         <div className="flex-1 min-w-0 bg-white border border-gray-100 rounded-2xl shadow-[0_2px_16px_-6px_rgba(11,79,92,0.1)] p-4 sm:p-6 lg:p-8 xl:p-10 min-h-[420px]">
           {propertyAccess.level === 'listing_only' && lockedListingId && currentSegment === '' ? (
             <Navigate
-              to={`/properties/${id}/types?listing=${lockedListingId}`}
+              to={adminPath(`/properties/${id}/types?listing=${lockedListingId}`)}
               replace
             />
           ) : (

@@ -10,6 +10,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { Eye, Loader2, Pencil, Trash2, Users, X } from 'lucide-react';
+import { adminPath } from '../../../lib/adminRoutes';
 import {
   AdminBackHeader,
   AdminBadge,
@@ -256,7 +257,7 @@ export default function ClientKnowledge() {
   return (
     <div className="admin-page">
       <AdminBackHeader
-        backTo="/knowledge"
+        backTo={adminPath('/knowledge')}
         backLabel="Knowledge"
         title="Client Knowledge"
         description="Add client questions and staff answers. Each save appears as a row below."
@@ -271,7 +272,7 @@ export default function ClientKnowledge() {
       {webEntries.length === 0 && (
         <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6">
           Tip: add{' '}
-          <a href="/knowledge/web" className="font-semibold underline">
+          <a href={adminPath('/knowledge/web')} className="font-semibold underline">
             Web Knowledge
           </a>{' '}
           articles so AI drafts stay aligned with your platform facts.

@@ -8,6 +8,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { getGenerativeModel } from "firebase/ai";
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Tag } from 'lucide-react';
+import { adminPath } from '../../../lib/adminRoutes';
 
 export default function AreaLocalGems() {
   const { country, area } = useParams<{ country: string, area: string }>();
@@ -220,7 +221,7 @@ export default function AreaLocalGems() {
           <Tag size={40} className="mx-auto text-gray-300 mb-4" />
           <h3 className="text-lg font-bold text-gray-900 mb-2">No Categories Found</h3>
           <p className="text-gray-500 mb-6">You must create at least one Local Gems Category before adding gems.</p>
-          <button onClick={() => navigate(`/area/${country}/${area}/local-gems-categories`)} className="px-6 py-3 bg-vailo-teal text-white font-medium rounded-xl hover:bg-vailo-teal-hover transition-colors">
+          <button onClick={() => navigate(adminPath(`/area/${country}/${area}/local-gems-categories`))} className="px-6 py-3 bg-vailo-teal text-white font-medium rounded-xl hover:bg-vailo-teal-hover transition-colors">
             Go to Categories
           </button>
         </div>
@@ -234,7 +235,7 @@ export default function AreaLocalGems() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center">
-          <button onClick={() => navigate('/area')} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
+          <button onClick={() => navigate(adminPath('/area'))} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
             <ArrowLeft size={24} />
           </button>
           <div>

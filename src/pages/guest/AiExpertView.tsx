@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { areaNameToId } from '../../lib/areaUtils';
 import { getGenerativeModel } from "firebase/ai";
@@ -35,16 +35,15 @@ import PickFeedbackButtons from '../../components/guest/PickFeedbackButtons';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestAiLanguageBlock } from '../../lib/guestAiLanguage';
+import type { GuestLocale } from '../../lib/guestLocale';
+import { guestUiTFormat, type GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Map as MapIcon, Compass, Heart, Eye } from 'lucide-react';
 
-const WIZARD_STEPS = [
-  { key: 'LOCATION', label: 'Starting point' },
-  { key: 'CATEGORIES', label: 'Your interests' },
-  { key: 'DISTANCE', label: 'Travel range' },
-  { key: 'TIME', label: 'Your day' },
-] as const;
+type GuestLocaleOption = { code: string; label: string; nativeLabel: string };
+
+const WIZARD_STEP_KEYS = ['LOCATION', 'CATEGORIES', 'DISTANCE', 'TIME'] as const;
 
 interface AiExpertViewProps {
   onClose: () => void;
@@ -52,6 +51,10 @@ interface AiExpertViewProps {
   propertyType?: any;
   features: any[];
   gems: any[];
+  /** Same locale state as GuestPortal (shared via GuestLocaleProvider). */
+  locale: GuestLocale;
+  setLocale: (next: GuestLocale) => void;
+  localeOptions: GuestLocaleOption[];
 }
 
 interface Message {
@@ -244,26 +247,6 @@ for (let m = 5 * 60 + 30; m <= 14 * 60; m += 30) {
 
 const MAX_RETURN_MINUTES = 24 * 60 + 5 * 60 + 30; // 5:30 AM next day
 
-const getReturnDurationOptions = (startTime: string) => {
-  const startMin = parseTimeToMinutes(startTime);
-  const maxHours = (MAX_RETURN_MINUTES - startMin) / 60;
-  const presets = [
-    { label: '3 hours', hours: 3 },
-    { label: '4 hours', hours: 4 },
-    { label: '5 hours', hours: 5 },
-    { label: '6 hours', hours: 6 },
-    { label: '8 hours', hours: 8 },
-    { label: '10 hours', hours: 10 },
-    { label: '12 hours', hours: 12 },
-  ];
-  const options = presets.filter((p) => p.hours <= maxHours);
-  const hoursToMorning = (MAX_RETURN_MINUTES - startMin) / 60;
-  if (hoursToMorning >= 3) {
-    options.push({ label: 'Until 5:30 AM', hours: Math.round(hoursToMorning * 10) / 10 });
-  }
-  return options;
-};
-
 const computeEndFromDuration = (startTime: string, durationHours: number) => {
   const startMin = parseTimeToMinutes(startTime);
   const endMin = Math.min(startMin + durationHours * 60, MAX_RETURN_MINUTES);
@@ -290,16 +273,85 @@ function countPlanStops(plan: unknown): number {
   return 0;
 }
 
-export default function AiExpertView({ onClose, property, propertyType, features, gems }: AiExpertViewProps) {
+export default function AiExpertView({
+  onClose,
+  property,
+  propertyType,
+  features,
+  gems,
+  locale,
+  setLocale,
+  localeOptions,
+}: AiExpertViewProps) {
   const { track } = useGuestAnalytics();
-  const { locale, setLocale, localeOptions } = useGuestLocale();
+  const { t } = useGuestLocale();
+  const tf = (key: GuestLocaleUiKey, vars: Record<string, string | number>) =>
+    guestUiTFormat(locale, key, vars);
+
+  const wizardSteps = useMemo(
+    () =>
+      WIZARD_STEP_KEYS.map((key) => ({
+        key,
+        label: t(
+          key === 'LOCATION'
+            ? 'aiExpertWizardLocation'
+            : key === 'CATEGORIES'
+              ? 'aiExpertWizardCategories'
+              : key === 'DISTANCE'
+                ? 'aiExpertWizardDistance'
+                : 'aiExpertWizardTime'
+        ),
+      })),
+    [locale, t]
+  );
+
+  const getReturnDurationOptions = useCallback(
+    (startTime: string) => {
+      const startMin = parseTimeToMinutes(startTime);
+      const maxHours = (MAX_RETURN_MINUTES - startMin) / 60;
+      const presets: { key: GuestLocaleUiKey; hours: number }[] = [
+        { key: 'aiExpertDuration3h', hours: 3 },
+        { key: 'aiExpertDuration4h', hours: 4 },
+        { key: 'aiExpertDuration5h', hours: 5 },
+        { key: 'aiExpertDuration6h', hours: 6 },
+        { key: 'aiExpertDuration8h', hours: 8 },
+        { key: 'aiExpertDuration10h', hours: 10 },
+        { key: 'aiExpertDuration12h', hours: 12 },
+      ];
+      const options = presets
+        .filter((p) => p.hours <= maxHours)
+        .map((p) => ({ label: t(p.key), hours: p.hours }));
+      const hoursToMorning = (MAX_RETURN_MINUTES - startMin) / 60;
+      if (hoursToMorning >= 3) {
+        options.push({
+          label: t('aiExpertDurationUntilMorning'),
+          hours: Math.round(hoursToMorning * 10) / 10,
+        });
+      }
+      return options;
+    },
+    [locale, t]
+  );
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [step, setStep] = useState<Step>('LOCATION');
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [thinkingLabel, setThinkingLabel] = useState('Curating your local recommendations…');
+  const [thinkingLabel, setThinkingLabel] = useState<GuestLocaleUiKey>('aiExpertThinking');
   const [locationCandidates, setLocationCandidates] = useState<GeocodedPlace[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const CHAT_TEXTAREA_MAX_PX = 128;
+
+  const resizeChatTextarea = useCallback(() => {
+    const el = chatTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, CHAT_TEXTAREA_MAX_PX);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > CHAT_TEXTAREA_MAX_PX ? 'auto' : 'hidden';
+  }, []);
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -336,15 +388,21 @@ export default function AiExpertView({ onClose, property, propertyType, features
   const getPropertyDisplayName = () => {
     const name = property?.propertyName;
     const typeName = getPropertyTypeName();
-    if (!name) return typeName || 'your stay';
+    if (!name) return typeName || t('aiExpertYourStay');
     return typeName ? `${name}, ${typeName}` : name;
   };
 
   const getNearPropertyLabel = () => {
     const name = property?.propertyName;
     const typeName = getPropertyTypeName();
-    if (!name) return 'Near your property';
-    return typeName ? `Near ${name}, ${typeName}` : `Near ${name}`;
+    if (!name) return t('aiExpertNearYourProperty');
+    const label = typeName ? `${name}, ${typeName}` : name;
+    return tf('aiExpertNearProperty', { name: label });
+  };
+
+  const isNearPropertyLocation = (location: string) => {
+    if (!location) return false;
+    return location === getNearPropertyLabel() || location.startsWith('Near ');
   };
 
   const getAreaName = () => getGuestAreaLabel(propertyType, listingAreaCtx?.masterArea);
@@ -527,7 +585,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
       propertyName: getPropertyDisplayName(),
       locationLabel: preferences.location || '',
       usePropertyPhotoOnBookends:
-        typeof preferences.location === 'string' && preferences.location.startsWith('Near'),
+        isNearPropertyLocation(preferences.location),
       areaName: areaName || country || 'Greece',
       country,
       areaId,
@@ -602,14 +660,21 @@ export default function AiExpertView({ onClose, property, propertyType, features
     if (!isPossible) {
       return {
         ok: false,
-        message: `I apologize, but "${placeLabel}" cannot be reached by driving from ${getPropertyDisplayName()}. Please select a different starting point.`,
+        message: tf('aiExpertErrorNoDrive', {
+          place: placeLabel,
+          property: getPropertyDisplayName(),
+        }),
       };
     }
 
     if (distance > 120) {
       return {
         ok: false,
-        message: `I apologize, but "${placeLabel}" is too far (${Math.round(distance)}km) for a day trip. Please select a starting point closer to ${getPropertyDisplayName()}.`,
+        message: tf('aiExpertErrorTooFarDayTrip', {
+          place: placeLabel,
+          km: Math.round(distance),
+          property: getPropertyDisplayName(),
+        }),
       };
     }
 
@@ -632,7 +697,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
 
   const confirmLocationChoice = async (place: GeocodedPlace, userLabel: string) => {
     setIsThinking(true);
-    setThinkingLabel('Verifying location...');
+    setThinkingLabel('aiExpertVerifyingLocation');
     try {
       const check = await validateDrivingFromProperty(place.lat, place.lng, place.label);
       if (check.ok === false) {
@@ -645,7 +710,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
       applyStartingLocation(place, userLabel);
     } finally {
       setIsThinking(false);
-      setThinkingLabel('Curating your local recommendations…');
+      setThinkingLabel('aiExpertThinking');
     }
   };
 
@@ -737,10 +802,10 @@ export default function AiExpertView({ onClose, property, propertyType, features
       
       if (!isNearProperty) {
         setIsThinking(true);
-        setThinkingLabel('Finding your starting point...');
+        setThinkingLabel('aiExpertFindingLocation');
         try {
           const { coords: propCoords, country, cityArea } = getLocationContext();
-          const resolved = await resolveCustomLocation(value, { propCoords, country, cityArea });
+          const resolved = await resolveCustomLocation(value, { propCoords, country, cityArea }, locale);
 
           if (resolved.type === 'not_found') {
             setMessages((prev) => [
@@ -767,7 +832,8 @@ export default function AiExpertView({ onClose, property, propertyType, features
           if (check.ok === false) {
             const nearby = await resolveCustomLocation(
               cityArea ? `${value}, ${cityArea}` : value,
-              { propCoords, country, cityArea }
+              { propCoords, country, cityArea },
+              locale
             );
             if (nearby.type === 'choose' || nearby.type === 'single') {
               const candidates =
@@ -777,7 +843,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
               setLocationCandidates(candidates);
               setMessages((prev) => [
                 ...prev,
-                { id: Date.now().toString(), role: 'ai', type: 'text', text: `${check.message}\n\nDid you mean one of these?` },
+                {
+                  id: Date.now().toString(),
+                  role: 'ai',
+                  type: 'text',
+                  text: `${check.message}\n\n${t('aiExpertDidYouMeanSuffix')}`,
+                },
               ]);
               return;
             }
@@ -794,12 +865,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
           console.error('Free Geocoding failed:', error);
           setMessages((prev) => [
             ...prev,
-            { id: Date.now().toString(), role: 'ai', type: 'text', text: 'I had trouble verifying that location. Please try again.' },
+            { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorVerifyFailed') },
           ]);
           return;
         } finally {
           setIsThinking(false);
-          setThinkingLabel('Curating your local recommendations…');
+          setThinkingLabel('aiExpertThinking');
         }
       } else {
         const { coords: propCoords } = getLocationContext();
@@ -851,7 +922,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
         distanceOptions = ["5km (Local Area)", "15km (Region)", "30km (Day Trip)"];
       } else {
         const minD = Math.min(...actualDistances);
-        const isNearProperty = typeof preferences.location === 'string' && preferences.location.startsWith('Near');
+        const isNearProperty = isNearPropertyLocation(preferences.location);
         
         if (!isNearProperty && minD > 10) {
           // If they entered a custom location and the nearest DB item is >10km away,
@@ -881,12 +952,12 @@ export default function AiExpertView({ onClose, property, propertyType, features
     setPreferences(prev => ({ ...prev, timeFrame: friendlySchedule }));
     const selectionLabel = timeFrameStr
       ? formatTripWindow(startTime, tripDurationHours ?? 6)
-      : 'Browse at my own pace';
+      : t('aiExpertBrowseOwnPace');
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'selection', text: selectionLabel }]);
     
     setStep('DONE');
     setIsThinking(true);
-    setThinkingLabel('Curating your local recommendations…');
+    setThinkingLabel('aiExpertThinking');
 
     try {
       const aiTimeFrame = timeFrameStr
@@ -898,7 +969,7 @@ export default function AiExpertView({ onClose, property, propertyType, features
 
       const { fullLocationContext, coords: propCoords } = getLocationContext();
       const startCoords = getStartCoords();
-      const isNearProperty = typeof preferences.location === 'string' && preferences.location.startsWith('Near');
+      const isNearProperty = isNearPropertyLocation(preferences.location);
       const startLocationName = isNearProperty ? fullLocationContext : (locationFullNameRef.current || preferences.locationFullName || preferences.location);
       const gpsString = startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown';
 
@@ -1090,18 +1161,25 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
 
     } catch (error: any) {
       console.error('Critical AI Itinerary Error:', error);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: `I apologize, but I encountered an error while generating your plan. Error Details: ${error.message}. Please try asking a custom question below.` }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorPlan') }]);
       setIsThinking(false);
     } finally {
-      setThinkingLabel('Curating your local recommendations…');
+      setThinkingLabel('aiExpertThinking');
     }
   };
 
-  const handleChatSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
+  useLayoutEffect(() => {
+    resizeChatTextarea();
+  }, [chatInput, resizeChatTextarea]);
 
-    const userText = chatInput;
+  useLayoutEffect(() => {
+    resizeChatTextarea();
+  }, [resizeChatTextarea]);
+
+  const submitChatMessage = async () => {
+    if (!chatInput.trim() || isThinking) return;
+
+    const userText = chatInput.trim();
     setChatInput('');
     track('ai_expert_user_message', { text: truncateAnalyticsText(userText) });
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'text', text: userText }]);
@@ -1109,12 +1187,12 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
     if (step !== 'DONE') setStep('DONE');
     
     setIsThinking(true);
-    setThinkingLabel('Curating your local recommendations…');
+    setThinkingLabel('aiExpertThinking');
 
     try {
       const { fullLocationContext } = getLocationContext();
       const startCoords = getStartCoords();
-      const isNearProperty = typeof preferences.location === 'string' && preferences.location.startsWith('Near');
+      const isNearProperty = isNearPropertyLocation(preferences.location);
       const startLocationName = isNearProperty
         ? fullLocationContext
         : (locationFullNameRef.current || preferences.locationFullName || preferences.location);
@@ -1253,12 +1331,23 @@ User: ${userText}`;
         id: Date.now().toString(),
         role: 'ai',
         type: 'text',
-        text: "I'm having trouble connecting right now. Please try again in a moment.",
+        text: t('aiExpertErrorConnect'),
       }]);
       setIsThinking(false);
     } finally {
-      setThinkingLabel('Curating your local recommendations…');
+      setThinkingLabel('aiExpertThinking');
     }
+  };
+
+  const handleChatSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitChatMessage();
+  };
+
+  const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    void submitChatMessage();
   };
 
   // Used for "View" / "Directions" buttons rendered after the plan returns. We
@@ -1302,7 +1391,7 @@ User: ${userText}`;
       msg.type === 'text' && (msg.text?.startsWith('welcome:') || messages[0]?.id === msg.id);
 
     if (isWelcomeMessage) {
-      const propertyNameOnly = property?.propertyName || 'your stay';
+      const propertyNameOnly = property?.propertyName || t('aiExpertYourStay');
       const typeName = getPropertyTypeName();
       const area = getAreaName();
 
@@ -1311,7 +1400,7 @@ User: ${userText}`;
           <div className="rounded-3xl overflow-hidden border border-[#C5A059]/15 shadow-[0_12px_40px_rgba(197,160,89,0.12)]">
             <div className="bg-gradient-to-br from-[#FFFCF7] via-white to-[#F4FAFA] px-5 py-4">
               <p className="guest-eyebrow mb-1.5">
-                You&apos;re in
+                {t('aiExpertYoureIn')}
               </p>
               <p className="font-luxury text-xl sm:text-2xl leading-snug text-[#051F26] font-medium">
                 {propertyNameOnly}
@@ -1326,10 +1415,10 @@ User: ${userText}`;
                 <Sparkles size={11} className="text-[#C5A059]/70 shrink-0" />
               </div>
               <p className="text-base text-[#0B4F5C]/90 leading-relaxed">
-                Forget the guidebooks — I&apos;ll show you where people in {area} actually go. The tavernas they pick, the coves they keep quiet, the corners tourists walk past every day.
+                {tf('aiExpertWelcomeBody', { area })}
               </p>
               <p className="text-base font-medium text-[#0B4F5C] mt-2.5 leading-relaxed">
-                No tourist traps. Just real days. Where shall we begin?
+                {t('aiExpertWelcomeCta')}
               </p>
             </div>
           </div>
@@ -1350,12 +1439,10 @@ User: ${userText}`;
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg tracking-tight">
-                    {isPicks ? 'Local favorites, curated for you' : 'Your day, thoughtfully planned'}
+                    {isPicks ? t('aiExpertPlanPicksTitle') : t('aiExpertPlanTimelineTitle')}
                   </h3>
                   <p className="text-white/70 text-sm mt-1 leading-relaxed">
-                    {isPicks
-                      ? 'Places locals genuinely choose — not tourist traps. Ordered by distance from your starting point.'
-                      : 'A timeline built around authentic local experiences, from departure to return.'}
+                    {isPicks ? t('aiExpertPlanPicksSub') : t('aiExpertPlanTimelineSub')}
                   </p>
                 </div>
               </div>
@@ -1379,7 +1466,7 @@ User: ${userText}`;
                         />
                         {item.previouslyShown && (
                           <span className="guest-badge absolute top-3 right-3 bg-white/90 text-[#0B4F5C] px-2.5 py-1 shadow-sm border border-[#0B4F5C]/15 flex items-center gap-1">
-                            <Eye size={11} strokeWidth={2.2} /> Seen before
+                            <Eye size={11} strokeWidth={2.2} /> {t('aiExpertSeenBefore')}
                           </span>
                         )}
                       </div>
@@ -1388,11 +1475,11 @@ User: ${userText}`;
                           {item.title}
                           {(item.isProperty || item.source === 'property') ? (
                             <span className="guest-badge bg-[#0B4F5C]/10 text-[#0B4F5C]">
-                              Your stay
+                              {t('aiExpertBadgeYourStay')}
                             </span>
                           ) : item.source === 'database' ? (
                             <span className="guest-badge bg-[#C5A059]/12 text-[#8a6d2e]">
-                              Vailo pick
+                              {t('aiExpertBadgeVailoPick')}
                             </span>
                           ) : null}
                         </h4>
@@ -1423,10 +1510,10 @@ User: ${userText}`;
                               return (
                                 <>
                                   <a href={links.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="guest-btn-action flex-1 py-2.5 bg-[#f8faf9] border border-[#0B4F5C]/10 hover:border-[#0B4F5C]/30 text-[#0B4F5C] rounded-lg flex items-center justify-center transition-colors">
-                                    <MapIcon size={14} className="mr-1" /> View
+                                    <MapIcon size={14} className="mr-1" /> {t('aiExpertView')}
                                   </a>
                                   <a href={links.navigateUrl} target="_blank" rel="noopener noreferrer" className="guest-btn-action flex-1 py-2.5 bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-lg flex items-center justify-center transition-colors shadow-sm">
-                                    <Navigation size={14} className="mr-1" /> Go
+                                    <Navigation size={14} className="mr-1" /> {t('aiExpertGo')}
                                   </a>
                                 </>
                               );
@@ -1466,7 +1553,7 @@ User: ${userText}`;
               onClick={planAnotherDay}
               className="w-full mt-6 py-4 min-h-[48px] bg-[#f8faf9] hover:bg-[#eef3f2] text-[#0B4F5C] font-semibold text-base rounded-2xl transition-colors border border-[#0B4F5C]/10"
             >
-              Plan another day
+              {t('aiExpertPlanAnotherDay')}
             </button>
             </div>
           </div>
@@ -1500,7 +1587,7 @@ User: ${userText}`;
     return (
       <div className="mb-4 rounded-2xl border border-[#0B4F5C]/10 bg-white/80 backdrop-blur-sm overflow-hidden shadow-[0_4px_24px_rgba(11,79,92,0.06)]">
         <div className="px-4 py-2.5 bg-gradient-to-r from-[#0B4F5C]/5 to-[#C5A059]/5 border-b border-[#0B4F5C]/8">
-          <p className="guest-eyebrow text-[#0B4F5C]/70">Your choices</p>
+          <p className="guest-eyebrow text-[#0B4F5C]/70">{t('aiExpertYourChoices')}</p>
         </div>
         <div className="px-4 py-3 space-y-2.5">
           {hasLocation && (
@@ -1524,7 +1611,9 @@ User: ${userText}`;
           {hasDistance && (
             <div className="flex items-center gap-2.5">
               <Compass size={14} className="text-[#C5A059] shrink-0" />
-              <span className="text-base text-[#0B4F5C]">Within {preferences.distance}</span>
+              <span className="text-base text-[#0B4F5C]">
+                {tf('aiExpertWithinDistance', { distance: preferences.distance })}
+              </span>
             </div>
           )}
           {(hasSchedule || pendingSchedule) && (
@@ -1533,7 +1622,7 @@ User: ${userText}`;
               <span className="text-base text-[#0B4F5C]">
                 {hasSchedule
                   ? preferences.timeFrame === 'flexible'
-                    ? 'Flexible · no fixed schedule'
+                    ? t('aiExpertFlexibleSchedule')
                     : preferences.timeFrame
                   : formatTripWindow(startTime, tripDurationHours ?? 6)}
               </span>
@@ -1544,14 +1633,14 @@ User: ${userText}`;
     );
   };
 
-  const wizardStepIndex = step === 'DONE' ? -1 : WIZARD_STEPS.findIndex((s) => s.key === step);
+  const wizardStepIndex = step === 'DONE' ? -1 : wizardSteps.findIndex((s) => s.key === step);
 
   const renderWizardProgress = () => {
     if (wizardStepIndex < 0) return null;
     return (
       <div className="mb-5 px-1">
         <div className="flex items-center justify-between mb-2">
-          {WIZARD_STEPS.map((s, i) => (
+          {wizardSteps.map((s, i) => (
             <div key={s.key} className="flex flex-col items-center flex-1">
               <div
                 className={`w-2 h-2 rounded-full transition-colors ${
@@ -1571,7 +1660,7 @@ User: ${userText}`;
         <div className="h-0.5 bg-[#0B4F5C]/10 rounded-full overflow-hidden">
           <div
             className="h-full bg-[#C5A059] transition-all duration-500 rounded-full"
-            style={{ width: `${((wizardStepIndex + 1) / WIZARD_STEPS.length) * 100}%` }}
+            style={{ width: `${((wizardStepIndex + 1) / wizardSteps.length) * 100}%` }}
           />
         </div>
       </div>
@@ -1585,31 +1674,32 @@ User: ${userText}`;
         .font-luxury { font-family: 'Lora', serif; }
       `}</style>
 
-      <div className="relative shrink-0 overflow-hidden border-b border-[#0B4F5C]/8">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#EAF2F2] via-white to-[#FDF9F3]" />
-        <div className="absolute inset-0 bg-[radial-gradient(#0B4F5C_1px,transparent_1px)] [background-size:28px_28px] opacity-[0.04]" />
+      <div className="relative shrink-0 z-30 overflow-visible border-b border-[#0B4F5C]/8 isolate">
+        <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-[#EAF2F2] via-white to-[#FDF9F3]" />
+        <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(#0B4F5C_1px,transparent_1px)] [background-size:28px_28px] opacity-[0.04] pointer-events-none" />
         <div className="absolute -top-12 -right-8 w-44 h-44 bg-[#C5A059]/14 blur-3xl rounded-full pointer-events-none" />
         <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-[#0B4F5C]/10 blur-3xl rounded-full pointer-events-none" />
 
-        <div className="relative px-4 py-3 flex items-center gap-2.5 sm:gap-3">
+        <div className="relative z-10 px-4 py-3 flex items-center gap-2.5 sm:gap-3">
           <button
             onClick={onClose}
             className="h-11 w-11 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/90 border border-[#0B4F5C]/10 text-[#0B4F5C] shadow-[0_2px_12px_rgba(11,79,92,0.08)] hover:border-[#C5A059]/35 hover:shadow-md transition-all"
-            aria-label="Go back"
+            aria-label={t('aiExpertBackAria')}
           >
             <ArrowLeft size={20} />
           </button>
 
           <div className="flex-1 min-w-0">
             <p className="guest-eyebrow text-[10px] sm:text-xs">
-              Vailo Concierge
+              {t('aiExpertConcierge')}
             </p>
             <h2 className="font-luxury text-lg sm:text-xl leading-tight text-[#051F26] font-medium mt-0.5">
-              Live Like a <span className="text-[#0B4F5C] italic">Local</span>
+              {t('aiExpertTitle')}
             </h2>
           </div>
 
           <GuestLanguageMenu
+            variant="surface"
             locale={locale}
             onChange={setLocale}
             options={localeOptions}
@@ -1622,7 +1712,7 @@ User: ${userText}`;
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 [scrollbar-width:thin] flex flex-col">
+      <div className="relative z-0 flex-1 overflow-y-auto p-4 md:p-6 [scrollbar-width:thin] flex flex-col">
         {messages.map(renderMessage)}
 
         {!isThinking && step !== 'DONE' && (
@@ -1632,11 +1722,11 @@ User: ${userText}`;
             
             {step === 'LOCATION' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">Where does your day begin?</p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">Your starting point shapes every recommendation we make.</p>
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertLocationTitle')}</p>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">{t('aiExpertLocationSub')}</p>
                 {locationCandidates.length > 0 ? (
                   <div className="flex flex-col gap-2.5">
-                    <p className="text-sm text-gray-500 mb-1">Which location did you mean?</p>
+                    <p className="text-sm text-gray-500 mb-1">{t('aiExpertWhichLocation')}</p>
                     {locationCandidates.map((place) => (
                       <button
                         key={`${place.lat}-${place.lng}`}
@@ -1648,7 +1738,10 @@ User: ${userText}`;
                           {place.label}
                           {place.distanceFromPropertyKm != null && (
                             <span className="block text-sm font-normal text-gray-500 mt-0.5">
-                              ~{Math.round(place.distanceFromPropertyKm)} km from {getPropertyDisplayName()}
+                              {tf('aiExpertKmFromProperty', {
+                                km: Math.round(place.distanceFromPropertyKm),
+                                name: getPropertyDisplayName(),
+                              })}
                             </span>
                           )}
                         </span>
@@ -1659,7 +1752,7 @@ User: ${userText}`;
                       onClick={() => setLocationCandidates([])}
                       className="text-sm text-[#0B4F5C]/60 hover:text-[#0B4F5C] mt-1 text-left transition-colors min-h-[44px]"
                     >
-                      Try a different spelling
+                      {t('aiExpertTryDifferentSpelling')}
                     </button>
                   </div>
                 ) : (
@@ -1672,13 +1765,13 @@ User: ${userText}`;
                       {getPropertyDisplayName()}
                     </button>
                     <div className="relative">
-                      <p className="text-sm text-gray-500 mb-2 text-center">or enter a town or village</p>
+                      <p className="text-sm text-gray-500 mb-2 text-center">{t('aiExpertOrEnterTown')}</p>
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={customLoc}
                           onChange={(e) => setCustomLoc(e.target.value)}
-                          placeholder="i.e location, area"
+                          placeholder={t('aiExpertLocationPlaceholder')}
                           className="guest-input flex-1 bg-white border border-[#0B4F5C]/10 focus:border-[#C5A059]/50 focus:ring-2 focus:ring-[#C5A059]/15 transition-shadow"
                         />
                         <button
@@ -1686,7 +1779,7 @@ User: ${userText}`;
                           onClick={() => advanceStep('LOCATION', customLoc, customLoc)}
                           className="px-5 min-h-[48px] bg-[#0B4F5C] text-white text-base font-semibold rounded-xl disabled:opacity-40 hover:bg-[#0a4550] transition-colors"
                         >
-                          Set
+                          {t('aiExpertSet')}
                         </button>
                       </div>
                     </div>
@@ -1697,12 +1790,12 @@ User: ${userText}`;
 
             {step === 'CATEGORIES' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">What would locals choose today?</p>
-                <p className="text-sm text-gray-500 mb-4 leading-relaxed">Select up to three interests — we will surface the places residents actually go.</p>
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertCategoriesTitle')}</p>
+                <p className="text-sm text-gray-500 mb-4 leading-relaxed">{t('aiExpertCategoriesSub')}</p>
                 <div className="flex flex-wrap gap-2 mb-5">
                   {categoriesLoading && availableCategories.length === 0 ? (
                     <p className="text-sm text-gray-400 flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> Loading local categories…
+                      <Loader2 size={14} className="animate-spin" /> {t('aiExpertLoadingCategories')}
                     </p>
                   ) : availableCategories.length > 0 ? (
                     availableCategories.map((cat) => (
@@ -1729,23 +1822,14 @@ User: ${userText}`;
                   ) : (
                     <p className="text-sm text-gray-500 leading-relaxed">
                       {areaConfigIssue === 'invalid-master' ? (
-                        <>
-                          City/Master Area on this listing is set to &ldquo;{invalidMasterAreaRaw}&rdquo;,
-                          which is not a configured region in Area Functionality. Set it to the master
-                          area (e.g. Chania) on the property listing — not the neighborhood or street
-                          address.
-                        </>
+                        tf('aiExpertAreaInvalidMaster', { area: invalidMasterAreaRaw })
                       ) : areaConfigIssue === 'missing' ? (
-                        <>
-                          This listing is missing Country or City/Master Area. Your host must set both
-                          on the property listing (e.g. Greece and Chania).
-                        </>
+                        t('aiExpertAreaMissing')
                       ) : listingAreaCtx ? (
-                        <>
-                          No Local Gems categories are configured for {listingAreaCtx.masterArea},{' '}
-                          {listingAreaCtx.country} yet. Your host can add them in Area Functionality →
-                          Local Gems Categories.
-                        </>
+                        tf('aiExpertAreaNoCategories', {
+                          masterArea: listingAreaCtx.masterArea,
+                          country: listingAreaCtx.country,
+                        })
                       ) : null}
                     </p>
                   )}
@@ -1755,16 +1839,16 @@ User: ${userText}`;
                   onClick={() => advanceStep('CATEGORIES', selectedCats, selectedCats.join(', '))}
                   className="w-full py-4 min-h-[48px] bg-[#C5A059] hover:bg-[#b8924f] text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors shadow-sm"
                 >
-                  Continue · {selectedCats.length} selected
+                  {tf('aiExpertContinueSelected', { count: selectedCats.length })}
                 </button>
               </div>
             )}
 
             {step === 'DISTANCE' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">How far will you venture?</p>
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertDistanceTitle')}</p>
                 <p className="text-sm text-gray-500 mb-4 leading-relaxed">
-                  From <span className="font-medium text-[#0B4F5C]">{preferences.location}</span> — locals know the best spots are often closer than you think.
+                  {tf('aiExpertDistanceSub', { location: preferences.location })}
                 </p>
                 <div className="flex flex-col gap-2.5">
                   {dynamicDistances.length > 0 ? (
@@ -1775,13 +1859,13 @@ User: ${userText}`;
                         className="flex items-center gap-3 bg-[#f8faf9] border border-[#0B4F5C]/10 text-[#0B4F5C] px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-all"
                       >
                         <Compass size={16} className="text-[#C5A059] shrink-0" />
-                        Within {dist}
+                        {tf('aiExpertWithinDistance', { distance: dist })}
                       </button>
                     ))
                   ) : (
                     <div className="flex items-center text-sm text-gray-500 py-4 px-2">
                       <Loader2 size={16} className="animate-spin mr-2 text-[#C5A059]" />
-                      Mapping distances from your starting point…
+                      {t('aiExpertMappingDistances')}
                     </div>
                   )}
                 </div>
@@ -1790,30 +1874,30 @@ User: ${userText}`;
 
             {step === 'TIME' && (
               <div className="bg-white rounded-2xl border border-[#0B4F5C]/8 p-5 shadow-[0_8px_30px_rgba(11,79,92,0.06)]">
-                <p className="text-base font-semibold text-[#0B4F5C] mb-1">How would you like to explore?</p>
+                <p className="text-base font-semibold text-[#0B4F5C] mb-1">{t('aiExpertTimeTitle')}</p>
                 <p className="text-sm text-gray-500 mb-4 leading-relaxed">
-                  Pick a start time and how long you&apos;re out — we&apos;ll build your day around it.
+                  {t('aiExpertTimeSub')}
                 </p>
 
                 <p className="guest-eyebrow text-[#0B4F5C]/50 mb-2">
-                  Start your day
+                  {t('aiExpertStartDay')}
                 </p>
-                <div className="flex flex-wrap gap-2 mb-5">
-                  {START_TIME_OPTIONS.map((t) => (
+                <div className="grid grid-cols-3 gap-2 mb-5">
+                  {START_TIME_OPTIONS.map((timeOption) => (
                     <button
-                      key={t}
+                      key={timeOption}
                       type="button"
                       onClick={() => {
-                        setStartTime(t);
+                        setStartTime(timeOption);
                         if (tripDurationHours == null) setTripDurationHours(6);
                       }}
-                      className={`px-4 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
-                        startTime === t
+                      className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
+                        startTime === timeOption
                           ? 'bg-[#0B4F5C] text-white border-[#0B4F5C] shadow-sm'
                           : 'bg-[#f8faf9] text-[#0B4F5C]/75 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
                       }`}
                     >
-                      {formatTime12(parseTimeToMinutes(t))}
+                      {formatTime12(parseTimeToMinutes(timeOption))}
                     </button>
                   ))}
                 </div>
@@ -1821,15 +1905,15 @@ User: ${userText}`;
                 {startTime && (
                   <>
                     <p className="guest-eyebrow text-[#0B4F5C]/50 mb-2">
-                      How long are you out?
+                      {t('aiExpertHowLongOut')}
                     </p>
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="grid grid-cols-3 gap-2 mb-4">
                       {getReturnDurationOptions(startTime).map((opt) => (
                         <button
                           key={opt.hours}
                           type="button"
                           onClick={() => setTripDurationHours(opt.hours)}
-                          className={`px-4 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
+                          className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
                             tripDurationHours === opt.hours
                               ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-sm'
                               : 'bg-[#f8faf9] text-[#0B4F5C]/75 border-[#0B4F5C]/10 hover:border-[#C5A059]/40'
@@ -1853,14 +1937,15 @@ User: ${userText}`;
                     onClick={() => executePlan('timeline')}
                     className="w-full py-4 min-h-[48px] bg-[#0B4F5C] hover:bg-[#0a4550] text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center gap-2"
                   >
-                    <Clock size={16} />
-                    Plan my day with a timeline
+                    <Clock size={16} className="text-[#C5A059] shrink-0" />
+                    {t('aiExpertPlanTimelineBtn')}
                   </button>
                   <button
                     onClick={() => executePlan('')}
-                    className="w-full py-4 min-h-[48px] bg-[#f8faf9] text-[#0B4F5C]/80 hover:text-[#0B4F5C] hover:bg-[#eef3f2] rounded-xl text-base font-semibold transition-colors border border-[#0B4F5C]/10"
+                    className="w-full py-4 min-h-[48px] bg-[#C5A059] hover:bg-[#b8924f] text-white rounded-xl text-base font-semibold transition-colors shadow-sm flex items-center justify-center gap-2"
                   >
-                    Browse local favorites · no fixed schedule
+                    <Heart size={16} className="text-white shrink-0" />
+                    {t('aiExpertBrowseFavoritesBtn')}
                   </button>
                 </div>
               </div>
@@ -1872,7 +1957,7 @@ User: ${userText}`;
         {isThinking && (
           <div className="flex items-center gap-2 text-base text-[#0B4F5C] font-medium mt-4 bg-white/80 backdrop-blur-sm px-4 py-3 rounded-2xl w-max border border-[#C5A059]/20 shadow-sm">
             <Loader2 size={16} className="animate-spin text-[#C5A059]" />
-            {thinkingLabel}
+            {t(thinkingLabel)}
           </div>
         )}
         
@@ -1880,25 +1965,30 @@ User: ${userText}`;
       </div>
 
       <div className="bg-white/95 backdrop-blur-sm p-3 md:p-4 shrink-0 shadow-[0_-8px_30px_rgba(11,79,92,0.06)] border-t border-[#0B4F5C]/8 z-20 relative">
-        <form onSubmit={handleChatSubmit} className="flex gap-2">
-          <input
-            type="text"
+        <form onSubmit={handleChatSubmit} className="flex gap-2 items-end">
+          <textarea
+            ref={chatTextareaRef}
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
+            onInput={resizeChatTextarea}
+            onKeyDown={handleChatKeyDown}
             disabled={isThinking}
-            placeholder="Ask about a place, refine your plan, or request alternatives…"
-            className="guest-input flex-1 bg-[#f8faf9] border border-[#0B4F5C]/10 text-gray-900 focus:ring-2 focus:ring-[#C5A059]/25 focus:border-[#C5A059]/40 transition-shadow disabled:opacity-50"
+            rows={1}
+            placeholder={t('aiExpertChatPlaceholder')}
+            aria-label={t('aiExpertChatAria')}
+            className="flex-1 text-base leading-normal px-4 py-2.5 rounded-xl outline-none bg-[#f8faf9] border border-[#0B4F5C]/10 text-gray-900 focus:ring-2 focus:ring-[#C5A059]/25 focus:border-[#C5A059]/40 transition-[height,box-shadow] disabled:opacity-50 resize-none overflow-y-auto max-h-32"
           />
           <button
             type="submit"
             disabled={!chatInput.trim() || isThinking}
-            className="bg-[#0B4F5C] text-white min-h-[48px] min-w-[48px] p-3 rounded-xl hover:bg-[#0a4550] disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center shrink-0"
+            className="bg-[#0B4F5C] text-white min-h-[48px] min-w-[48px] p-3 rounded-xl hover:bg-[#0a4550] disabled:opacity-40 transition-colors shadow-sm flex items-center justify-center shrink-0 self-end"
+            aria-label={t('aiExpertSendAria')}
           >
             <Send size={20} />
           </button>
         </form>
         <p className="text-center text-xs text-gray-400 mt-2.5 leading-relaxed">
-          Recommendations reflect local knowledge. Always verify opening hours and routes before you go.
+          {t('aiExpertChatDisclaimer')}
         </p>
       </div>
 

@@ -40,14 +40,14 @@ export function getBookingInvitationStatus(booking: SyncedBooking): BookingInvit
   return 'needs_details';
 }
 
-/** Display range e.g. 05/06 → 13/06 */
+/** Display range e.g. 05/06/2026 → 13/06/2026 (ISO day strings YYYY-MM-DD). */
 export function formatBookingDateRange(start?: string, end?: string): string {
   const fmt = (iso?: string) => {
     if (!iso) return '—';
     const parts = iso.split('-').map(Number);
     if (parts.length < 3) return iso;
-    const [, m, d] = parts;
-    return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+    const [y, m, d] = parts;
+    return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
   };
   return `${fmt(start)} → ${fmt(end)}`;
 }

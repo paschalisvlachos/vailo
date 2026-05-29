@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { collection, collectionGroup, addDoc, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
+import { adminPath } from '../../lib/adminRoutes';
 import {
   AdminBackHeader,
   AdminButton,
@@ -51,7 +52,7 @@ export default function OwnerFormPage() {
         const snap = await getDoc(doc(db, 'owners', id));
         if (!snap.exists()) {
           toast.error('Owner not found.');
-          navigate('/owners');
+          navigate(adminPath('/owners'));
           return;
         }
         const data = snap.data();
@@ -73,7 +74,7 @@ export default function OwnerFormPage() {
       } catch (error) {
         console.error('Error loading owner:', error);
         toast.error('Failed to load owner.');
-        navigate('/owners');
+        navigate(adminPath('/owners'));
       } finally {
         setLoading(false);
       }
@@ -141,7 +142,7 @@ export default function OwnerFormPage() {
         });
       }
 
-      navigate('/owners');
+      navigate(adminPath('/owners'));
     } catch (error) {
       console.error('Error saving owner:', error);
       toast.error('Failed to save owner.');
@@ -159,7 +160,7 @@ export default function OwnerFormPage() {
   return (
     <div className="admin-page">
       <AdminBackHeader
-        backTo="/owners"
+        backTo={adminPath('/owners')}
         backLabel="Back to Owners CRM"
         title={isEdit ? 'Edit Owner' : 'Add New Owner'}
         description={
@@ -290,7 +291,7 @@ export default function OwnerFormPage() {
           </div>
 
           <div className="px-6 sm:px-8 py-4 bg-vailo-surface-elevated border-t border-gray-100 flex items-center justify-end gap-3">
-            <AdminButton type="button" variant="secondary" onClick={() => navigate('/owners')}>
+            <AdminButton type="button" variant="secondary" onClick={() => navigate(adminPath('/owners'))}>
               Cancel
             </AdminButton>
             <AdminButton type="submit" disabled={isSubmitting}>

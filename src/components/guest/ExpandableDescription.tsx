@@ -6,6 +6,9 @@ type Props = {
   /** Number of lines to show when collapsed. */
   lines?: number;
   className?: string;
+  bodyClassName?: string;
+  toggleClassName?: string;
+  onExpand?: () => void;
 };
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -14,7 +17,14 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
  * Clamps `text` to `lines` lines and shows a "more" / "less" toggle when truncated.
  * Host content is auto-translated to the guest's active locale.
  */
-export default function ExpandableDescription({ text, lines = 3, className = '' }: Props) {
+export default function ExpandableDescription({
+  text,
+  lines = 3,
+  className = '',
+  bodyClassName = 'text-base text-gray-600 leading-relaxed',
+  toggleClassName = 'mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#0B4F5C] hover:text-[#C5A059] transition-colors min-h-[44px]',
+  onExpand,
+}: Props) {
   const { t, translateText } = useGuestLocale();
   const ref = useRef<HTMLParagraphElement>(null);
   const [isClamped, setIsClamped] = useState(false);
@@ -52,7 +62,7 @@ export default function ExpandableDescription({ text, lines = 3, className = '' 
     <div className={className}>
       <p
         ref={ref}
-        className="text-base text-gray-600 leading-relaxed whitespace-pre-wrap"
+        className={`${bodyClassName} whitespace-pre-wrap`}
         style={
           expanded
             ? undefined
@@ -69,8 +79,15 @@ export default function ExpandableDescription({ text, lines = 3, className = '' 
       {(isClamped || expanded) && (
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#0B4F5C] hover:text-[#C5A059] transition-colors min-h-[44px]"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setExpanded((v) => {
+              if (!v) onExpand?.();
+              return !v;
+            });
+          }}
+          className={toggleClassName}
         >
           {expanded ? t('less') : t('more')}
         </button>

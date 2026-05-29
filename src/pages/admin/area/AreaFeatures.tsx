@@ -6,6 +6,7 @@ import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage, ai } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
+import { adminPath } from '../../../lib/adminRoutes';
 import { ArrowLeft, Plus, Image as ImageIcon, Pencil, Trash2, Loader2, MapPin, Wand2, Briefcase, Link as LinkIcon, Phone, Mail, MessageCircle } from 'lucide-react';
 
 export default function AreaFeatures() {
@@ -285,7 +286,7 @@ export default function AreaFeatures() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center">
-          <button onClick={() => navigate('/area')} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
+          <button onClick={() => navigate(adminPath('/area'))} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
             <ArrowLeft size={24} />
           </button>
           <div>

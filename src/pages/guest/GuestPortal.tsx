@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import AiExpertView from './AiExpertView';
@@ -20,7 +20,9 @@ import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAn
 import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { GuestLocaleProvider, useGuestLocale } from '../../context/GuestLocaleContext';
+import { guestUiTFormat } from '../../lib/guestLocaleUi';
 import GuestTranslatedText from '../../components/guest/GuestTranslatedText';
+import ExpandableDescription from '../../components/guest/ExpandableDescription';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
@@ -30,6 +32,9 @@ import {
   getTypePublicSlug,
   resolvePropertyTypeFromUrl,
 } from '../../lib/guestPortalSlug';
+import { adminPath } from '../../lib/adminRoutes';
+
+const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
   MapPin, Globe, CloudSun, ChevronDown, Navigation, 
   Star, Smartphone, Monitor, Sparkles,
@@ -38,32 +43,171 @@ import {
 
 const GEMS_PAGE_SIZE = 5;
 
-function GemDescriptionToggle({
+function GemDescription({
   gemId,
   gemName,
-  expanded,
-  onToggle,
+  description,
 }: {
   gemId: string;
   gemName?: string;
-  expanded: boolean;
-  onToggle: () => void;
+  description: string;
 }) {
   const { track } = useGuestAnalytics();
-  const { t } = useGuestLocale();
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!expanded) {
-          track('gem_description_expand', { gemId, gemName });
-        }
-        onToggle();
-      }}
-      className="text-[#C5A059] text-sm font-bold mt-1 hover:underline uppercase tracking-wide min-h-[44px]"
-    >
-      {expanded ? t('less') : t('more')}
-    </button>
+    <ExpandableDescription
+      text={description}
+      lines={2}
+      className="mb-3"
+      bodyClassName="guest-body-sm"
+      toggleClassName="text-[#C5A059] text-sm font-bold mt-1 hover:underline uppercase tracking-wide min-h-[44px]"
+      onExpand={() => track('gem_description_expand', { gemId, gemName })}
+    />
+  );
+}
+
+type GuestGem = {
+  id: string;
+  name?: string;
+  description?: string;
+  photoUrl?: string;
+  category?: string;
+  rating?: number;
+  distanceKm?: number;
+  latitude?: number;
+  longitude?: number;
+  isLegitPick?: boolean;
+  isDailyTrip?: boolean;
+};
+
+/** Paginated gem cards — state stays here so "Load more" does not re-render the whole portal. */
+function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string }) {
+  const { locale } = useGuestLocale();
+  const [visibleCount, setVisibleCount] = useState(GEMS_PAGE_SIZE);
+  const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
+
+  useEffect(() => {
+    setVisibleCount(GEMS_PAGE_SIZE);
+    setActiveGemMap(null);
+  }, [listKey]);
+
+  const visibleGems = gems.slice(0, visibleCount);
+  const hasMore = visibleGems.length < gems.length;
+
+  const handleLoadMore = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setVisibleCount((n) => Math.min(n + GEMS_PAGE_SIZE, gems.length));
+  };
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-4">
+        {visibleGems.map((gem) => (
+          <div
+            key={gem.id}
+            data-gem-id={gem.id}
+            data-gem-name={gem.name || ''}
+            className="bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300"
+          >
+            <div className="relative bg-gray-100 overflow-hidden shrink-0 h-36 sm:h-40">
+              {gem.photoUrl ? (
+                <img
+                  src={gem.photoUrl}
+                  alt={gem.name}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[#C5A059]">
+                  <MapPin size={32} />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/70 via-transparent to-transparent" />
+
+              <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 max-w-[85%]">
+                {gem.isLegitPick && (
+                  <span className="guest-badge bg-white/95 text-[#0B4F5C] border border-white/50 shadow-sm flex items-center w-fit">
+                    <Award size={10} className="mr-1 text-[#C5A059]" /> Pick
+                  </span>
+                )}
+                {gem.isDailyTrip && (
+                  <span className="guest-badge bg-[#0B4F5C]/95 text-white shadow-sm flex items-center w-fit">
+                    <Clock size={10} className="mr-1 text-[#C5A059]" /> Trip
+                  </span>
+                )}
+              </div>
+
+              <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-end gap-1">
+                {gem.rating ? (
+                  <span className="guest-badge bg-white text-gray-900 shadow-md flex items-center">
+                    <Star size={11} className="mr-0.5 text-amber-400 fill-current" /> {gem.rating}
+                  </span>
+                ) : (
+                  <div />
+                )}
+                {gem.distanceKm != null && (
+                  <span className="guest-badge bg-[#C5A059] text-white shadow-md flex items-center shrink-0">
+                    <Navigation size={10} className="mr-0.5" /> {gem.distanceKm}km
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {activeGemMap === gem.id && (
+              <div className="w-full bg-gray-100 border-b border-gray-200 h-48 sm:h-52">
+                <iframe
+                  title={`Map — ${gem.name || 'location'}`}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  scrolling="no"
+                  src={`https://maps.google.com/maps?q=${gem.latitude},${gem.longitude}&z=14&output=embed`}
+                />
+              </div>
+            )}
+
+            <div className="p-4 flex-1 flex flex-col min-w-0">
+              <p className="text-sm text-[#C5A059] font-bold uppercase tracking-wider mb-1 truncate">
+                {gem.category || 'Location'}
+              </p>
+              <h3 className="guest-card-title mb-2 line-clamp-2">
+                <GuestTranslatedText text={gem.name || ''} />
+              </h3>
+
+              {gem.description && (
+                <GemDescription gemId={gem.id} gemName={gem.name} description={gem.description} />
+              )}
+
+              <div className="mt-auto pt-3 border-t border-gray-100 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveGemMap(activeGemMap === gem.id ? null : gem.id)}
+                  className="guest-btn-action flex-1 bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] border border-gray-200"
+                >
+                  <Map size={14} className="shrink-0" /> Map
+                </button>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${gem.latitude},${gem.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="guest-btn-action flex-1 bg-[#0B4F5C] hover:bg-[#C5A059] text-white shadow-sm"
+                >
+                  <Navigation size={14} className="shrink-0" /> Route
+                </a>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {hasMore && (
+        <button
+          type="button"
+          onClick={handleLoadMore}
+          className="guest-btn-action mt-4 w-full py-4 rounded-xl border border-[#0B4F5C]/20 bg-white text-[#0B4F5C] hover:bg-[#0B4F5C]/5 transition-colors shadow-sm"
+        >
+          {guestUiTFormat(locale, 'loadMoreLeft', { count: gems.length - visibleGems.length })}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -99,6 +243,10 @@ function GuestPortalPage({
   const { propertySlug, typeSlug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  if (propertySlug && RESERVED_PORTAL_SLUGS.has(propertySlug.toLowerCase())) {
+    return <Navigate to={adminPath()} replace />;
+  }
   const typeIdFromQuery = searchParams.get('typeId') || searchParams.get('type');
   const inviteTokenFromQuery = searchParams.get('invite');
   const adminPreviewFromQuery = searchParams.get('adminPreview') === '1';
@@ -125,9 +273,6 @@ function GuestPortalPage({
   const pwaInstall = usePwaInstall();
   
   const [gemFilters, setGemFilters] = useState<string[]>([]);
-  const [gemsVisibleCount, setGemsVisibleCount] = useState(GEMS_PAGE_SIZE);
-  const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>({});
-  const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
 
@@ -318,10 +463,6 @@ function GuestPortalPage({
     }
   };
 
-  const toggleDesc = (id: string) => {
-    setExpandedDesc((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const gemCategories = Array.from(new Set(gems.map(g => g.category).filter(Boolean)));
   const allGemFilterOptions = ['All', "Host's Picks", '< 5km', 'Day Trips', ...gemCategories];
 
@@ -352,16 +493,7 @@ function GuestPortalPage({
     });
   }, [gems, gemFilters]);
 
-  useEffect(() => {
-    setGemsVisibleCount(GEMS_PAGE_SIZE);
-  }, [gemFilters, gems]);
-
-  const visibleGems = useMemo(
-    () => filteredGems.slice(0, gemsVisibleCount),
-    [filteredGems, gemsVisibleCount]
-  );
-
-  const hasMoreGems = visibleGems.length < filteredGems.length;
+  const gemFilterKey = gemFilters.join('\u0001');
 
   /** Property features flagged for the guest portal (admin: "Show on Main Page"). */
   const portalFeatures = useMemo(
@@ -650,8 +782,8 @@ function GuestPortalPage({
                     <h2 className="guest-heading-section">Local Gems</h2>
                     <p className="text-gray-500 text-sm mt-1.5">
                       {filteredGems.length} spot{filteredGems.length !== 1 ? 's' : ''}
-                      {hasMoreGems
-                        ? ` · showing ${visibleGems.length}`
+                      {filteredGems.length > GEMS_PAGE_SIZE
+                        ? ' · load more to see all'
                         : ' · places locals love'}
                     </p>
                   </div>
@@ -663,7 +795,8 @@ function GuestPortalPage({
                           ? gemFilters.includes('All')
                           : gemFilters.includes(filter);
                       return (
-                        <button 
+                        <button
+                          type="button"
                           key={filter}
                           onClick={() => handleGemFilterClick(filter)}
                           className={`guest-pill whitespace-nowrap transition-all ${
@@ -683,113 +816,7 @@ function GuestPortalPage({
                       No spots match these filters.
                     </p>
                   ) : (
-                  <>
-                  <div className="grid grid-cols-1 gap-4">
-                    {visibleGems.map(gem => (
-                      <div
-                        key={gem.id}
-                        data-gem-id={gem.id}
-                        data-gem-name={gem.name || ''}
-                        className="bg-white rounded-xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.1)] border border-gray-100/80 overflow-hidden flex flex-col group hover:shadow-[0_8px_32px_-8px_rgba(11,79,92,0.15)] transition-shadow duration-300"
-                      >
-                        <div className="relative bg-gray-100 overflow-hidden shrink-0 h-36 sm:h-40">
-                          {gem.photoUrl ? (
-                            <img src={gem.photoUrl} alt={gem.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[#C5A059]"><MapPin size={32} /></div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/70 via-transparent to-transparent"></div>
-                          
-                          <div className="absolute top-2 left-2 flex flex-col gap-1 z-10 max-w-[85%]">
-                            {gem.isLegitPick && (
-                              <span className="guest-badge bg-white/95 text-[#0B4F5C] border border-white/50 shadow-sm flex items-center w-fit">
-                                <Award size={10} className="mr-1 text-[#C5A059]" /> Pick
-                              </span>
-                            )}
-                            {gem.isDailyTrip && (
-                              <span className="guest-badge bg-[#0B4F5C]/95 text-white shadow-sm flex items-center w-fit">
-                                <Clock size={10} className="mr-1 text-[#C5A059]" /> Trip
-                              </span>
-                            )}
-                          </div>
-                          
-                          <div className="absolute bottom-2 left-2 right-2 z-10 flex justify-between items-end gap-1">
-                            {gem.rating ? (
-                              <span className="guest-badge bg-white text-gray-900 shadow-md flex items-center">
-                                <Star size={11} className="mr-0.5 text-amber-400 fill-current" /> {gem.rating}
-                              </span>
-                            ) : <div></div>}
-                            
-                            {gem.distanceKm && (
-                              <span className="guest-badge bg-[#C5A059] text-white shadow-md flex items-center shrink-0">
-                                <Navigation size={10} className="mr-0.5" /> {gem.distanceKm}km
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {activeGemMap === gem.id && (
-                          <div className="w-full bg-gray-100 border-b border-gray-200 h-48 sm:h-52">
-                            <iframe 
-                              width="100%" height="100%" frameBorder="0" scrolling="no" 
-                              src={`https://maps.google.com/maps?q=${gem.latitude},${gem.longitude}&z=14&output=embed`}
-                            ></iframe>
-                          </div>
-                        )}
-
-                        <div className="p-4 flex-1 flex flex-col min-w-0">
-                          <p className="text-sm text-[#C5A059] font-bold uppercase tracking-wider mb-1 truncate">{gem.category || 'Location'}</p>
-                          <h3 className="guest-card-title mb-2 line-clamp-2">
-                            <GuestTranslatedText text={gem.name || ''} />
-                          </h3>
-                          
-                          {gem.description && (
-                            <div className="mb-3">
-                              <GuestTranslatedText
-                                text={gem.description}
-                                as="p"
-                                className={`guest-body-sm ${!expandedDesc[gem.id] && 'line-clamp-2'}`}
-                              />
-                              {gem.description.length > 60 && (
-                                <GemDescriptionToggle
-                                  gemId={gem.id}
-                                  gemName={gem.name}
-                                  expanded={Boolean(expandedDesc[gem.id])}
-                                  onToggle={() => toggleDesc(gem.id)}
-                                />
-                              )}
-                            </div>
-                          )}
-                          
-                          <div className="mt-auto pt-3 border-t border-gray-100 flex flex-col gap-1.5">
-                            <button 
-                              onClick={() => setActiveGemMap(activeGemMap === gem.id ? null : gem.id)}
-                              className="guest-btn-action w-full bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] border border-gray-200"
-                            >
-                              <Map size={14} className="mr-1.5"/> Map
-                            </button>
-                            <a 
-                              href={`https://www.google.com/maps/dir/?api=1&destination=${gem.latitude},${gem.longitude}`} 
-                              target="_blank" rel="noopener noreferrer" 
-                              className="guest-btn-action w-full bg-[#0B4F5C] hover:bg-[#C5A059] text-white shadow-sm"
-                            >
-                              <Navigation size={14} className="mr-1.5"/> Route
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {hasMoreGems && (
-                    <button
-                      type="button"
-                      onClick={() => setGemsVisibleCount((n) => n + GEMS_PAGE_SIZE)}
-                      className="guest-btn-action mt-4 w-full py-4 rounded-xl border border-[#0B4F5C]/20 bg-white text-[#0B4F5C] hover:bg-[#0B4F5C]/5 transition-colors shadow-sm"
-                    >
-                      Load more · {filteredGems.length - visibleGems.length} left
-                    </button>
-                  )}
-                  </>
+                    <GuestGemsGrid gems={filteredGems} listKey={gemFilterKey} />
                   )}
                 </section>
               )}
@@ -809,6 +836,9 @@ function GuestPortalPage({
             propertyType={typeData}
             features={features}
             gems={gems}
+            locale={locale}
+            setLocale={setLocale}
+            localeOptions={localeOptions}
           />
         ) : (
           <GuestPropertyAssistant

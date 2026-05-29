@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 
 type GemLike = { id: string; name?: string };
@@ -16,6 +16,10 @@ export default function GemImpressionTracker({
   const { enabled, track } = useGuestAnalytics();
   const seenRef = useRef<Set<string>>(new Set());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const gemIdsKey = useMemo(
+    () => gems.map((g) => g.id).sort().join(','),
+    [gems]
+  );
 
   useEffect(() => {
     if (!enabled || gems.length === 0) return;
@@ -56,7 +60,7 @@ export default function GemImpressionTracker({
       timersRef.current.forEach((t) => clearTimeout(t));
       timersRef.current.clear();
     };
-  }, [enabled, gems, track]);
+  }, [enabled, gemIdsKey, gems.length, track]);
 
   return <>{children}</>;
 }

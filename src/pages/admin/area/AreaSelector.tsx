@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
+import { adminPath } from '../../../lib/adminRoutes';
 import {
   Globe,
   MapPin,
@@ -125,7 +126,11 @@ export default function AreaSelector() {
 
   const handleCategoryClick = (categoryPath: string) => {
     if (!isReady) return;
-    navigate(`/area/${encodeURIComponent(selectedCountry)}/${encodeURIComponent(selectedArea)}/${categoryPath}`);
+    navigate(
+      adminPath(
+        `/area/${encodeURIComponent(selectedCountry)}/${encodeURIComponent(selectedArea)}/${categoryPath}`
+      )
+    );
   };
 
   return (

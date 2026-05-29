@@ -8,8 +8,60 @@
     ],
     "rewrites": [
       {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/admin/**",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/properties",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/properties/**",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/owners",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/owners/**",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/knowledge/**",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/area",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/area/**",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/billing",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/legal",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/settings",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/add-property",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/add-owner",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/:propertySlug/:typeSlug",
+        "destination": "/app/index.html"
       }
     ]
   },

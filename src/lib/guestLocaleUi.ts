@@ -1,4 +1,9 @@
 import type { BuiltinGuestLocale } from './guestLocale';
+import {
+  AI_EXPERT_UI_EN,
+  AI_EXPERT_UI_EL,
+  type GuestLocaleAiExpertKey,
+} from './guestLocaleAiExpert';
 
 /** Additional guest UI strings (English master; other builtins fall back via guestT). */
 export type GuestLocaleUiKey =
@@ -56,7 +61,8 @@ export type GuestLocaleUiKey =
   | 'reportIssueTitle'
   | 'floatingAssistant'
   | 'floatingReport'
-  | 'floatingWhatsapp';
+  | 'floatingWhatsapp'
+  | GuestLocaleAiExpertKey;
 
 export const GUEST_UI_KEY_SET = new Set<string>();
 
@@ -121,6 +127,7 @@ const UI_EN: Record<GuestLocaleUiKey, string> = {
   floatingAssistant: 'Ask assistant',
   floatingReport: 'Report issue',
   floatingWhatsapp: 'WhatsApp host',
+  ...AI_EXPERT_UI_EN,
 };
 
 for (const k of Object.keys(UI_EN)) {
@@ -140,6 +147,7 @@ const UI_EL: Partial<Record<GuestLocaleUiKey, string>> = {
   localGems: 'Τοπικά σημεία',
   aiExpertBack: 'Πίσω στη διαμονή',
   aiExpertTitle: 'Ζήστε σαν ντόπιος',
+  ...AI_EXPERT_UI_EL,
 };
 
 export const GUEST_UI_MESSAGES: Record<

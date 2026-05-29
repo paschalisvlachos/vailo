@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
+import { adminPath } from '../../../lib/adminRoutes';
 import { useToast } from '../../../context/ToastContext';
 import { Link2, MapPin, Wand2 } from 'lucide-react';
 import {
@@ -104,7 +105,7 @@ export default function PropertyFormPage() {
         const snap = await getDoc(doc(db, 'properties', id));
         if (!snap.exists()) {
           toast.error('Property not found.');
-          navigate('/properties');
+          navigate(adminPath('/properties'));
           return;
         }
         const data = snap.data();
@@ -123,7 +124,7 @@ export default function PropertyFormPage() {
       } catch (error) {
         console.error('Error loading property:', error);
         toast.error('Failed to load property.');
-        navigate('/properties');
+        navigate(adminPath('/properties'));
       } finally {
         setLoading(false);
       }
@@ -179,7 +180,7 @@ export default function PropertyFormPage() {
           city: formData.area,
           updatedAt: new Date().toISOString(),
         });
-        navigate(`/properties/${id}`);
+        navigate(adminPath(`/properties/${id}`));
       } else {
         const ref = await addDoc(collection(db, 'properties'), {
           listingUrl: formData.listingUrl,
@@ -195,7 +196,7 @@ export default function PropertyFormPage() {
           city: formData.area,
           createdAt: new Date().toISOString(),
         });
-        navigate(`/properties/${ref.id}`);
+        navigate(adminPath(`/properties/${ref.id}`));
       }
     } catch (error) {
       console.error('Error saving property:', error);
@@ -212,7 +213,7 @@ export default function PropertyFormPage() {
   return (
     <div className="admin-page">
       <AdminBackHeader
-        backTo="/properties"
+        backTo={adminPath('/properties')}
         backLabel="Back to Properties"
         title={isEdit ? 'Edit Property' : 'Add New Property'}
         description={
@@ -386,7 +387,7 @@ export default function PropertyFormPage() {
           </div>
 
           <div className="px-6 sm:px-8 py-4 bg-vailo-surface-elevated border-t border-gray-100 flex justify-end gap-3">
-            <AdminButton type="button" variant="secondary" onClick={() => navigate('/properties')}>
+            <AdminButton type="button" variant="secondary" onClick={() => navigate(adminPath('/properties'))}>
               Cancel
             </AdminButton>
             <AdminButton type="submit" disabled={isSubmitting}>

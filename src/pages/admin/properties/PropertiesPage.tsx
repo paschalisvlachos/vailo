@@ -13,6 +13,7 @@ import AdminPageHeader, {
 import type { ListingKind } from './PropertyFormPage';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { canAccessPropertyId, pathForPropertyLanding } from '../../../lib/adminAccess';
+import { adminPath } from '../../../lib/adminRoutes';
 
 interface Property {
   id: string;
@@ -89,7 +90,7 @@ export default function PropertiesPage() {
     : properties.filter((p) => canAccessPropertyId(profile, p.id, scopes));
 
   const propertyHref = (propertyId: string) =>
-    isPlatformAdmin ? `/properties/${propertyId}` : pathForPropertyLanding(propertyId, scopes);
+    isPlatformAdmin ? adminPath(`/properties/${propertyId}`) : pathForPropertyLanding(propertyId, scopes);
 
   if (loading) {
     return <div className="py-16 text-center text-gray-500 text-sm">Loading properties…</div>;
@@ -107,7 +108,7 @@ export default function PropertiesPage() {
         icon={<Building2 size={26} />}
         action={
           isPlatformAdmin ? (
-            <AdminButtonLink to="/add-property" className="w-full sm:w-auto">
+            <AdminButtonLink to={adminPath('/add-property')} className="w-full sm:w-auto">
               <Plus size={18} /> Add Property
             </AdminButtonLink>
           ) : undefined
@@ -125,7 +126,7 @@ export default function PropertiesPage() {
           }
           action={
             isPlatformAdmin ? (
-              <AdminButtonLink to="/add-property">
+              <AdminButtonLink to={adminPath('/add-property')}>
                 <Plus size={18} /> Add Property
               </AdminButtonLink>
             ) : undefined
@@ -165,7 +166,7 @@ export default function PropertiesPage() {
                     {isPlatformAdmin && (
                       <div className="flex gap-1 shrink-0">
                         <Link
-                          to={`/properties/${property.id}/edit`}
+                          to={adminPath(`/properties/${property.id}/edit`)}
                           className="p-2 text-gray-400 hover:text-vailo-teal rounded-lg"
                           title="Edit property"
                         >
@@ -240,7 +241,7 @@ export default function PropertiesPage() {
                           {isPlatformAdmin && (
                             <>
                               <Link
-                                to={`/properties/${property.id}/edit`}
+                                to={adminPath(`/properties/${property.id}/edit`)}
                                 className="inline-flex p-2 text-gray-400 hover:text-vailo-teal"
                                 title="Edit property"
                               >

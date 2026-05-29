@@ -11,6 +11,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { Globe, Loader2, MessageCircle, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
+import { adminPath } from '../../../lib/adminRoutes';
 import {
   AdminBackHeader,
   AdminButton,
@@ -134,7 +135,7 @@ export default function WebKnowledge() {
   return (
     <div className="admin-page">
       <AdminBackHeader
-        backTo="/knowledge"
+        backTo={adminPath('/knowledge')}
         backLabel="Knowledge"
         title="Web Knowledge"
         description="Articles about the Vailo website and product. Staff questions are answered using only this content."

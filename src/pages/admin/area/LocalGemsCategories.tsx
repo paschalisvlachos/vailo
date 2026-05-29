@@ -4,6 +4,7 @@ import { collection, addDoc, deleteDoc, doc, onSnapshot } from 'firebase/firesto
 import { db } from '../../../lib/firebase';
 import { renameLocalGemsCategory } from '../../../lib/categoryRename';
 import { useToast } from '../../../context/ToastContext';
+import { adminPath } from '../../../lib/adminRoutes';
 import { Grid, ArrowLeft, Plus, Trash2, Loader2, Tag, Pencil, Check, X } from 'lucide-react';
 
 export default function LocalGemsCategories() {
@@ -129,7 +130,7 @@ export default function LocalGemsCategories() {
       
       {/* Header with Back Button */}
       <div className="flex items-center mb-8">
-        <button onClick={() => navigate('/area')} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
+        <button onClick={() => navigate(adminPath('/area'))} className="p-2 mr-4 rounded-xl hover:bg-gray-200 text-gray-500 transition-colors">
           <ArrowLeft size={24} />
         </button>
         <div>

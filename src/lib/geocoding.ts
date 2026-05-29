@@ -1,5 +1,8 @@
 /** Free geocoding helpers (OpenStreetMap Nominatim). Respect 1 req/sec usage policy. */
 
+import type { GuestLocale } from './guestLocale';
+import { guestUiTFormat, type GuestLocaleUiKey } from './guestLocaleUi';
+
 const NOMINATIM_HEADERS = {
   'Accept-Language': 'en',
   'User-Agent': 'VailoGuestConcierge/1.0 (contact: support@vailo.app)',
@@ -209,17 +212,21 @@ export async function resolveCustomLocation(
     propCoords: { lat: number; lng: number } | null;
     country: string;
     cityArea: string;
-  }
+  },
+  locale: GuestLocale = 'en'
 ): Promise<LocationResolveResult> {
+  const tf = (key: GuestLocaleUiKey, vars: Record<string, string | number>) =>
+    guestUiTFormat(locale, key, vars);
+
   const candidates = await collectLocationCandidates(userInput, context);
 
   if (candidates.length === 0) {
     const hint = context.cityArea
-      ? ` Try adding the region, e.g. "${userInput}, ${context.cityArea}".`
-      : ' Try adding the region or country.';
+      ? tf('aiExpertGeoHintRegion', { input: userInput, area: context.cityArea })
+      : tf('aiExpertGeoHintCountry', { input: userInput, area: '' });
     return {
       type: 'not_found',
-      message: `I couldn't find "${userInput}".${hint}`,
+      message: tf('aiExpertGeoNotFound', { input: userInput }) + hint,
     };
   }
 
@@ -247,7 +254,7 @@ export async function resolveCustomLocation(
       return {
         type: 'choose',
         candidates: top,
-        message: `I found several places matching "${userInput}" near your area. Which one is your starting point?`,
+        message: tf('aiExpertGeoSeveralMatches', { input: userInput }),
       };
     }
 
@@ -256,13 +263,22 @@ export async function resolveCustomLocation(
       return {
         type: 'choose',
         candidates: regional.slice(0, 4),
-        message: `"${userInput}" matched a place far from the property (${Math.round(candidates[0].distanceFromPropertyKm ?? 0)}km away). Did you mean one of these in ${cityArea || 'the region'}?`,
+        message: tf('aiExpertGeoFarMatch', {
+          input: userInput,
+          km: Math.round(candidates[0].distanceFromPropertyKm ?? 0),
+          area: cityArea || tf('aiExpertTheRegion', {}),
+        }),
       };
     }
 
+    const nearHint = cityArea ? tf('aiExpertGeoNearHint', { area: cityArea }) : '';
     return {
       type: 'not_found',
-      message: `"${userInput}" is too far (${Math.round(candidates[0].distanceFromPropertyKm ?? 0)}km) for a day trip from the property. Please pick a town closer to your stay${cityArea ? ` (near ${cityArea})` : ''}.`,
+      message: tf('aiExpertGeoTooFarFromProperty', {
+        input: userInput,
+        km: Math.round(candidates[0].distanceFromPropertyKm ?? 0),
+        nearHint,
+      }),
     };
   }
 

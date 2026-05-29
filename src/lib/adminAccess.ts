@@ -26,6 +26,8 @@ export type AdminScope =
       label: string;
     };
 
+import { adminPath, ADMIN_BASE } from './adminRoutes';
+
 export type PropertyAccessMode =
   | { level: 'full' }
   | { level: 'listing_only'; typeIds: string[] };
@@ -119,7 +121,7 @@ export function pathForPropertyLanding(
   );
   if (listingScope) return pathForScope(listingScope);
 
-  return `/properties/${propertyId}`;
+  return adminPath(`/properties/${propertyId}`);
 }
 
 export function scopeKey(scope: AdminScope): string {
@@ -161,9 +163,9 @@ export function resolveActiveScope(
 }
 
 export function pathForScope(scope: AdminScope): string {
-  if (scope.kind === 'platform') return '/properties';
-  if (scope.kind === 'property') return `/properties/${scope.propertyId}`;
-  return `/properties/${scope.propertyId}/types?listing=${scope.typeId}`;
+  if (scope.kind === 'platform') return adminPath('/properties');
+  if (scope.kind === 'property') return adminPath(`/properties/${scope.propertyId}`);
+  return adminPath(`/properties/${scope.propertyId}/types?listing=${scope.typeId}`);
 }
 
 /** Match current route to an assignment scope (for scoped users). */
@@ -172,7 +174,9 @@ export function scopeFromRoute(
   search: string,
   scopes: AdminScope[]
 ): AdminScope | null {
-  const propertyMatch = pathname.match(/^\/properties\/([^/]+)/);
+  const propertyMatch = pathname.match(
+    new RegExp(`^${ADMIN_BASE.replace('/', '\\/')}/properties/([^/]+)`)
+  );
   if (!propertyMatch) return null;
 
   const propertyId = propertyMatch[1];

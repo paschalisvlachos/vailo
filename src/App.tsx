@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import Layout from "./components/admin/Layout";
@@ -50,6 +50,21 @@ import {
 import GuestPortal from "./pages/guest/GuestPortal";
 import AdminPageHeader, { AdminCard } from "./components/admin/AdminPageHeader";
 import { Building2, Globe, Users, Sparkles } from "lucide-react";
+import { adminPath } from "./lib/adminRoutes";
+
+/** Dev: root `/` is the Vite entry — send visitors to the static marketing site. */
+function DevMarketingRedirect() {
+  useEffect(() => {
+    window.location.replace('/website/index.html');
+  }, []);
+  return null;
+}
+
+/** Old admin URLs (pre-/admin) → /admin/… */
+function LegacyAdminRedirect() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={`${adminPath()}${pathname}${search}`} replace />;
+}
 
 function DashboardPage() {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
@@ -63,7 +78,7 @@ function DashboardPage() {
 
       {newDiscoveredCount > 0 && (
         <Link
-          to="/area"
+          to={adminPath('/area')}
           className="flex items-start gap-4 p-4 sm:p-5 mb-6 bg-vailo-gold/10 border border-vailo-gold/25 rounded-2xl hover:bg-vailo-gold/15 transition-colors"
         >
           <AlertCircle className="text-vailo-gold shrink-0 mt-0.5" size={22} />
@@ -80,9 +95,9 @@ function DashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-8">
         {[
-          { icon: Building2, label: 'Properties', to: '/properties', desc: 'Portfolio & guest portals' },
-          { icon: Users, label: 'Owners CRM', to: '/owners', desc: 'Owners & agents' },
-          { icon: Globe, label: 'Area data', to: '/area', desc: 'Gems, features, AI rules' },
+          { icon: Building2, label: 'Properties', to: adminPath('/properties'), desc: 'Portfolio & guest portals' },
+          { icon: Users, label: 'Owners CRM', to: adminPath('/owners'), desc: 'Owners & agents' },
+          { icon: Globe, label: 'Area data', to: adminPath('/area'), desc: 'Gems, features, AI rules' },
           { icon: Sparkles, label: 'AI concierge', desc: 'Powered by guest portal', muted: true },
         ].map((item) =>
           item.to ? (
@@ -157,17 +172,26 @@ export default function App() {
     <ToastProvider>
     <BrowserRouter>
       <Routes>
-        {/* ======================================= */}
-        {/* PUBLIC ROUTES                           */}
-        {/* ======================================= */}
-        <Route path="/:propertySlug/:typeSlug" element={<GuestPortal />} />
+        {/* Dev only: production serves static marketing at / */}
+        {import.meta.env.DEV && (
+          <Route path="/" element={<DevMarketingRedirect />} />
+        )}
 
-        {/* ======================================= */}
-        {/* FLATTENED ADMIN ROUTES                  */}
-        {/* ======================================= */}
-        <Route path="/" element={<AdminRoute><PlatformAdminOnly><DashboardPage /></PlatformAdminOnly></AdminRoute>} />
+        {/* Legacy admin URLs → /admin/… */}
+        <Route path="/properties/*" element={<LegacyAdminRedirect />} />
+        <Route path="/owners/*" element={<LegacyAdminRedirect />} />
+        <Route path="/billing/*" element={<LegacyAdminRedirect />} />
+        <Route path="/legal/*" element={<LegacyAdminRedirect />} />
+        <Route path="/settings/*" element={<LegacyAdminRedirect />} />
+        <Route path="/knowledge/*" element={<LegacyAdminRedirect />} />
+        <Route path="/area/*" element={<LegacyAdminRedirect />} />
+        <Route path="/add-property/*" element={<LegacyAdminRedirect />} />
+        <Route path="/add-owner/*" element={<LegacyAdminRedirect />} />
+
+        {/* Admin app (vailo.app/admin) */}
+        <Route path={adminPath()} element={<AdminRoute><PlatformAdminOnly><DashboardPage /></PlatformAdminOnly></AdminRoute>} />
         <Route
-          path="/properties"
+          path={adminPath('/properties')}
           element={
             <AdminRoute>
               <ScopedAdminHome>
@@ -176,11 +200,11 @@ export default function App() {
             </AdminRoute>
           }
         />
-        <Route path="/add-property" element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/properties/:id/edit" element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
-        
+        <Route path={adminPath('/add-property')} element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/properties/:id/edit')} element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
+
         <Route
-          path="/properties/:id"
+          path={adminPath('/properties/:id')}
           element={
             <AdminRoute>
               <PropertyAccessGuard>
@@ -205,22 +229,25 @@ export default function App() {
           <Route path="analytics" element={<PropertyAnalytics />} />
         </Route>
 
-        <Route path="/owners" element={<AdminRoute><PlatformAdminOnly><OwnersPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/add-owner" element={<AdminRoute><PlatformAdminOnly><OwnerFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/owners/:id/edit" element={<AdminRoute><PlatformAdminOnly><OwnerFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/billing" element={<AdminRoute><PlatformAdminOnly><Billing /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/legal" element={<AdminRoute><PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/settings" element={<AdminRoute><PlatformAdminOnly><Settings /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/knowledge" element={<AdminRoute><PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/knowledge/web" element={<AdminRoute><PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/knowledge/client" element={<AdminRoute><PlatformAdminOnly><ClientKnowledge /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area" element={<AdminRoute><PlatformAdminOnly><AreaSelector /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area/:country/:area/local-gems-categories" element={<AdminRoute><PlatformAdminOnly><LocalGemsCategories /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area/:country/:area/features-categories" element={<AdminRoute><PlatformAdminOnly><FeaturesCategories /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area/:country/:area/features-photos" element={<AdminRoute><PlatformAdminOnly><FeaturesPhotos /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area/:country/:area/local-gems" element={<AdminRoute><PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area/:country/:area/features" element={<AdminRoute><PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly></AdminRoute>} />
-        <Route path="/area/:country/:area/discovered-places" element={<AdminRoute><PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/owners')} element={<AdminRoute><PlatformAdminOnly><OwnersPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/add-owner')} element={<AdminRoute><PlatformAdminOnly><OwnerFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/owners/:id/edit')} element={<AdminRoute><PlatformAdminOnly><OwnerFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/billing')} element={<AdminRoute><PlatformAdminOnly><Billing /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/legal')} element={<AdminRoute><PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/settings')} element={<AdminRoute><PlatformAdminOnly><Settings /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/knowledge')} element={<AdminRoute><PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/knowledge/web')} element={<AdminRoute><PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/knowledge/client')} element={<AdminRoute><PlatformAdminOnly><ClientKnowledge /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area')} element={<AdminRoute><PlatformAdminOnly><AreaSelector /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/local-gems-categories')} element={<AdminRoute><PlatformAdminOnly><LocalGemsCategories /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/features-categories')} element={<AdminRoute><PlatformAdminOnly><FeaturesCategories /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/features-photos')} element={<AdminRoute><PlatformAdminOnly><FeaturesPhotos /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/local-gems')} element={<AdminRoute><PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/features')} element={<AdminRoute><PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/discovered-places')} element={<AdminRoute><PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly></AdminRoute>} />
+
+        {/* Guest portal (vailo.app/:property/:unit) — after /admin routes */}
+        <Route path="/:propertySlug/:typeSlug" element={<GuestPortal />} />
       </Routes>
     </BrowserRouter>
     </ToastProvider>

@@ -27,7 +27,16 @@ import {
 } from '../../lib/timelinePropertyBookends';
 import { scheduleTimelinePlan } from '../../lib/timelineScheduling';
 import CategoryPickCarousel from '../../components/guest/CategoryPickCarousel';
+import TrailPickCarousel from '../../components/guest/TrailPickCarousel';
 import MapLinkButtons from '../../components/guest/MapLinkButtons';
+import {
+  buildHikingTrailCategories,
+  filterGuestEligibleTrails,
+  HIKING_TRAILS_CATEGORY_PRIMARY,
+  isHikingTrailsCategory,
+  trailCoords,
+  type LocalTrailRecord,
+} from '../../lib/localTrailsGuest';
 import PlanOverviewMap from '../../components/guest/PlanOverviewMap';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
 import PlanImage from '../../components/guest/PlanImage';
@@ -155,6 +164,29 @@ function collectDbItemsFromPlan(plan: any): any[] {
     }
   }
   return out;
+}
+
+/** Prepend synced AllTrails hiking categories; strip duplicate AI hiking sections. */
+function mergeTrailCategoriesIntoPlan(
+  plan: any,
+  trailBlocks: Array<{ categoryName: string; isTrails: true; items: unknown[] }>
+) {
+  const withItems = trailBlocks.filter((c) => c.items.length > 0);
+  if (!withItems.length) return plan;
+
+  if (plan?.type === 'picks') {
+    const existing = Array.isArray(plan.categories) ? plan.categories : [];
+    const filtered = existing.filter(
+      (c: { categoryName?: string }) => !isHikingTrailsCategory(String(c.categoryName || ''))
+    );
+    return { ...plan, categories: [...withItems, ...filtered] };
+  }
+
+  if (plan?.type === 'timeline') {
+    return { ...plan, trailCategories: withItems };
+  }
+
+  return plan;
 }
 
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -396,6 +428,12 @@ export default function AiExpertView({
   // 🌟 NEW: State to hold the dynamically fetched Village/Municipality name
   const [richLocationName, setRichLocationName] = useState<string>('');
   const [discoveredPlaces, setDiscoveredPlaces] = useState<any[]>([]);
+  const [localTrails, setLocalTrails] = useState<LocalTrailRecord[]>([]);
+  const guestEligibleTrails = useMemo(() => filterGuestEligibleTrails(localTrails), [localTrails]);
+  const propertyCoords = useMemo(
+    () => extractCoords(property) || extractCoords(propertyType),
+    [property, propertyType]
+  );
 
   const [preferences, setPreferences] = useState({
     location: '',
@@ -565,6 +603,47 @@ export default function AiExpertView({
     });
     return () => unsubscribe();
   }, [listingAreaCtx]);
+
+  useEffect(() => {
+    if (!listingAreaCtx?.areaId) {
+      setLocalTrails([]);
+      return;
+    }
+
+    const trailsRef = collection(
+      db,
+      'countries',
+      listingAreaCtx.country,
+      'areas',
+      listingAreaCtx.areaId,
+      'localTrails'
+    );
+    const unsubscribe = onSnapshot(trailsRef, (snapshot) => {
+      const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
+      setLocalTrails(rows);
+    });
+    return () => unsubscribe();
+  }, [listingAreaCtx]);
+
+  useEffect(() => {
+    if (guestEligibleTrails.length === 0) return;
+    setAvailableCategories((prev) => {
+      const hasHiking = prev.some(
+        (c) => isHikingTrailsCategory(c.primary) || isHikingTrailsCategory(c.label)
+      );
+      if (hasHiking) return prev;
+      const label = t('aiExpertHikingTrailsCategory');
+      return [...prev, { primary: HIKING_TRAILS_CATEGORY_PRIMARY, label }].sort((a, b) =>
+        a.label.localeCompare(b.label)
+      );
+    });
+  }, [guestEligibleTrails.length, t]);
+
+  const resolveCategoryDisplayLabel = useCallback(
+    (primary: string) =>
+      availableCategories.find((c) => c.primary === primary)?.label ?? primary,
+    [availableCategories]
+  );
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -1030,6 +1109,15 @@ export default function AiExpertView({
         ...(features || []).filter(f => f.categories?.some((c: string) => cats.includes(c)))
       ];
 
+      if (cats.some(isHikingTrailsCategory)) {
+        for (const trail of guestEligibleTrails) {
+          const coords = trailCoords(trail);
+          if (coords && startCoords) {
+            relevantItems.push({ latitude: coords.lat, longitude: coords.lng });
+          }
+        }
+      }
+
       const actualDistances = relevantItems.map(item => {
         let itemCoords = extractCoords(item);
         if (!itemCoords) itemCoords = propCoords; // assume property location if missing
@@ -1107,13 +1195,53 @@ export default function AiExpertView({
         }
       }
 
+      const hikingCategories = preferences.categories.filter(isHikingTrailsCategory);
+      const nonHikingCategories = preferences.categories.filter((c) => !isHikingTrailsCategory(c));
+      const trailCategoryBlocks =
+        hikingCategories.length > 0
+          ? buildHikingTrailCategories(
+              hikingCategories,
+              guestEligibleTrails,
+              startCoords,
+              distanceLimitNum,
+              resolveCategoryDisplayLabel
+            )
+          : [];
+      const trailsOnlySelection = hikingCategories.length > 0 && nonHikingCategories.length === 0;
+
+      if (trailsOnlySelection) {
+        const categories = trailCategoryBlocks.filter((c) => c.items.length > 0);
+        if (categories.length === 0) {
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertNoTrailsInRange') },
+          ]);
+          setIsThinking(false);
+          return;
+        }
+
+        const initialPlan = { type: 'picks', categories };
+        const planMessageId = `${Date.now()}-plan`;
+        track('ai_expert_plan', {
+          planStopCount: categories.reduce((n, c) => n + c.items.length, 0),
+          planCategories: categories.map((c) => c.categoryName),
+        });
+        setMessages((prev) => [
+          ...prev,
+          { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
       const recentlyShown = getRecentlyShownKeys();
       const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
       const isFlexiblePicks = !timeFrameStr;
+      const aiCategories = nonHikingCategories.length > 0 ? nonHikingCategories : preferences.categories;
 
       const picksDbContext = isFlexiblePicks
         ? buildFlexiblePicksDbContext(
-            preferences.categories,
+            aiCategories,
             distanceLimitNum,
             startCoords,
             propCoords,
@@ -1137,7 +1265,7 @@ Rules:
 - If you know an exact Google Place ID for an AI pick, include it as "googlePlaceId" — it makes the link point to that exact business.
 - distanceKm is REQUIRED on every item and must be ≤ ${hardCapKm.toFixed(0)}.`;
 
-      let promptText = `Starting point: "${startLocationName}" (GPS: ${gpsString}). Radius: ${distanceLimitNum}km (hard cap ${hardCapKm.toFixed(0)}km). Categories: ${preferences.categories.join(', ')}.
+      let promptText = `Starting point: "${startLocationName}" (GPS: ${gpsString}). Radius: ${distanceLimitNum}km (hard cap ${hardCapKm.toFixed(0)}km). Categories: ${aiCategories.join(', ')}.
 
 ${isNearProperty
   ? `Property context: ${fullLocationContext}`
@@ -1228,6 +1356,7 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
 
       const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
       let initialPlan = applyTimelinePropertyBookends(parsedData, isNearProperty);
+      initialPlan = mergeTrailCategoriesIntoPlan(initialPlan, trailCategoryBlocks);
       initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);
 
       if (isFlexiblePicks && picksDbContext) {
@@ -1263,6 +1392,7 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
       enrichPhotosInBackground(initialPlan, startCoords)
         .then((withPhotos) => {
           let finalPlan = withPhotos;
+          finalPlan = mergeTrailCategoriesIntoPlan(finalPlan, trailCategoryBlocks);
           if (isFlexiblePicks && picksDbContext) {
             finalPlan = normalizeFlexiblePicksPlan(
               finalPlan,
@@ -1573,6 +1703,22 @@ User: ${userText}`;
             </div>
 
             <div className="p-5">
+            {msg.data.trailCategories?.length > 0 && (
+              <div className="space-y-8 pt-1 mb-8">
+                {msg.data.trailCategories.map((cat: any, idx: number) => (
+                  <TrailPickCarousel
+                    key={`trail-${idx}`}
+                    categoryName={cat.categoryName}
+                    items={cat.items || []}
+                    propertyId={property?.id}
+                    propertyCoords={propertyCoords}
+                    viewMapLabel={t('aiExpertView')}
+                    goMapLabel={t('aiExpertGo')}
+                  />
+                ))}
+              </div>
+            )}
+
             {msg.data.type === 'timeline' && (
               <div className="space-y-6 pt-1">
                 {msg.data.plan?.map((item: any, idx: number) => (
@@ -1652,17 +1798,29 @@ User: ${userText}`;
 
             {msg.data.type === 'picks' && (
               <div className="space-y-8 pt-1">
-                {msg.data.categories?.map((cat: any, idx: number) => (
-                  <CategoryPickCarousel
-                    key={idx}
-                    categoryName={cat.categoryName}
-                    items={cat.items || []}
-                    mapAreaHint={mapAreaHint}
-                    propertyId={property?.id}
-                    viewMapLabel={t('aiExpertView')}
-                    goMapLabel={t('aiExpertGo')}
-                  />
-                ))}
+                {msg.data.categories?.map((cat: any, idx: number) =>
+                  cat.isTrails || cat.items?.[0]?.itemType === 'trail' ? (
+                    <TrailPickCarousel
+                      key={idx}
+                      categoryName={cat.categoryName}
+                      items={cat.items || []}
+                      propertyId={property?.id}
+                      propertyCoords={propertyCoords}
+                      viewMapLabel={t('aiExpertView')}
+                      goMapLabel={t('aiExpertGo')}
+                    />
+                  ) : (
+                    <CategoryPickCarousel
+                      key={idx}
+                      categoryName={cat.categoryName}
+                      items={cat.items || []}
+                      mapAreaHint={mapAreaHint}
+                      propertyId={property?.id}
+                      viewMapLabel={t('aiExpertView')}
+                      goMapLabel={t('aiExpertGo')}
+                    />
+                  )
+                )}
               </div>
             )}
 

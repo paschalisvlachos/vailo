@@ -1,4 +1,4 @@
-import { ALLTRAILS_EMBED_IFRAME_TITLE } from '../../lib/allTrailsTrail';
+import { ALLTRAILS_EMBED_IFRAME_TITLE, normalizeAllTrailsEmbedSrc } from '../../lib/allTrailsTrail';
 
 type Props = {
   name?: string;
@@ -14,7 +14,7 @@ export default function AllTrailsTrailEmbed({
   allTrailsUrl,
   className = '',
 }: Props) {
-  const src = embedSrc.trim();
+  const src = normalizeAllTrailsEmbedSrc(embedSrc);
   const pageUrl = String(allTrailsUrl || '').trim();
   if (!src) return null;
 

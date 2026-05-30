@@ -16,6 +16,7 @@ import {
   allTrailsPhotoUrl,
   describeAllTrailsStartUrl,
   extractAllTrailsShareHash,
+  normalizeAllTrailsEmbedSrc,
   parseEmbedSrcFromIframe,
   resolveAllTrailsEmbedSrc,
 } from '../../../lib/allTrailsTrail';
@@ -346,7 +347,7 @@ export default function AreaLocalTrails() {
         longitude: formData.longitude ? parseFloat(formData.longitude) : null,
         photoUrl: formData.photoUrl.trim(),
         allTrailsUrl: formData.allTrailsUrl.trim(),
-        allTrailsEmbedSrc: formData.allTrailsEmbedSrc.trim(),
+        allTrailsEmbedSrc: normalizeAllTrailsEmbedSrc(formData.allTrailsEmbedSrc.trim()),
         parking: formData.parking.trim(),
         manuallyEditedFields: [...EDITABLE_FIELDS],
         updatedAt: new Date(),
@@ -696,11 +697,20 @@ export default function AreaLocalTrails() {
                                 }
                                 onBlur={(e) => {
                                   const pasted = e.target.value.trim();
-                                  if (!pasted.includes('<iframe')) return;
-                                  const src = parseEmbedSrcFromIframe(pasted);
-                                  if (src) setFormData((f) => ({ ...f, allTrailsEmbedSrc: src }));
+                                  if (!pasted) return;
+                                  if (pasted.includes('<iframe')) {
+                                    const src = parseEmbedSrcFromIframe(pasted);
+                                    if (src) setFormData((f) => ({ ...f, allTrailsEmbedSrc: src }));
+                                    return;
+                                  }
+                                  if (pasted.includes('alltrails.com/widget/')) {
+                                    setFormData((f) => ({
+                                      ...f,
+                                      allTrailsEmbedSrc: normalizeAllTrailsEmbedSrc(pasted),
+                                    }));
+                                  }
                                 }}
-                                placeholder="https://www.alltrails.com/widget/trail/…?u=m&sh=…"
+                                placeholder="https://www.alltrails.com/widget/trail/…?scrollZoom=false&elevationDiagram=false&u=m&sh=…"
                               />
                             </div>
                             <div>

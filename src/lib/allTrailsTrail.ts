@@ -11,6 +11,24 @@ export function allTrailsPhotoUrl(trailId?: string | null, photoUrl?: string | n
   return '';
 }
 
+/** Query params for a cleaner embedded map (no scroll zoom, no elevation chart). */
+const EMBED_UI_PARAMS = 'scrollZoom=false&elevationDiagram=false';
+
+/** Ensure widget URLs hide scroll zoom and the elevation diagram. */
+export function normalizeAllTrailsEmbedSrc(src: string): string {
+  const raw = String(src || '').trim();
+  if (!raw.includes('alltrails.com/widget/')) return raw;
+  try {
+    const url = new URL(raw.includes('://') ? raw : `https://${raw}`);
+    url.searchParams.set('scrollZoom', 'false');
+    url.searchParams.set('elevationDiagram', 'false');
+    if (!url.searchParams.has('u')) url.searchParams.set('u', 'm');
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 /** Build widget iframe src — include share hash from AllTrails Share → Embed (sh=…). */
 export function buildAllTrailsEmbedSrc(
   slug?: string | null,
@@ -20,7 +38,7 @@ export function buildAllTrailsEmbedSrc(
     .trim()
     .replace(/^\//, '');
   if (!path || !path.includes('trail/')) return '';
-  let url = `https://www.alltrails.com/widget/${path}?u=m`;
+  let url = `https://www.alltrails.com/widget/${path}?${EMBED_UI_PARAMS}&u=m`;
   const sh = String(shareHash || '').trim();
   if (sh) url += `&sh=${encodeURIComponent(sh)}`;
   return url;
@@ -32,7 +50,7 @@ export function parseEmbedSrcFromIframe(html: string): string {
   if (!raw) return '';
   const match = raw.match(/src=["']([^"']*alltrails\.com\/widget\/[^"']+)["']/i);
   if (!match?.[1]) return '';
-  return match[1].replace(/&amp;/g, '&').trim();
+  return normalizeAllTrailsEmbedSrc(match[1].replace(/&amp;/g, '&').trim());
 }
 
 /** Extract sh= token from an embed src URL or iframe HTML. */
@@ -56,7 +74,7 @@ export function resolveAllTrailsEmbedSrc(options: {
   shareHash?: string | null;
 }): string {
   const direct = String(options.embedSrc || options.widgetUrl || '').trim();
-  if (direct.includes('alltrails.com/widget/')) return direct;
+  if (direct.includes('alltrails.com/widget/')) return normalizeAllTrailsEmbedSrc(direct);
 
   const slug = String(options.slug || '').trim();
   if (slug) return buildAllTrailsEmbedSrc(slug, options.shareHash);

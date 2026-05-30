@@ -446,6 +446,16 @@ export function openExternalUrl(url: string): void {
   window.open(url.trim(), '_blank', 'noopener,noreferrer');
 }
 
+/** Google Maps driving directions from a fixed origin (e.g. the property) to destination coords. */
+export function buildDirectionsFromOriginUrl(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): string {
+  const o = `${origin.lat},${origin.lng}`;
+  const d = `${destination.lat},${destination.lng}`;
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o)}&destination=${encodeURIComponent(d)}`;
+}
+
 export function getItemMapLinks(item: {
   title?: string;
   googleMapsUrl?: string;

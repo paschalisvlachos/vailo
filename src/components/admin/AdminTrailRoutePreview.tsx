@@ -1,6 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import { AdminLabel } from './AdminPageHeader';
-import { ALLTRAILS_EMBED_IFRAME_TITLE } from '../../lib/allTrailsTrail';
+import { ALLTRAILS_EMBED_IFRAME_TITLE, normalizeAllTrailsEmbedSrc } from '../../lib/allTrailsTrail';
 
 const linkBtnBase =
   'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors';
@@ -13,7 +13,7 @@ type Props = {
 
 /** Official AllTrails route widget (Share → Embed) + link to trail page. */
 export default function AdminTrailRoutePreview({ name, embedSrc, allTrailsUrl }: Props) {
-  const iframeSrc = String(embedSrc || '').trim();
+  const iframeSrc = normalizeAllTrailsEmbedSrc(String(embedSrc || '').trim());
   const pageUrl = String(allTrailsUrl || '').trim();
 
   return (

@@ -207,10 +207,25 @@ function photoUrlFromTrailId(trailId) {
 function embedSrcFromSlug(slug, shareHash) {
   const path = String(slug || "").trim().replace(/^\//, "");
   if (!path) return "";
-  let url = `https://www.alltrails.com/widget/${path}?u=m`;
+  let url = `https://www.alltrails.com/widget/${path}?scrollZoom=false&elevationDiagram=false&u=m`;
   const sh = String(shareHash || "").trim();
   if (sh) url += `&sh=${encodeURIComponent(sh)}`;
   return url;
+}
+
+/** @param {string} src */
+function normalizeAllTrailsEmbedSrc(src) {
+  const raw = String(src || "").trim();
+  if (!raw.includes("alltrails.com/widget/")) return raw;
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    url.searchParams.set("scrollZoom", "false");
+    url.searchParams.set("elevationDiagram", "false");
+    if (!url.searchParams.has("u")) url.searchParams.set("u", "m");
+    return url.toString();
+  } catch {
+    return raw;
+  }
 }
 
 /** @deprecated alias */

@@ -42,6 +42,8 @@ const PLACES_FIELD_MASK =
 const DUPLICATE_RADIUS_METERS = 150;
 const FUZZY_NAME_RADIUS_METERS = 250;
 
+const { syncAllTrailsForAreaHandler } = require("./allTrailsSync");
+
 const GENERIC_SUFFIXES = [
   "restaurant",
   "horseriding",
@@ -939,6 +941,17 @@ exports.getBillingInvoice = onCall(async (request) => {
       "Set BILLING_BQ_TABLE on Cloud Functions to your billing export table for full GCP costs.",
   };
 });
+
+/** Area admin: import / merge hiking trails from AllTrails (Algolia search index). */
+exports.syncAllTrailsForArea = onCall(
+  {
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    // Admin-only sync; auth is still required. Avoids App Check blocking before sync runs.
+    enforceAppCheck: false,
+  },
+  syncAllTrailsForAreaHandler
+);
 
 const { registerGuestPortalAccess } = require("./guestPortalAccess");
 registerGuestPortalAccess({ firestore, logger, firebaseExports: exports });

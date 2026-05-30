@@ -30,6 +30,7 @@ import FeaturesPhotos from "./pages/admin/area/FeaturesPhotos";
 import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
 import AreaFeatures from "./pages/admin/area/AreaFeatures";
 import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
+import AreaLocalTrails from "./pages/admin/area/AreaLocalTrails";
 import AiGaps from "./pages/admin/properties/AiGaps";
 import HouseGuests from "./pages/admin/properties/HouseGuests";
 import PropertyTesters from "./pages/admin/properties/PropertyTesters";
@@ -245,6 +246,7 @@ export default function App() {
         <Route path={adminPath('/area/:country/:area/local-gems')} element={<AdminRoute><PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/features')} element={<AdminRoute><PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/discovered-places')} element={<AdminRoute><PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/local-trails')} element={<AdminRoute><PlatformAdminOnly><AreaLocalTrails /></PlatformAdminOnly></AdminRoute>} />
 
         {/* Guest portal (vailo.app/:property/:unit) — after /admin routes */}
         <Route path="/:propertySlug/:typeSlug" element={<GuestPortal />} />

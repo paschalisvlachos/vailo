@@ -2,7 +2,7 @@ import {
   allTrailsPhotoUrl,
   resolveAllTrailsEmbedSrc,
 } from './allTrailsTrail';
-import { beyondRadiusBufferKm, effectiveMaxDistanceKm, MAX_PICKS_PER_CATEGORY } from './flexiblePicks';
+import { effectiveMaxDistanceKm, MAX_PICKS_PER_CATEGORY } from './flexiblePicks';
 
 export const HIKING_TRAILS_CATEGORY_PRIMARY = 'Hiking & Trails';
 
@@ -186,7 +186,6 @@ export function buildTrailPicksForCategory(
   }
 
   const hardCap = effectiveMaxDistanceKm(maxKm);
-  const buffer = beyondRadiusBufferKm(maxKm);
 
   const within: TrailPickItem[] = [];
   const beyond: TrailPickItem[] = [];

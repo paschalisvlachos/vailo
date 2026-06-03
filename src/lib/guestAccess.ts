@@ -1,5 +1,12 @@
 /** Guest portal access: invite token, on-stay assignment, testers. */
 
+/** Default on: only explicit `false` disables the guest access gate. */
+export function isGuestPortalAccessRequired(
+  property: { guestPortalAccessRequired?: boolean } | null | undefined
+): boolean {
+  return property?.guestPortalAccessRequired !== false;
+}
+
 export const GUEST_SESSION_STORAGE_KEY = 'vailo_guest_portal_session';
 
 /** Canonical public origin for guest-facing URLs (override in dev via VITE_GUEST_PORTAL_ORIGIN). */

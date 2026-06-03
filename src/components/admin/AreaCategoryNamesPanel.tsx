@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Languages, Loader2, Plus, Sparkles, Tag, Trash2, Pencil, Check, X } from 'lucide-react';
+import { EyeOff, Eye, Languages, Loader2, Plus, Sparkles, Tag, Trash2, Pencil, Check, X } from 'lucide-react';
+import { isExcludedFromLiveLikeLocal } from '../../lib/liveLikeLocalCategories';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
@@ -24,6 +25,8 @@ type Props = {
     oldName: string,
     newName: string
   ) => Promise<number>;
+  /** Local gems only: hide category from guest Live like a local wizard. */
+  showLiveLikeLocalExclude?: boolean;
 };
 
 export default function AreaCategoryNamesPanel({
@@ -33,6 +36,7 @@ export default function AreaCategoryNamesPanel({
   collectionName,
   title,
   onRename,
+  showLiveLikeLocalExclude = false,
 }: Props) {
   const toast = useToast();
   const localeSettings = useAreaContentLocaleSettings(country, areaId);
@@ -50,6 +54,7 @@ export default function AreaCategoryNamesPanel({
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [togglingExcludeId, setTogglingExcludeId] = useState<string | null>(null);
 
   const localeEditor = useContentLocaleEditor(primary, ['name'], editingSourceDoc);
 
@@ -182,6 +187,31 @@ export default function AreaCategoryNamesPanel({
     }
   };
 
+  const toggleLiveLikeLocalExclude = async (
+    id: string,
+    data: Record<string, unknown>,
+    label: string
+  ) => {
+    const next = !isExcludedFromLiveLikeLocal(data);
+    setTogglingExcludeId(id);
+    try {
+      await updateDoc(doc(db, 'countries', country, 'areas', areaId, collectionName, id), {
+        excludeFromLiveLikeLocal: next,
+        updatedAt: new Date().toISOString(),
+      });
+      toast.success(
+        next
+          ? `"${label}" hidden from Live like a local.`
+          : `"${label}" shown in Live like a local again.`
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error('Could not update Live like a local visibility.');
+    } finally {
+      setTogglingExcludeId(null);
+    }
+  };
+
   const handleAutoTranslate = async () => {
     if (isPrimaryTab) {
       toast.warning('Switch to the Greek tab to auto-translate.');
@@ -213,6 +243,13 @@ export default function AreaCategoryNamesPanel({
         </p>
         <p className="text-xs text-gray-500 mt-1">
           EN = main name for gems/features. EL = Greek translation only (clearing Greek does not remove English).
+          {showLiveLikeLocalExclude && (
+            <>
+              {' '}
+              Use <span className="font-medium">Hide from Live like a local</span> to keep a category for Local Gems
+              but remove it from the guest concierge category picker.
+            </>
+          )}
         </p>
       </div>
 
@@ -261,8 +298,15 @@ export default function AreaCategoryNamesPanel({
         </p>
       ) : (
         <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
-          {categories.map((cat) => (
-            <li key={cat.id} className="p-3 flex items-center justify-between gap-2 bg-gray-50/50">
+          {categories.map((cat) => {
+            const excludedFromLiveLikeLocal = isExcludedFromLiveLikeLocal(cat.data);
+            return (
+            <li
+              key={cat.id}
+              className={`p-3 flex items-center justify-between gap-2 ${
+                excludedFromLiveLikeLocal ? 'bg-gray-100/80' : 'bg-gray-50/50'
+              }`}
+            >
               {editingId === cat.id ? (
                 <>
                   <input
@@ -290,9 +334,43 @@ export default function AreaCategoryNamesPanel({
                 <>
                   <span className="text-sm font-medium flex items-center gap-2 min-w-0">
                     <Tag size={14} className="text-vailo-teal shrink-0" />
-                    <span className="truncate">{displayName(cat.data)}</span>
+                    <span className={`truncate ${excludedFromLiveLikeLocal ? 'text-gray-500' : ''}`}>
+                      {displayName(cat.data)}
+                    </span>
+                    {showLiveLikeLocalExclude && excludedFromLiveLikeLocal && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-white border border-gray-200 px-1.5 py-0.5 rounded shrink-0">
+                        Local gems only
+                      </span>
+                    )}
                   </span>
                   <div className="flex gap-1 shrink-0">
+                    {showLiveLikeLocalExclude && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleLiveLikeLocalExclude(cat.id, cat.data, displayName(cat.data))
+                        }
+                        disabled={togglingExcludeId === cat.id}
+                        className={`p-1.5 ${
+                          excludedFromLiveLikeLocal
+                            ? 'text-vailo-teal hover:text-vailo-teal/80'
+                            : 'text-gray-400 hover:text-amber-700'
+                        }`}
+                        title={
+                          excludedFromLiveLikeLocal
+                            ? 'Show in Live like a local'
+                            : 'Hide from Live like a local'
+                        }
+                      >
+                        {togglingExcludeId === cat.id ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : excludedFromLiveLikeLocal ? (
+                          <Eye size={16} />
+                        ) : (
+                          <EyeOff size={16} />
+                        )}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => startEdit(cat)}
@@ -312,7 +390,8 @@ export default function AreaCategoryNamesPanel({
                 </>
               )}
             </li>
-          ))}
+          );
+          })}
         </ul>
       )}
     </div>

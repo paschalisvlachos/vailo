@@ -19,10 +19,8 @@ import {
   Phone,
   Mail,
   MapPin,
-  Link2,
   X,
   Save,
-  ExternalLink,
 } from 'lucide-react';
 import {
   AdminBadge,
@@ -52,8 +50,6 @@ type FormData = {
   listingKind: ListingKind;
   country: string;
   area: string;
-  listingUrl: string;
-  googleMapsUrl: string;
   ownerId: string;
   email: string;
   phone: string;
@@ -68,12 +64,10 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     listingKind: property.listingKind === 'hotel' ? 'hotel' : 'property',
     country: property.country || '',
     area: property.area || property.city || '',
-    listingUrl: property.listingUrl || '',
-    googleMapsUrl: property.googleMapsUrl || '',
     ownerId: property.ownerId || '',
     email: '',
     phone: '',
-    guestPortalAccessRequired: Boolean(property.guestPortalAccessRequired),
+    guestPortalAccessRequired: property.guestPortalAccessRequired !== false,
   };
 }
 
@@ -218,8 +212,6 @@ export default function Overview() {
         country: formData.country,
         area: formData.area,
         city: formData.area,
-        listingUrl: formData.listingUrl,
-        googleMapsUrl: formData.googleMapsUrl,
         ownerId: formData.ownerId,
         guestPortalAccessRequired: formData.guestPortalAccessRequired,
         updatedAt: new Date().toISOString(),
@@ -495,77 +487,12 @@ export default function Overview() {
           </label>
         ) : (
           <p className="text-sm text-gray-700">
-            {property.guestPortalAccessRequired ? (
+            {property.guestPortalAccessRequired !== false ? (
               <AdminBadge variant="teal">Access control enabled</AdminBadge>
             ) : (
               <span className="text-gray-500">Open portal (no invite gate)</span>
             )}
           </p>
-        )}
-      </AdminCard>
-
-      <AdminCard className="p-6">
-        <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider flex items-center gap-2 mb-5">
-          <Link2 size={16} className="text-vailo-teal/60" /> Links
-        </h3>
-
-        {isEditing ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <AdminLabel htmlFor="listingUrl">Listing URL</AdminLabel>
-              <AdminInput
-                id="listingUrl"
-                type="url"
-                name="listingUrl"
-                value={formData.listingUrl}
-                onChange={handleChange}
-                placeholder="Airbnb or Booking link"
-              />
-            </div>
-            <div>
-              <AdminLabel htmlFor="googleMapsUrl">Google Maps URL</AdminLabel>
-              <AdminInput
-                id="googleMapsUrl"
-                type="url"
-                name="googleMapsUrl"
-                value={formData.googleMapsUrl}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Listing URL</p>
-              {property.listingUrl ? (
-                <a
-                  href={property.listingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-vailo-teal hover:underline inline-flex items-center gap-1 break-all"
-                >
-                  {property.listingUrl} <ExternalLink size={13} />
-                </a>
-              ) : (
-                <p className="text-sm text-gray-400">—</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 mb-1">Google Maps</p>
-              {property.googleMapsUrl ? (
-                <a
-                  href={property.googleMapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-vailo-teal hover:underline inline-flex items-center gap-1 break-all"
-                >
-                  Open in Maps <ExternalLink size={13} />
-                </a>
-              ) : (
-                <p className="text-sm text-gray-400">—</p>
-              )}
-            </div>
-          </div>
         )}
       </AdminCard>
     </div>

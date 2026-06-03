@@ -19,7 +19,7 @@ import {
   type PropertyTester,
   type TesterDurationPreset,
 } from '../../../lib/guestPortalTesters';
-import { getGuestPortalPublicOrigin } from '../../../lib/guestAccess';
+import { getGuestPortalPublicOrigin, isGuestPortalAccessRequired } from '../../../lib/guestAccess';
 import { buildGuestPortalUrl } from '../../../lib/guestPortalSlug';
 import { AdminButton, AdminInput, AdminLabel, AdminSelect } from '../../../components/admin/AdminPageHeader';
 import type { PropertyRecord } from './PropertyLayout';
@@ -246,7 +246,7 @@ export default function PropertyTesters() {
 
   const showForm = formOpen || editing;
 
-  if (!property.guestPortalAccessRequired) {
+  if (!isGuestPortalAccessRequired(property)) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
         <p className="font-semibold mb-1">Guest access control is off</p>

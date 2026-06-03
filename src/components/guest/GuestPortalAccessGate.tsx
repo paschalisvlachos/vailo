@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Lock, KeyRound, FlaskConical } from 'lucide-react';
 import { httpsCallableMessage } from '../../lib/callableError';
 import {
@@ -44,17 +44,18 @@ export default function GuestPortalAccessGate({
   const [testerCode, setTesterCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [session, setSession] = useState<GuestPortalSession | null>(null);
+  const bootstrappedUnitKeyRef = useRef<string | null>(null);
 
-  const grant = useCallback(
-    (s: GuestPortalSession) => {
-      writeGuestPortalSession(s);
-      setSession(s);
-      onSessionGranted?.(s);
-      setPhase('granted');
-      setError(null);
-    },
-    [onSessionGranted]
-  );
+  const onSessionGrantedRef = useRef(onSessionGranted);
+  onSessionGrantedRef.current = onSessionGranted;
+
+  const grant = useCallback((s: GuestPortalSession) => {
+    writeGuestPortalSession(s);
+    setSession(s);
+    onSessionGrantedRef.current?.(s);
+    setPhase('granted');
+    setError(null);
+  }, []);
 
   const tryExistingSession = useCallback(async (): Promise<
     'granted' | 'absent' | 'revoked'
@@ -119,6 +120,10 @@ export default function GuestPortalAccessGate({
   }, [propertyId, typeId, grant]);
 
   useEffect(() => {
+    const unitKey = `${propertyId}|${typeId}|${inviteToken ?? ''}|${adminPreview ? '1' : '0'}`;
+    if (bootstrappedUnitKeyRef.current === unitKey) return;
+    bootstrappedUnitKeyRef.current = unitKey;
+
     let cancelled = false;
 
     (async () => {
@@ -170,7 +175,8 @@ export default function GuestPortalAccessGate({
     return () => {
       cancelled = true;
     };
-  }, [adminPreview, inviteToken, grant, propertyId, typeId, tryExistingSession, tryOnSiteActivation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- grant is stable; avoid re-bootstrap on parent UI state
+  }, [adminPreview, inviteToken, propertyId, typeId, tryExistingSession, tryOnSiteActivation]);
 
   useEffect(() => {
     if (phase !== 'granted' || adminPreview || !session?.sessionId) return;

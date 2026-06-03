@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -15,6 +15,10 @@ import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet'
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
+import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
+import GuestHouseGuideSheet from '../../components/guest/GuestHouseGuideSheet';
+import { HOUSE_GUIDE_CATEGORIES } from '../../lib/houseGuideCategories';
+import { listHouseGuideCategoriesWithContent } from '../../lib/houseGuideGuestContent';
 import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
 import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
@@ -33,6 +37,7 @@ import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
+import { isGuestPortalAccessRequired, type GuestPortalSession } from '../../lib/guestAccess';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   formatGuestSlug,
@@ -303,24 +308,41 @@ function GuestPortalPage({
   const [viewMode, setViewMode] = useState<'web' | 'mobile'>('mobile');
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [propertyMapOpen, setPropertyMapOpen] = useState(false);
-  const { locale, setLocale, t, localeOptions } = useGuestLocale();
+  const { locale, setLocale, t, localeOptions, contentPrimaryLocale } = useGuestLocale();
   const { resolved: platformLegalResolved } = usePlatformLegal(locale);
   const pwaInstall = usePwaInstall();
   
   const [gemFilters, setGemFilters] = useState<string[]>([]);
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
+  const [portalMenuOpen, setPortalMenuOpen] = useState(false);
+  const [houseGuideOpen, setHouseGuideOpen] = useState(false);
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
+  const guestLoadKeyRef = useRef<string | null>(null);
 
+  const handleSessionGranted = useCallback(
+    (session: GuestPortalSession) => {
+      onSessionLocale?.(session.guestLocale?.trim() || null);
+    },
+    [onSessionLocale]
+  );
+
+  const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
+  const openAssistant = useCallback(() => setActiveView('assistant'), []);
+  const openHouseGuide = useCallback(() => setHouseGuideOpen(true), []);
 
   useEffect(() => {
     const fetchGuestData = async () => {
       if (!propertySlug || !typeSlug) return;
+      const loadKey = `${formatGuestSlug(propertySlug)}|${typeSlug}|${typeIdFromQuery ?? ''}`;
+      const isNewTarget = guestLoadKeyRef.current !== loadKey;
+      if (!isNewTarget && propertyId) return;
+      guestLoadKeyRef.current = loadKey;
       setLoading(true);
       setError(null);
-      setGems([]);
+      if (isNewTarget) setGems([]);
       try {
         const slugParam = formatGuestSlug(propertySlug);
         let propDoc = null;
@@ -488,6 +510,22 @@ function GuestPortalPage({
     [typeData, propertyLat, propertyLng]
   );
 
+  const houseGuideSectionCount = useMemo(
+    () =>
+      listHouseGuideCategoriesWithContent(
+        guide as Record<string, unknown> | null | undefined,
+        HOUSE_GUIDE_CATEGORIES,
+        locale,
+        contentPrimaryLocale
+      ).length,
+    [guide, locale, contentPrimaryLocale]
+  );
+
+  const houseGuideMenuSub = useMemo(() => {
+    if (houseGuideSectionCount === 0) return t('houseGuideMenuSubEmpty');
+    return t('houseGuideMenuSub').replace('{count}', String(houseGuideSectionCount));
+  }, [houseGuideSectionCount, locale, t]);
+
   const websiteUrl = useMemo(() => {
     const raw = String(typeData?.listingUrl || property?.listingUrl || '').trim();
     if (!raw) return null;
@@ -579,10 +617,10 @@ function GuestPortalPage({
 
       {/* FLOATING VIEW TOGGLE */}
       <div className="fixed bottom-6 right-6 z-50 hidden md:flex items-center bg-white text-gray-500 rounded-full p-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] border border-gray-200">
-        <button onClick={() => setViewMode('mobile')} className={`p-2.5 rounded-full transition-all ${viewMode === 'mobile' ? 'bg-[#0B4F5C] text-[#C5A059] shadow-sm' : 'hover:bg-gray-100'}`}>
+        <button type="button" onClick={() => setViewMode('mobile')} className={`p-2.5 rounded-full transition-all ${viewMode === 'mobile' ? 'bg-[#0B4F5C] text-[#C5A059] shadow-sm' : 'hover:bg-gray-100'}`}>
           <Smartphone size={18} />
         </button>
-        <button onClick={() => setViewMode('web')} className={`p-2.5 rounded-full transition-all ${viewMode === 'web' ? 'bg-[#0B4F5C] text-[#C5A059] shadow-sm' : 'hover:bg-gray-100'}`}>
+        <button type="button" onClick={() => setViewMode('web')} className={`p-2.5 rounded-full transition-all ${viewMode === 'web' ? 'bg-[#0B4F5C] text-[#C5A059] shadow-sm' : 'hover:bg-gray-100'}`}>
           <Monitor size={18} />
         </button>
       </div>
@@ -632,14 +670,21 @@ function GuestPortalPage({
 
                   {/* Top bar */}
                   <div className="flex justify-between items-center mb-auto">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20">
-                      <img src="/vailoLogo.png" alt="Vailo" className="h-5 w-auto brightness-0 invert opacity-95" onError={(e) => { (e.target as HTMLImageElement).src = '../../../vailoLogo.png'; }} />
-                    </div>
+                    <GuestPortalNavMenu
+                      open={portalMenuOpen}
+                      onOpenChange={setPortalMenuOpen}
+                      t={t}
+                      houseGuideMenuSub={houseGuideMenuSub}
+                      onLiveLikeLocal={openLiveLikeLocal}
+                      onHouseGuide={openHouseGuide}
+                      onAssistant={openAssistant}
+                    />
                     <div className="flex items-center gap-2">
                       <GuestLanguageMenu
                         locale={locale}
                         onChange={setLocale}
                         options={localeOptions}
+                        dismissOpen={portalMenuOpen}
                       />
                       <button
                         type="button"
@@ -883,6 +928,8 @@ function GuestPortalPage({
           />
         ) : (
           <GuestPropertyAssistant
+            propertyId={propertyId}
+            typeId={typeId}
             property={property}
             propertyType={typeData}
             guide={guide}
@@ -897,6 +944,18 @@ function GuestPortalPage({
           />
         )}
       </div>
+
+      <GuestHouseGuideSheet
+        open={houseGuideOpen && activeView === 'portal'}
+        onClose={() => setHouseGuideOpen(false)}
+        guide={guide}
+        propertyLabel={
+          property?.propertyName && typeData?.propertyTypeName
+            ? `${property.propertyName} · ${typeData.propertyTypeName}`
+            : property?.propertyName
+        }
+        t={t}
+      />
 
       {activeView === 'portal' && (
         <GuestFloatingActions
@@ -944,16 +1003,14 @@ function GuestPortalPage({
       portalMain
     );
 
-  if (property?.guestPortalAccessRequired && propertyId && typeId) {
+  if (isGuestPortalAccessRequired(property) && propertyId && typeId) {
     return (
       <GuestPortalAccessGate
         propertyId={propertyId}
         typeId={typeId}
         inviteToken={inviteTokenFromQuery}
         adminPreview={adminPreviewFromQuery}
-        onSessionGranted={(session) =>
-          onSessionLocale?.(session.guestLocale?.trim() || null)
-        }
+        onSessionGranted={handleSessionGranted}
       >
         {portalContent}
       </GuestPortalAccessGate>

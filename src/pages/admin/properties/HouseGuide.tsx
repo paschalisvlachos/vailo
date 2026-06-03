@@ -9,7 +9,7 @@ import {
   Droplets, BedDouble, ChefHat, Flame, Waves, Wifi, WashingMachine, 
   Trash2, ShieldAlert, Sparkles, Box, Wrench, MessageCircleQuestion,
   Loader2, Save, Plus, MapPin, CheckCircle2, Circle, ArrowRight, X, Edit3,
-  Star, Link2
+  Star, Link2, ShoppingBag
 } from 'lucide-react';
 import {
   PORTAL_FEATURED_CAP,
@@ -36,9 +36,14 @@ import {
 import {
   getGuideTextValue,
   hydrateGuideFormDataFromFirestore,
+  serializeGuideCategoryForSave,
   serializeGuideFormDataForSave,
   setGuideTextInFormData,
 } from '../../../lib/houseGuideLocales';
+import {
+  HOUSE_GUIDE_CATEGORIES,
+  fieldsForHouseGuideCategoryId,
+} from '../../../lib/houseGuideCategories';
 import { Languages } from 'lucide-react';
 
 // --- TYPE DEFINITIONS ---
@@ -71,34 +76,43 @@ type CategoryDef = {
   fields: FieldDef[];
 };
 
+type SaveGuideOptions = {
+  featuredOverride?: FeaturedKey[];
+  /** Quick-edit modal: upload only this section's fields. */
+  category?: CategoryDef;
+  forcePreviewKeys?: FeaturedKey[];
+};
+
 // --- CONSTANTS & OPTIONS ---
 const ROOM_OPTIONS = ["Kitchen", "Living Room", "Dining Room", "Master Bedroom", "Bedroom 1", "Bedroom 2", "Bedroom 3", "Bathroom", "Master Bathroom", "Balcony", "Pool Area", "Laundry Room", "Garage", "Other"];
-const WASTE_OPTIONS = ["General Garbage Bin", "Recycling Bin (Blue)", "Glass Recycling (Bell)", "Compost", "Other"];
-const USEFUL_MAP_OPTIONS = ["Nearest Supermarket", "Mini Market / Kiosk", "Bakery", "Pharmacy", "Gas Station", "ATM", "Butcher", "Other"];
-const EMERGENCY_OPTIONS = ["Pharmacy", "Hospital/Clinic", "Police", "Fire Dept", "Doctor", "Paediatrician", "Other"];
 
-// --- MASTER CATEGORY CONFIGURATION ---
-const CATEGORIES: CategoryDef[] = [
-  { id: 'arrival', title: '1. Arrival & Check-in', icon: Key, description: 'Check-in times, lockbox codes, parking, and directions.', fields: [{ id: 'arrivalInfo', label: 'Arrival & Check-in Information', type: 'textarea', placeholder: 'Check-in is at 15:00. The lockbox is...' }] },
-  { id: 'checkout', title: '2. Check-out Instructions', icon: ArrowRight, description: 'Check-out times, key return, and departure duties.', fields: [{ id: 'checkoutInfo', label: 'Check-out & Departure Information', type: 'textarea', placeholder: 'Check-out is at 11:00. Please leave keys...' }] },
-  { id: 'power', title: '3. Electricity & Power', icon: Zap, description: 'Panels, outages, and emergency lighting.', fields: [ { id: 'electricalPanel', label: 'Electrical Panel', type: 'textarea' }, { id: 'powerOutage', label: 'Power Outage', type: 'textarea' }, { id: 'garageManual', label: 'Garage Door During Outage', type: 'textarea' }, { id: 'emergencyLighting', label: 'Emergency Lighting', type: 'textarea' } ] },
-  { id: 'lighting', title: '4. Lighting', icon: Lightbulb, description: 'Indoor and outdoor lighting instructions.', fields: [ { id: 'indoorLights', label: 'Indoor Lights', type: 'textarea' }, { id: 'outdoorLights', label: 'Outdoor / Garden Lights', type: 'textarea' } ] },
-  { id: 'hvac', title: '5. A/C & Heating', icon: Thermometer, description: 'Climate control instructions.', fields: [ { id: 'acInstructions', label: 'Air Conditioning', type: 'textarea' }, { id: 'heatingInstructions', label: 'Heating', type: 'textarea' } ] },
-  { id: 'bathrooms', title: '6. Hot Water & Bathrooms', icon: Droplets, description: 'Boilers, amenities, and usage rules.', fields: [ { id: 'hotWater', label: 'Hot Water', type: 'textarea' }, { id: 'bathroomAmenities', label: 'Bathroom Amenities', type: 'textarea' }, { id: 'toiletRules', label: 'Toilet Instructions', type: 'textarea' } ] },
-  { id: 'bedrooms', title: '7. Bedrooms & Linen', icon: BedDouble, description: 'Sleeping arrangements and extra linens.', fields: [ { id: 'bedroomDetails', label: 'Bedroom Information', type: 'textarea' }, { id: 'extraLinen', label: 'Extra Pillows & Blankets', type: 'textarea' } ] },
-  { id: 'kitchen', title: '8. Kitchen', icon: ChefHat, description: 'Equipment, supplies, and appliances.', fields: [ { id: 'kitchenEquipment', label: 'Kitchen Equipment', type: 'textarea' }, { id: 'applianceInstructions', label: 'Appliance Instructions', type: 'textarea' }, { id: 'applianceModels', label: 'Appliance Models', type: 'textarea' }, { id: 'includedSupplies', label: 'Included Supplies', type: 'textarea' }, { id: 'neededSupplies', label: 'Additional Supplies Needed', type: 'textarea' } ] },
-  { id: 'bbq', title: '9. BBQ & Outdoor Area', icon: Flame, description: 'BBQ type, fuel, and safety.', fields: [ { id: 'bbqType', label: 'BBQ Type', type: 'textarea' }, { id: 'bbqInstructions', label: 'BBQ Instructions', type: 'textarea' } ] },
-  { id: 'pool', title: '10. Pool & Jacuzzi', icon: Waves, description: 'Pool rules, heating, and jacuzzi controls.', fields: [ { id: 'poolInfo', label: 'Pool Information', type: 'textarea' }, { id: 'jacuzziInstructions', label: 'Jacuzzi Instructions', type: 'textarea' } ] },
-  { id: 'entertainment', title: '11. Wi-Fi & Entertainment', icon: Wifi, description: 'Internet, Smart TVs, and sound systems.', fields: [ { id: 'wifiInfo', label: 'Wi-Fi Information', type: 'textarea' }, { id: 'tvStreaming', label: 'TV & Streaming Services', type: 'textarea' }, { id: 'entertainmentModels', label: 'Entertainment Device Models', type: 'textarea' } ] },
-  { id: 'laundry', title: '12. Laundry', icon: WashingMachine, description: 'Washing machines, dryers, and irons.', fields: [ { id: 'washingMachine', label: 'Washing Machine', type: 'textarea' }, { id: 'dryerIron', label: 'Dryer / Iron', type: 'textarea' } ] },
-  { id: 'rules', title: '13. House Rules', icon: ScrollText, description: 'General rules and quiet hours.', fields: [ { id: 'houseRules', label: 'House Rules', type: 'textarea' }, { id: 'quietHours', label: 'Quiet Hours', type: 'textarea' } ] },
-  { id: 'waste', title: '14. Waste & Recycling', icon: Trash2, description: 'Disposal rules and bin locations on the map.', fields: [ { id: 'garbageDisposal', label: 'Garbage Disposal', type: 'textarea' }, { id: 'recycling', label: 'Recycling', type: 'textarea' }, { id: 'wasteLocations', label: 'Bin Map Locations', type: 'array_maps', options: WASTE_OPTIONS } ] },
-  { id: 'safety', title: '15. Safety & Emergency', icon: ShieldAlert, description: 'Procedures, contacts, and safe box.', fields: [ { id: 'emergencyInfo', label: 'Emergency Information', type: 'textarea' }, { id: 'safeBox', label: 'Safe Box Instructions', type: 'textarea' }, { id: 'emergencyContacts', label: 'Emergency Numbers & Map Pins', type: 'array_emergencies', options: EMERGENCY_OPTIONS } ] },
-  { id: 'cleaning', title: '16. Cleaning & Maintenance', icon: Sparkles, description: 'Housekeeping and maintenance issues.', fields: [ { id: 'cleaningService', label: 'Cleaning Service', type: 'textarea' }, { id: 'maintenanceIssues', label: 'Maintenance Issues', type: 'textarea' } ] },
-  { id: 'supplies', title: '17. Extra Supplies & Useful Items', icon: Box, description: 'Batteries, mosquito gear, and local shops.', fields: [ { id: 'extraBatteries', label: 'Extra Batteries', type: 'textarea' }, { id: 'mosquitoEquipment', label: 'Mosquito Equipment', type: 'textarea' }, { id: 'flashlights', label: 'Flashlights & Candles', type: 'textarea' }, { id: 'remoteControls', label: 'Remote Controls', type: 'textarea' }, { id: 'spareKeys', label: 'Spare Keys', type: 'textarea' }, { id: 'generalItems', label: 'General Useful Items', type: 'textarea' }, { id: 'usefulLocations', label: 'Useful Local Map Pins', type: 'array_maps', options: USEFUL_MAP_OPTIONS } ] },
-  { id: 'devices', title: '18. Property Devices & Equipment', icon: Wrench, description: 'Detailed list of electrical and smart devices.', fields: [ { id: 'electricalAppliances', label: 'Electrical Appliances', type: 'textarea' }, { id: 'smartHomeDevices', label: 'Smart Home Devices', type: 'textarea' }, { id: 'devicesList', label: 'Appliance Inventory', type: 'array_devices' } ] },
-  { id: 'faq', title: '19. Frequently Asked Questions', icon: MessageCircleQuestion, description: 'Common guest questions and answers.', fields: [ { id: 'faqsList', label: 'Common Guest Questions', type: 'array_faqs' } ] }
-];
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  Key,
+  ArrowRight,
+  Zap,
+  Lightbulb,
+  Thermometer,
+  Droplets,
+  BedDouble,
+  ChefHat,
+  Flame,
+  Waves,
+  Wifi,
+  WashingMachine,
+  ScrollText,
+  Trash2,
+  ShieldAlert,
+  Sparkles,
+  Box,
+  Wrench,
+  MessageCircleQuestion,
+  ShoppingBag,
+};
+
+const CATEGORIES: CategoryDef[] = HOUSE_GUIDE_CATEGORIES.map((cat) => ({
+  ...cat,
+  icon: CATEGORY_ICONS[cat.iconName] || BookOpen,
+}));
 
 export default function HouseGuide() {
   const { propertyId, property, propertyAccess, lockedListingId } =
@@ -240,10 +254,7 @@ export default function HouseGuide() {
 
   // --- FEATURED PORTAL HELPERS ---
   const fieldsForCategoryId = useCallback(
-    (categoryId: string) => {
-      const cat = CATEGORIES.find((c) => c.id === categoryId);
-      return cat ? cat.fields : [];
-    },
+    (categoryId: string) => fieldsForHouseGuideCategoryId(categoryId),
     []
   );
 
@@ -308,17 +319,76 @@ export default function HouseGuide() {
   );
 
   // --- SAVE ACTIONS ---
-  const regeneratePreviewsIfStale = useCallback(
+  const isFeaturedPreviewStale = useCallback(
+    async (
+      key: FeaturedKey,
+      data: FormData,
+      previews: FeaturedPreviewsMap
+    ): Promise<boolean> => {
+      const guideRecord = data as Record<string, unknown>;
+      const primary = localeSettings.primaryLocale;
+      const locales = localeSettings.enabledLocales;
+      const sourcePrimary = buildSourceTextForFeaturedKey(
+        key,
+        guideRecord,
+        fieldsForCategoryId,
+        primary,
+        primary
+      );
+      if (!sourcePrimary.trim()) return false;
+
+      const hash = await shortContentHash(sourcePrimary);
+      const cached = previews[key];
+      const digestByLocale: Record<string, string> = { ...(cached?.digestByLocale || {}) };
+      const contentHashByLocale: Record<string, string> = { ...(cached?.contentHashByLocale || {}) };
+      const hasFreshPrimary =
+        cached &&
+        contentHashByLocale[primary] === hash &&
+        ((cached.digest && cached.digest.trim()) ||
+          (digestByLocale[primary] && digestByLocale[primary].trim()));
+
+      if (!hasFreshPrimary) return true;
+
+      for (const loc of locales) {
+        if (loc === primary) continue;
+        const sourceLoc = buildSourceTextForFeaturedKey(
+          key,
+          guideRecord,
+          fieldsForCategoryId,
+          loc,
+          primary
+        );
+        if (!sourceLoc.trim()) continue;
+        const locHash = await shortContentHash(sourceLoc);
+        if (!digestByLocale[loc]?.trim() || contentHashByLocale[loc] !== locHash) return true;
+      }
+      return false;
+    },
+    [fieldsForCategoryId, localeSettings.enabledLocales, localeSettings.primaryLocale]
+  );
+
+  const getStaleFeaturedKeys = useCallback(
+    async (featured: FeaturedKey[], data: FormData, previews: FeaturedPreviewsMap) => {
+      const stale: FeaturedKey[] = [];
+      for (const key of featured) {
+        if (await isFeaturedPreviewStale(key, data, previews)) stale.push(key);
+      }
+      return stale;
+    },
+    [isFeaturedPreviewStale]
+  );
+
+  const regeneratePreviewsForKeys = useCallback(
     async (
       data: FormData,
-      featured: FeaturedKey[],
+      keys: FeaturedKey[],
       previews: FeaturedPreviewsMap
     ): Promise<FeaturedPreviewsMap> => {
       const next: FeaturedPreviewsMap = { ...previews };
       const guideRecord = data as Record<string, unknown>;
       const locales = localeSettings.enabledLocales;
 
-      for (const key of featured) {
+      for (const key of keys) {
         const cfg = getFeaturedConfig(key);
         if (!cfg) continue;
 
@@ -425,34 +495,56 @@ export default function HouseGuide() {
     [fieldsForCategoryId, localeSettings.enabledLocales, localeSettings.primaryLocale]
   );
 
-  const saveToFirebase = async (featuredOverride?: FeaturedKey[]) => {
+  const saveToFirebase = async (opts?: FeaturedKey[] | SaveGuideOptions) => {
     if (!propertyId || !selectedTypeId) return;
+    const options: SaveGuideOptions = Array.isArray(opts) ? { featuredOverride: opts } : opts ?? {};
     setIsSubmitting(true);
     try {
-      const featured = (featuredOverride ?? featuredOnPortal)
+      const featured = (options.featuredOverride ?? featuredOnPortal)
         .filter((k) => hasFeaturedContent(k))
         .slice(0, PORTAL_FEATURED_CAP);
-      const updatedPreviews = await regeneratePreviewsIfStale(formData, featured, featuredPreviews);
-      setFeaturedPreviews(updatedPreviews);
-      setFeaturedOnPortal(featured);
 
-      const serialized = serializeGuideFormDataForSave(
-        formData,
-        localeSettings.primaryLocale
-      );
+      const serialized = options.category
+        ? serializeGuideCategoryForSave(
+            formData as Record<string, string | unknown[] | undefined>,
+            options.category.fields,
+            localeSettings.primaryLocale
+          )
+        : serializeGuideFormDataForSave(formData, localeSettings.primaryLocale);
+
       const docRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'houseGuide', 'data');
+      const updatedAt = new Date().toISOString();
+
       await setDoc(
         docRef,
         {
           ...serialized,
           featuredOnPortal: featured,
-          previews: updatedPreviews,
-          updatedAt: new Date().toISOString(),
+          previews: featuredPreviews,
+          updatedAt,
         },
         { merge: true }
       );
+
+      setFeaturedOnPortal(featured);
+      toast.success(options.category ? 'Section saved.' : 'House guide saved.');
+
+      const staleKeys = await getStaleFeaturedKeys(featured, formData, featuredPreviews);
+      const forceKeys = (options.forcePreviewKeys ?? []).filter((k) => featured.includes(k));
+      const keysToRegen = [...new Set([...staleKeys, ...forceKeys])];
+
+      if (keysToRegen.length > 0) {
+        toast.info(
+          keysToRegen.length === 1
+            ? 'Updating guest portal preview (AI)…'
+            : `Updating ${keysToRegen.length} guest portal previews (AI)…`
+        );
+        const updatedPreviews = await regeneratePreviewsForKeys(formData, keysToRegen, featuredPreviews);
+        setFeaturedPreviews(updatedPreviews);
+        await setDoc(docRef, { previews: updatedPreviews, updatedAt: new Date().toISOString() }, { merge: true });
+      }
     } catch (error) {
-      console.error("Error saving:", error);
+      console.error('Error saving:', error);
       toast.error('Could not save. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -463,8 +555,12 @@ export default function HouseGuide() {
     if (isSubmitting) return;
     const next = computeNextFeatured(key, featuredOnPortal);
     if (!next) return;
+    const adding = !featuredOnPortal.includes(key);
     setFeaturedOnPortal(next);
-    await saveToFirebase(next);
+    await saveToFirebase({
+      featuredOverride: next,
+      forcePreviewKeys: adding ? [key] : undefined,
+    });
   };
 
   const handleWizardSaveAndNext = async () => {
@@ -498,8 +594,8 @@ export default function HouseGuide() {
       return (
         <div key={field.id} className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-2">{field.label}</label>
-          <textarea 
-            value={textValue} 
+          <textarea
+            value={textValue}
             onChange={(e) =>
               setFormData(
                 setGuideTextInFormData(
@@ -511,9 +607,12 @@ export default function HouseGuide() {
                 ) as FormData
               )
             }
+            onKeyDown={(e) => {
+              if (e.key === ' ') e.stopPropagation();
+            }}
             placeholder={field.placeholder || ''}
-            rows={4} 
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#0B4F5C] outline-none text-sm text-gray-800 transition-shadow bg-gray-50/50 focus:bg-white" 
+            rows={4}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#0B4F5C] outline-none text-sm text-gray-800 transition-shadow bg-gray-50/50 focus:bg-white"
           />
         </div>
       );
@@ -544,10 +643,20 @@ export default function HouseGuide() {
               {field.type === 'array_maps' && (
                 <>
                   <div className="flex-1">
-                    <select value={(item as MapLocation).title} onChange={e => handleUpdate(idx, 'title', e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
-                      <option value="" disabled>Select Type...</option>
-                      {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    {field.options && field.options.length > 0 ? (
+                      <select value={(item as MapLocation).title} onChange={e => handleUpdate(idx, 'title', e.target.value)} className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]">
+                        <option value="" disabled>Select Type...</option>
+                        {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        placeholder="Title (e.g. Nearest supermarket)"
+                        value={(item as MapLocation).title}
+                        onChange={e => handleUpdate(idx, 'title', e.target.value)}
+                        className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]"
+                      />
+                    )}
                   </div>
                   <div className="flex-[2]">
                     <div className="relative">
@@ -719,7 +828,7 @@ export default function HouseGuide() {
         <Star size={16} className="text-vailo-gold shrink-0 mt-0.5" strokeWidth={2.4} />
         <p className="text-sm text-gray-700 leading-snug">
           <span className="font-bold">Featured on guest portal · {featuredCount} of {PORTAL_FEATURED_CAP}</span>
-          <span className="text-gray-500"> — pick the sections you want as preview cards on the guest portal. On save, AI writes a short summary <em>only for the card preview</em>. Your full content stays untouched and is what the 24/7 Assistant uses.</span>
+          <span className="text-gray-500"> — pick the sections you want as preview cards on the guest portal. When featured content changes, save may take a few extra seconds while AI refreshes the <em>card preview only</em> (not Daily Needs unless featured). Full text is always what the 24/7 Assistant uses.</span>
         </p>
       </div>
 
@@ -959,11 +1068,25 @@ export default function HouseGuide() {
 
               {quickEditCategory.fields.map(renderField)}
             </div>
-            <div className="p-6 border-t border-gray-100 bg-white flex justify-end gap-3 rounded-b-3xl">
-              <button onClick={() => setQuickEditCategory(null)} className="px-6 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Close</button>
-              <button onClick={async () => { await saveToFirebase(); setQuickEditCategory(null); }} disabled={isSubmitting} className="px-6 py-2.5 bg-vailo-teal hover:bg-black text-white text-sm font-bold rounded-xl transition-colors flex items-center shadow-md">
-                {isSubmitting ? <Loader2 size={16} className="animate-spin mr-2"/> : <Save size={16} className="mr-2"/>} Save Changes
-              </button>
+            <div className="p-6 border-t border-gray-100 bg-white flex flex-col sm:flex-row sm:items-center gap-3 rounded-b-3xl">
+              <p className="text-[11px] text-gray-500 leading-relaxed sm:flex-1 sm:max-w-md">
+                Saves this section only (fast). If other sections are <strong>Featured on guest portal</strong>,
+                you may see a short follow-up while AI refreshes those preview cards — not this section unless
+                it is featured.
+              </p>
+              <div className="flex justify-end gap-3 shrink-0">
+                <button onClick={() => setQuickEditCategory(null)} className="px-6 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">Close</button>
+                <button
+                  onClick={async () => {
+                    await saveToFirebase({ category: quickEditCategory });
+                    setQuickEditCategory(null);
+                  }}
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 bg-vailo-teal hover:bg-black text-white text-sm font-bold rounded-xl transition-colors flex items-center shadow-md"
+                >
+                  {isSubmitting ? <Loader2 size={16} className="animate-spin mr-2"/> : <Save size={16} className="mr-2"/>} Save Changes
+                </button>
+              </div>
             </div>
           </div>
         </div>

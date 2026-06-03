@@ -43,6 +43,10 @@ const DUPLICATE_RADIUS_METERS = 150;
 const FUZZY_NAME_RADIUS_METERS = 250;
 
 const { syncAllTrailsForAreaHandler } = require("./allTrailsSync");
+const {
+  askAppCodeKnowledgeHandler,
+  getAppCodeKnowledgeMetaHandler,
+} = require("./codeKnowledge");
 
 const GENERIC_SUFFIXES = [
   "restaurant",
@@ -953,8 +957,26 @@ exports.syncAllTrailsForArea = onCall(
   syncAllTrailsForAreaHandler
 );
 
+/** Platform admin: Q&A grounded in indexed Vailo source code (Gemini; default gemini-2.5-flash). */
+exports.askAppCodeKnowledge = onCall(
+  {
+    timeoutSeconds: 120,
+    memory: "512MiB",
+    enforceAppCheck: false,
+  },
+  async (request) => askAppCodeKnowledgeHandler(request, firestore)
+);
+
+exports.getAppCodeKnowledgeMeta = onCall(
+  { enforceAppCheck: false },
+  async (request) => getAppCodeKnowledgeMetaHandler(request, firestore)
+);
+
 const { registerGuestPortalAccess } = require("./guestPortalAccess");
 registerGuestPortalAccess({ firestore, logger, firebaseExports: exports });
 
 const { registerGuestPortalAnalytics } = require("./guestPortalAnalytics");
 registerGuestPortalAnalytics({ firestore, firebaseExports: exports });
+
+const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
+registerGuestApplianceGuide({ firestore, firebaseExports: exports });

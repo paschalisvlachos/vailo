@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, BookOpen, Globe, Users } from 'lucide-react';
+import { ArrowRight, BookOpen, Code2, Globe, Users } from 'lucide-react';
 import AdminPageHeader from '../../../components/admin/AdminPageHeader';
 import { adminPath } from '../../../lib/adminRoutes';
 
@@ -18,6 +18,13 @@ const MODULES = [
     desc: 'Capture questions owners and partners may ask. Use AI to draft strong answers your team can approve for staff training.',
     path: adminPath('/knowledge/client'),
   },
+  {
+    id: 'code',
+    title: 'App Code Knowledge',
+    icon: Code2,
+    desc: 'Ask how Vailo works — answers are retrieved from the codebase index and explained by Gemini (platform admins only).',
+    path: adminPath('/knowledge/code'),
+  },
 ] as const;
 
 export default function KnowledgeHub() {
@@ -33,7 +40,7 @@ export default function KnowledgeHub() {
 
       <h3 className="text-lg font-bold text-vailo-dark font-luxury mb-5">Categories</h3>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 max-w-4xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 max-w-5xl">
         {MODULES.map((mod) => (
           <button
             key={mod.id}

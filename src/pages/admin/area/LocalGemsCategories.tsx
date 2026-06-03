@@ -21,6 +21,7 @@ export default function LocalGemsCategories() {
           <span className="font-semibold text-vailo-teal">
             {decodedArea}, {decodedCountry}
           </span>
+          . The same names appear in Live like a local unless you hide a category with the eye control.
         </p>
       </div>
 
@@ -31,6 +32,7 @@ export default function LocalGemsCategories() {
         collectionName="localGemsCategories"
         title="Category names"
         onRename={renameLocalGemsCategory}
+        showLiveLikeLocalExclude
       />
     </div>
   );

@@ -48,6 +48,12 @@ import type { GuestLocale } from '../../lib/guestLocale';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { usePropertyContentLocaleSettings } from '../../hooks/usePropertyContentLocaleSettings';
 import { categoryPrimaryName, resolveCategoryLabel } from '../../lib/categoryLocale';
+import {
+  categoryEligibleForLiveLikeLocal,
+  collectExcludedLiveLikeLocalPrimaries,
+  filterPrimariesForLiveLikeLocal,
+  stripExcludedCategoriesFromPlan,
+} from '../../lib/liveLikeLocalCategories';
 import { guestUiTFormat, type GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import AiExpertCuratingLoader from '../../components/guest/AiExpertCuratingLoader';
@@ -419,6 +425,9 @@ export default function AiExpertView({
   }, []);
 
   const [availableCategories, setAvailableCategories] = useState<GemCategoryOption[]>([]);
+  const [excludedLiveLikeLocalPrimaries, setExcludedLiveLikeLocalPrimaries] = useState<Set<string>>(
+    () => new Set()
+  );
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [listingAreaCtx, setListingAreaCtx] = useState<ListingAreaContext | null>(null);
   const [areaConfigIssue, setAreaConfigIssue] = useState<AreaConfigIssue>(null);
@@ -515,6 +524,7 @@ export default function AiExpertView({
 
       if (!areaCtx?.areaId) {
         setAvailableCategories([]);
+        setExcludedLiveLikeLocalPrimaries(new Set());
         setCategoriesLoading(false);
         return;
       }
@@ -530,11 +540,16 @@ export default function AiExpertView({
             'localGemsCategories'
           )
         );
+        const categoryDocs = gemsCatSnap.docs.map((d) => ({
+          data: d.data() as Record<string, unknown>,
+        }));
+        setExcludedLiveLikeLocalPrimaries(
+          collectExcludedLiveLikeLocalPrimaries(categoryDocs, contentSettings.primaryLocale)
+        );
         const byPrimary = new Map<string, GemCategoryOption>();
-        for (const d of gemsCatSnap.docs) {
-          const data = d.data() as Record<string, unknown>;
+        for (const { data } of categoryDocs) {
+          if (!categoryEligibleForLiveLikeLocal(data, contentSettings.primaryLocale)) continue;
           const primary = categoryPrimaryName(data, contentSettings.primaryLocale).trim();
-          if (!primary) continue;
           const label =
             resolveCategoryLabel(
               data,
@@ -550,6 +565,7 @@ export default function AiExpertView({
       } catch (error) {
         console.error('Failed to fetch local gem categories:', error);
         setAvailableCategories([]);
+        setExcludedLiveLikeLocalPrimaries(new Set());
       } finally {
         setCategoriesLoading(false);
       }
@@ -1195,8 +1211,12 @@ export default function AiExpertView({
         }
       }
 
-      const hikingCategories = preferences.categories.filter(isHikingTrailsCategory);
-      const nonHikingCategories = preferences.categories.filter((c) => !isHikingTrailsCategory(c));
+      const liveLikeLocalCategories = filterPrimariesForLiveLikeLocal(
+        preferences.categories,
+        excludedLiveLikeLocalPrimaries
+      );
+      const hikingCategories = liveLikeLocalCategories.filter(isHikingTrailsCategory);
+      const nonHikingCategories = liveLikeLocalCategories.filter((c) => !isHikingTrailsCategory(c));
       const trailCategoryBlocks =
         hikingCategories.length > 0
           ? buildHikingTrailCategories(
@@ -1234,10 +1254,20 @@ export default function AiExpertView({
         return;
       }
 
+      if (liveLikeLocalCategories.length === 0) {
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorPlan') },
+        ]);
+        setIsThinking(false);
+        return;
+      }
+
       const recentlyShown = getRecentlyShownKeys();
       const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
       const isFlexiblePicks = !timeFrameStr;
-      const aiCategories = nonHikingCategories.length > 0 ? nonHikingCategories : preferences.categories;
+      const aiCategories =
+        nonHikingCategories.length > 0 ? nonHikingCategories : liveLikeLocalCategories;
 
       const picksDbContext = isFlexiblePicks
         ? buildFlexiblePicksDbContext(
@@ -1301,7 +1331,7 @@ Return JSON with this schema:
 }`;
       } else {
         promptText += buildFlexiblePicksPromptSection(
-          preferences.categories,
+          aiCategories,
           distanceLimitNum,
           picksDbContext!
         );
@@ -1372,6 +1402,8 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
         initialPlan = scheduleTimelineIfNeeded(initialPlan, !!timeFrameStr);
       }
 
+      initialPlan = stripExcludedCategoriesFromPlan(initialPlan, excludedLiveLikeLocalPrimaries) ?? initialPlan;
+
       // Render the plan immediately — feels instant. Photos fill in next.
       const planMessageId = `${Date.now()}-plan`;
       track('ai_expert_plan', {
@@ -1405,6 +1437,11 @@ Up to ${MAX_PICKS_PER_CATEGORY} unique items per category. Fill from within ${di
             finalPlan = filterTimelinePlanByDistance(finalPlan, distanceLimitNum, startCoords, recentlyShown);
             finalPlan = scheduleTimelineIfNeeded(finalPlan, !!timeFrameStr);
           }
+          finalPlan =
+            stripExcludedCategoriesFromPlan(
+              finalPlan as Record<string, unknown>,
+              excludedLiveLikeLocalPrimaries
+            ) ?? finalPlan;
           setMessages(prev =>
             prev.map(m => (m.id === planMessageId ? { ...m, data: finalPlan } : m))
           );
@@ -1560,6 +1597,8 @@ User: ${userText}`;
         initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);
         initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
         initialPlan = scheduleTimelineIfNeeded(initialPlan, !!preferences.timeFrame);
+        initialPlan =
+          stripExcludedCategoriesFromPlan(initialPlan, excludedLiveLikeLocalPrimaries) ?? initialPlan;
         const planMessageId = Date.now().toString() + 'plan';
         setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
         setIsThinking(false);
@@ -1570,6 +1609,8 @@ User: ${userText}`;
           .then((withPhotos) => {
             let filtered = filterTimelinePlanByDistance(withPhotos, distanceLimitNum, startCoords, recentlyShown);
             filtered = scheduleTimelineIfNeeded(filtered, !!preferences.timeFrame);
+            filtered =
+              stripExcludedCategoriesFromPlan(filtered, excludedLiveLikeLocalPrimaries) ?? filtered;
             setMessages(prev =>
               prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
             );
@@ -1875,7 +1916,10 @@ User: ${userText}`;
           )}
           {hasCategories && (
             <div className="flex flex-wrap gap-1.5 pl-6">
-              {preferences.categories.map((cat) => (
+              {filterPrimariesForLiveLikeLocal(
+                preferences.categories,
+                excludedLiveLikeLocalPrimaries
+              ).map((cat) => (
                 <span
                   key={cat}
                   className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-white/12 text-white font-semibold border border-white/10"

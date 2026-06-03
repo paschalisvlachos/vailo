@@ -5,7 +5,6 @@ import { db } from '../../../lib/firebase';
 import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { adminPath } from '../../../lib/adminRoutes';
 import { useToast } from '../../../context/ToastContext';
-import { Link2, MapPin, Wand2 } from 'lucide-react';
 import {
   AdminBackHeader,
   AdminButton,
@@ -18,8 +17,6 @@ import {
 export type ListingKind = 'hotel' | 'property';
 
 const EMPTY_FORM = {
-  listingUrl: '',
-  googleMapsUrl: '',
   propertyName: '',
   urlSlug: '',
   internalRefCode: '',
@@ -111,8 +108,6 @@ export default function PropertyFormPage() {
         const data = snap.data();
         setIsSlugManuallyEdited(true);
         setFormData({
-          listingUrl: data.listingUrl || '',
-          googleMapsUrl: data.googleMapsUrl || '',
           propertyName: data.propertyName || '',
           urlSlug: data.urlSlug || '',
           internalRefCode: data.internalRefCode || '',
@@ -163,8 +158,6 @@ export default function PropertyFormPage() {
         const existingSnap = await getDoc(doc(db, 'properties', id));
         const existing = existingSnap.data();
         await updateDoc(doc(db, 'properties', id), {
-          listingUrl: formData.listingUrl,
-          googleMapsUrl: formData.googleMapsUrl,
           propertyName: formData.propertyName,
           urlSlug: newPropertySlug,
           previousUrlSlugs: mergePreviousSlugs(
@@ -183,8 +176,6 @@ export default function PropertyFormPage() {
         navigate(adminPath(`/properties/${id}`));
       } else {
         const ref = await addDoc(collection(db, 'properties'), {
-          listingUrl: formData.listingUrl,
-          googleMapsUrl: formData.googleMapsUrl,
           propertyName: formData.propertyName,
           urlSlug: newPropertySlug,
           previousUrlSlugs: [],
@@ -194,6 +185,7 @@ export default function PropertyFormPage() {
           country: formData.country,
           area: formData.area,
           city: formData.area,
+          guestPortalAccessRequired: true,
           createdAt: new Date().toISOString(),
         });
         navigate(adminPath(`/properties/${ref.id}`));
@@ -225,43 +217,6 @@ export default function PropertyFormPage() {
 
       <form onSubmit={handleSubmit}>
         <AdminCard className="overflow-hidden">
-          <div className="p-6 sm:p-8 border-b border-gray-100 bg-vailo-surface-elevated space-y-4">
-            <div>
-              <AdminLabel htmlFor="listingUrl">Listing URL (Airbnb or Booking)</AdminLabel>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <AdminInput
-                    id="listingUrl"
-                    type="url"
-                    name="listingUrl"
-                    value={formData.listingUrl}
-                    onChange={handleChange}
-                    className="pl-10"
-                  />
-                </div>
-                <AdminButton type="button" variant="secondary" onClick={() => toast.info('Backend connection required.')}>
-                  <Wand2 size={16} /> Auto-fill
-                </AdminButton>
-              </div>
-            </div>
-            <div>
-              <AdminLabel htmlFor="googleMapsUrl">Google Maps location link</AdminLabel>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <AdminInput
-                  id="googleMapsUrl"
-                  type="url"
-                  name="googleMapsUrl"
-                  value={formData.googleMapsUrl}
-                  onChange={handleChange}
-                  className="pl-10"
-                  placeholder="General property location map link…"
-                />
-              </div>
-            </div>
-          </div>
-
           <div className="p-6 sm:p-8 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               <div>

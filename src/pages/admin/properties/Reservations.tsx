@@ -13,7 +13,7 @@ import {
   getTypePublicSlug,
 } from '../../../lib/guestPortalSlug';
 import { bookingWhatsAppPhone } from '../../../lib/guestWhatsApp';
-import { buildInvitePortalUrl } from '../../../lib/guestAccess';
+import { buildInvitePortalUrl, isGuestPortalAccessRequired } from '../../../lib/guestAccess';
 import { sendGuestInviteCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
@@ -237,7 +237,7 @@ export default function Reservations() {
 
     const guestLabel = booking.guestName || booking.summary || 'guest';
 
-    if (property.guestPortalAccessRequired) {
+    if (isGuestPortalAccessRequired(property)) {
       setSendingInvite(true);
       try {
         const { inviteToken, invitePassword } = await sendGuestInviteCallable(

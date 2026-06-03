@@ -5,12 +5,14 @@ export function httpsCallableMessage(error: unknown, fallback: string): string {
     const msg = String(err.message || '').trim();
     const code = String(err.code || '');
 
-    if (
+    const appCheckFailure =
       msg.includes('App not registered') ||
       msg.includes('App attestation failed') ||
-      code === 'functions/failed-precondition' ||
-      code === 'functions/permission-denied'
-    ) {
+      msg.toLowerCase().includes('app check') ||
+      (code === 'functions/failed-precondition' &&
+        (msg.toLowerCase().includes('app check') || msg.includes('app attestation')));
+
+    if (appCheckFailure) {
       if (import.meta.env.DEV) {
         return (
           'Firebase App Check blocked this request. Restart the dev server — App Check is skipped ' +
@@ -24,8 +26,17 @@ export function httpsCallableMessage(error: unknown, fallback: string): string {
       );
     }
 
+    if (code === 'functions/permission-denied') {
+      return msg || 'You do not have permission for this action.';
+    }
+
+    if (code === 'functions/unauthenticated') {
+      return msg || 'Sign in again to continue.';
+    }
+
     if (code === 'functions/internal' || msg === 'INTERNAL' || msg === 'internal') {
-      return 'AllTrails sync failed on the server. Try again in a moment; if it persists, check Cloud Function logs.';
+      if (msg && msg !== 'INTERNAL' && msg !== 'internal') return msg;
+      return fallback;
     }
 
     if (msg && msg !== 'INTERNAL' && msg !== 'internal') return msg;

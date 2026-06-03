@@ -127,7 +127,7 @@ const UI_EN: Record<GuestLocaleUiKey, string> = {
     'This assistant answers questions about your stay using the property house guide. Conversations may be logged to improve service. Do not share sensitive personal data.',
   assistantConsentAgree: 'I understand — continue',
   assistantWelcomeBody:
-    "I'm here to help with anything about your stay — Wi-Fi, check-out, appliances, parking, house rules, and supplies. For restaurants, sightseeing, and day plans, use Live like a local on the home screen.",
+    "Hello! I'm glad you're here — ask me anything about your stay: Wi-Fi, check-out, appliances (I can help with specific models when your host has listed them), parking, or house rules. For restaurants and day plans, try Live like a local on the home screen.",
   assistantPlaceholder: 'Ask about Wi-Fi, check-out, appliances…',
   assistantSend: 'Send',
   assistantReportIssue: 'Report issue',

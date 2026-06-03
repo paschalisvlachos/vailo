@@ -51,7 +51,16 @@ export type GuestLocaleKey =
   | 'installSuccess'
   | 'gemsLayoutGroup'
   | 'gemsLayoutGrid'
-  | 'gemsLayoutList';
+  | 'gemsLayoutList'
+  | 'portalMenu'
+  | 'portalMenuClose'
+  | 'houseGuide'
+  | 'houseGuideSheetSub'
+  | 'houseGuideMenuSub'
+  | 'houseGuideMenuSubEmpty'
+  | 'houseGuideEmpty'
+  | 'assistantProperty'
+  | 'assistantPropertySub';
 
 export { BUILTIN_PORTAL_MESSAGES } from './guestPortalBuiltin';
 

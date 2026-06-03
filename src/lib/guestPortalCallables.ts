@@ -1,4 +1,5 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import type { GuestApplianceGuideRequest, GuestApplianceGuideResponse } from './guestApplianceGuide';
 import type { GuestAnalyticsEventInput } from './guestAnalytics';
 import type { GuestPortalSession } from './guestAccess';
 
@@ -91,6 +92,16 @@ export async function verifyGuestTesterCodeCallable(
     typeId,
     accessCode,
   });
+  return res.data;
+}
+
+export async function getGuestApplianceGuideCallable(
+  req: GuestApplianceGuideRequest
+): Promise<GuestApplianceGuideResponse> {
+  const res = await httpsCallable<GuestApplianceGuideRequest, GuestApplianceGuideResponse>(
+    getFunctions(),
+    'getGuestApplianceGuide'
+  )(req);
   return res.data;
 }
 

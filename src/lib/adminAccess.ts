@@ -39,6 +39,8 @@ export function normalizeAdminEmail(email: string | null | undefined): string {
 }
 
 export function isPlatformAdmin(profile: OwnerProfile | null): boolean {
+  // Legacy: while owners profile is still resolving, keep platform nav usable.
+  // Callable functions (e.g. App Code Knowledge) enforce admin separately on the server.
   if (!profile) return true;
   return profile.role === 'admin';
 }

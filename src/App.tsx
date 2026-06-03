@@ -23,6 +23,7 @@ import Settings from "./pages/admin/Settings";
 import KnowledgeHub from "./pages/admin/knowledge/KnowledgeHub";
 import WebKnowledge from "./pages/admin/knowledge/WebKnowledge";
 import ClientKnowledge from "./pages/admin/knowledge/ClientKnowledge";
+import AppCodeKnowledge from "./pages/admin/knowledge/AppCodeKnowledge";
 import AreaSelector from "./pages/admin/area/AreaSelector";
 import LocalGemsCategories from "./pages/admin/area/LocalGemsCategories";
 import FeaturesCategories from "./pages/admin/area/FeaturesCategories";
@@ -239,6 +240,7 @@ export default function App() {
         <Route path={adminPath('/knowledge')} element={<AdminRoute><PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/knowledge/web')} element={<AdminRoute><PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/knowledge/client')} element={<AdminRoute><PlatformAdminOnly><ClientKnowledge /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/knowledge/code')} element={<AdminRoute><PlatformAdminOnly><AppCodeKnowledge /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area')} element={<AdminRoute><PlatformAdminOnly><AreaSelector /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/local-gems-categories')} element={<AdminRoute><PlatformAdminOnly><LocalGemsCategories /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/features-categories')} element={<AdminRoute><PlatformAdminOnly><FeaturesCategories /></PlatformAdminOnly></AdminRoute>} />

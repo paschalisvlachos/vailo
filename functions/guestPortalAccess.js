@@ -159,8 +159,12 @@ async function houseGuestBookingAllowsAccess(firestore, session) {
   return { allowed: true };
 }
 
+function isGuestPortalAccessControlEnabled(propertyData) {
+  return propertyData?.guestPortalAccessRequired !== false;
+}
+
 function assertAccessEnabled(propertyData) {
-  if (!propertyData?.guestPortalAccessRequired) {
+  if (!isGuestPortalAccessControlEnabled(propertyData)) {
     throw new HttpsError(
       "failed-precondition",
       "Guest portal access control is not enabled for this property."

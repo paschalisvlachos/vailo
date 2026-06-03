@@ -10,6 +10,8 @@ type Props = {
   options?: LocaleOption[];
   /** `hero` = on dark photo header; `surface` = on light panels (e.g. AI Concierge). */
   variant?: 'hero' | 'surface';
+  /** When true, closes the dropdown (e.g. portal nav menu opened). */
+  dismissOpen?: boolean;
 };
 
 export default function GuestLanguageMenu({
@@ -17,8 +19,13 @@ export default function GuestLanguageMenu({
   onChange,
   options,
   variant = 'hero',
+  dismissOpen = false,
 }: Props) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (dismissOpen) setOpen(false);
+  }, [dismissOpen]);
   const rootRef = useRef<HTMLDivElement>(null);
   const list = options !== undefined ? options : FALLBACK_GUEST_LOCALES;
 

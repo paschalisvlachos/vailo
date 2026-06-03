@@ -1,17 +1,20 @@
 import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { useAdminSession } from '../../context/AdminSessionContext';
-import {
-  canAccessPropertyId,
-  isPlatformAdmin,
-  pathForScope,
-  type AdminScope,
-} from '../../lib/adminAccess';
+import { canAccessPropertyId, pathForScope, type AdminScope } from '../../lib/adminAccess';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
 export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
   const { profile, loading } = useAdminSession();
-  if (loading) return null;
-  if (!isPlatformAdmin(profile)) {
+  if (loading) {
+    return (
+      <div className="py-16 flex items-center justify-center text-gray-500 text-sm">
+        <Loader2 className="animate-spin mr-2 text-vailo-teal" />
+        Loading…
+      </div>
+    );
+  }
+  if (profile && profile.role !== 'admin') {
     return <Navigate to={adminPath('/properties')} replace />;
   }
   return <>{children}</>;
@@ -21,7 +24,14 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
   const { loading, scopes, activeScope, isScopedUser } = useAdminSession();
   const location = useLocation();
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="py-16 flex items-center justify-center text-gray-500 text-sm">
+        <Loader2 className="animate-spin mr-2 text-vailo-teal" />
+        Loading…
+      </div>
+    );
+  }
 
   if (isScopedUser && activeScope && activeScope.kind !== 'platform') {
     const target = pathForScope(activeScope);

@@ -1,7 +1,7 @@
 import { getGuideTextValue } from './houseGuideLocales';
 
 /**
- * Maps the 19 admin House Guide categories to the "featured keys" that can be
+ * Maps admin House Guide categories to the "featured keys" that can be
  * surfaced as preview chips on the guest portal. Each featured key bundles the
  * source admin fields whose content feeds the AI summary generator.
  *

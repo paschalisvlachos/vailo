@@ -37,7 +37,7 @@ export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props
         alt="Vailo"
         className="h-7 w-auto mx-auto mb-1.5 opacity-40 grayscale hover:grayscale-0 hover:opacity-70 transition-all"
         onError={(e) => {
-          (e.target as HTMLImageElement).src = '../../../vailoLogo.png';
+          e.currentTarget.style.display = 'none';
         }}
       />
       <p className="guest-eyebrow text-gray-400">Powered by Vailo</p>

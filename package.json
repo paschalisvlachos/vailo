@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/postbuild-hosting.mjs",
+    "build": "node scripts/buildCodeKnowledgeIndex.mjs && tsc -b && vite build && node scripts/postbuild-hosting.mjs",
+    "build:code-index": "node scripts/buildCodeKnowledgeIndex.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -53,6 +53,7 @@ export const HOUSE_GUIDE_TEXTAREA_FIELD_IDS = [
   'generalItems',
   'electricalAppliances',
   'smartHomeDevices',
+  'dailyNeedsInfo',
 ] as const;
 
 export type HouseGuideTextFieldId = (typeof HOUSE_GUIDE_TEXTAREA_FIELD_IDS)[number];
@@ -74,7 +75,8 @@ export function getGuideTextValue(
     typeof data[fieldId] === 'string' ? (data[fieldId] as string) : undefined,
     primary
   );
-  return (map[code] || '').trim();
+  // Do not trim here — trimming on read breaks the space key in controlled textareas.
+  return map[code] || '';
 }
 
 export function hydrateGuideFormDataFromFirestore(
@@ -118,44 +120,71 @@ export function setGuideTextInFormData(
           typeof formData[fieldId] === 'string' ? (formData[fieldId] as string) : undefined,
           primary
         );
-  const nextMap = setLocaleFieldValue(existing, code, value);
+  const nextMap = setLocaleFieldValue(existing, code, value, { trim: false });
   const next: HouseGuideFormData = { ...formData };
   (next as Record<string, unknown>)[mapKey] = nextMap;
-  if (code === primary) next[fieldId] = value.trim();
+  if (code === primary) next[fieldId] = value;
   return next;
+}
+
+const TEXTAREA_FIELD_ID_SET = new Set<string>(HOUSE_GUIDE_TEXTAREA_FIELD_IDS);
+
+function serializeGuideTextFieldForSave(
+  formData: HouseGuideFormData,
+  fieldId: string,
+  primaryLocale: string,
+  payload: Record<string, unknown>
+): void {
+  const primary = normalizeLocaleCode(primaryLocale) || DEFAULT_PRIMARY_LOCALE;
+  const mapKey = guideFieldMapKey(fieldId);
+  const rawMap = formData[mapKey];
+  let map: LocaleStringMap = {};
+  if (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) {
+    map = rawMap as LocaleStringMap;
+  }
+  map = mergeLegacyIntoLocaleMap(
+    map,
+    typeof formData[fieldId] === 'string' ? (formData[fieldId] as string) : undefined,
+    primary
+  );
+  const cleaned: LocaleStringMap = {};
+  for (const [k, v] of Object.entries(map)) {
+    const c = normalizeLocaleCode(k);
+    const t = (v || '').trim();
+    if (c && t) cleaned[c] = t;
+  }
+  if (Object.keys(cleaned).length > 0) payload[mapKey] = cleaned;
+  else delete payload[mapKey];
+  const primaryText = (cleaned[primary] || '').trim();
+  if (primaryText) payload[fieldId] = primaryText;
+  else delete payload[fieldId];
+}
+
+/** Merge-save payload for one admin category (quick edit) — smaller & faster than the full guide. */
+export function serializeGuideCategoryForSave(
+  formData: HouseGuideFormData,
+  fields: Array<{ id: string; type: string }>,
+  primaryLocale: string
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field.type === 'textarea' && TEXTAREA_FIELD_ID_SET.has(field.id)) {
+      serializeGuideTextFieldForSave(formData, field.id, primaryLocale, payload);
+    } else if (formData[field.id] !== undefined) {
+      payload[field.id] = formData[field.id];
+    }
+  }
+  return payload;
 }
 
 export function serializeGuideFormDataForSave(
   formData: HouseGuideFormData,
   primaryLocale: string
 ): Record<string, unknown> {
-  const primary = normalizeLocaleCode(primaryLocale) || DEFAULT_PRIMARY_LOCALE;
   const payload: Record<string, unknown> = { ...formData };
-
   for (const fieldId of HOUSE_GUIDE_TEXTAREA_FIELD_IDS) {
-    const mapKey = guideFieldMapKey(fieldId);
-    const rawMap = formData[mapKey];
-    let map: LocaleStringMap = {};
-    if (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) {
-      map = rawMap as LocaleStringMap;
-    }
-    map = mergeLegacyIntoLocaleMap(
-      map,
-      typeof formData[fieldId] === 'string' ? (formData[fieldId] as string) : undefined,
-      primary
-    );
-    const cleaned: LocaleStringMap = {};
-    for (const [k, v] of Object.entries(map)) {
-      const c = normalizeLocaleCode(k);
-      const t = (v || '').trim();
-      if (c && t) cleaned[c] = t;
-    }
-    if (Object.keys(cleaned).length > 0) payload[mapKey] = cleaned;
-    const primaryText = (cleaned[primary] || '').trim();
-    if (primaryText) payload[fieldId] = primaryText;
-    else delete payload[fieldId];
+    serializeGuideTextFieldForSave(formData, fieldId, primaryLocale, payload);
   }
-
   return payload;
 }
 

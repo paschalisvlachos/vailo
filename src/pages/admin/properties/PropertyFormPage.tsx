@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
+import { GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT } from '../../../lib/guestAccess';
 import { adminPath } from '../../../lib/adminRoutes';
 import { useToast } from '../../../context/ToastContext';
 import {
@@ -185,7 +186,7 @@ export default function PropertyFormPage() {
           country: formData.country,
           area: formData.area,
           city: formData.area,
-          guestPortalAccessRequired: true,
+          guestPortalAccessRequired: GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT,
           createdAt: new Date().toISOString(),
         });
         navigate(adminPath(`/properties/${ref.id}`));

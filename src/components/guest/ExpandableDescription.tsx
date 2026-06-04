@@ -27,7 +27,7 @@ export default function ExpandableDescription({
   lines = 3,
   className = '',
   bodyClassName = 'text-base text-gray-600 leading-relaxed',
-  toggleClassName = 'mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-[#0B4F5C] hover:text-[#C5A059] transition-colors min-h-[44px]',
+  toggleClassName = 'mt-1.5 text-sm font-semibold normal-case tracking-wide text-[#0B4F5C] hover:text-[#C5A059] transition-colors min-h-[44px]',
   onExpand,
 }: Props) {
   const { t, locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();

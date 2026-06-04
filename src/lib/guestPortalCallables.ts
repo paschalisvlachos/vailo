@@ -1,4 +1,5 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { cloudFunctions } from './firebase';
 import type { GuestApplianceGuideRequest, GuestApplianceGuideResponse } from './guestApplianceGuide';
 import type { GuestAnalyticsEventInput } from './guestAnalytics';
 import type { GuestPortalSession } from './guestAccess';
@@ -6,7 +7,7 @@ import type { GuestPortalSession } from './guestAccess';
 type SessionPayload = { session: GuestPortalSession };
 
 function call<T>(name: string) {
-  return httpsCallable<Record<string, unknown>, T>(getFunctions(), name);
+  return httpsCallable<Record<string, unknown>, T>(cloudFunctions, name);
 }
 
 export async function validateGuestPortalSession(
@@ -99,7 +100,7 @@ export async function getGuestApplianceGuideCallable(
   req: GuestApplianceGuideRequest
 ): Promise<GuestApplianceGuideResponse> {
   const res = await httpsCallable<GuestApplianceGuideRequest, GuestApplianceGuideResponse>(
-    getFunctions(),
+    cloudFunctions,
     'getGuestApplianceGuide'
   )(req);
   return res.data;

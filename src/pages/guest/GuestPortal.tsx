@@ -15,6 +15,7 @@ import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet'
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
+import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
 import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
 import GuestHouseGuideSheet from '../../components/guest/GuestHouseGuideSheet';
 import { HOUSE_GUIDE_CATEGORIES } from '../../lib/houseGuideCategories';
@@ -72,7 +73,7 @@ function GemDescription({
       lines={2}
       className="mb-3"
       bodyClassName="guest-body-sm"
-      toggleClassName="text-[#C5A059] text-sm font-bold mt-1 hover:underline uppercase tracking-wide min-h-[44px]"
+      toggleClassName="text-[#C5A059] text-sm font-bold normal-case mt-1 hover:underline tracking-wide min-h-[44px]"
       onExpand={() => track('gem_description_expand', { gemId, gemName })}
     />
   );
@@ -584,16 +585,7 @@ function GuestPortalPage({
     [features]
   );
 
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#051F26] font-sans">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Lora:wght@400;500;600&display=swap');`}</style>
-      <div className="relative w-16 h-16 mb-8">
-        <div className="absolute inset-0 rounded-full border-2 border-[#C5A059]/30 border-t-[#C5A059] animate-spin" />
-        <img src="/vailoLogo.png" alt="" className="absolute inset-2 w-auto h-auto object-contain opacity-90" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-      </div>
-      <p className="guest-eyebrow">Preparing your stay</p>
-    </div>
-  );
+  if (loading) return <GuestPortalLoadingScreen status={t('preparingStay')} />;
   if (error) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F3F4F6] px-6 font-sans">
       <div className="text-center max-w-sm">
@@ -633,27 +625,25 @@ function GuestPortalPage({
         
         {activeView === 'portal' ? (
           <>
-            {/* ── HERO: property photo + overlay content ── */}
+            {/* ── HERO: tall property photo (to mid Live like a local) + CTA ── */}
             <section className="relative z-10">
-              <div className={`relative overflow-hidden ${viewMode === 'mobile' ? 'md:rounded-t-[30px]' : ''}`}>
-                {/* Background photo or fallback gradient */}
-                <div className="absolute inset-0">
+              <div className={`relative ${viewMode === 'mobile' ? 'md:rounded-t-[30px] overflow-hidden' : ''}`}>
+                {/* Photo height = full block minus half of Live like a local (min-h 72px → 2.25rem) */}
+                <div className="absolute inset-x-0 top-0 z-0 h-[calc(100%-2.25rem)] overflow-hidden">
                   {heroPhoto ? (
                     <img
                       src={heroPhoto}
                       alt={typeData?.propertyTypeName || property?.propertyName || 'Your stay'}
-                      className="w-full h-full object-cover scale-105"
+                      className="w-full h-full object-cover object-[center_30%] scale-105"
                     />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-[#0B4F5C] via-[#083A43] to-[#051F26]" />
+                    <div className="w-full h-full bg-gradient-to-br from-vailo-teal via-[#083A43] to-[#051F26]" />
                   )}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/20 to-[#F3F4F6]/95" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/75 via-transparent to-black/35" />
                 </div>
 
-                {/* Layered overlays for legibility */}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/25 to-[#F3F4F6]" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/80 via-transparent to-black/30" />
-
-                <div className={`relative mx-auto px-4 sm:px-5 pt-5 pb-28 min-h-[380px] sm:min-h-[420px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+                <div className={`relative z-10 mx-auto px-4 sm:px-5 pt-5 min-h-[360px] sm:min-h-[400px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
                   {pwaInstall.showBanner && (
                     <GuestAddToHomeBanner
                       t={t}
@@ -722,30 +712,32 @@ function GuestPortalPage({
                     )}
                     {heroLocation && (
                       <p className="text-white/60 text-sm mt-3 flex items-center justify-center gap-1.5">
-                        <MapPin size={14} className="text-[#C5A059] shrink-0" /> {heroLocation}
+                        <MapPin size={14} className="text-vailo-gold shrink-0" /> {heroLocation}
                       </p>
                     )}
                   </div>
 
-                  {/* Live Like a Local — glass CTA on hero */}
-                  <div className="mt-8 w-full">
+                  {/* Live like a local — Ai Expert teal/gold; photo ends at vertical midpoint */}
+                  <div className="mt-auto pt-6">
                     <LiveLikeLocalCTA
                       onActivate={() => setActiveView('aiExpert')}
-                      className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition-all duration-300 hover:-translate-y-0.5"
+                      className="group w-full rounded-2xl border border-white/15 bg-gradient-to-b from-vailo-teal to-vailo-teal-hover transition-colors duration-300"
                     >
-                      <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 min-h-[72px] flex items-center justify-between gap-2">
+                      <div className="px-4 py-4 min-h-[72px] flex items-center justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0 shadow-lg">
-                            <Sparkles size={22} className="text-white" />
+                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner">
+                            <Sparkles size={22} className="text-vailo-gold" />
                           </div>
                           <div className="text-left min-w-0">
-                            <p className="text-white text-base font-semibold leading-tight">
-                              {t('liveLikeLocal')}
+                            <p className="text-white text-sm font-semibold leading-tight tracking-wide">
+                              {t('liveLikeLocalHero')}
                             </p>
-                            <p className="text-white/70 text-sm mt-1 leading-snug">{t('liveLikeLocalSub')}</p>
+                            <p className="text-white/60 text-xs mt-0.5 leading-snug">
+                              {t('liveLikeLocalHeroSub')}
+                            </p>
                           </div>
                         </div>
-                        <div className="h-10 w-10 shrink-0 rounded-full bg-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/25 transition-colors">
+                        <div className="h-10 w-10 shrink-0 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/15 transition-colors">
                           <ChevronDown size={20} className="-rotate-90" />
                         </div>
                       </div>
@@ -755,8 +747,8 @@ function GuestPortalPage({
               </div>
             </section>
 
-            {/* Weather + Wi‑Fi — same width & card style as Live like a local */}
-            <div className={`mx-auto px-5 -mt-14 relative z-20 w-full space-y-3 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+            {/* Weather, Wi‑Fi, Google — equal spacing */}
+            <div className={`mx-auto px-4 sm:px-5 relative z-20 w-full flex flex-col gap-3 mt-3 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
               <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">
                 <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">

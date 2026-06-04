@@ -25,6 +25,12 @@ type Props = {
   goMapLabel?: string;
 };
 
+function trailCardId(item: TrailPickItem, index: number): string {
+  const id = String(item.allTrailsId || '').trim();
+  const slug = id || String(item.title || 'item').trim();
+  return `trail-${index}-${slug}`;
+}
+
 function trailActionUrls(
   item: TrailPickItem,
   propertyCoords?: { lat: number; lng: number } | null
@@ -44,14 +50,22 @@ function trailActionUrls(
 }
 
 function TrailCard({
+  cardId,
   item,
+  expanded,
+  embedMounted,
+  onToggleExpand,
   propertyId,
   categoryName,
   propertyCoords,
   viewMapLabel,
   goMapLabel,
 }: {
+  cardId: string;
   item: TrailPickItem;
+  expanded: boolean;
+  embedMounted: boolean;
+  onToggleExpand: () => void;
   propertyId?: string;
   categoryName: string;
   propertyCoords?: { lat: number; lng: number } | null;
@@ -59,7 +73,6 @@ function TrailCard({
   goMapLabel: string;
 }) {
   const { t } = useGuestLocale();
-  const [expanded, setExpanded] = useState(false);
 
   const ratingLabel = formatTrailRating(item.rating, item.reviewCount);
   const displayDescription = formatTrailDescriptionDisplay(item.description);
@@ -69,7 +82,7 @@ function TrailCard({
   const hasMapActions = isValidExternalUrl(viewUrl) || isValidExternalUrl(goUrl);
 
   return (
-    <article className="w-[min(288px,calc(100vw-3rem))] shrink-0 snap-start snap-always bg-white/8 border border-white/10 rounded-2xl overflow-hidden flex flex-col">
+    <article className="w-[min(288px,calc(100vw-3rem))] shrink-0 self-start snap-start snap-always bg-white/8 border border-white/10 rounded-2xl overflow-hidden flex flex-col">
       <div className="relative">
         <PlanImage
           src={item.photoUrl}
@@ -142,22 +155,29 @@ function TrailCard({
                 {t('aiExpertTrailOpenAllTrailsHint')}
               </p>
             ) : null}
-            {item.allTrailsEmbedSrc && (
-              <AllTrailsTrailEmbed
-                name={item.title}
-                embedSrc={item.allTrailsEmbedSrc}
-                allTrailsUrl={undefined}
-                className="mt-1"
-              />
-            )}
+          </div>
+        )}
+
+        {embedMounted && item.allTrailsEmbedSrc && (
+          <div className={expanded ? 'mb-3' : 'hidden'} aria-hidden={!expanded}>
+            <AllTrailsTrailEmbed
+              key={`${cardId}-embed`}
+              name={item.title}
+              embedSrc={item.allTrailsEmbedSrc}
+              allTrailsUrl={item.allTrailsUrl}
+              className="mt-1"
+            />
           </div>
         )}
 
         {canExpand && (
           <button
             type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-vailo-gold hover:text-white transition-colors min-h-[44px] text-left"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand();
+            }}
+            className="mt-1.5 text-sm font-semibold normal-case tracking-wide text-vailo-gold hover:text-white transition-colors min-h-[44px] text-left"
           >
             {expanded ? t('less') : t('more')}
           </button>
@@ -214,17 +234,53 @@ export default function TrailPickCarousel({
   const { locale } = useGuestLocale();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [mountedEmbedIds, setMountedEmbedIds] = useState<Set<string>>(() => new Set());
   const stride = CARD_WIDTH + CARD_GAP;
+
+  const ensureEmbedMounted = useCallback((cardId: string) => {
+    setMountedEmbedIds((prev) => {
+      if (prev.has(cardId)) return prev;
+      const next = new Set(prev);
+      next.add(cardId);
+      return next;
+    });
+  }, []);
+
+  /** When detail mode is on (any card expanded), keep that card in sync with the active slide. */
+  const syncIndex = useCallback(
+    (index: number) => {
+      const clamped = Math.min(Math.max(index, 0), items.length - 1);
+      setActiveIndex(clamped);
+      setExpandedCardId((current) => {
+        if (current == null) return null;
+        const nextId = trailCardId(items[clamped], clamped);
+        if (current !== nextId) ensureEmbedMounted(nextId);
+        return nextId;
+      });
+    },
+    [items, ensureEmbedMounted]
+  );
+
+  const goToIndex = useCallback(
+    (index: number) => {
+      const clamped = Math.min(Math.max(index, 0), items.length - 1);
+      scrollRef.current?.scrollTo({ left: clamped * stride, behavior: 'smooth' });
+      syncIndex(clamped);
+    },
+    [items.length, stride, syncIndex]
+  );
 
   const updateActiveIndex = useCallback(() => {
     const el = scrollRef.current;
     if (!el || items.length === 0) return;
-    const index = Math.round(el.scrollLeft / stride);
-    setActiveIndex(Math.min(Math.max(index, 0), items.length - 1));
-  }, [items.length, stride]);
+    syncIndex(Math.round(el.scrollLeft / stride));
+  }, [items.length, stride, syncIndex]);
 
   useEffect(() => {
     setActiveIndex(0);
+    setExpandedCardId(null);
+    setMountedEmbedIds(new Set());
     scrollRef.current?.scrollTo({ left: 0 });
   }, [categoryName, items.length]);
 
@@ -242,32 +298,50 @@ export default function TrailPickCarousel({
       <div
         ref={scrollRef}
         onScroll={updateActiveIndex}
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-1 max-w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-start gap-4 overflow-x-auto snap-x snap-mandatory pb-1 max-w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
-        {items.map((item, i) => (
-          <TrailCard
-            key={`${item.allTrailsId || item.title}-${i}`}
-            item={item}
-            propertyId={propertyId}
-            categoryName={categoryName}
-            propertyCoords={propertyCoords}
-            viewMapLabel={viewMapLabel}
-            goMapLabel={goMapLabel}
-          />
-        ))}
+        {items.map((item, i) => {
+          const cardId = trailCardId(item, i);
+          const isExpanded = expandedCardId === cardId;
+          return (
+            <TrailCard
+              key={cardId}
+              cardId={cardId}
+              expanded={isExpanded}
+              embedMounted={mountedEmbedIds.has(cardId)}
+              onToggleExpand={() => {
+                setExpandedCardId((current) => {
+                  const next = current === cardId ? null : cardId;
+                  if (next) {
+                    ensureEmbedMounted(next);
+                    requestAnimationFrame(() => goToIndex(i));
+                  }
+                  return next;
+                });
+              }}
+              item={item}
+              propertyId={propertyId}
+              categoryName={categoryName}
+              propertyCoords={propertyCoords}
+              viewMapLabel={viewMapLabel}
+              goMapLabel={goMapLabel}
+            />
+          );
+        })}
       </div>
 
       {items.length > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
+        <div
+          className={`flex items-center justify-center gap-2 ${
+            expandedCardId ? 'mt-3' : 'mt-4'
+          }`}
+        >
           {items.map((_, i) => (
             <button
               key={i}
               type="button"
               aria-label={`View trail ${i + 1} of ${items.length}`}
-              onClick={() => {
-                scrollRef.current?.scrollTo({ left: i * stride, behavior: 'smooth' });
-                setActiveIndex(i);
-              }}
+              onClick={() => goToIndex(i)}
               className={`rounded-full transition-all duration-300 ${
                 i === activeIndex
                   ? 'w-2 h-2 bg-vailo-gold scale-110'

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Lock, KeyRound, FlaskConical } from 'lucide-react';
+import { Lock, KeyRound, FlaskConical } from 'lucide-react';
+import GuestPortalLoadingScreen from './GuestPortalLoadingScreen';
 import { httpsCallableMessage } from '../../lib/callableError';
 import {
   clearGuestPortalSession,
@@ -44,7 +45,8 @@ export default function GuestPortalAccessGate({
   const [testerCode, setTesterCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [session, setSession] = useState<GuestPortalSession | null>(null);
-  const bootstrappedUnitKeyRef = useRef<string | null>(null);
+  /** Bumps on each effect run so Strict Mode remount can finish bootstrap (dev-only double mount). */
+  const bootstrapRunIdRef = useRef(0);
 
   const onSessionGrantedRef = useRef(onSessionGranted);
   onSessionGrantedRef.current = onSessionGranted;
@@ -120,11 +122,9 @@ export default function GuestPortalAccessGate({
   }, [propertyId, typeId, grant]);
 
   useEffect(() => {
-    const unitKey = `${propertyId}|${typeId}|${inviteToken ?? ''}|${adminPreview ? '1' : '0'}`;
-    if (bootstrappedUnitKeyRef.current === unitKey) return;
-    bootstrappedUnitKeyRef.current = unitKey;
-
+    const runId = ++bootstrapRunIdRef.current;
     let cancelled = false;
+    const stillActive = () => !cancelled && runId === bootstrapRunIdRef.current;
 
     (async () => {
       setPhase('checking');
@@ -132,17 +132,17 @@ export default function GuestPortalAccessGate({
 
       if (adminPreview) {
         const adminSession = await tryExistingSession();
+        if (!stillActive()) return;
         if (adminSession === 'granted' || adminSession === 'revoked') return;
-        if (cancelled) return;
         try {
           const { session: s } = await grantAdminGuestPortalPreviewCallable(
             propertyId,
             typeId
           );
-          if (cancelled) return;
+          if (!stillActive()) return;
           grant(s);
         } catch (e) {
-          if (cancelled) return;
+          if (!stillActive()) return;
           setError(
             httpsCallableMessage(
               e,
@@ -155,8 +155,8 @@ export default function GuestPortalAccessGate({
       }
 
       const existingSession = await tryExistingSession();
+      if (!stillActive()) return;
       if (existingSession === 'granted') return;
-      if (cancelled) return;
       if (existingSession === 'revoked') {
         setPhase('denied');
         return;
@@ -168,7 +168,7 @@ export default function GuestPortalAccessGate({
       }
 
       const activated = await tryOnSiteActivation();
-      if (cancelled) return;
+      if (!stillActive()) return;
       if (!activated) setPhase('denied');
     })();
 
@@ -276,12 +276,7 @@ export default function GuestPortalAccessGate({
   }
 
   if (phase === 'checking') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
-        <Loader2 className="animate-spin text-vailo-teal mb-3" size={32} />
-        <p className="text-sm text-gray-600">{t('accessChecking')}</p>
-      </div>
-    );
+    return <GuestPortalLoadingScreen status={t('accessChecking')} />;
   }
 
   return (

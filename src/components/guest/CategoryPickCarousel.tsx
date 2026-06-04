@@ -121,7 +121,7 @@ export default function CategoryPickCarousel({
                 lines={3}
                 className="mb-3 flex-1"
                 bodyClassName="text-sm text-white/70 leading-relaxed"
-                toggleClassName="mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-vailo-gold hover:text-white transition-colors min-h-[44px]"
+                toggleClassName="mt-1.5 text-sm font-semibold normal-case tracking-wide text-vailo-gold hover:text-white transition-colors min-h-[44px]"
               />
 
               <p

@@ -46,6 +46,7 @@ const { syncAllTrailsForAreaHandler } = require("./allTrailsSync");
 const {
   askAppCodeKnowledgeHandler,
   getAppCodeKnowledgeMetaHandler,
+  getAppCodeKnowledgeExportHandler,
 } = require("./codeKnowledge");
 
 const GENERIC_SUFFIXES = [
@@ -970,6 +971,15 @@ exports.askAppCodeKnowledge = onCall(
 exports.getAppCodeKnowledgeMeta = onCall(
   { enforceAppCheck: false },
   async (request) => getAppCodeKnowledgeMetaHandler(request, firestore)
+);
+
+exports.getAppCodeKnowledgeExport = onCall(
+  {
+    timeoutSeconds: 60,
+    memory: "512MiB",
+    enforceAppCheck: false,
+  },
+  async (request) => getAppCodeKnowledgeExportHandler(request, firestore)
 );
 
 const { registerGuestPortalAccess } = require("./guestPortalAccess");

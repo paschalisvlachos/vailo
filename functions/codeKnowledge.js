@@ -90,6 +90,35 @@ function formatContext(picked) {
   return picked.map((c) => `### ${c.file}\n${c.content}`).join("\n\n");
 }
 
+function formatIndexForGeminiExport(index) {
+  const builtAt = index.builtAt || "unknown";
+  const fileCount = index.fileCount || index.chunks?.length || 0;
+  const lines = [
+    "# Vailo — App Code Knowledge Export",
+    "",
+    "Upload this file to Google Gemini (gemini.google.com or Google AI Studio) as context.",
+    "Ask questions about how the Vailo guest portal, admin, and Cloud Functions work.",
+    "",
+    `Generated: ${builtAt}`,
+    `Files in index: ${fileCount}`,
+    "",
+    "---",
+    "",
+  ];
+  for (const chunk of index.chunks || []) {
+    lines.push(`## ${chunk.file}`, "", chunk.content, "", "---", "");
+  }
+  return lines.join("\n");
+}
+
+function exportFilenameFromBuiltAt(builtAt) {
+  const datePart = String(builtAt || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    return `vailo-code-knowledge-${datePart}.md`;
+  }
+  return "vailo-code-knowledge.md";
+}
+
 function normalizeAdminEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
@@ -275,6 +304,22 @@ async function getAppCodeKnowledgeMetaHandler(request, firestore) {
   return metaPayload();
 }
 
+/**
+ * @param {import("firebase-functions/v2/https").CallableRequest} request
+ * @param {FirebaseFirestore.Firestore} firestore
+ */
+async function getAppCodeKnowledgeExportHandler(request, firestore) {
+  await requirePlatformAdmin(request, firestore);
+  const index = loadIndex();
+  const builtAt = index.builtAt || null;
+  return {
+    markdown: formatIndexForGeminiExport(index),
+    fileCount: index.fileCount || index.chunks?.length || 0,
+    builtAt,
+    suggestedFilename: exportFilenameFromBuiltAt(builtAt),
+  };
+}
+
 function metaPayload() {
   const model = resolveCodeKnowledgeModel();
   if (!fs.existsSync(INDEX_PATH)) {
@@ -292,6 +337,8 @@ function metaPayload() {
 module.exports = {
   askAppCodeKnowledgeHandler,
   getAppCodeKnowledgeMetaHandler,
+  getAppCodeKnowledgeExportHandler,
   loadIndex,
   retrieveChunks,
+  formatIndexForGeminiExport,
 };

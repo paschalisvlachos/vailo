@@ -33,6 +33,8 @@ export type GuestLocaleKey =
   | 'propertyLocation'
   | 'liveLikeLocal'
   | 'liveLikeLocalSub'
+  | 'liveLikeLocalHero'
+  | 'liveLikeLocalHeroSub'
   | 'essentials'
   | 'thingsToKnow'
   | 'googleRatingTitle'

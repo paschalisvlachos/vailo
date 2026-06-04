@@ -35,6 +35,9 @@ function inferGroup(key: string): GuestUiStringGroup {
     key === 'close' ||
     key === 'propertyLocation' ||
     key === 'liveLikeLocal' ||
+    key === 'liveLikeLocalHero' ||
+    key === 'liveLikeLocalHeroSub' ||
+    key === 'liveLikeLocalSub' ||
     key === 'essentials' ||
     key === 'thingsToKnow' ||
     key.startsWith('googleRating') ||
@@ -56,6 +59,9 @@ function inferGroup(key: string): GuestUiStringGroup {
     key === 'wifiCopied' ||
     key === 'failedLoadProperty' ||
     key === 'loadingPortal' ||
+    key === 'guestLoadingVailo' ||
+    key === 'preparingStay' ||
+    key === 'accessChecking' ||
     key === 'translating'
   ) {
     return 'content';

@@ -87,15 +87,22 @@ export function resolveGuestUiString(
   const primary = normalizeLocaleCode(primaryLocale) || 'en';
 
   const custom = overrides[code]?.[key]?.trim();
-  if (custom) return custom;
+  if (custom) return normalizeGuestUiToggleLabel(key, custom);
 
   const builtin = buildBuiltinGuestStringsForLocale(code)[key];
-  if (builtin?.trim()) return builtin.trim();
+  if (builtin?.trim()) return normalizeGuestUiToggleLabel(key, builtin.trim());
 
   const fromPrimary = buildBuiltinGuestStringsForLocale(primary)[key];
-  if (fromPrimary?.trim()) return fromPrimary.trim();
+  if (fromPrimary?.trim()) return normalizeGuestUiToggleLabel(key, fromPrimary.trim());
 
-  return buildBuiltinGuestStringsForLocale('en')[key]?.trim() || key;
+  const fallback = buildBuiltinGuestStringsForLocale('en')[key]?.trim() || key;
+  return normalizeGuestUiToggleLabel(key, fallback);
+}
+
+/** more / less are always all-lowercase in the guest UI (built-in and platform overrides). */
+function normalizeGuestUiToggleLabel(key: string, value: string): string {
+  if (key === 'more' || key === 'less') return value.toLowerCase();
+  return value;
 }
 
 export function formatGuestUiString(

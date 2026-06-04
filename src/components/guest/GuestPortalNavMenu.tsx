@@ -120,7 +120,7 @@ export default function GuestPortalNavMenu({
                           <span className="block text-base font-semibold text-[#051F26] leading-tight">
                             {item.label}
                           </span>
-                          <span className="block text-xs text-gray-500 mt-0.5 leading-snug line-clamp-2">
+                          <span className="block text-xs text-gray-500 mt-0.5 leading-snug line-clamp-3">
                             {item.sub}
                           </span>
                         </span>

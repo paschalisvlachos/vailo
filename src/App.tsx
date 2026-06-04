@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
+import { isGuestPortalUrlPath } from "./lib/guestAccess";
+import GuestPortalLoadingScreen from "./components/guest/GuestPortalLoadingScreen";
 import Layout from "./components/admin/Layout";
 import Login from "./components/admin/Login";
 import PropertiesPage from "./pages/admin/properties/PropertiesPage";
@@ -140,6 +142,9 @@ export default function App() {
   }, []);
 
   if (loading) {
+    if (typeof window !== "undefined" && isGuestPortalUrlPath(window.location.pathname)) {
+      return <GuestPortalLoadingScreen status="Loading Vailo" />;
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-vailo-surface text-vailo-teal text-sm font-medium">
         Loading Vailo…

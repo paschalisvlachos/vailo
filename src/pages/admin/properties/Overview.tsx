@@ -33,6 +33,8 @@ import {
 import type { PropertyRecord } from './PropertyLayout';
 import type { ListingKind } from './PropertyFormPage';
 import PropertyLanguagesCard from '../../../components/admin/PropertyLanguagesCard';
+import { useAdminSession } from '../../../context/AdminSessionContext';
+import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
 
 interface OwnerOption {
   id: string;
@@ -67,7 +69,7 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     ownerId: property.ownerId || '',
     email: '',
     phone: '',
-    guestPortalAccessRequired: property.guestPortalAccessRequired !== false,
+    guestPortalAccessRequired: isGuestPortalAccessRequired(property),
   };
 }
 
@@ -77,6 +79,7 @@ export default function Overview() {
     propertyId: string;
   }>();
   const toast = useToast();
+  const { isPlatformAdmin } = useAdminSession();
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -199,7 +202,7 @@ export default function Overview() {
     setIsSaving(true);
     try {
       const newPropertySlug = formatGuestSlug(formData.urlSlug);
-      await updateDoc(doc(db, 'properties', propertyId), {
+      const propertyPatch: Record<string, unknown> = {
         propertyName: formData.propertyName.trim(),
         urlSlug: newPropertySlug,
         previousUrlSlugs: mergePreviousSlugs(
@@ -213,9 +216,12 @@ export default function Overview() {
         area: formData.area,
         city: formData.area,
         ownerId: formData.ownerId,
-        guestPortalAccessRequired: formData.guestPortalAccessRequired,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      if (isPlatformAdmin) {
+        propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
+      }
+      await updateDoc(doc(db, 'properties', propertyId), propertyPatch);
       if (formData.ownerId) {
         await updateDoc(doc(db, 'owners', formData.ownerId), {
           email: formData.email.trim(),
@@ -467,7 +473,11 @@ export default function Overview() {
         <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-4">
           Guest portal access
         </h3>
-        {isEditing ? (
+        <p className="text-sm text-gray-500 mb-4">
+          Access control is on by default for all properties. Only Vailo platform admins can change
+          this setting.
+        </p>
+        {isEditing && isPlatformAdmin ? (
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -486,13 +496,18 @@ export default function Overview() {
             </span>
           </label>
         ) : (
-          <p className="text-sm text-gray-700">
-            {property.guestPortalAccessRequired !== false ? (
+          <div className="text-sm text-gray-700 space-y-2">
+            {isGuestPortalAccessRequired(property) ? (
               <AdminBadge variant="teal">Access control enabled</AdminBadge>
             ) : (
               <span className="text-gray-500">Open portal (no invite gate)</span>
             )}
-          </p>
+            {isEditing && !isPlatformAdmin ? (
+              <p className="text-xs text-gray-500">
+                This setting is managed by your Vailo administrator.
+              </p>
+            ) : null}
+          </div>
         )}
       </AdminCard>
     </div>

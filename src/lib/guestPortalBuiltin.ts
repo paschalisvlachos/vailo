@@ -11,7 +11,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     close: 'Close',
     propertyLocation: 'Property location',
     liveLikeLocal: 'Live like a local',
-    liveLikeLocalSub: 'Your AI travel expert · curated picks',
+    liveLikeLocalSub:
+      'Plan your day with AI: restaurants, beaches, trails, and your host’s favourite local spots nearby.',
+    liveLikeLocalHero: 'Live like a local',
+    liveLikeLocalHeroSub: 'AI day plans & local picks nearby',
     essentials: 'Essentials',
     thingsToKnow: 'Things to know',
     googleRatingTitle: 'Enjoying your stay?',
@@ -35,11 +38,14 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     portalMenuClose: 'Close menu',
     houseGuide: 'House Guide',
     houseGuideSheetSub: 'Everything your host shared about the property.',
-    houseGuideMenuSub: '{count} sections with information',
-    houseGuideMenuSubEmpty: 'Open when your host adds guide content',
+    houseGuideMenuSub:
+      '{count} topics from your host — check-in, Wi‑Fi, appliances, house rules, daily needs, and more.',
+    houseGuideMenuSubEmpty:
+      'Your host hasn’t added a guide yet. Check-in, Wi‑Fi, and how-to tips for appliances will show here.',
     houseGuideEmpty: 'Your host has not added house guide details yet.',
     assistantProperty: 'AI Property Assistant',
-    assistantPropertySub: '24/7 help with Wi‑Fi, appliances, and house rules',
+    assistantPropertySub:
+      'Ask about your stay anytime: Wi‑Fi, check-out, appliances (by model), house rules — or send a photo for help.',
   },
   el: {
     welcomeTo: 'Καλώς ήρθατε στο',
@@ -51,7 +57,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     close: 'Κλείσιμο',
     propertyLocation: 'Τοποθεσία καταλύματος',
     liveLikeLocal: 'Ζήστε σαν ντόπιος',
-    liveLikeLocalSub: 'Ο AI ταξιδιωτικός σας σύμβουλος',
+    liveLikeLocalSub:
+      'Οργανώστε την ημέρα σας με AI: εστιατόρια, παραλίες, μονοπάτια και αγαπημένα σημεία του οικοδεσπότη.',
+    liveLikeLocalHero: 'Ζήστε σαν ντόπιος',
+    liveLikeLocalHeroSub: 'Προγράμματα ημέρας & τοπικές προτάσεις',
     essentials: 'Βασικά',
     thingsToKnow: 'Χρήσιμες πληροφορίες',
     googleRatingTitle: 'Απολαμβάνετε τη διαμονή;',
@@ -75,11 +84,14 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     portalMenuClose: 'Κλείσιμο μενού',
     houseGuide: 'Οδηγός σπιτιού',
     houseGuideSheetSub: 'Ό,τι έχει μοιραστεί ο οικοδεσπότης για το κατάλυμα.',
-    houseGuideMenuSub: '{count} ενότητες με πληροφορίες',
-    houseGuideMenuSubEmpty: 'Θα εμφανιστεί όταν προστεθούν στοιχεία',
+    houseGuideMenuSub:
+      '{count} ενότητες από τον οικοδεσπότη — check-in, Wi‑Fi, συσκευές, κανόνες, καθημερινές ανάγκες και άλλα.',
+    houseGuideMenuSubEmpty:
+      'Ο οικοδεσπότης δεν έχει προσθέσει ακόμα οδηγό. Εδώ θα εμφανιστούν check-in, Wi‑Fi και οδηγίες συσκευών.',
     houseGuideEmpty: 'Ο οικοδεσπότης δεν έχει προσθέσει ακόμα οδηγό σπιτιού.',
     assistantProperty: 'AI Βοηθός καταλύματος',
-    assistantPropertySub: 'Βοήθεια 24/7 για Wi‑Fi, συσκευές και κανόνες',
+    assistantPropertySub:
+      'Ρωτήστε για τη διαμονή σας: Wi‑Fi, check-out, συσκευές (ανά μοντέλο), κανόνες — ή στείλτε φωτογραφία για βοήθεια.',
   },
   de: {
     welcomeTo: 'Willkommen in',
@@ -91,7 +103,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     close: 'Schließen',
     propertyLocation: 'Standort der Unterkunft',
     liveLikeLocal: 'Leben wie ein Einheimischer',
-    liveLikeLocalSub: 'Ihr KI-Reiseexperte · kuratierte Tipps',
+    liveLikeLocalSub:
+      'Planen Sie Ihren Tag mit KI: Restaurants, Strände, Wanderwege und Lieblingsorte Ihres Gastgebers.',
+    liveLikeLocalHero: 'Leben wie ein Einheimischer',
+    liveLikeLocalHeroSub: 'Tagespläne & lokale Tipps in der Nähe',
     essentials: 'Wichtiges',
     thingsToKnow: 'Gut zu wissen',
     googleRatingTitle: 'Gefällt Ihnen der Aufenthalt?',
@@ -115,11 +130,14 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     portalMenuClose: 'Menü schließen',
     houseGuide: 'Hausführer',
     houseGuideSheetSub: 'Alles, was Ihr Gastgeber zur Unterkunft hinterlegt hat.',
-    houseGuideMenuSub: '{count} Abschnitte mit Informationen',
-    houseGuideMenuSubEmpty: 'Verfügbar, sobald der Gastgeber Inhalte hinzufügt',
+    houseGuideMenuSub:
+      '{count} Themen vom Gastgeber — Check-in, WLAN, Geräte, Hausregeln, Alltagsbedarf und mehr.',
+    houseGuideMenuSubEmpty:
+      'Noch kein Hausführer. Check-in, WLAN und Geräte-Anleitungen erscheinen hier, sobald der Gastgeber sie hinterlegt.',
     houseGuideEmpty: 'Ihr Gastgeber hat noch keinen Hausführer hinterlegt.',
     assistantProperty: 'KI-Unterkunftsassistent',
-    assistantPropertySub: '24/7 Hilfe zu WLAN, Geräten und Hausregeln',
+    assistantPropertySub:
+      'Fragen zum Aufenthalt jederzeit: WLAN, Check-out, Geräte (nach Modell), Hausregeln — oder Foto zur Hilfe senden.',
   },
   fr: {
     welcomeTo: 'Bienvenue à',
@@ -131,7 +149,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     close: 'Fermer',
     propertyLocation: 'Emplacement du logement',
     liveLikeLocal: 'Vivre comme un local',
-    liveLikeLocalSub: 'Votre expert voyage IA · sélections locales',
+    liveLikeLocalSub:
+      'Organisez votre journée avec l’IA : restaurants, plages, sentiers et adresses préférées de votre hôte.',
+    liveLikeLocalHero: 'Vivre comme un local',
+    liveLikeLocalHeroSub: 'Plans du jour & adresses locales',
     essentials: 'Essentiels',
     thingsToKnow: 'À savoir',
     googleRatingTitle: 'Vous appréciez votre séjour ?',
@@ -155,11 +176,14 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     portalMenuClose: 'Fermer le menu',
     houseGuide: 'Guide du logement',
     houseGuideSheetSub: 'Tout ce que votre hôte a partagé sur le logement.',
-    houseGuideMenuSub: '{count} sections avec des informations',
-    houseGuideMenuSubEmpty: 'Disponible quand l’hôte ajoute du contenu',
+    houseGuideMenuSub:
+      '{count} rubriques de l’hôte — arrivée, Wi‑Fi, appareils, règles, besoins du quotidien, etc.',
+    houseGuideMenuSubEmpty:
+      'Pas encore de guide. Arrivée, Wi‑Fi et mode d’emploi des appareils apparaîtront ici quand l’hôte les ajoute.',
     houseGuideEmpty: 'Votre hôte n’a pas encore ajouté de guide.',
     assistantProperty: 'Assistant IA du logement',
-    assistantPropertySub: 'Aide 24h/24 : Wi‑Fi, appareils et règles',
+    assistantPropertySub:
+      'Posez vos questions sur le séjour : Wi‑Fi, départ, appareils (par modèle), règles — ou envoyez une photo.',
   },
   it: {
     welcomeTo: 'Benvenuto a',
@@ -171,7 +195,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     close: 'Chiudi',
     propertyLocation: 'Posizione della struttura',
     liveLikeLocal: 'Vivi come un local',
-    liveLikeLocalSub: 'Il tuo esperto di viaggio IA · scelte locali',
+    liveLikeLocalSub:
+      'Organizza la giornata con l’IA: ristoranti, spiagge, sentieri e i posti preferiti dell’host.',
+    liveLikeLocalHero: 'Vivi come un local',
+    liveLikeLocalHeroSub: 'Piani giornalieri e consigli locali',
     essentials: 'Essenziali',
     thingsToKnow: 'Da sapere',
     googleRatingTitle: 'Ti piace il soggiorno?',
@@ -195,10 +222,13 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     portalMenuClose: 'Chiudi menu',
     houseGuide: 'Guida della casa',
     houseGuideSheetSub: 'Tutto ciò che l’host ha condiviso sulla struttura.',
-    houseGuideMenuSub: '{count} sezioni con informazioni',
-    houseGuideMenuSubEmpty: 'Disponibile quando l’host aggiunge contenuti',
+    houseGuideMenuSub:
+      '{count} argomenti dall’host — check-in, Wi‑Fi, elettrodomestici, regole, bisogni quotidiani e altro.',
+    houseGuideMenuSubEmpty:
+      'Guida non ancora disponibile. Check-in, Wi‑Fi e istruzioni per gli elettrodomestici compariranno qui.',
     houseGuideEmpty: 'L’host non ha ancora aggiunto la guida.',
     assistantProperty: 'Assistente IA della struttura',
-    assistantPropertySub: 'Aiuto 24/7 su Wi‑Fi, elettrodomestici e regole',
+    assistantPropertySub:
+      'Chiedi tutto sul soggiorno: Wi‑Fi, check-out, elettrodomestici (per modello), regole — o invia una foto.',
   },
 };

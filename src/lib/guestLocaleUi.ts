@@ -23,6 +23,8 @@ export type GuestLocaleUiKey =
   | 'wifiCopied'
   | 'failedLoadProperty'
   | 'loadingPortal'
+  | 'guestLoadingVailo'
+  | 'preparingStay'
   | 'accessChecking'
   | 'accessGuestTitle'
   | 'accessGuestSub'
@@ -86,14 +88,16 @@ export const BUILTIN_GUEST_UI_DEFAULTS: Record<
 };
 
 const UI_EN: Record<GuestLocaleUiKey, string> = {
-  less: 'Less',
-  more: 'More',
+  less: 'less',
+  more: 'more',
   loadMoreLeft: 'Load more · {count} left',
   website: 'Website',
   copyWifi: 'Copy Wi-Fi password',
   wifiCopied: 'Copied',
   failedLoadProperty: 'Failed to load property data.',
   loadingPortal: 'Loading your stay…',
+  guestLoadingVailo: 'Loading Vailo',
+  preparingStay: 'Preparing your stay',
   accessChecking: 'Checking access…',
   accessGuestTitle: 'Guest access',
   accessGuestSub: 'Enter the password from your invitation email or message.',
@@ -154,8 +158,11 @@ for (const k of Object.keys(UI_EN)) {
 }
 
 const UI_EL: Partial<Record<GuestLocaleUiKey, string>> = {
-  less: 'Λιγότερα',
-  more: 'Περισσότερα',
+  less: 'λιγότερα',
+  more: 'περισσότερα',
+  guestLoadingVailo: 'Φόρτωση Vailo',
+  preparingStay: 'Προετοιμασία της διαμονής σας',
+  accessChecking: 'Έλεγχος πρόσβασης…',
   accessGuestTitle: 'Πρόσβαση επισκέπτη',
   accessGuestSub: 'Εισάγετε τον κωδικό από την πρόσκλησή σας.',
   accessContinue: 'Συνέχεια',

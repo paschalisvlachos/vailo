@@ -1,10 +1,25 @@
 /** Guest portal access: invite token, on-stay assignment, testers. */
 
-/** Default on: only explicit `false` disables the guest access gate. */
+const RESERVED_GUEST_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
+
+/** True for public guest URLs `/:propertySlug/:typeSlug` (not admin or marketing paths). */
+export function isGuestPortalUrlPath(pathname: string): boolean {
+  const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  if (parts.length < 2) return false;
+  return !RESERVED_GUEST_PORTAL_SLUGS.has(parts[0].toLowerCase());
+}
+
+/** New properties and legacy docs without the field use access control on. */
+export const GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT = true;
+
+/** Only explicit `false` disables the guest access gate. */
 export function isGuestPortalAccessRequired(
   property: { guestPortalAccessRequired?: boolean } | null | undefined
 ): boolean {
-  return property?.guestPortalAccessRequired !== false;
+  if (property?.guestPortalAccessRequired === undefined) {
+    return GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT;
+  }
+  return property.guestPortalAccessRequired !== false;
 }
 
 export const GUEST_SESSION_STORAGE_KEY = 'vailo_guest_portal_session';

@@ -74,7 +74,7 @@ const CURATING_STEP_KEYS: GuestLocaleUiKey[] = [
 
 const AI_EXPERT_DESC_BODY = 'text-sm text-white/70 leading-relaxed';
 const AI_EXPERT_DESC_TOGGLE =
-  'mt-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-vailo-gold hover:text-white transition-colors min-h-[44px]';
+  'mt-1.5 text-sm font-semibold normal-case tracking-wide text-vailo-gold hover:text-white transition-colors min-h-[44px]';
 const AI_EXPERT_PANEL =
   'rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm p-5 shadow-[0_8px_30px_rgba(5,31,38,0.2)]';
 const AI_EXPERT_PANEL_TITLE = 'text-base font-semibold text-white mb-1';
@@ -412,6 +412,7 @@ export default function AiExpertView({
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const isFirstScrollRef = useRef(true);
   const prevMessagesLenRef = useRef(0);
+  const [timeChoiceMode, setTimeChoiceMode] = useState<'choose' | 'timeline'>('choose');
 
   const CHAT_TEXTAREA_MAX_PX = 128;
 
@@ -662,6 +663,10 @@ export default function AiExpertView({
   );
 
   useEffect(() => {
+    if (step === 'TIME') setTimeChoiceMode('choose');
+  }, [step]);
+
+  useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
@@ -675,14 +680,30 @@ export default function AiExpertView({
     }
 
     const messagesGrew = messages.length > prevMessagesLenRef.current;
+    const lastMsg = messages[messages.length - 1];
     prevMessagesLenRef.current = messages.length;
 
-    if (messagesGrew || isThinking) {
-      requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (messagesGrew && lastMsg?.type === 'plan') {
+        const planEl = el.querySelector('[data-ai-expert-plan]');
+        if (planEl) {
+          planEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          el.scrollTop = 0;
+        }
+        return;
+      }
+
+      if (isThinking && step === 'DONE' && !messages.some((m) => m.type === 'plan')) {
+        el.scrollTop = 0;
+        return;
+      }
+
+      if (messagesGrew && (lastMsg?.role === 'user' || step !== 'DONE')) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-    }
-  }, [messages, isThinking]);
+      }
+    });
+  }, [messages, isThinking, step]);
 
   useEffect(() => {
     const hasPlanMessage = messages.some((message) => message.type === 'plan');
@@ -1665,6 +1686,8 @@ User: ${userText}`;
     setCustomLoc('');
     setStartTime('09:00');
     setTripDurationHours(6);
+    setTimeChoiceMode('choose');
+    isFirstScrollRef.current = true;
     setMessages([
       { id: Date.now().toString(), role: 'ai', type: 'text', text: `welcome:${getPropertyDisplayName()}` },
     ]);
@@ -1725,7 +1748,7 @@ User: ${userText}`;
       const isPicks = msg.data.type === 'picks';
 
       return (
-        <div key={msg.id} className="mb-8 animate-in fade-in duration-300">
+        <div key={msg.id} data-ai-expert-plan className="mb-8 animate-in fade-in duration-300">
           <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-3xl overflow-hidden shadow-[0_12px_40px_rgba(5,31,38,0.25)]">
             <div className="bg-gradient-to-r from-vailo-teal/80 to-vailo-teal-light/90 px-5 py-4 text-white border-b border-white/10">
               <div className="flex items-start gap-3">
@@ -1896,7 +1919,11 @@ User: ${userText}`;
     const hasDistance = Boolean(preferences.distance);
     const hasSchedule = Boolean(preferences.timeFrame);
     const pendingSchedule =
-      step === 'TIME' && startTime && tripDurationHours != null && !hasSchedule;
+      step === 'TIME' &&
+      timeChoiceMode === 'timeline' &&
+      startTime &&
+      tripDurationHours != null &&
+      !hasSchedule;
 
     if (!hasLocation && !hasCategories && !hasDistance && !hasSchedule && !pendingSchedule) {
       return null;
@@ -2252,79 +2279,102 @@ User: ${userText}`;
             {step === 'TIME' && (
               <div className={AI_EXPERT_PANEL}>
                 <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertTimeTitle')}</p>
-                <p className={AI_EXPERT_PANEL_SUB}>
-                  {t('aiExpertTimeSub')}
-                </p>
 
-                <p className="guest-eyebrow text-white/45 mb-2">
-                  {t('aiExpertStartDay')}
-                </p>
-                <div className="grid grid-cols-3 gap-2 mb-5">
-                  {START_TIME_OPTIONS.map((timeOption) => (
+                {timeChoiceMode === 'choose' ? (
+                  <div className="flex flex-col gap-2.5 mt-4">
                     <button
-                      key={timeOption}
                       type="button"
-                      onClick={() => {
-                        setStartTime(timeOption);
-                        if (tripDurationHours == null) setTripDurationHours(6);
-                      }}
-                      className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
-                        startTime === timeOption
-                          ? AI_EXPERT_BTN_PRIMARY_PILL
-                          : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
-                      }`}
+                      onClick={() => executePlan('')}
+                      className={`w-full py-4 min-h-[48px] rounded-xl text-base flex items-center justify-center gap-2 ${AI_EXPERT_BTN_PRIMARY}`}
                     >
-                      {formatTime12(parseTimeToMinutes(timeOption))}
+                      <Heart size={16} className="text-white shrink-0" />
+                      {t('aiExpertBrowseFavoritesBtn')}
                     </button>
-                  ))}
-                </div>
-
-                {startTime && (
+                    <button
+                      type="button"
+                      onClick={() => setTimeChoiceMode('timeline')}
+                      className={`w-full py-4 min-h-[48px] rounded-xl text-base flex items-center justify-center gap-2 ${AI_EXPERT_BTN_SECONDARY}`}
+                    >
+                      <Clock size={16} className="text-vailo-gold shrink-0" />
+                      {t('aiExpertPlanTimelineBtn')}
+                    </button>
+                  </div>
+                ) : (
                   <>
+                    <p className={AI_EXPERT_PANEL_SUB}>{t('aiExpertTimeSub')}</p>
+
                     <p className="guest-eyebrow text-white/45 mb-2">
-                      {t('aiExpertHowLongOut')}
+                      {t('aiExpertStartDay')}
                     </p>
-                    <div className="grid grid-cols-3 gap-2 mb-4">
-                      {getReturnDurationOptions(startTime).map((opt) => (
+                    <div className="grid grid-cols-3 gap-2 mb-5">
+                      {START_TIME_OPTIONS.map((timeOption) => (
                         <button
-                          key={opt.hours}
+                          key={timeOption}
                           type="button"
-                          onClick={() => setTripDurationHours(opt.hours)}
+                          onClick={() => {
+                            setStartTime(timeOption);
+                            if (tripDurationHours == null) setTripDurationHours(6);
+                          }}
                           className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
-                            tripDurationHours === opt.hours
+                            startTime === timeOption
                               ? AI_EXPERT_BTN_PRIMARY_PILL
                               : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
                           }`}
                         >
-                          {opt.label}
+                          {formatTime12(parseTimeToMinutes(timeOption))}
                         </button>
                       ))}
                     </div>
-                    {tripDurationHours != null && (
-                      <p className="text-sm text-white/75 mb-4 px-3 py-2.5 rounded-xl bg-white/8 border border-white/10 leading-relaxed">
-                        {formatTripWindow(startTime, tripDurationHours)}
-                      </p>
+
+                    {startTime && (
+                      <>
+                        <p className="guest-eyebrow text-white/45 mb-2">
+                          {t('aiExpertHowLongOut')}
+                        </p>
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                          {getReturnDurationOptions(startTime).map((opt) => (
+                            <button
+                              key={opt.hours}
+                              type="button"
+                              onClick={() => setTripDurationHours(opt.hours)}
+                              className={`w-full px-2 py-2.5 min-h-[40px] rounded-xl text-sm font-semibold transition-all border ${
+                                tripDurationHours === opt.hours
+                                  ? AI_EXPERT_BTN_PRIMARY_PILL
+                                  : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        {tripDurationHours != null && (
+                          <p className="text-sm text-white/75 mb-4 px-3 py-2.5 rounded-xl bg-white/8 border border-white/10 leading-relaxed">
+                            {formatTripWindow(startTime, tripDurationHours)}
+                          </p>
+                        )}
+                      </>
                     )}
+
+                    <div className="flex flex-col gap-2.5 pt-4 border-t border-white/10">
+                      <button
+                        type="button"
+                        disabled={!startTime || tripDurationHours == null}
+                        onClick={() => executePlan('timeline')}
+                        className={`w-full py-4 min-h-[48px] rounded-xl text-base disabled:opacity-40 flex items-center justify-center gap-2 ${AI_EXPERT_BTN_PRIMARY}`}
+                      >
+                        <Clock size={16} className="text-white shrink-0" />
+                        {t('aiExpertPlanTimelineBtn')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTimeChoiceMode('choose')}
+                        className="w-full py-3 min-h-[44px] rounded-xl text-sm font-semibold text-white/70 hover:text-white transition-colors"
+                      >
+                        {t('aiExpertBackAria')}
+                      </button>
+                    </div>
                   </>
                 )}
-
-                <div className="flex flex-col gap-2.5 pt-4 border-t border-white/10">
-                  <button
-                    disabled={!startTime || tripDurationHours == null}
-                    onClick={() => executePlan('timeline')}
-                    className={`w-full py-4 min-h-[48px] rounded-xl text-base disabled:opacity-40 flex items-center justify-center gap-2 ${AI_EXPERT_BTN_PRIMARY}`}
-                  >
-                    <Clock size={16} className="text-white shrink-0" />
-                    {t('aiExpertPlanTimelineBtn')}
-                  </button>
-                  <button
-                    onClick={() => executePlan('')}
-                    className={`w-full py-4 min-h-[48px] rounded-xl text-base flex items-center justify-center gap-2 ${AI_EXPERT_BTN_SECONDARY}`}
-                  >
-                    <Heart size={16} className="text-vailo-gold shrink-0" />
-                    {t('aiExpertBrowseFavoritesBtn')}
-                  </button>
-                </div>
               </div>
             )}
             

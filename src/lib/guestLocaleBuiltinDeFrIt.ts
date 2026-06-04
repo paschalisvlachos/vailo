@@ -11,14 +11,16 @@ import type { GuestLocaleUiKey } from './guestLocaleUi';
 
 /** German — portal chrome (non–AI Expert keys) */
 export const UI_DE: Partial<Record<GuestLocaleUiKey, string>> = {
-  less: 'Weniger',
-  more: 'Mehr',
+  less: 'weniger',
+  more: 'mehr',
   loadMoreLeft: 'Mehr laden · {count} übrig',
   website: 'Webseite',
   copyWifi: 'WLAN-Passwort kopieren',
   wifiCopied: 'Kopiert',
   failedLoadProperty: 'Unterkunftsdaten konnten nicht geladen werden.',
   loadingPortal: 'Ihr Aufenthalt wird geladen…',
+  guestLoadingVailo: 'Vailo wird geladen',
+  preparingStay: 'Ihr Aufenthalt wird vorbereitet',
   accessChecking: 'Zugang wird geprüft…',
   accessGuestTitle: 'Gastzugang',
   accessGuestSub: 'Geben Sie das Passwort aus Ihrer Einladung ein.',
@@ -42,13 +44,16 @@ export const UI_DE: Partial<Record<GuestLocaleUiKey, string>> = {
 };
 
 export const UI_FR: Partial<Record<GuestLocaleUiKey, string>> = {
-  less: 'Moins',
-  more: 'Plus',
+  less: 'moins',
+  more: 'plus',
   loadMoreLeft: 'Charger plus · {count} restant(s)',
   website: 'Site web',
   copyWifi: 'Copier le mot de passe Wi-Fi',
   wifiCopied: 'Copié',
   loadingPortal: 'Chargement de votre séjour…',
+  guestLoadingVailo: 'Chargement de Vailo',
+  preparingStay: 'Préparation de votre séjour',
+  accessChecking: 'Vérification de l’accès…',
   accessGuestTitle: 'Accès invité',
   accessContinue: 'Continuer',
   privacyPolicy: 'Confidentialité',
@@ -62,13 +67,16 @@ export const UI_FR: Partial<Record<GuestLocaleUiKey, string>> = {
 };
 
 export const UI_IT: Partial<Record<GuestLocaleUiKey, string>> = {
-  less: 'Meno',
-  more: 'Altro',
+  less: 'meno',
+  more: 'altro',
   loadMoreLeft: 'Carica altri · {count} rimasti',
   website: 'Sito web',
   copyWifi: 'Copia password Wi-Fi',
   wifiCopied: 'Copiato',
   loadingPortal: 'Caricamento del soggiorno…',
+  guestLoadingVailo: 'Caricamento di Vailo',
+  preparingStay: 'Preparazione del soggiorno',
+  accessChecking: 'Verifica accesso…',
   accessGuestTitle: 'Accesso ospite',
   accessContinue: 'Continua',
   privacyPolicy: 'Privacy',

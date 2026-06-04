@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Code2, Loader2, Send, Sparkles } from 'lucide-react';
+import { Code2, Download, Loader2, Send, Sparkles } from 'lucide-react';
 import { adminPath } from '../../../lib/adminRoutes';
 import {
   AdminBackHeader,
@@ -12,6 +12,8 @@ import { useAdminSession } from '../../../context/AdminSessionContext';
 import { Link } from 'react-router-dom';
 import {
   askAppCodeKnowledge,
+  downloadMarkdownFile,
+  fetchAppCodeKnowledgeExport,
   fetchAppCodeKnowledgeMeta,
   type AppCodeKnowledgeMeta,
 } from '../../../lib/appCodeKnowledge';
@@ -49,6 +51,7 @@ export default function AppCodeKnowledge() {
   ]);
   const [input, setInput] = useState('');
   const [asking, setAsking] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,6 +106,21 @@ export default function AppCodeKnowledge() {
     }
   };
 
+  const handleDownload = async () => {
+    if (downloading || !meta?.ready) return;
+    setDownloading(true);
+    try {
+      const exp = await fetchAppCodeKnowledgeExport(authContext);
+      downloadMarkdownFile(exp.markdown, exp.suggestedFilename);
+      toast.success(`Downloaded ${exp.suggestedFilename} (${exp.fileCount} files)`);
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof Error ? e.message : 'Download failed.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="admin-page">
       <AdminBackHeader
@@ -118,10 +136,39 @@ export default function AppCodeKnowledge() {
               : 'Index not deployed'}
           </span>
         }
+        action={
+          <AdminButton
+            type="button"
+            variant="secondary"
+            onClick={() => void handleDownload()}
+            disabled={!meta?.ready || downloading}
+            className="shrink-0"
+          >
+            {downloading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
+            Download for Gemini
+          </AdminButton>
+        }
       />
 
       <AdminCard className="p-4 mb-4 border border-gray-100 bg-vailo-surface-elevated/80 text-sm text-gray-700">
         <p>
+          <span className="font-semibold text-vailo-dark">Use outside Vailo:</span> Download the
+          markdown snapshot, upload it in{' '}
+          <a
+            href="https://gemini.google.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-vailo-teal underline"
+          >
+            Gemini
+          </a>{' '}
+          or Google AI Studio, then ask the same kinds of questions as in the chat below.
+        </p>
+        <p className="mt-2">
           <span className="font-semibold text-vailo-dark">Signed in as:</span>{' '}
           <code className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200">
             {signInEmail || '—'}
@@ -163,7 +210,7 @@ export default function AppCodeKnowledge() {
               <p className="text-xs text-amber-800/90">
                 After fixing owners or updating functions, redeploy:{' '}
                 <code className="font-mono bg-white/80 px-1 rounded">
-                  firebase deploy --only functions:askAppCodeKnowledge,functions:getAppCodeKnowledgeMeta
+                  firebase deploy --only functions:askAppCodeKnowledge,functions:getAppCodeKnowledgeMeta,functions:getAppCodeKnowledgeExport
                 </code>
               </p>
             </>

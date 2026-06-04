@@ -22,7 +22,7 @@ export default function AllTrailsTrailEmbed({
     <div className={className}>
       <div className="rounded-2xl overflow-hidden border border-white/15 bg-black/20">
         <iframe
-          className="alltrails w-full border-0"
+          className="vailo-alltrails-embed w-full border-0"
           src={src}
           height={360}
           title={name ? `${ALLTRAILS_EMBED_IFRAME_TITLE} — ${name}` : ALLTRAILS_EMBED_IFRAME_TITLE}

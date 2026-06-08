@@ -54,7 +54,7 @@ export default function AiExpertCuratingLoader({
               className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
               aria-live="polite"
             >
-              {steps.map((step, i) => {
+              {steps?.map((step, i) => {
                 const done = i < activeStepIndex;
                 const active = i === activeStepIndex;
                 return (

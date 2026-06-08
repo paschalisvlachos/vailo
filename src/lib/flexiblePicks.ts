@@ -131,9 +131,9 @@ function drivingKm(
 
 function extractCoords(obj: any): { lat: number; lng: number } | null {
   if (!obj) return null;
-  let lat =
+  const lat =
     obj.latitude ?? obj.lat ?? obj.coords?.latitude ?? obj.coords?.lat;
-  let lng =
+  const lng =
     obj.longitude ?? obj.lng ?? obj.coords?.longitude ?? obj.coords?.lng;
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
@@ -309,7 +309,7 @@ export function buildFlexiblePicksDbContext(
   categories: string[],
   maxKm: number,
   startCoords: { lat: number; lng: number } | null,
-  propCoords: { lat: number; lng: number } | null,
+  _propCoords: { lat: number; lng: number } | null,
   gems: any[],
   features: any[],
   recentlyShown: Set<string> = new Set(),
@@ -642,7 +642,6 @@ export function buildFlexiblePicksPromptSection(
   dbContext: Record<string, { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] }>,
   knowledgeByPrimary: Record<string, string> = {}
 ): string {
-  const hardCap = effectiveMaxDistanceKm(maxKm);
   const displayMax = maxPicksForRadius(maxKm);
   const poolSize = aiCandidatePoolSize();
 

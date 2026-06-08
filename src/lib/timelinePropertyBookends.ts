@@ -68,7 +68,7 @@ export function ensureTimelinePropertyBookends(
   }
 
   const original = data.plan as Record<string, unknown>[];
-  let core = original.filter((item) => !isPropertyTimelineStop(item, ctx));
+  const core = original.filter((item) => !isPropertyTimelineStop(item, ctx));
 
   if (core.length === 0) {
     const departureOnly = buildPropertyStop(

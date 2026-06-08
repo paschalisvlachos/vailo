@@ -125,7 +125,7 @@ export function scheduleTimelinePlan(
     ? Math.min(maxDwell, Math.max(minDwell, Math.floor(availableForDwell / dwellIndices.length)))
     : 0;
 
-  let forwardEnd = startAbs + totalDrive + dwellEach * dwellIndices.length;
+  const forwardEnd = startAbs + totalDrive + dwellEach * dwellIndices.length;
   if (forwardEnd > endAbs && dwellIndices.length > 0 && dwellEach > minDwell) {
     const excess = forwardEnd - endAbs;
     const reduce = Math.min(dwellEach - minDwell, Math.ceil(excess / dwellIndices.length));

@@ -40,7 +40,6 @@ import {
   filterGuestEligibleTrails,
   HIKING_TRAILS_CATEGORY_PRIMARY,
   isHikingTrailsCategory,
-  trailCoords,
   type LocalTrailRecord,
 } from '../../lib/localTrailsGuest';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
@@ -54,8 +53,6 @@ import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { usePropertyContentLocaleSettings } from '../../hooks/usePropertyContentLocaleSettings';
 import {
   categoryPrimaryName,
-  featureBelongsToCategory,
-  gemBelongsToCategory,
   normalizeCategorySelectionList,
   resolveCategoryLabel,
 } from '../../lib/categoryLocale';
@@ -811,8 +808,8 @@ export default function AiExpertView({
       areaName: areaName || country || 'Greece',
       country,
       areaId,
-      gems: mergedGems,
-      features: mergedFeatures,
+      gems: mergedGems as any,
+      features: mergedFeatures as any,
       discoveredPlaces: discoveredPlaces.map((p) => ({
         name: p.name,
         photoUrl: p.photoUrl,
@@ -1028,7 +1025,7 @@ export default function AiExpertView({
         }) || [],
         features: mergedFeatures?.map((f) => {
           const lf = localizeFeature(f);
-          return { name: lf.name, category: f.categories?.join(', '), distance: 'Local', description: lf.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' };
+          return { name: lf.name, category: (f.categories as string[])?.join(', '), distance: 'Local', description: lf.description, photoUrl: f.photoUrl || '', googleMapsUrl: f.googleMapsUrl || '' };
         }) || []
       };
     }
@@ -1063,7 +1060,7 @@ export default function AiExpertView({
         const lf = localizeFeature(f);
         return {
           name: lf.name,
-          category: f.categories?.join(', '),
+          category: (f.categories as string[])?.join(', '),
           distance: f.calculatedKm !== null ? `${f.calculatedKm.toFixed(1)}km` : 'Local',
           description: lf.description,
           photoUrl: f.photoUrl || '',
@@ -1796,9 +1793,9 @@ User: ${userText}`;
         track('ai_expert_plan', {
           planStopCount: countPlanStops(plan),
           planCategories: Array.isArray(plan.categories)
-            ? (plan.categories as { categoryName?: string }[])
+            ? ((plan.categories as { categoryName?: string }[])
                 .map((c) => c.categoryName)
-                .filter(Boolean)
+                .filter(Boolean) as string[])
             : undefined,
         });
         const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;

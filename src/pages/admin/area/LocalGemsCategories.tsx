@@ -21,7 +21,8 @@ export default function LocalGemsCategories() {
           <span className="font-semibold text-vailo-teal">
             {decodedArea}, {decodedCountry}
           </span>
-          . The same names appear in Live like a local unless you hide a category with the eye control.
+          . The same names appear in Live like a local unless you hide a category with the eye control. Add
+          knowledge notes per category to guide the AI concierge.
         </p>
       </div>
 
@@ -33,6 +34,7 @@ export default function LocalGemsCategories() {
         title="Category names"
         onRename={renameLocalGemsCategory}
         showLiveLikeLocalExclude
+        showLiveLikeLocalKnowledge
       />
     </div>
   );

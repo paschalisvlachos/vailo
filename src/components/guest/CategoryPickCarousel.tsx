@@ -30,6 +30,7 @@ type CategoryPickCarouselProps = {
   propertyId?: string;
   viewMapLabel?: string;
   goMapLabel?: string;
+  emptyMessage?: string;
 };
 
 export default function CategoryPickCarousel({
@@ -39,6 +40,7 @@ export default function CategoryPickCarousel({
   propertyId,
   viewMapLabel = 'View',
   goMapLabel = 'Go',
+  emptyMessage,
 }: CategoryPickCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -62,7 +64,21 @@ export default function CategoryPickCarousel({
     setActiveIndex(index);
   };
 
-  if (!items?.length) return null;
+  if (!items?.length) {
+    if (!emptyMessage) return null;
+    return (
+      <div className="mb-2 min-w-0 max-w-full">
+        <div className="mb-3">
+          <h4 className="font-semibold text-white text-base tracking-tight">
+            {categoryName}
+          </h4>
+        </div>
+        <p className="text-sm text-white/55 leading-relaxed rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+          {emptyMessage}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-2 min-w-0 max-w-full">

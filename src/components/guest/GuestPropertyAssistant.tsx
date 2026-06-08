@@ -13,6 +13,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { ai } from '../../lib/firebase';
+import { openExternalUrl } from '../../lib/geocoding';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { buildPropertyAssistantSystemPrompt } from '../../lib/guestPropertyAssistantPrompt';
@@ -116,15 +117,14 @@ function EscalationHelp({
           Report issue
         </button>
         {whatsappHref ? (
-          <a
-            href={whatsappHref}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={() => openExternalUrl(whatsappHref)}
             className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#25D366] text-white hover:bg-[#20bd5a] transition-colors"
           >
             <MessageCircle size={14} />
             WhatsApp host
-          </a>
+          </button>
         ) : null}
       </div>
     </div>
@@ -614,7 +614,7 @@ export default function GuestPropertyAssistant({
                   onChange={(e) => setInput(e.target.value.slice(0, MAX_USER_INPUT))}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask anything about your stay…"
-                  rows={1}
+                  rows={2}
                   disabled={isSending}
                   className="w-full text-base text-gray-800 placeholder:text-gray-400 outline-none resize-none bg-transparent max-h-32 leading-relaxed"
                 />

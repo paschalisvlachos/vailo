@@ -47,6 +47,9 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertContinueSelected'
   | 'aiExpertDistanceTitle'
   | 'aiExpertDistanceSub'
+  | 'aiExpertDistanceNearestLine'
+  | 'aiExpertDistanceNearestKm'
+  | 'aiExpertDistanceNoCuratedPicks'
   | 'aiExpertMappingDistances'
   | 'aiExpertTimeTitle'
   | 'aiExpertTimeSub'
@@ -89,29 +92,30 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertTrailPicksSub'
   | 'aiExpertEnhancingTrail'
   | 'aiExpertTrailOpenAllTrailsHint'
-  | 'aiExpertNoTrailsInRange';
+  | 'aiExpertNoTrailsInRange'
+  | 'aiExpertNoPicksInRange';
 
 export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertConcierge: 'Vailo Concierge',
   aiExpertYoureIn: "You're in",
   aiExpertWelcomeBody:
     "Forget the guidebooks — I'll show you where people in {area} actually go. The tavernas they pick, the coves they keep quiet, the corners tourists walk past every day.",
-  aiExpertWelcomeCta: 'No tourist traps. Just real days. Where shall we begin?',
+  aiExpertWelcomeCta: "I'll show you where locals in {area} actually go.",
   aiExpertYourStay: 'your stay',
-  aiExpertThinking: 'Curating your local recommendations…',
+  aiExpertThinking: 'Curating your recommendations…',
   aiExpertCuratingHint: 'This usually takes a few moments — we’re being picky on your behalf.',
-  aiExpertCuratingStepExplore: 'Exploring what locals love nearby',
+  aiExpertCuratingStepExplore: 'Exploring what’s nearby',
   aiExpertCuratingStepMatch: 'Matching your interests & distance',
   aiExpertCuratingStepBuild: 'Building your personalised picks',
   aiExpertCuratingStepFinishing: 'Adding the finishing touches',
   aiExpertVerifyingLocation: 'Verifying location…',
   aiExpertFindingLocation: 'Finding your starting point…',
-  aiExpertPlanPicksTitle: 'Local favorites, curated for you',
+  aiExpertPlanPicksTitle: 'Curated for you',
   aiExpertPlanPicksSub:
-    'Places locals genuinely choose — not tourist traps. Ordered by distance from your starting point.',
+    'Real picks from people who know the area — sorted by distance from your start.',
   aiExpertPlanTimelineTitle: 'Your day, thoughtfully planned',
   aiExpertPlanTimelineSub:
-    'A timeline built around authentic local experiences, from departure to return.',
+    'A practical route from departure to return.',
   aiExpertSeenBefore: 'Seen before',
   aiExpertBadgeYourStay: 'Your stay',
   aiExpertBadgeVailoPick: 'Vailo pick',
@@ -131,19 +135,22 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertWhichLocation: 'Which location did you mean?',
   aiExpertKmFromProperty: '~{km} km from {name}',
   aiExpertTryDifferentSpelling: 'Try a different spelling',
-  aiExpertOrEnterTown: 'or enter a town or village',
-  aiExpertLocationPlaceholder: 'e.g. town or area',
+  aiExpertOrEnterTown: 'or',
+  aiExpertLocationPlaceholder: 'other location',
   aiExpertSet: 'Set',
   aiExpertNearProperty: 'Near {name}',
   aiExpertNearYourProperty: 'Near your property',
-  aiExpertCategoriesTitle: 'What would locals choose today?',
+  aiExpertCategoriesTitle: 'What are you in the mood for?',
   aiExpertCategoriesSub:
-    'Select up to three interests — we will surface the places residents actually go.',
+    'Choose up to three interests — we’ll find standout places nearby.',
   aiExpertLoadingCategories: 'Loading local categories…',
   aiExpertContinueSelected: 'Continue · {count} selected',
   aiExpertDistanceTitle: 'How far will you venture?',
   aiExpertDistanceSub:
-    'From {location} — locals know the best spots are often closer than you think.',
+    'From {location} — the best spots are often closer than you think.',
+  aiExpertDistanceNearestLine: 'Nearest from your start: {hints}',
+  aiExpertDistanceNearestKm: '{category} ~{km} km',
+  aiExpertDistanceNoCuratedPicks: '{category} — no curated picks yet (AI from ~10 km)',
   aiExpertMappingDistances: 'Mapping distances from your starting point…',
   aiExpertTimeTitle: 'How would you like to explore?',
   aiExpertTimeSub: "Pick a start time and how long you're out — we'll build your day around it.",
@@ -151,9 +158,9 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertHowLongOut: 'How long are you out?',
   aiExpertPlanTimelineBtn: 'Plan my day with a timeline',
   aiExpertBrowseFavoritesBtn: 'No fixed schedule. Just browse',
-  aiExpertChatPlaceholder: 'Ask about a place, refine your plan, or request alternatives…',
+  aiExpertChatPlaceholder: 'Ask Vailo',
   aiExpertChatDisclaimer:
-    'Recommendations reflect local knowledge. Always verify opening hours and routes before you go.',
+    'Always verify opening hours and routes before you go.',
   aiExpertChatAria: 'Message the concierge',
   aiExpertSendAria: 'Send message',
   aiExpertBackAria: 'Go back',
@@ -198,6 +205,8 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertTrailOpenAllTrailsHint: 'Open on AllTrails for the full route guide and reviews.',
   aiExpertNoTrailsInRange:
     'No hiking trails in your selected range. Try widening the distance or check back after your host syncs local trails.',
+  aiExpertNoPicksInRange:
+    'No verified {category} picks within your range. Try widening the distance or choose another interest.',
 };
 
 export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = {
@@ -205,22 +214,22 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertYoureIn: 'Βρίσκεστε στο',
   aiExpertWelcomeBody:
     'Ξεχάστε τους ταξιδιωτικούς οδηγούς — θα σας δείξω πού πηγαίνουν στην πραγματικότητα οι ντόπιοι στο/στην {area}. Τα ταβέρνια που επιλέγουν, οι κρυφές ακτές, τις γωνιές που οι τουρίστες προσπερνούν κάθε μέρα.',
-  aiExpertWelcomeCta: 'Χωρίς τουριστικές παγίδες. Αληθινές μέρες. Από πού ξεκινάμε;',
+  aiExpertWelcomeCta: 'Θα σας δείξω πού πηγαίνουν στην πραγματικότητα οι ντόπιοι στο/στην {area}.',
   aiExpertYourStay: 'τη διαμονή σας',
   aiExpertThinking: 'Ετοιμάζουμε τις τοπικές προτάσεις σας…',
   aiExpertCuratingHint: 'Συνήθως χρειάζονται λίγα λεπτά — επιλέγουμε προσεκτικά για εσάς.',
-  aiExpertCuratingStepExplore: 'Εξερευνούμε τι αγαπούν οι ντόπιοι κοντά σας',
+  aiExpertCuratingStepExplore: 'Εξερευνούμε τι υπάρχει κοντά σας',
   aiExpertCuratingStepMatch: 'Ταιριάζουμε τα ενδιαφέροντα & την απόσταση',
   aiExpertCuratingStepBuild: 'Φτιάχνουμε τις προσωπικές σας επιλογές',
   aiExpertCuratingStepFinishing: 'Προσθέτουμε τις τελικές πινελιές',
   aiExpertVerifyingLocation: 'Επαλήθευση τοποθεσίας…',
   aiExpertFindingLocation: 'Εύρεση σημείου εκκίνησης…',
-  aiExpertPlanPicksTitle: 'Τοπικά αγαπημένα, για εσάς',
+  aiExpertPlanPicksTitle: 'Επιλεγμένα για εσάς',
   aiExpertPlanPicksSub:
-    'Μέρη που επιλέγουν οι ντόπιοι — όχι τουριστικές παγίδες. Ταξινομημένα κατά απόσταση από το σημείο εκκίνησης.',
+    'Πραγματικές επιλογές από ανθρώπους που γνωρίζουν την περιοχή — ταξινομημένες κατά απόσταση.',
   aiExpertPlanTimelineTitle: 'Η μέρα σας, με σχέδιο',
   aiExpertPlanTimelineSub:
-    'Χρονοδιάγραμμα με αυθεντικές τοπικές εμπειρίες, από την αναχώρηση μέχρι την επιστροφή.',
+    'Ένα πρακτικό δρομολόγιο από την αναχώρηση μέχρι την επιστροφή.',
   aiExpertSeenBefore: 'Το είδατε πριν',
   aiExpertBadgeYourStay: 'Η διαμονή σας',
   aiExpertBadgeVailoPick: 'Επιλογή Vailo',
@@ -240,19 +249,22 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertWhichLocation: 'Ποια τοποθεσία εννοείτε;',
   aiExpertKmFromProperty: '~{km} χλμ. από {name}',
   aiExpertTryDifferentSpelling: 'Δοκιμάστε άλλη ορθογραφία',
-  aiExpertOrEnterTown: 'ή εισάγετε χωριό ή περιοχή',
-  aiExpertLocationPlaceholder: 'π.χ. χωριό, περιοχή',
+  aiExpertOrEnterTown: 'ή',
+  aiExpertLocationPlaceholder: 'άλλη τοποθεσία',
   aiExpertSet: 'Ορισμός',
   aiExpertNearProperty: 'Κοντά στο {name}',
   aiExpertNearYourProperty: 'Κοντά στο κατάλυμά σας',
-  aiExpertCategoriesTitle: 'Τι θα διάλεγαν σήμερα οι ντόπιοι;',
+  aiExpertCategoriesTitle: 'Τι σας ενδιαφέρει σήμερα;',
   aiExpertCategoriesSub:
-    'Επιλέξτε έως τρία ενδιαφέροντα — θα σας δείξουμε πού πηγαίνουν οι κάτοικοι.',
+    'Επιλέξτε έως τρία ενδιαφέροντα — θα βρούμε ξεχωριστά μέρη κοντά σας.',
   aiExpertLoadingCategories: 'Φόρτωση τοπικών κατηγοριών…',
   aiExpertContinueSelected: 'Συνέχεια · {count} επιλεγμένα',
   aiExpertDistanceTitle: 'Πόσο μακριά θα πάτε;',
   aiExpertDistanceSub:
     'Από {location} — τα καλύτερα συχνά είναι πιο κοντά απ\' ό,τι νομίζετε.',
+  aiExpertDistanceNearestLine: 'Πιο κοντά από το σημείο εκκίνησης: {hints}',
+  aiExpertDistanceNearestKm: '{category} ~{km} χλμ.',
+  aiExpertDistanceNoCuratedPicks: '{category} — χωρίς επιλεγμένα ακόμα (AI από ~10 χλμ.)',
   aiExpertMappingDistances: 'Υπολογισμός αποστάσεων από το σημείο εκκίνησης…',
   aiExpertTimeTitle: 'Πώς θέλετε να εξερευνήσετε;',
   aiExpertTimeSub:
@@ -261,10 +273,9 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertHowLongOut: 'Πόση ώρα θα είστε έξω;',
   aiExpertPlanTimelineBtn: 'Σχέδιο ημέρας με χρονοδιάγραμμα',
   aiExpertBrowseFavoritesBtn: 'Χωρίς πρόγραμμα. Απλή περιήγηση',
-  aiExpertChatPlaceholder:
-    'Ρωτήστε για ένα μέρος, βελτιώστε το σχέδιο ή ζητήστε εναλλακτικές…',
+  aiExpertChatPlaceholder: 'Ask Vailo',
   aiExpertChatDisclaimer:
-    'Οι προτάσεις βασίζονται σε τοπική γνώση. Επιβεβαιώστε πάντα ώρες λειτουργίας και διαδρομές.',
+    'Επιβεβαιώστε πάντα ώρες λειτουργίας και διαδρομές πριν φύγετε.',
   aiExpertChatAria: 'Μήνυμα στον concierge',
   aiExpertSendAria: 'Αποστολή',
   aiExpertBackAria: 'Πίσω',
@@ -309,4 +320,6 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertTrailOpenAllTrailsHint: 'Ανοίξτε στο AllTrails για τον πλήρη οδηγό διαδρομής και κριτικές.',
   aiExpertNoTrailsInRange:
     'Δεν υπάρχουν μονοπάτια στην επιλεγμένη απόσταση. Δοκιμάστε μεγαλύτερη ακτίνα ή ελέγξτε αργότερα.',
+  aiExpertNoPicksInRange:
+    'Δεν βρέθηκαν επαληθευμένες επιλογές για {category} εντός της απόστασής σας. Δοκιμάστε μεγαλύτερη ακτίνα ή άλλο ενδιαφέρον.',
 };

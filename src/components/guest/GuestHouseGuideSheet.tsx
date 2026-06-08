@@ -35,6 +35,7 @@ import { listHouseGuideCategoriesWithContent } from '../../lib/houseGuideGuestCo
 import { getGuideTextValue } from '../../lib/houseGuideLocales';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
+import { openExternalUrl } from '../../lib/geocoding';
 
 const ICONS: Record<string, ReactNode> = {
   Key: <Key size={18} />,
@@ -165,14 +166,13 @@ function FieldBlock({
                   )}
                 </div>
                 {link && (
-                  <a
-                    href={link}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(link)}
                     className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[#C5A059] shrink-0"
                   >
                     Map <ExternalLink size={12} />
-                  </a>
+                  </button>
                 )}
               </li>
             );

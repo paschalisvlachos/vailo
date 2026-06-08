@@ -51,6 +51,24 @@ export function renameValueInLocaleMap(
   return changed ? next : map;
 }
 
+/** Canonical primary category names stored on a local gem. */
+export function gemCategoryPrimaries(
+  gem: Record<string, unknown>,
+  catalogDocs: Record<string, unknown>[] = [],
+  primaryLocale = 'en',
+  guestLocale?: string
+): string[] {
+  if (Array.isArray(gem.categories) && gem.categories.length > 0) {
+    return normalizeCategorySelectionList(
+      gem.categories as string[],
+      catalogDocs,
+      primaryLocale
+    );
+  }
+  const single = resolveGemCategoryPrimary(gem, catalogDocs, primaryLocale, guestLocale);
+  return single ? [single] : [];
+}
+
 /** Patch gem/place doc when a category label is renamed. */
 export function patchLinkedGemCategory(
   data: Record<string, unknown>,
@@ -60,6 +78,9 @@ export function patchLinkedGemCategory(
   if (!oldName || !newName || oldName === newName) return null;
   const patch: Record<string, unknown> = {};
   if (data.category === oldName) patch.category = newName;
+
+  const cats = patchLinkedFeatureCategoriesList(data.categories, oldName, newName);
+  if (cats) patch.categories = cats;
 
   const map = readLocaleMap(data, 'category');
   const nextMap = renameValueInLocaleMap(map, oldName, newName);
@@ -177,5 +198,49 @@ export function categorySelectionIncludes(
   if (!target) return false;
   return normalizeCategorySelectionList(selected, catalogDocs, primaryLocale).some(
     (s) => s.toLowerCase() === target
+  );
+}
+
+function resolveGemCategoryPrimary(
+  gem: Record<string, unknown>,
+  catalogDocs: Record<string, unknown>[],
+  primaryLocale: string,
+  guestLocale?: string
+): string {
+  const primary = normalizeLocaleCode(primaryLocale) || 'en';
+  const locale = normalizeLocaleCode(guestLocale || '') || primary;
+  const label =
+    resolveLocalizedString(gem, 'category', locale, primary) ||
+    (typeof gem.category === 'string' ? gem.category : '');
+  return resolveCategoryToPrimary(label, catalogDocs, primaryLocale);
+}
+
+/** Match a local gem to a canonical category primary (handles EN/EL labels, multi-category). */
+export function gemBelongsToCategory(
+  gem: Record<string, unknown>,
+  categoryPrimary: string,
+  catalogDocs: Record<string, unknown>[],
+  primaryLocale: string,
+  guestLocale?: string
+): boolean {
+  const target = (categoryPrimary || '').trim().toLowerCase();
+  if (!target) return false;
+  return gemCategoryPrimaries(gem, catalogDocs, primaryLocale, guestLocale).some(
+    (p) => p.toLowerCase() === target
+  );
+}
+
+/** Match a feature to a canonical category primary. */
+export function featureBelongsToCategory(
+  feature: Record<string, unknown>,
+  categoryPrimary: string,
+  catalogDocs: Record<string, unknown>[],
+  primaryLocale: string
+): boolean {
+  const target = (categoryPrimary || '').trim().toLowerCase();
+  if (!target) return false;
+  const cats = Array.isArray(feature.categories) ? feature.categories : [];
+  return cats.some((raw) =>
+    resolveCategoryToPrimary(String(raw || ''), catalogDocs, primaryLocale).toLowerCase() === target
   );
 }

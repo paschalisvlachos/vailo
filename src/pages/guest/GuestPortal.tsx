@@ -26,6 +26,7 @@ import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePorta
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { GuestLocaleProvider, useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestUiTFormat } from '../../lib/guestLocaleUi';
+import { buildGoogleMapsEmbedUrl, getItemMapLinks, openExternalUrl } from '../../lib/geocoding';
 import GuestLocalizedText from '../../components/guest/GuestLocalizedText';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
 import {
@@ -46,6 +47,7 @@ import {
   resolvePropertyTypeFromUrl,
 } from '../../lib/guestPortalSlug';
 import { adminPath } from '../../lib/adminRoutes';
+import { gemCategoryPrimaries } from '../../lib/categoryLocale';
 
 const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
@@ -92,13 +94,23 @@ type GuestGem = {
   distanceKm?: number;
   latitude?: number;
   longitude?: number;
+  googleMapsUrl?: string;
+  googlePlaceId?: string;
   isLegitPick?: boolean;
   isDailyTrip?: boolean;
   [key: string]: unknown;
 };
 
 /** Paginated gem cards — state stays here so "Load more" does not re-render the whole portal. */
-function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string }) {
+function GuestGemsGrid({
+  gems,
+  listKey,
+  mapAreaHint,
+}: {
+  gems: GuestGem[];
+  listKey: string;
+  mapAreaHint: string;
+}) {
   const { locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
   const [visibleCount, setVisibleCount] = useState(GEMS_PAGE_SIZE);
   const [activeGemMap, setActiveGemMap] = useState<string | null>(null);
@@ -125,10 +137,31 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
             resolveLocalizedString(gem, 'name', locale, contentPrimaryLocale, contentReviewedLocales) ||
             gem.name ||
             '';
-          const gemCategory =
-            resolveLocalizedString(gem, 'category', locale, contentPrimaryLocale, contentReviewedLocales) ||
-            gem.category ||
-            '';
+          const gemCategory = gemCategoryPrimaries(
+            gem,
+            [],
+            contentPrimaryLocale,
+            locale
+          ).join(' · ');
+          const mapLinks = getItemMapLinks(
+            {
+              title: gemName,
+              googleMapsUrl: gem.googleMapsUrl,
+              googlePlaceId: gem.googlePlaceId,
+              latitude: gem.latitude,
+              longitude: gem.longitude,
+            },
+            mapAreaHint
+          );
+          const gemEmbedSrc = buildGoogleMapsEmbedUrl({
+            title: gemName,
+            areaHint: mapAreaHint,
+            latitude: gem.latitude,
+            longitude: gem.longitude,
+            googlePlaceId: gem.googlePlaceId,
+            googleMapsUrl: gem.googleMapsUrl,
+            zoom: 14,
+          });
           return (
           <div
             key={gem.id}
@@ -187,7 +220,7 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
                   height="100%"
                   frameBorder="0"
                   scrolling="no"
-                  src={`https://maps.google.com/maps?q=${gem.latitude},${gem.longitude}&z=14&output=embed`}
+                  src={gemEmbedSrc}
                 />
               </div>
             )}
@@ -218,14 +251,13 @@ function GuestGemsGrid({ gems, listKey }: { gems: GuestGem[]; listKey: string })
                 >
                   <Map size={14} className="shrink-0" /> Map
                 </button>
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${gem.latitude},${gem.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => openExternalUrl(mapLinks.navigateUrl)}
                   className="guest-btn-action flex-1 bg-[#0B4F5C] hover:bg-[#C5A059] text-white shadow-sm"
                 >
                   <Navigation size={14} className="shrink-0" /> Route
-                </a>
+                </button>
               </div>
             </div>
           </div>
@@ -318,6 +350,7 @@ function GuestPortalPage({
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [portalMenuOpen, setPortalMenuOpen] = useState(false);
   const [houseGuideOpen, setHouseGuideOpen] = useState(false);
+  const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
@@ -527,6 +560,11 @@ function GuestPortalPage({
     return t('houseGuideMenuSub').replace('{count}', String(houseGuideSectionCount));
   }, [houseGuideSectionCount, locale, t]);
 
+  const mapAreaHint = useMemo(() => {
+    const parts = [typeData?.area, typeData?.city, typeData?.country].filter(Boolean);
+    return parts.join(', ');
+  }, [typeData]);
+
   const websiteUrl = useMemo(() => {
     const raw = String(typeData?.listingUrl || property?.listingUrl || '').trim();
     if (!raw) return null;
@@ -543,7 +581,9 @@ function GuestPortalPage({
     }
   };
 
-  const gemCategories = Array.from(new Set(gems.map(g => g.category).filter(Boolean)));
+  const gemCategories = Array.from(
+    new Set(gems.flatMap((g) => gemCategoryPrimaries(g, [], contentPrimaryLocale, locale)))
+  );
   const allGemFilterOptions = ['All', "Host's Picks", '< 5km', 'Day Trips', ...gemCategories];
 
   const handleGemFilterClick = (filter: string) => {
@@ -568,10 +608,16 @@ function GuestPortalPage({
       if (gemFilters.includes("Host's Picks") && gem.isLegitPick) matches = true;
       if (gemFilters.includes('< 5km') && Number(gem.distanceKm) < 5) matches = true;
       if (gemFilters.includes('Day Trips') && gem.isDailyTrip) matches = true;
-      if (gemFilters.includes(gem.category)) matches = true;
+      if (
+        gemCategoryPrimaries(gem, [], contentPrimaryLocale, locale).some((cat) =>
+          gemFilters.includes(cat)
+        )
+      ) {
+        matches = true;
+      }
       return matches;
     });
-  }, [gems, gemFilters]);
+  }, [gems, gemFilters, contentPrimaryLocale, locale]);
 
   const gemFilterKey = gemFilters.join('\u0001');
 
@@ -686,15 +732,14 @@ function GuestPortalPage({
                         {t('map')}
                       </button>
                       {websiteUrl && (
-                        <a
-                          href={websiteUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openExternalUrl(websiteUrl)}
                           className="flex items-center justify-center h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all"
                           aria-label="Website"
                         >
                           <Globe size={15} className="text-[#C5A059]" />
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -717,27 +762,27 @@ function GuestPortalPage({
                     )}
                   </div>
 
-                  {/* Live like a local — Ai Expert teal/gold; photo ends at vertical midpoint */}
+                  {/* Live like a local — gold frame; photo ends at vertical midpoint */}
                   <div className="mt-auto pt-6">
                     <LiveLikeLocalCTA
                       onActivate={() => setActiveView('aiExpert')}
-                      className="group w-full rounded-2xl border border-white/15 bg-gradient-to-b from-vailo-teal to-vailo-teal-hover transition-colors duration-300"
+                      className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 transition-colors duration-300"
                     >
-                      <div className="px-4 py-4 min-h-[72px] flex items-center justify-between gap-2">
+                      <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 min-h-[72px] flex items-center justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner">
-                            <Sparkles size={22} className="text-vailo-gold" />
+                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0">
+                            <Sparkles size={22} className="text-white" />
                           </div>
                           <div className="text-left min-w-0">
-                            <p className="text-white text-sm font-semibold leading-tight tracking-wide">
+                            <p className="text-[#0B4F5C] text-sm font-semibold leading-tight tracking-wide">
                               {t('liveLikeLocalHero')}
                             </p>
-                            <p className="text-white/60 text-xs mt-0.5 leading-snug">
+                            <p className="text-[#0B4F5C]/65 text-xs mt-0.5 leading-snug">
                               {t('liveLikeLocalHeroSub')}
                             </p>
                           </div>
                         </div>
-                        <div className="h-10 w-10 shrink-0 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white/80 group-hover:bg-white/15 transition-colors">
+                        <div className="h-10 w-10 shrink-0 rounded-xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/12 flex items-center justify-center text-[#0B4F5C]/70 group-hover:bg-[#0B4F5C]/12 transition-colors">
                           <ChevronDown size={20} className="-rotate-90" />
                         </div>
                       </div>
@@ -825,6 +870,8 @@ function GuestPortalPage({
                 latitude={propertyLat!}
                 longitude={propertyLng!}
                 googleMapsUrl={typeData?.googleMapsUrl}
+                googlePlaceId={typeData?.googlePlaceId}
+                areaHint={mapAreaHint}
                 t={t}
               />
             )}
@@ -842,6 +889,7 @@ function GuestPortalPage({
                   features={portalFeatures}
                   propertyName={property?.propertyName || 'your stay'}
                   propertyTypeName={typeData?.propertyTypeName}
+                  onDetailOpenChange={setServiceDetailOpen}
                 />
               )}
 
@@ -894,7 +942,11 @@ function GuestPortalPage({
                       No spots match these filters.
                     </p>
                   ) : (
-                    <GuestGemsGrid gems={filteredGems} listKey={gemFilterKey} />
+                    <GuestGemsGrid
+                      gems={filteredGems}
+                      listKey={gemFilterKey}
+                      mapAreaHint={mapAreaHint}
+                    />
                   )}
                 </section>
               )}
@@ -949,7 +1001,12 @@ function GuestPortalPage({
         t={t}
       />
 
-      {activeView === 'portal' && (
+      {activeView === 'portal' &&
+        !serviceDetailOpen &&
+        !propertyMapOpen &&
+        !reportSheetOpen &&
+        !houseGuideOpen &&
+        !legalModal && (
         <GuestFloatingActions
           mobileFramePreview={viewMode === 'mobile'}
           onOpenAssistant={() => setActiveView('assistant')}

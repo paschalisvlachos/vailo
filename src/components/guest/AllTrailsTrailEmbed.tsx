@@ -1,4 +1,5 @@
 import { ALLTRAILS_EMBED_IFRAME_TITLE, normalizeAllTrailsEmbedSrc } from '../../lib/allTrailsTrail';
+import { openExternalUrl } from '../../lib/geocoding';
 
 type Props = {
   name?: string;
@@ -32,14 +33,13 @@ export default function AllTrailsTrailEmbed({
         />
       </div>
       {pageUrl ? (
-        <a
-          href={pageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => openExternalUrl(pageUrl)}
           className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-vailo-gold hover:text-white transition-colors"
         >
           View full trail on AllTrails →
-        </a>
+        </button>
       ) : null}
     </div>
   );

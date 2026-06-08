@@ -1,14 +1,22 @@
 /** Plan photos: Tier 1 = Vailo DB ($0), Tier 3 = cached Google Places (low cost). */
 
 import { resolvePlacePhoto } from './placePhotoResolver';
-import { normalizePlaceName, placeNamesMatch } from './placeNameUtils';
+import { normalizePlaceName, placeNamesMatch, sanitizePlaceSearchTitle } from './placeNameUtils';
+import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
+import { categoryDistanceLimitKm } from './flexiblePicks';
+import { placeSearchTitleVariants } from './pickVerification';
 
 function isPropertyPlanItem(item: Record<string, unknown>, ctx: PlanPhotoContext): boolean {
   if (item.isProperty === true || item.source === 'property') return true;
   const title = typeof item.title === 'string' ? item.title : '';
   return !!(ctx.propertyName && title && placeNamesMatch(title, ctx.propertyName));
 }
-import { isDirectPlaceMapsUrl, buildPlaceMapUrls, bareGooglePlaceId } from './geocoding';
+import {
+  isDirectPlaceMapsUrl,
+  isBrokenPlaceMapsUrl,
+  buildPlaceMapUrls,
+  bareGooglePlaceId,
+} from './geocoding';
 
 export type PlanPhotoContext = {
   propertyPhotoUrl?: string;
@@ -42,6 +50,12 @@ export type PlanPhotoContext = {
     longitude?: number;
   }>;
   anchorCoords?: { lat: number; lng: number } | null;
+  guestMaxKm?: number;
+  knowledgeByPrimary?: Record<string, string>;
+};
+
+type ItemPhotoContext = PlanPhotoContext & {
+  categoryName?: string;
 };
 
 const RESOLVE_CONCURRENCY = 5;
@@ -176,7 +190,7 @@ function getItemCoords(item: Record<string, unknown>): { lat?: number; lng?: num
 
 async function enrichItemWithGooglePhoto(
   item: Record<string, unknown>,
-  ctx: PlanPhotoContext,
+  ctx: ItemPhotoContext,
   planSessionCache: Map<string, ResolvedPlacePhoto>
 ): Promise<Record<string, unknown>> {
   const local = resolveFromLocalSources(item, ctx);
@@ -186,7 +200,8 @@ async function enrichItemWithGooglePhoto(
 
   if (!itemNeedsGooglePhoto(item)) return item;
 
-  const title = String(item.title);
+  const title = sanitizePlaceSearchTitle(String(item.title || ''));
+  if (!title) return item;
   const area = ctx.areaName || '';
   const { lat, lng } = getItemCoords(item);
 
@@ -199,17 +214,37 @@ async function enrichItemWithGooglePhoto(
     return applyResolvedPhoto(item, cached, title);
   }
 
+  const categoryName = ctx.categoryName || '';
+  const knowledgeMode = getCategoryKnowledgeMode(ctx.knowledgeByPrimary?.[categoryName] || '');
+  const maxKm =
+    ctx.guestMaxKm != null
+      ? categoryDistanceLimitKm(ctx.guestMaxKm, categoryName, ctx.knowledgeByPrimary || {})
+      : undefined;
+
   try {
-    const resolved = await resolvePlacePhoto({
-      title,
-      area,
-      country: ctx.country,
-      areaId: ctx.areaId,
-      latitude: lat,
-      longitude: lng,
-      anchorLat: ctx.anchorCoords?.lat,
-      anchorLng: ctx.anchorCoords?.lng,
-    });
+    let resolved: ResolvedPlacePhoto | null = null;
+    for (const variant of placeSearchTitleVariants(title)) {
+      const attempt = await resolvePlacePhoto({
+        title: variant,
+        area,
+        country: ctx.country,
+        areaId: ctx.areaId,
+        latitude: lat,
+        longitude: lng,
+        anchorLat: ctx.anchorCoords?.lat,
+        anchorLng: ctx.anchorCoords?.lng,
+        maxKm,
+        knowledgeMode,
+      });
+      if (!attempt.notFound) {
+        resolved = attempt;
+        break;
+      }
+    }
+
+    if (!resolved) {
+      return item;
+    }
 
     planSessionCache.set(sessionKey, resolved);
     return applyResolvedPhoto(item, resolved, title);
@@ -237,20 +272,21 @@ function applyResolvedPhoto(
 
   const next: Record<string, unknown> = { ...item };
   if (resolved.photoUrl) next.photoUrl = resolved.photoUrl;
-  if (resolved.googleMapsUrl) next.googleMapsUrl = resolved.googleMapsUrl;
+  if (resolved.googleMapsUrl && !isBrokenPlaceMapsUrl(resolved.googleMapsUrl)) {
+    next.googleMapsUrl = resolved.googleMapsUrl;
+  }
   if (resolved.googlePlaceId) next.googlePlaceId = resolved.googlePlaceId;
   if (resolved.latitude != null) next.latitude = resolved.latitude;
   if (resolved.longitude != null) next.longitude = resolved.longitude;
 
-  if (resolved.googlePlaceId && !next.googleMapsUrl) {
-    const links = buildPlaceMapUrls(
-      resolved.googlePlaceId,
-      resolved.latitude ?? undefined,
-      resolved.longitude ?? undefined,
-      requestedTitle
-    );
-    if (links.googleMapsUrl) next.googleMapsUrl = links.googleMapsUrl;
-  }
+  const links = buildPlaceMapUrls(
+    resolved.googlePlaceId,
+    resolved.latitude ?? undefined,
+    resolved.longitude ?? undefined,
+    requestedTitle
+  );
+  if (!next.googleMapsUrl && links.googleMapsUrl) next.googleMapsUrl = links.googleMapsUrl;
+  if (links.navigateUrl) next.navigateUrl = links.navigateUrl;
 
   return next;
 }
@@ -350,8 +386,13 @@ export async function enrichPlanWithGooglePhotos(
     const categories = [];
     for (const cat of data.categories as Record<string, unknown>[]) {
       const catItems = (cat.items as Record<string, unknown>[]) || [];
+      const categoryName = String(cat.categoryName || '');
       const items = await mapConcurrent(catItems, (item) =>
-        enrichItemWithGooglePhoto(item, ctx, planSessionCache)
+        enrichItemWithGooglePhoto(
+          item,
+          { ...ctx, categoryName },
+          planSessionCache
+        )
       );
       categories.push({ ...cat, items });
     }

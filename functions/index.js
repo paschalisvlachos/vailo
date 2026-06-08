@@ -37,7 +37,7 @@ setGlobalOptions({
 });
 
 const PLACES_FIELD_MASK =
-  "places.id,places.displayName,places.rating,places.editorialSummary,places.location,places.photos,places.primaryType,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.formattedAddress,places.addressComponents";
+  "places.id,places.displayName,places.rating,places.editorialSummary,places.location,places.photos,places.primaryType,places.businessStatus,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.formattedAddress,places.addressComponents";
 
 const DUPLICATE_RADIUS_METERS = 150;
 const FUZZY_NAME_RADIUS_METERS = 250;
@@ -64,6 +64,49 @@ const GENERIC_SUFFIXES = [
   "agency",
   "shop",
   "studio",
+  "studios",
+];
+
+const GEO_HINTS = [
+  "beach",
+  "village",
+  "gorge",
+  "cove",
+  "bay",
+  "monastery",
+  "archaeological",
+  "lake",
+  "mountain",
+  "park",
+  "waterfall",
+  "harbour",
+  "port",
+  "square",
+  "cave",
+  "ruins",
+  "settlement",
+  "hamlet",
+];
+
+const BUSINESS_HINTS = [
+  "studio",
+  "studios",
+  "hotel",
+  "resort",
+  "restaurant",
+  "taverna",
+  "cafe",
+  "bar",
+  "grill",
+  "shop",
+  "agency",
+  "apartments",
+  "rooms",
+  "villas",
+  "suites",
+  "lodge",
+  "inn",
+  "motel",
 ];
 
 function normalizePlaceName(name) {
@@ -71,6 +114,36 @@ function normalizePlaceName(name) {
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\u0370-\u03ff]/g, "");
+}
+
+function sanitizePlaceSearchTitle(title) {
+  return String(title || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function includesHint(normalized, hints) {
+  return hints.some((h) => normalized.includes(h));
+}
+
+function placeKindsConflict(requestedNorm, resolvedNorm) {
+  const geoReq = includesHint(requestedNorm, GEO_HINTS);
+  const geoRes = includesHint(resolvedNorm, GEO_HINTS);
+  const bizReq = includesHint(requestedNorm, BUSINESS_HINTS);
+  const bizRes = includesHint(resolvedNorm, BUSINESS_HINTS);
+  if (geoReq && bizRes && !geoRes) return true;
+  if (bizReq && geoRes && !bizRes) return true;
+  return false;
+}
+
+function isBrokenPlaceMapsUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return true;
+  if (/\/place\/\/@|\/place\/\/\?|\/place\/\/$/i.test(raw)) return true;
+  const slug = raw.match(/\/place\/([^/?@]+)/i)?.[1]?.trim();
+  if (raw.includes("/place/") && (!slug || slug === "")) return true;
+  return false;
 }
 
 function nameCore(normalized) {
@@ -89,14 +162,112 @@ function namesLikelySame(a, b) {
   if (a === b) return true;
   const ca = nameCore(a);
   const cb = nameCore(b);
-  if (ca === cb && ca.length >= 4) return true;
+  if (ca === cb && ca.length >= 4) {
+    if (placeKindsConflict(a, b)) return false;
+    return true;
+  }
   const shorter = a.length <= b.length ? a : b;
   const longer = a.length <= b.length ? b : a;
   if (shorter.length >= 5 && longer.includes(shorter)) return true;
   if (ca.length >= 4 && cb.length >= 4 && (ca.includes(cb) || cb.includes(ca))) {
+    if (placeKindsConflict(a, b)) return false;
     return true;
   }
   return false;
+}
+
+const LOCALITY_STOPWORDS = new Set([
+  "georgioupolis",
+  "chania",
+  "crete",
+  "greece",
+  "apokoronas",
+  "rethymno",
+  "heraklion",
+  "municipality",
+  "regional",
+]);
+
+const SEARCH_TITLE_ALIASES = {
+  filaki: ["Phylaki", "Filaki"],
+  filakivillage: ["Phylaki", "Filaki"],
+  fres: ["Fres", "Fres Village"],
+  fresvillage: ["Fres", "Fres Village"],
+};
+
+function placeSearchTitleVariants(title) {
+  const clean = String(title || "").trim();
+  if (!clean) return [];
+  const norm = normalizePlaceName(clean);
+  const aliases = SEARCH_TITLE_ALIASES[norm] || [];
+  return [...new Set([clean, ...aliases])];
+}
+
+function beyondRadiusBufferKm(maxKm) {
+  if (!isFinite(maxKm) || maxKm <= 0) return 0;
+  return Math.min(Math.max(maxKm * 0.4, 3), 20);
+}
+
+function coordsInGreece(lat, lng) {
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    lat >= 34.5 &&
+    lat <= 41.8 &&
+    lng >= 19.0 &&
+    lng <= 29.6
+  );
+}
+
+function validateResolvedPlace(place, title, anchorLat, anchorLng, maxKm, knowledgeMode) {
+  const lat = place.latitude;
+  const lng = place.longitude;
+  if (!coordsInGreece(lat, lng)) return { ok: false, reason: "outside_greece" };
+
+  const cap =
+    typeof maxKm === "number" && maxKm > 0
+      ? maxKm + beyondRadiusBufferKm(maxKm)
+      : 30;
+  if (typeof anchorLat === "number" && typeof anchorLng === "number") {
+    const km = haversineMeters(anchorLat, anchorLng, lat, lng) / 1000;
+    if (km > cap) return { ok: false, reason: "too_far" };
+  }
+
+  const country = String(place.country || "").toLowerCase();
+  if (
+    country &&
+    !country.includes("greece") &&
+    country !== "gr" &&
+    !country.includes("ελλάδα")
+  ) {
+    return { ok: false, reason: "wrong_country" };
+  }
+
+  if (knowledgeMode === "areas") {
+    const type = String(place.category || "").toLowerCase();
+    const badTypes = [
+      "restaurant",
+      "lodging",
+      "tour",
+      "travel_agency",
+      "store",
+      "food",
+      "cafe",
+      "bar",
+    ];
+    if (badTypes.some((t) => type.includes(t))) return { ok: false, reason: "business_type" };
+    const reqNorm = normalizePlaceName(title);
+    const nameNorm = normalizePlaceName(place.name || "");
+    if (
+      includesHint(reqNorm, GEO_HINTS) &&
+      !includesHint(nameNorm, GEO_HINTS) &&
+      includesHint(nameNorm, BUSINESS_HINTS)
+    ) {
+      return { ok: false, reason: "type_conflict" };
+    }
+  }
+
+  return { ok: true };
 }
 
 function placeNamesMatch(requested, resolved) {
@@ -104,6 +275,7 @@ function placeNamesMatch(requested, resolved) {
   const b = normalizePlaceName(resolved);
   if (!a || !b) return false;
   if (a === b) return true;
+  if (placeKindsConflict(a, b)) return false;
   const ca = nameCore(a);
   const cb = nameCore(b);
   if (ca === cb && ca.length >= 4) return true;
@@ -113,17 +285,62 @@ function placeNamesMatch(requested, resolved) {
     .toLowerCase()
     .replace(/[^a-z0-9\u0370-\u03ff\s]/g, " ")
     .split(/\s+/)
-    .filter((w) => w.length >= 5 && !GENERIC_SUFFIXES.includes(w));
+    .filter(
+      (w) =>
+        w.length >= 5 &&
+        !GENERIC_SUFFIXES.includes(w) &&
+        !LOCALITY_STOPWORDS.has(w)
+    );
   return words.some((w) => b.includes(normalizePlaceName(w)));
 }
 
-function pickBestPlaceMatch(places, requestedTitle) {
-  if (!places?.length) return null;
-  for (const place of places) {
-    const name = place.displayName?.text || "";
-    if (placeNamesMatch(requestedTitle, name)) return place;
+function scorePlaceMatch(requestedTitle, place, biasLat, biasLng) {
+  const name = place.displayName?.text || "";
+  if (!placeNamesMatch(requestedTitle, name)) return -1;
+
+  let score = 100;
+  const reqNorm = normalizePlaceName(requestedTitle);
+  const resNorm = normalizePlaceName(name);
+  if (reqNorm === resNorm) score += 80;
+
+  for (const hint of GEO_HINTS) {
+    if (reqNorm.includes(hint) && resNorm.includes(hint)) score += 30;
   }
-  return null;
+  for (const hint of BUSINESS_HINTS) {
+    if (reqNorm.includes(hint) && resNorm.includes(hint)) score += 20;
+  }
+
+  if (typeof biasLat === "number" && typeof biasLng === "number") {
+    const plat = place.location?.latitude;
+    const plng = place.location?.longitude;
+    if (typeof plat === "number" && typeof plng === "number") {
+      const km = haversineMeters(biasLat, biasLng, plat, plng) / 1000;
+      score -= Math.min(km, 40);
+    }
+  }
+
+  return score;
+}
+
+function isPlaceOperational(place) {
+  const status = String(place?.businessStatus || "").trim().toUpperCase();
+  if (!status) return true;
+  return status !== "CLOSED_PERMANENTLY";
+}
+
+function pickBestPlaceMatch(places, requestedTitle, biasLat, biasLng) {
+  if (!places?.length) return null;
+  let best = null;
+  let bestScore = -1;
+  for (const place of places) {
+    if (!isPlaceOperational(place)) continue;
+    const score = scorePlaceMatch(requestedTitle, place, biasLat, biasLng);
+    if (score > bestScore) {
+      bestScore = score;
+      best = place;
+    }
+  }
+  return bestScore >= 0 ? best : null;
 }
 
 function pickClosestPlace(places, lat, lng) {
@@ -232,33 +449,33 @@ function matchTitleFromResolvedQuery(resolvedQuery, area) {
 }
 
 function pickFallbackPlace(places, requestedTitle, biasLat, biasLng) {
-  if (!places?.length) return null;
+  const operational = (places || []).filter(isPlaceOperational);
+  if (!operational.length) return null;
 
   const title = String(requestedTitle || "").trim();
   const coordInTitle = title.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
   if (coordInTitle) {
     return pickClosestPlace(
-      places,
+      operational,
       parseFloat(coordInTitle[1]),
       parseFloat(coordInTitle[2])
     );
   }
 
-  if (typeof biasLat === "number" && typeof biasLng === "number") {
-    const closest = pickClosestPlace(places, biasLat, biasLng);
-    if (closest) return closest;
-  }
-
-  if (places.length === 1) return places[0];
-
   if (title && !title.startsWith("http") && title.length >= 3) {
-    for (const place of places) {
+    for (const place of operational) {
+      const name = place.displayName?.text || "";
+      if (placeNamesMatch(title, name)) return place;
+    }
+    for (const place of operational) {
       const name = place.displayName?.text || "";
       if (namesLikelySame(normalizePlaceName(title), normalizePlaceName(name))) {
         return place;
       }
     }
   }
+
+  if (operational.length === 1) return operational[0];
 
   return null;
 }
@@ -314,6 +531,9 @@ function placeToResponse(data, placeNameFallback) {
       googleMapsUrl = upgraded.googleMapsUrl;
     }
   }
+  if (isBrokenPlaceMapsUrl(googleMapsUrl)) {
+    googleMapsUrl = null;
+  }
 
   return {
     photoUrl: data.photoUrl || null,
@@ -325,6 +545,25 @@ function placeToResponse(data, placeNameFallback) {
     discoveredPlaceId: data.id || null,
     fromDiscoveredDb: true,
   };
+}
+
+function cachedPlaceIsValidForRequest(data, anchorLat, anchorLng, maxKm) {
+  if (
+    typeof data.latitude !== "number" ||
+    typeof data.longitude !== "number" ||
+    !coordsInGreece(data.latitude, data.longitude)
+  ) {
+    return false;
+  }
+  const cap =
+    typeof maxKm === "number" && maxKm > 0
+      ? maxKm + beyondRadiusBufferKm(maxKm)
+      : 30;
+  if (typeof anchorLat === "number" && typeof anchorLng === "number") {
+    const km = haversineMeters(anchorLat, anchorLng, data.latitude, data.longitude) / 1000;
+    if (km > cap) return false;
+  }
+  return true;
 }
 
 function duplicateMatchesRequest(data, normalizedName, title) {
@@ -466,7 +705,7 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
   }
 
   const title = requestedTitle || searchQuery;
-  let place = pickBestPlaceMatch(response.data.places, title);
+  let place = pickBestPlaceMatch(response.data.places, title, lat, lng);
 
   if (!place && title) {
     const exactQuery = `"${title.split(",")[0].trim()}"${searchQuery.includes(",") ? " " + searchQuery.split(",").slice(1).join(",").trim() : ""}`;
@@ -481,7 +720,7 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
         },
       }
     );
-    place = pickBestPlaceMatch(retry.data.places || [], title);
+    place = pickBestPlaceMatch(retry.data.places || [], title, lat, lng);
   }
 
   if (!place) {
@@ -504,7 +743,10 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
 
   const placeName = place.displayName?.text || searchQuery;
   const mapUrls = buildPlaceMapUrls(place.id || place.name, latitude, longitude, placeName);
-  const googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
+  let googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
+  if (isBrokenPlaceMapsUrl(googleMapsUrl)) {
+    googleMapsUrl = mapUrls.googleMapsUrl;
+  }
   const googlePlaceId = resolveGooglePlaceIdFromPlace(place, googleMapsUrl);
   const parsedAddress = parseAddressComponents(place.addressComponents);
   const formattedAddress = place.formattedAddress || "";
@@ -619,7 +861,7 @@ async function resolveUrlSearchQuery(searchQuery, area) {
 /** Guest concierge: resolve place via area discoveredPlaces DB (Google import on miss). */
 exports.resolvePlacePhoto = onCall(async (request) => {
   const payload = request.data || {};
-  const title = String(payload.title || "").trim();
+  const title = sanitizePlaceSearchTitle(String(payload.title || "").trim());
   const area = String(payload.area || "").trim();
   const country = String(payload.country || "").trim();
   const areaId = String(payload.areaId || "").trim();
@@ -627,6 +869,8 @@ exports.resolvePlacePhoto = onCall(async (request) => {
   const longitude = payload.longitude;
   const anchorLat = payload.anchorLat;
   const anchorLng = payload.anchorLng;
+  const maxKm = typeof payload.maxKm === "number" ? payload.maxKm : null;
+  const knowledgeMode = String(payload.knowledgeMode || "any").trim();
 
   if (!title) {
     throw new HttpsError("invalid-argument", "Place title is required.");
@@ -653,7 +897,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       null
     );
 
-    if (duplicate && duplicateMatchesRequest(duplicate.data, normalizedName, title)) {
+    if (
+      duplicate &&
+      duplicateMatchesRequest(duplicate.data, normalizedName, title) &&
+      cachedPlaceIsValidForRequest(duplicate.data, biasLat, biasLng, maxKm)
+    ) {
       return bumpDiscoveredPlaceUsage(coll, duplicate.id, duplicate.data, title);
     }
 
@@ -663,8 +911,12 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       throw new HttpsError("internal", "Server configuration error.");
     }
 
-    const searchQuery = area ? `${title}, ${area}` : title;
-    const place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, title);
+    let place = null;
+    for (const variant of placeSearchTitleVariants(title)) {
+      const searchQuery = [variant, area, country].filter(Boolean).join(", ");
+      place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, variant);
+      if (place) break;
+    }
     await recordPlatformUsage("magicFill");
 
     if (!place) {
@@ -673,6 +925,21 @@ exports.resolvePlacePhoto = onCall(async (request) => {
 
     if (!placeNamesMatch(title, place.name || "")) {
       logger.warn(`Rejected Google result "${place.name}" for requested "${title}"`);
+      return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
+    }
+
+    const geoCheck = validateResolvedPlace(
+      place,
+      title,
+      biasLat,
+      biasLng,
+      maxKm,
+      knowledgeMode
+    );
+    if (!geoCheck.ok) {
+      logger.warn(
+        `Rejected Google result "${place.name}" for "${title}" — ${geoCheck.reason}`
+      );
       return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
     }
 
@@ -689,7 +956,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       place.googlePlaceId
     );
 
-    if (geoDuplicate && duplicateMatchesRequest(geoDuplicate.data, normalizedName, title)) {
+    if (
+      geoDuplicate &&
+      duplicateMatchesRequest(geoDuplicate.data, normalizedName, title) &&
+      cachedPlaceIsValidForRequest(geoDuplicate.data, biasLat, biasLng, maxKm)
+    ) {
       return bumpDiscoveredPlaceUsage(coll, geoDuplicate.id, geoDuplicate.data, title);
     }
 

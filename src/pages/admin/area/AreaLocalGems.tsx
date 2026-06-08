@@ -16,8 +16,14 @@ import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
-import { categoryPrimaryName, resolveCategoryLabel, resolveCategoryToPrimary } from '../../../lib/categoryLocale';
-import { getLocaleFieldValue } from '../../../lib/propertyContentLocales';
+import {
+  categoryPrimaryName,
+  categorySelectionIncludes,
+  gemCategoryPrimaries,
+  normalizeCategorySelectionList,
+  resolveCategoryLabel,
+} from '../../../lib/categoryLocale';
+import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
 
 export default function AreaLocalGems() {
   const navigate = useNavigate();
@@ -39,7 +45,8 @@ export default function AreaLocalGems() {
 
   const initialFormState = {
     name: '',
-    category: '', // 🔥 Fixed: Now explicitly empty by default
+    category: '',
+    categories: [] as string[],
     rating: '',
     description: '',
     latitude: '',
@@ -60,9 +67,63 @@ export default function AreaLocalGems() {
   );
   const localeEditor = useContentLocaleEditor(
     localeSettings.primaryLocale,
-    ['name', 'description', 'category'],
+    ['name', 'description'],
     editingSourceDoc
   );
+
+  const categoryCatalogDocs = useMemo(
+    () => categories.map((c) => c.data),
+    [categories]
+  );
+
+  const normalizedGemCategories = useMemo(
+    () =>
+      normalizeCategorySelectionList(
+        formData.categories,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      ),
+    [formData.categories, categoryCatalogDocs, localeSettings.primaryLocale]
+  );
+
+  const categoryPillOptions = useMemo(
+    () =>
+      categories.map((cat) => {
+        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+        const label = resolveCategoryLabel(
+          cat.data,
+          localeEditor.contentLocale,
+          localeSettings.primaryLocale
+        );
+        return { value: primaryName, label: label || primaryName };
+      }),
+    [categories, localeEditor.contentLocale, localeSettings.primaryLocale]
+  );
+
+  const handleCategoryPillToggle = (value: string) => {
+    setFormData((prev) => {
+      const current = normalizeCategorySelectionList(
+        prev.categories,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      );
+      const lower = value.toLowerCase();
+      const has = current.some((c) => c.toLowerCase() === lower);
+      const next = has
+        ? current.filter((c) => c.toLowerCase() !== lower)
+        : [...current, value];
+      const normalized = normalizeCategorySelectionList(
+        next,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      );
+      return {
+        ...prev,
+        categories: normalized,
+        category: normalized[0] || '',
+      };
+    });
+  };
 
   // 1. Fetch Dynamic Categories
   useEffect(() => {
@@ -148,6 +209,16 @@ export default function AreaLocalGems() {
         matchedCategory = categoryPrimaryName(possibleMatch.data, localeSettings.primaryLocale);
       }
 
+      const nextCategories = matchedCategory
+        ? normalizeCategorySelectionList(
+            formData.categories.includes(matchedCategory)
+              ? formData.categories
+              : [...formData.categories, matchedCategory],
+            categoryCatalogDocs,
+            localeSettings.primaryLocale
+          )
+        : formData.categories;
+
       // AI Description Fallback
       let finalDescription = googleData.description;
       if (!finalDescription) {
@@ -162,21 +233,20 @@ export default function AreaLocalGems() {
       }
 
       const primaryName = googleData.name || placeNameFallback;
-      const primaryCategory = matchedCategory || formData.category;
       const primaryDescription = finalDescription || formData.description;
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         name: primaryName,
-        category: primaryCategory,
+        categories: nextCategories,
+        category: nextCategories[0] || '',
         rating: googleData.rating ? googleData.rating.toString() : prev.rating,
         description: primaryDescription,
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
-        photoUrl: googleData.photoUrl || ''
+        photoUrl: googleData.photoUrl || '',
       }));
       localeEditor.applyPrimaryFields({
         name: primaryName,
-        category: primaryCategory,
         description: primaryDescription,
       });
 
@@ -199,6 +269,10 @@ export default function AreaLocalGems() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (normalizedGemCategories.length === 0) {
+      toast.warning('Select at least one category.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -214,14 +288,11 @@ export default function AreaLocalGems() {
 
       const gemData = {
         ...formData,
-        category: resolveCategoryToPrimary(
-          localeEditor.getPrimaryValue('category').trim() || formData.category.trim(),
-          categories.map((c) => c.data),
-          localeSettings.primaryLocale
-        ),
+        categories: normalizedGemCategories,
+        category: normalizedGemCategories[0] || '',
         ...localeEditor.buildPayload(),
         photoUrl: finalPhotoUrl,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       };
 
       if (editingGemId) {
@@ -246,34 +317,18 @@ export default function AreaLocalGems() {
     }
   };
 
-  const selectedCategoryPrimary =
-    resolveCategoryToPrimary(
-      localeEditor.getPrimaryValue('category').trim() || formData.category.trim(),
-      categories.map((c) => c.data),
-      localeSettings.primaryLocale
-    );
-
-  const applyCategorySelection = (cat: { id: string; data: Record<string, unknown> }) => {
-    const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-    localeEditor.applyPrimaryFields({ category: primaryName });
-    setFormData((prev) => ({ ...prev, category: primaryName }));
-    for (const locale of localeSettings.enabledLocales) {
-      if (locale === localeSettings.primaryLocale) continue;
-      const label = resolveCategoryLabel(cat.data, locale, localeSettings.primaryLocale);
-      if (label) localeEditor.applyTranslatedFields(locale, { category: label });
-    }
-  };
-
   const handleEdit = (gem: any) => {
-    const catalogDocs = categories.map((c) => c.data);
-    const primaryCategory = resolveCategoryToPrimary(
-      getLocaleFieldValue(gem, 'category', localeSettings.primaryLocale, localeSettings.primaryLocale) ||
-        String(gem.category || ''),
-      catalogDocs,
+    const normalized = gemCategoryPrimaries(
+      gem,
+      categoryCatalogDocs,
       localeSettings.primaryLocale
     );
     setEditingSourceDoc(gem);
-    setFormData({ ...gem, category: primaryCategory });
+    setFormData({
+      ...gem,
+      categories: normalized,
+      category: normalized[0] || '',
+    });
     setImagePreview(gem.photoUrl);
     setEditingGemId(gem.id);
     setIsFormOpen(true);
@@ -289,7 +344,6 @@ export default function AreaLocalGems() {
     const primaryFields = {
       name: localeEditor.getPrimaryValue('name') || formData.name,
       description: localeEditor.getPrimaryValue('description') || formData.description,
-      category: localeEditor.getPrimaryValue('category') || formData.category,
     };
     if (!primaryFields.name?.trim()) {
       toast.warning('Fill in the primary language first.');
@@ -426,35 +480,21 @@ export default function AreaLocalGems() {
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Category *</label>
-                  <select
-                    required
-                    value={selectedCategoryPrimary}
-                    onChange={(e) => {
-                      const cat = categories.find(
-                        (c) =>
-                          categoryPrimaryName(c.data, localeSettings.primaryLocale) === e.target.value
-                      );
-                      if (cat) applyCategorySelection(cat);
-                    }}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white"
-                  >
-                    <option value="" disabled>Select a Category...</option>
-                    {categories.map((cat) => {
-                      const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-                      const label = resolveCategoryLabel(
-                        cat.data,
-                        localeEditor.contentLocale,
+                <div className="md:col-span-2">
+                  <CategoryPillSelector
+                    label="Categories * (select all that apply)"
+                    options={categoryPillOptions}
+                    isSelected={(value) =>
+                      categorySelectionIncludes(
+                        normalizedGemCategories,
+                        value,
+                        categoryCatalogDocs,
                         localeSettings.primaryLocale
-                      );
-                      return (
-                        <option key={cat.id} value={primaryName}>
-                          {label || primaryName}
-                        </option>
-                      );
-                    })}
-                  </select>
+                      )
+                    }
+                    onToggle={handleCategoryPillToggle}
+                    colorClass="orange"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Google Rating (1-5)</label>
@@ -546,8 +586,17 @@ export default function AreaLocalGems() {
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon size={32} /></div>
                 )}
-                <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-xs font-bold text-gray-900 shadow-sm">
-                  {gem.category}
+                <div className="absolute top-3 left-3 flex flex-wrap gap-1 max-w-[70%]">
+                  {gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).map(
+                    (cat: string) => (
+                      <span
+                        key={cat}
+                        className="bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-[10px] font-bold text-gray-900 shadow-sm whitespace-nowrap"
+                      >
+                        {cat}
+                      </span>
+                    )
+                  )}
                 </div>
                 {gem.isDailyTrip && (
                   <div className="absolute top-3 right-3 bg-vailo-teal text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-sm">

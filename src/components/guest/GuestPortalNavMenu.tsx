@@ -2,10 +2,10 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen, Bot, Menu, Sparkles, X, ChevronRight } from 'lucide-react';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
+import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 
-/** Above guest FABs (60), language menu (90), map sheets (90); below legal modal (100). */
-const MENU_BACKDROP_Z = 'z-[120]';
-const MENU_DRAWER_Z = 'z-[121]';
+const MENU_BACKDROP_Z = GUEST_PORTAL_Z.navBackdrop;
+const MENU_DRAWER_Z = GUEST_PORTAL_Z.navDrawer;
 
 type Props = {
   open: boolean;

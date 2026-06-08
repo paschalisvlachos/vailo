@@ -14,7 +14,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Plan your day with AI: restaurants, beaches, trails, and your host’s favourite local spots nearby.',
     liveLikeLocalHero: 'Live like a local',
-    liveLikeLocalHeroSub: 'AI day plans & local picks nearby',
+    liveLikeLocalHeroSub:
+      'Discover the best places and the best suggestions selected by locals.',
     essentials: 'Essentials',
     thingsToKnow: 'Things to know',
     googleRatingTitle: 'Enjoying your stay?',
@@ -60,7 +61,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Οργανώστε την ημέρα σας με AI: εστιατόρια, παραλίες, μονοπάτια και αγαπημένα σημεία του οικοδεσπότη.',
     liveLikeLocalHero: 'Ζήστε σαν ντόπιος',
-    liveLikeLocalHeroSub: 'Προγράμματα ημέρας & τοπικές προτάσεις',
+    liveLikeLocalHeroSub:
+      'Ανακαλύψτε τα καλύτερα μέρη και τις καλύτερες προτάσεις από ντόπιους.',
     essentials: 'Βασικά',
     thingsToKnow: 'Χρήσιμες πληροφορίες',
     googleRatingTitle: 'Απολαμβάνετε τη διαμονή;',
@@ -106,7 +108,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Planen Sie Ihren Tag mit KI: Restaurants, Strände, Wanderwege und Lieblingsorte Ihres Gastgebers.',
     liveLikeLocalHero: 'Leben wie ein Einheimischer',
-    liveLikeLocalHeroSub: 'Tagespläne & lokale Tipps in der Nähe',
+    liveLikeLocalHeroSub:
+      'Entdecken Sie die besten Orte und Empfehlungen, die Einheimische auswählen.',
     essentials: 'Wichtiges',
     thingsToKnow: 'Gut zu wissen',
     googleRatingTitle: 'Gefällt Ihnen der Aufenthalt?',
@@ -152,7 +155,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Organisez votre journée avec l’IA : restaurants, plages, sentiers et adresses préférées de votre hôte.',
     liveLikeLocalHero: 'Vivre comme un local',
-    liveLikeLocalHeroSub: 'Plans du jour & adresses locales',
+    liveLikeLocalHeroSub:
+      'Découvrez les meilleurs endroits et suggestions choisies par les locaux.',
     essentials: 'Essentiels',
     thingsToKnow: 'À savoir',
     googleRatingTitle: 'Vous appréciez votre séjour ?',
@@ -198,7 +202,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Organizza la giornata con l’IA: ristoranti, spiagge, sentieri e i posti preferiti dell’host.',
     liveLikeLocalHero: 'Vivi come un local',
-    liveLikeLocalHeroSub: 'Piani giornalieri e consigli locali',
+    liveLikeLocalHeroSub:
+      'Scopri i migliori posti e i consigli scelti dai local.',
     essentials: 'Essenziali',
     thingsToKnow: 'Da sapere',
     googleRatingTitle: 'Ti piace il soggiorno?',

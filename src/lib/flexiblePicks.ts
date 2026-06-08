@@ -3,6 +3,12 @@
 import { normalizePlaceName, namesLikelySame } from './placeNameUtils';
 import { bareGooglePlaceId } from './geocoding';
 import { pickKeyForItem } from './picksFairness';
+import {
+  featureBelongsToCategory,
+  gemBelongsToCategory,
+  gemCategoryPrimaries,
+} from './categoryLocale';
+import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
 
 /**
  * Width (km) of a distance band used by the fairness sort. Items inside the
@@ -35,8 +41,42 @@ export function effectiveMaxDistanceKm(maxKm: number): number {
 const STALE_PENALTY = 0.35;
 
 export const MAX_PICKS_PER_CATEGORY = 5;
+/** @deprecated All radii now show up to MAX_PICKS_PER_CATEGORY; extended range fills slots 4–5. */
+export const MAX_PICKS_TIGHT_RADIUS = 3;
+/** Guest radius at or below this is a "tight" search — prompts encourage extended range for picks 4–5. */
+export const TIGHT_RADIUS_KM_THRESHOLD = 6;
+/** Extra search radius for [BUSINESS ONLY] categories (e.g. Dining). */
+export const BUSINESS_CATEGORY_RADIUS_BONUS_KM = 3;
+/** AI candidates requested per category — we verify via Google and show only the best few. */
+export const AI_CANDIDATE_POOL_PER_CATEGORY = 12;
+
+export function aiCandidatePoolSize(): number {
+  return AI_CANDIDATE_POOL_PER_CATEGORY;
+}
 /** @deprecated use MAX_PICKS_PER_CATEGORY */
 export const PICKS_PER_CATEGORY = MAX_PICKS_PER_CATEGORY;
+
+export function maxPicksForRadius(_maxKm?: number): number {
+  return MAX_PICKS_PER_CATEGORY;
+}
+
+export function categoryDistanceLimitKm(
+  maxKm: number,
+  categoryPrimary: string,
+  knowledgeByPrimary: Record<string, string> = {}
+): number {
+  const mode = getCategoryKnowledgeMode(knowledgeByPrimary[categoryPrimary] || '');
+  if (mode === 'business') return maxKm + BUSINESS_CATEGORY_RADIUS_BONUS_KM;
+  return maxKm;
+}
+
+export function categoryHardCapKm(
+  maxKm: number,
+  categoryPrimary: string,
+  knowledgeByPrimary: Record<string, string> = {}
+): number {
+  return effectiveMaxDistanceKm(categoryDistanceLimitKm(maxKm, categoryPrimary, knowledgeByPrimary));
+}
 
 export type FlexiblePickItem = {
   title: string;
@@ -69,6 +109,7 @@ type DbPickRow = {
   longitude?: number;
   isLegitPick: boolean;
   previouslyShown: boolean;
+  curatedScope?: 'property' | 'area';
 };
 
 function drivingKm(
@@ -139,6 +180,7 @@ function rowToPick(row: DbPickRow): FlexiblePickItem {
     longitude: row.longitude,
     isLegitPick: row.isLegitPick,
     previouslyShown: row.previouslyShown,
+    curatedScope: row.curatedScope || 'property',
   };
 }
 
@@ -146,12 +188,10 @@ function mapDbItem(
   item: any,
   category: string,
   startCoords: { lat: number; lng: number },
-  propCoords: { lat: number; lng: number } | null,
   maxKm: number,
   recentlyShown: Set<string>
 ): DbPickRow | null {
-  let coords = extractCoords(item);
-  if (!coords && propCoords) coords = propCoords;
+  const coords = extractCoords(item);
   if (!coords) return null;
 
   const distanceKm = drivingKm(
@@ -185,7 +225,64 @@ function mapDbItem(
     longitude: coords.lng,
     isLegitPick: !!item.isLegitPick,
     previouslyShown: !!(key && recentlyShown.has(key)),
+    curatedScope: item.curatedScope === 'area' ? 'area' : 'property',
   };
+}
+
+function rowCuratedScope(row: DbPickRow): 'property' | 'area' {
+  return row.curatedScope === 'area' ? 'area' : 'property';
+}
+
+function countDbScope(items: FlexiblePickItem[]): { property: number; area: number } {
+  let property = 0;
+  let area = 0;
+  for (const item of items) {
+    if (item.source !== 'database') continue;
+    if (item.curatedScope === 'area') area += 1;
+    else property += 1;
+  }
+  return { property, area };
+}
+
+function takeNextDbRow(
+  pool: { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] },
+  out: FlexiblePickItem[],
+  preferScope: 'property' | 'area'
+): DbPickRow | null {
+  const scopes: Array<'property' | 'area'> = [
+    preferScope,
+    preferScope === 'property' ? 'area' : 'property',
+  ];
+  for (const scope of scopes) {
+    for (const band of [pool.withinRadius, pool.beyondRadius]) {
+      for (const row of band) {
+        if (rowCuratedScope(row) !== scope) continue;
+        const candidate = rowToPick(row);
+        if (out.some((existing) => isSameBusiness(existing, candidate))) continue;
+        return row;
+      }
+    }
+  }
+  return null;
+}
+
+function tryAddBalancedDb(
+  out: FlexiblePickItem[],
+  pool: { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] },
+  maxToAdd: number,
+  itemCap: number
+): number {
+  let added = 0;
+  while (added < maxToAdd && out.length < itemCap) {
+    const counts = countDbScope(out);
+    const prefer: 'property' | 'area' =
+      counts.property <= counts.area ? 'property' : 'area';
+    const row = takeNextDbRow(pool, out, prefer);
+    if (!row) break;
+    out.push(rowToPick(row));
+    added += 1;
+  }
+  return added;
 }
 
 /**
@@ -215,7 +312,11 @@ export function buildFlexiblePicksDbContext(
   propCoords: { lat: number; lng: number } | null,
   gems: any[],
   features: any[],
-  recentlyShown: Set<string> = new Set()
+  recentlyShown: Set<string> = new Set(),
+  catalogDocs: Record<string, unknown>[] = [],
+  primaryLocale = 'en',
+  guestLocale?: string,
+  knowledgeByPrimary: Record<string, string> = {}
 ): Record<string, { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] }> {
   const result: Record<
     string,
@@ -231,16 +332,31 @@ export function buildFlexiblePicksDbContext(
 
   for (const cat of categories) {
     const rows: DbPickRow[] = [];
+    const catLimitKm = categoryDistanceLimitKm(maxKm, cat, knowledgeByPrimary);
 
     for (const g of gems || []) {
-      if (g.category !== cat) continue;
-      const row = mapDbItem(g, cat, startCoords, propCoords, maxKm, recentlyShown);
+      if (
+        catalogDocs.length > 0
+          ? !gemBelongsToCategory(g, cat, catalogDocs, primaryLocale, guestLocale)
+          : !gemCategoryPrimaries(g, [], primaryLocale, guestLocale).some(
+              (p) => p.trim().toLowerCase() === cat.trim().toLowerCase()
+            )
+      ) {
+        continue;
+      }
+      const row = mapDbItem(g, cat, startCoords, catLimitKm, recentlyShown);
       if (row) rows.push(row);
     }
 
     for (const f of features || []) {
-      if (!f.categories?.includes(cat)) continue;
-      const row = mapDbItem(f, cat, startCoords, propCoords, maxKm, recentlyShown);
+      if (
+        catalogDocs.length > 0
+          ? !featureBelongsToCategory(f, cat, catalogDocs, primaryLocale)
+          : !f.categories?.includes(cat)
+      ) {
+        continue;
+      }
+      const row = mapDbItem(f, cat, startCoords, catLimitKm, recentlyShown);
       if (row) rows.push(row);
     }
 
@@ -400,49 +516,36 @@ function padCategoryFromDb(
   categoryName: string,
   maxKm: number,
   startCoords?: { lat: number; lng: number } | null,
-  recentlyShown: Set<string> = new Set()
+  recentlyShown: Set<string> = new Set(),
+  knowledgeByPrimary: Record<string, string> = {},
+  itemCap = maxPicksForRadius(maxKm)
 ): FlexiblePickItem[] {
   const pool = dbContext[categoryName];
-  if (!pool) return items;
-
   const out = [...items];
 
-  // Target ≈ half of the slots from the database (ceil so small caps round up — e.g. 5 → 3).
-  const targetDbCount = Math.ceil(MAX_PICKS_PER_CATEGORY / 2);
-  const aiCount = out.filter((i) => i.source !== 'database').length;
-  const dbCount = out.filter((i) => i.source === 'database').length;
-
-  const tryAdd = (rows: DbPickRow[], maxToAdd: number) => {
-    let added = 0;
-    for (const row of rows) {
-      if (added >= maxToAdd) break;
-      if (out.length >= MAX_PICKS_PER_CATEGORY) break;
-      const candidate = rowToPick(row);
-      if (out.some((existing) => isSameBusiness(existing, candidate))) continue;
-      out.push(candidate);
-      added += 1;
-    }
-    return added;
-  };
-
-  // Step 1 — make sure DB has at least its share (don't dilute AI picks).
-  const dbDeficit = Math.max(0, targetDbCount - dbCount);
-  if (dbDeficit > 0) {
-    const addedFromWithin = tryAdd(pool.withinRadius, dbDeficit);
-    if (addedFromWithin < dbDeficit) {
-      tryAdd(pool.beyondRadius, dbDeficit - addedFromWithin);
-    }
+  // [AREAS ONLY] categories: local gems/features are businesses — do not pad from DB.
+  const knowledgeMode = getCategoryKnowledgeMode(knowledgeByPrimary[categoryName] || '');
+  if (knowledgeMode === 'areas') {
+    return out.map((i) => enrichPickItem(i, maxKm, startCoords, recentlyShown));
   }
 
-  // Step 2 — if AI returned nothing (or barely anything) and we still have empty
-  // slots, top up from DB so the user always sees a useful list.
-  if (aiCount === 0 && out.length < MAX_PICKS_PER_CATEGORY) {
-    const remaining = MAX_PICKS_PER_CATEGORY - out.length;
-    const addedFromWithin = tryAdd(pool.withinRadius, remaining);
-    if (out.length < MAX_PICKS_PER_CATEGORY) {
-      tryAdd(pool.beyondRadius, MAX_PICKS_PER_CATEGORY - out.length);
-    }
-    void addedFromWithin;
+  if (!pool) return out.map((i) => enrichPickItem(i, maxKm, startCoords, recentlyShown));
+
+  const displayMax = maxPicksForRadius(maxKm);
+  const targetDbCount = Math.ceil(displayMax / 2);
+  const dbCount = out.filter((i) => i.source === 'database').length;
+
+  // Step 1 — ~half the DISPLAY list from Vailo DB (balance property + area gems).
+  const dbDeficit = Math.max(0, targetDbCount - dbCount);
+  if (dbDeficit > 0) {
+    tryAddBalancedDb(out, pool, dbDeficit, itemCap);
+  }
+
+  // Step 2 — top up with DB until display cap (still balancing property vs area).
+  while (out.length < displayMax) {
+    const before = out.length;
+    tryAddBalancedDb(out, pool, 1, itemCap);
+    if (out.length === before) break;
   }
 
   return out.map((i) => enrichPickItem(i, maxKm, startCoords, recentlyShown));
@@ -462,20 +565,34 @@ function sortPickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
   });
 }
 
+export function trimFlexiblePicksToDisplayCap(planData: any, maxKm: number): any {
+  if (!planData || planData.type !== 'picks' || !Array.isArray(planData.categories)) {
+    return planData;
+  }
+  const displayMax = maxPicksForRadius(maxKm);
+  const categories = planData.categories.map((cat: any) => ({
+    ...cat,
+    items: (cat.items || []).slice(0, displayMax),
+  }));
+  return { ...planData, categories };
+}
+
 export function normalizeFlexiblePicksPlan(
   planData: any,
   maxKm: number,
   dbContext: Record<string, { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] }>,
   startCoords?: { lat: number; lng: number } | null,
-  recentlyShown: Set<string> = new Set()
+  recentlyShown: Set<string> = new Set(),
+  knowledgeByPrimary: Record<string, string> = {},
+  itemCap = maxPicksForRadius(maxKm)
 ): any {
   if (!planData || planData.type !== 'picks' || !Array.isArray(planData.categories)) {
     return planData;
   }
 
-  const hardCap = effectiveMaxDistanceKm(maxKm);
-
   const categories = planData.categories.map((cat: any) => {
+    const catHardCap = categoryHardCapKm(maxKm, cat.categoryName, knowledgeByPrimary);
+
     let items: FlexiblePickItem[] = (cat.items || []).map((item: FlexiblePickItem) =>
       enrichPickItem(item, maxKm, startCoords, recentlyShown)
     );
@@ -487,16 +604,31 @@ export function normalizeFlexiblePicksPlan(
       if (item.source === 'database') return true;
       const km = parseDistanceKm(item);
       if (km == null) return true; // unknown distance — let the user judge
-      return km <= hardCap;
+      return km <= catHardCap;
     });
 
+    // [AREAS ONLY]: drop host-curated businesses — only geographic AI picks allowed.
+    const knowledgeMode = getCategoryKnowledgeMode(knowledgeByPrimary[cat.categoryName] || '');
+    if (knowledgeMode === 'areas') {
+      items = items.filter((item) => item.source !== 'database');
+    }
+
     items = dedupePickItems(items);
     items = sortPickItems(items);
 
-    items = padCategoryFromDb(items, dbContext, cat.categoryName, maxKm, startCoords, recentlyShown);
+    items = padCategoryFromDb(
+      items,
+      dbContext,
+      cat.categoryName,
+      maxKm,
+      startCoords,
+      recentlyShown,
+      knowledgeByPrimary,
+      itemCap
+    );
     items = dedupePickItems(items);
     items = sortPickItems(items);
-    items = items.slice(0, MAX_PICKS_PER_CATEGORY);
+    items = items.slice(0, itemCap);
 
     return { ...cat, items };
   });
@@ -507,78 +639,98 @@ export function normalizeFlexiblePicksPlan(
 export function buildFlexiblePicksPromptSection(
   categories: string[],
   maxKm: number,
-  dbContext: Record<string, { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] }>
+  dbContext: Record<string, { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] }>,
+  knowledgeByPrimary: Record<string, string> = {}
 ): string {
   const hardCap = effectiveMaxDistanceKm(maxKm);
+  const displayMax = maxPicksForRadius(maxKm);
+  const poolSize = aiCandidatePoolSize();
 
   const perCategory = categories.map((cat) => {
     const pool = dbContext[cat] || { withinRadius: [], beyondRadius: [] };
+    const knowledge = knowledgeByPrimary[cat] || '';
+    const knowledgeMode = getCategoryKnowledgeMode(knowledge);
+    const areasOnly = knowledgeMode === 'areas';
+    const within = areasOnly ? [] : pool.withinRadius;
+    const beyond = areasOnly ? [] : pool.beyondRadius;
+    const catLimitKm = categoryDistanceLimitKm(maxKm, cat, knowledgeByPrimary);
+    const catHardCap = categoryHardCapKm(maxKm, cat, knowledgeByPrimary);
     return {
       category: cat,
-      withinRadiusCount: pool.withinRadius.length,
-      beyondRadiusCount: pool.beyondRadius.length,
-      withinRadius: pool.withinRadius.slice(0, 8).map((r) => ({
+      knowledgeMode,
+      searchRadiusKm: catLimitKm,
+      hardCapKm: catHardCap,
+      adminKnowledge: knowledge || null,
+      withinRadiusCount: within.length,
+      beyondRadiusCount: beyond.length,
+      propertyWithinCount: within.filter((r) => r.curatedScope !== 'area').length,
+      areaWithinCount: within.filter((r) => r.curatedScope === 'area').length,
+      withinRadius: within.slice(0, 8).map((r) => ({
         name: r.name,
         distanceKm: Number(r.distanceKm.toFixed(1)),
+        curatedScope: r.curatedScope || 'property',
         isLegitPick: r.isLegitPick,
         description: r.description,
         photoUrl: r.photoUrl,
         googleMapsUrl: r.googleMapsUrl,
+        googlePlaceId: r.googlePlaceId || '',
       })),
-      beyondRadiusExtension: pool.beyondRadius.slice(0, 8).map((r) => ({
+      beyondRadiusExtension: beyond.slice(0, 8).map((r) => ({
         name: r.name,
         distanceKm: Number(r.distanceKm.toFixed(1)),
+        curatedScope: r.curatedScope || 'property',
         isLegitPick: r.isLegitPick,
         description: r.description,
         photoUrl: r.photoUrl,
         googleMapsUrl: r.googleMapsUrl,
-        note: `Slightly beyond ${maxKm}km — capped at ${hardCap.toFixed(0)}km. Only use if within-radius is thin.`,
+        googlePlaceId: r.googlePlaceId || '',
+        note: `Slightly beyond ${catLimitKm}km — capped at ${catHardCap.toFixed(0)}km. Only use if within-radius is thin.`,
       })),
     };
   });
 
-  const targetDbPerCat = Math.ceil(MAX_PICKS_PER_CATEGORY / 2);
-  const targetAiPerCat = MAX_PICKS_PER_CATEGORY - targetDbPerCat;
+  const targetDbPerCat = Math.ceil(displayMax / 2);
+  const targetAiPerCat = displayMax - targetDbPerCat;
 
   return `
-        LIVE LIKE A LOCAL MISSION (CRITICAL):
-        You are NOT a generic travel guide. You help guests AVOID tourist traps and experience what LOCALS genuinely prefer — neighborhood tavernas, village beaches locals swim at, family-run shops, authentic weekly haunts.
-        AVOID: cruise-ship restaurants, overcrowded Instagram-only spots, generic chains, "Top 10 TripAdvisor" traps with no local regulars.
+        QUALITY BAR:
+        Prefer authentic neighbourhood picks that residents use over tourist-trap lists. Avoid cruise-ship restaurants, overcrowded Instagram-only spots, generic chains, and hollow "Top 10" roundups.
+
+        DESCRIPTION TONE:
+        Write concrete, varied descriptions. Do not repeat "locals love", "locals prefer", or similar framing on every item — mix food, setting, timing, and practical tips instead.
+
+        VERIFICATION PIPELINE (READ CAREFULLY):
+        - Return up to ${poolSize} AI candidates per category (source: "ai"). Our system resolves each title on Google Maps and DROPS any pick that cannot be verified.
+        - Guests see up to ${displayMax} verified picks per category. Fill within-radius first; use beyondRadius: true for picks 4–5 when the tight search is thin.
+        - Over-generate quality candidates — we need spare verified picks after filtering. Returning 2 weak names is worse than returning 10 real ones.
+        - Use EXACT official Google Maps titles. Wrong spelling or invented labels are discarded (e.g. use "Phylaki" not "Filaki Village"; "Kalyvaki Beach" not "western river mouth beach").
+        - Leave photoUrl and googleMapsUrl EMPTY for every AI pick. Include googlePlaceId ONLY if you are certain — otherwise empty string.
 
         HARD DISTANCE LIMIT (NON-NEGOTIABLE):
-        The guest chose a ${maxKm}km radius. NEVER suggest a place farther than ${hardCap.toFixed(0)}km from the starting point. If you cannot think of a real, named local place within that limit, return FEWER items — never pad with far-away "famous" spots. A 9km search must never return a 250km away suggestion.
+        The guest chose a ${maxKm}km radius (${maxKm <= TIGHT_RADIUS_KM_THRESHOLD ? 'tight' : 'wider'} search). Each category has its own searchRadiusKm and hardCapKm in the pools below — NEVER exceed hardCapKm. Dining/business categories may have a slightly wider searchRadiusKm (+${BUSINESS_CATEGORY_RADIUS_BONUS_KM}km). Never suggest famous far-away landmarks (Knossos, Samaria, etc.) inside a tight local search.
 
-        50 / 50 SPLIT:
-        For EACH of these categories: ${categories.join(', ')}, aim for ${MAX_PICKS_PER_CATEGORY} unique picks split roughly:
-          - ${targetDbPerCat} from the VAILO DATABASE POOLS (host-curated). Prefer the closest "isLegitPick" items.
-          - ${targetAiPerCat} fresh AI suggestions — specific, real, named businesses or landmarks LOCALS in the area genuinely use. NEVER repeat anything already in the database pools.
-        If the database pool is too small, fill the remainder with more AI picks (within the hard limit). If your AI knowledge is thin for a category, leave the remainder empty — our system will top up from the database.
+        50 / 50 SPLIT (business / "any" categories only):
+        - The DISPLAY list shows ~${targetDbPerCat} Vailo database picks + ~${targetAiPerCat} verified AI picks (${displayMax} total).
+        - Vailo database = host property local gems + area-curated local gems (curatedScope "property" vs "area" in pools). Mix both when available — never repeat the same business.
+        - Our system balances property and area database picks automatically. Your AI candidates fill the remaining verified slots AFTER Google checks your titles (${poolSize} max).
+        - knowledgeMode "areas" (Beach, Culture, etc.): ZERO database businesses. ALL candidates must be geographic AI picks — beaches, coves, villages, gorges, archaeological sites. Provide up to ${poolSize} distinct official place names.
 
-        AI PICKS — REAL PLACES ONLY (NO GENERIC RESULTS):
-        - Each AI pick MUST be a specific, real, named business or natural landmark (e.g. "Taverna O Manolis", "Imbros Gorge", "Stavros Beach"). NEVER list a generic region, town centre, or "best of" list.
-        - If you are not confident a specific named place exists within ${maxKm}km, skip that slot — do NOT invent one and do NOT replace with a far-away alternative.
-        - If you know the EXACT Google Place ID, include it as "googlePlaceId". Otherwise leave it empty — our system resolves the link from the place name + location.
+        AI PICKS — REAL PLACES ONLY:
+        - knowledgeMode "areas": geographic spots ONLY. No restaurants, tours, shops, marinas, or operators. Title = official Maps name ("Kalyvaki Beach", "Phylaki", "Aptera", "Argyroupoli"). NEVER invent descriptive names ("unorganized section", "river mouth", "hidden cove near X").
+        - knowledgeMode "business": named establishments ONLY. Format: "Business Name, Village" (e.g. "Taverna To Steki, Vryses"). No generic "old town stroll" without a specific venue.
+        - If unsure a place exists on Google Maps within the radius, SKIP it — never guess.
+        - Never suggest permanently closed businesses.
 
         DISTANCE RULES:
-        - Fill from WITHIN ${maxKm}km first.
-        - If you must use the extended range (${maxKm.toFixed(0)}–${hardCap.toFixed(0)}km), mark "beyondRadius": true and prefix estimatedDistance with "Further ·".
-        - Sort each category from CLOSEST to FURTHEST (lowest distanceKm first).
+        - Prefer places within ${maxKm}km. Use beyondRadius: true only for the extended band up to each category's hardCapKm.
+        - distanceKm is REQUIRED on every item and must respect hardCapKm.
+        - estimatedDistance: "12.4km" or "Further · 18.0km" when beyondRadius is true.
+        - Sort each category CLOSEST to FURTHEST.
 
         UNIQUENESS:
-        - One business = one entry. Never list the same business twice under a different angle.
-        - Same Google Place, same address, or same owner = one entry.
+        - One place = one entry. Same business, same beach, same village = one entry only.
 
-        OUTPUT FIELDS (per AI pick):
-        - title, description (2 sentences focused on why LOCALS pick it).
-        - distanceKm (numeric, REQUIRED, must be ≤ ${hardCap.toFixed(0)}).
-        - beyondRadius (true / false).
-        - estimatedDistance ("12.4km" or "Further · 18.0km").
-        - source: "ai".
-        - googlePlaceId (if known).
-        - photoUrl: empty string.
-        - googleMapsUrl: empty string.
-
-        PER-CATEGORY DATABASE POOLS (pre-sorted by distance):
+        PER-CATEGORY DATABASE POOLS (pre-sorted by distance — use for database source picks):
         ${JSON.stringify(perCategory)}
       `;
 }

@@ -1,4 +1,6 @@
 import { AlertTriangle, MessageCircle, Sparkles } from 'lucide-react';
+import { openExternalUrl } from '../../lib/geocoding';
+import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 
 type Props = {
   onOpenAssistant: () => void;
@@ -17,8 +19,8 @@ export default function GuestFloatingActions({
   mobileFramePreview = false,
 }: Props) {
   const positionClass = mobileFramePreview
-    ? 'fixed z-[60] flex flex-col items-end gap-1.5 pointer-events-none bottom-[max(0.375rem,env(safe-area-inset-bottom))] right-2 max-md:right-2 md:right-[max(0.5rem,calc((100vw-400px)/2+0.5rem))]'
-    : 'fixed bottom-[max(0.375rem,env(safe-area-inset-bottom))] right-2 z-[60] flex flex-col items-end gap-1.5 pointer-events-none';
+    ? `fixed ${GUEST_PORTAL_Z.fab} flex flex-col items-end gap-1.5 pointer-events-none bottom-[max(0.375rem,env(safe-area-inset-bottom))] right-2 max-md:right-2 md:right-[max(0.5rem,calc((100vw-400px)/2+0.5rem))]`
+    : `fixed bottom-[max(0.375rem,env(safe-area-inset-bottom))] right-2 ${GUEST_PORTAL_Z.fab} flex flex-col items-end gap-1.5 pointer-events-none`;
 
   return (
     <div className={positionClass} aria-label="Quick actions">
@@ -49,10 +51,9 @@ export default function GuestFloatingActions({
       </button>
 
       {whatsappHref && (
-        <a
-          href={whatsappHref}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => openExternalUrl(whatsappHref)}
           className="pointer-events-auto flex items-center gap-2 pl-2 pr-3 py-2 min-h-[44px] rounded-full bg-[#25D366] text-white shadow-[0_4px_16px_rgba(37,211,102,0.45)] border border-[#1da851]/50 hover:bg-[#20bd5a] transition-all active:scale-[0.98]"
           aria-label="Contact host on WhatsApp"
         >
@@ -62,7 +63,7 @@ export default function GuestFloatingActions({
           <span className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.05em] whitespace-nowrap">
             WhatsApp
           </span>
-        </a>
+        </button>
       )}
     </div>
   );

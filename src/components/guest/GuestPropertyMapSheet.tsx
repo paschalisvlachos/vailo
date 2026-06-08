@@ -1,6 +1,15 @@
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { MapPin, Navigation, X } from 'lucide-react';
-import { buildGoogleDirectionsUrl, buildGoogleMapsOpenUrl } from '../../lib/googleReviewUrl';
+import {
+  buildGoogleMapsEmbedUrl,
+  buildPlaceMapUrls,
+  isValidExternalUrl,
+  openExternalUrl,
+  resolveGooglePlaceIdFromDetails,
+} from '../../lib/geocoding';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
+import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 
 type Props = {
   open: boolean;
@@ -11,6 +20,8 @@ type Props = {
   latitude: string | number;
   longitude: string | number;
   googleMapsUrl?: string | null;
+  googlePlaceId?: string | null;
+  areaHint?: string;
   t: (key: GuestLocaleKey) => string;
 };
 
@@ -23,19 +34,45 @@ export default function GuestPropertyMapSheet({
   latitude,
   longitude,
   googleMapsUrl,
+  googlePlaceId,
+  areaHint = '',
   t,
 }: Props) {
-  if (!open) return null;
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
 
-  const embedSrc = `https://maps.google.com/maps?q=${latitude},${longitude}&z=15&output=embed`;
+  if (!open || typeof document === 'undefined') return null;
+
+  const lat = parseFloat(String(latitude));
+  const lng = parseFloat(String(longitude));
+  const embedSrc = buildGoogleMapsEmbedUrl({
+    title,
+    areaHint,
+    latitude,
+    longitude,
+    googlePlaceId,
+    googleMapsUrl,
+    zoom: 15,
+  });
+  const resolvedPlaceId = resolveGooglePlaceIdFromDetails({ googlePlaceId, googleMapsUrl });
+  const built = buildPlaceMapUrls(resolvedPlaceId, lat, lng, title);
   const openUrl =
-    googleMapsUrl?.trim() ||
-    buildGoogleMapsOpenUrl(latitude, longitude, title);
-  const directionsUrl = buildGoogleDirectionsUrl(latitude, longitude);
+    (built.googleMapsUrl && isValidExternalUrl(built.googleMapsUrl)
+      ? built.googleMapsUrl
+      : null) ||
+    (googleMapsUrl?.trim() && isValidExternalUrl(googleMapsUrl) ? googleMapsUrl.trim() : '') ||
+    built.googleMapsUrl;
+  const directionsUrl = built.navigateUrl;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-[#051F26]/60 backdrop-blur-sm p-0 sm:p-4"
+      className={`fixed inset-0 ${GUEST_PORTAL_Z.detailSheet} flex items-end sm:items-center justify-center bg-[#051F26]/60 backdrop-blur-sm p-0 sm:p-4`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="property-map-title"
@@ -89,26 +126,25 @@ export default function GuestPropertyMapSheet({
         </div>
 
         <div className="p-4 flex flex-col gap-2 shrink-0 bg-white border-t border-gray-100">
-          <a
-            href={openUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={() => openExternalUrl(openUrl)}
             className="guest-btn-action w-full py-3.5 rounded-xl bg-[#0B4F5C] hover:bg-[#083A43] text-white transition-colors flex items-center justify-center gap-2"
           >
             <MapPin size={14} className="text-[#C5A059]" />
             {t('openInMaps')}
-          </a>
-          <a
-            href={directionsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          </button>
+          <button
+            type="button"
+            onClick={() => openExternalUrl(directionsUrl)}
             className="guest-btn-action w-full py-3.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#0B4F5C] transition-colors flex items-center justify-center gap-2 border border-gray-200"
           >
             <Navigation size={14} />
             {t('getDirections')}
-          </a>
+          </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

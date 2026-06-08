@@ -1,4 +1,4 @@
-import { Check, Circle, Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import type { GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 
 type Props = {
@@ -13,7 +13,7 @@ export default function AiExpertCuratingLoader({
   headline,
   hint,
   steps,
-  activeStepIndex,
+  activeStepIndex = 0,
   compact = false,
 }: Props) {
   if (compact) {
@@ -29,51 +29,61 @@ export default function AiExpertCuratingLoader({
 
   return (
     <div className="w-full max-w-full mt-4 mb-2 animate-in fade-in duration-300">
-      <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm overflow-hidden">
-        <div className="h-1 bg-white/8 overflow-hidden">
+      <div className="rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm">
+        <div className="h-1 bg-white/8 overflow-hidden rounded-t-2xl">
           <div className="ai-expert-shimmer-bar h-full w-2/5 bg-gradient-to-r from-transparent via-vailo-gold/80 to-transparent" />
         </div>
 
-        <div className="p-5">
-          <div className="flex items-start gap-4">
-            <div className="relative shrink-0 h-14 w-14">
-              <div className="absolute inset-0 rounded-2xl bg-vailo-gold/25 animate-ping opacity-30" />
-              <div className="relative h-14 w-14 rounded-2xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shadow-inner">
-                <Sparkles className="text-vailo-gold animate-pulse" size={22} />
+        <div className="p-5 space-y-2.5">
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0 h-11 w-11">
+              <div className="absolute inset-0 rounded-xl bg-vailo-gold/25 animate-ping opacity-30" />
+              <div className="relative h-11 w-11 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shadow-inner">
+                <Sparkles className="text-vailo-gold animate-pulse" size={20} />
               </div>
             </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-base leading-snug">{headline}</p>
-              {hint ? (
-                <p className="text-white/50 text-sm mt-1 leading-relaxed">{hint}</p>
-              ) : null}
-
-              <ul className="mt-4 space-y-2.5" aria-live="polite">
-                {(steps ?? []).map((step, i) => {
-                  const done = i < (activeStepIndex ?? 0);
-                  const active = i === (activeStepIndex ?? 0);
-                  return (
-                    <li
-                      key={step.key}
-                      className={`flex items-center gap-2.5 text-sm transition-colors duration-500 ${
-                        done ? 'text-white/70' : active ? 'text-white' : 'text-white/35'
-                      }`}
-                    >
-                      {done ? (
-                        <Check size={15} className="text-vailo-gold shrink-0" strokeWidth={2.5} />
-                      ) : active ? (
-                        <Loader2 size={15} className="animate-spin text-vailo-gold shrink-0" />
-                      ) : (
-                        <Circle size={15} className="text-white/25 shrink-0" strokeWidth={1.5} />
-                      )}
-                      <span className={active ? 'font-medium' : undefined}>{step.label}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <p className="text-white font-semibold text-base leading-snug">{headline}</p>
           </div>
+
+          {hint ? (
+            <p className="text-white/50 text-sm leading-relaxed">{hint}</p>
+          ) : null}
+
+          {(steps ?? []).length > 0 ? (
+            <div
+              className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
+              aria-live="polite"
+            >
+              {steps.map((step, i) => {
+                const done = i < activeStepIndex;
+                const active = i === activeStepIndex;
+                return (
+                  <span
+                    key={step.key}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 transition-all duration-500 ${
+                      active
+                        ? 'bg-vailo-gold/12 border border-vailo-gold/25 text-white shadow-[0_0_12px_rgba(197,160,89,0.12)]'
+                        : done
+                          ? 'text-white/65'
+                          : 'text-white/40'
+                    }`}
+                  >
+                    <span
+                      className={`shrink-0 rounded-full transition-all duration-500 ${
+                        active
+                          ? 'h-1.5 w-1.5 bg-vailo-gold shadow-[0_0_5px_rgba(197,160,89,0.55)]'
+                          : done
+                            ? 'h-1 w-1 bg-vailo-gold/75'
+                            : 'h-1 w-1 border border-white/35'
+                      }`}
+                      aria-hidden
+                    />
+                    <span className={active ? 'font-medium' : undefined}>{step.label}</span>
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

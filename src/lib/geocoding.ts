@@ -2,6 +2,8 @@
 
 import type { GuestLocale } from './guestLocale';
 import { guestUiTFormat, type GuestLocaleUiKey } from './guestLocaleUi';
+import { resolvePlacePhoto, type ResolvedPlacePhoto } from './placePhotoResolver';
+import { sanitizePlaceSearchTitle } from './placeNameUtils';
 
 const NOMINATIM_HEADERS = {
   'Accept-Language': 'en',
@@ -301,6 +303,16 @@ export function isCoordOnlyQuery(query: string): boolean {
   return /^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/.test(query.trim());
 }
 
+/** Broken Maps links with no place slug (e.g. /place//@35.41,24.13). */
+export function isBrokenPlaceMapsUrl(url?: string): boolean {
+  const raw = String(url || '').trim();
+  if (!raw) return true;
+  if (/\/place\/\/@|\/place\/\/\?|\/place\/\/$/i.test(raw)) return true;
+  const slug = raw.match(/\/place\/([^/?@]+)/i)?.[1]?.trim();
+  if (raw.includes('/place/') && (!slug || slug === '')) return true;
+  return false;
+}
+
 /** Opens one exact place/listing — not a text search results page. */
 /**
  * True if this Google Maps URL goes straight to a rich place card (photo, reviews,
@@ -308,7 +320,7 @@ export function isCoordOnlyQuery(query: string): boolean {
  * URL and should be rewritten to a name search when we have the place title.
  */
 export function isDirectPlaceMapsUrl(url?: string): boolean {
-  if (!url?.trim()) return false;
+  if (!url?.trim() || isBrokenPlaceMapsUrl(url)) return false;
   if (!url.includes('google') || !url.includes('maps')) return false;
   if (/query_place_id=|destination_place_id=|[?&]place_id=/i.test(url)) return true;
   if (url.includes('/maps/place/') || url.includes('google.com/maps/place')) return true;
@@ -407,6 +419,68 @@ export function buildPreciseMapUrls(lat: number, lng: number) {
   };
 }
 
+/** iframe embed — prefer place listing (name / place id) over bare coordinates. */
+export function buildGoogleMapsEmbedUrl(options: {
+  title?: string;
+  areaHint?: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  googlePlaceId?: string | null;
+  googleMapsUrl?: string | null;
+  zoom?: number;
+}): string {
+  const zoom = options.zoom ?? 14;
+  const lat = parseFloat(String(options.latitude ?? ''));
+  const lng = parseFloat(String(options.longitude ?? ''));
+  const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
+  const title = sanitizePlaceSearchTitle(String(options.title || '').trim());
+  const areaHint = String(options.areaHint || '').trim();
+
+  const placeId = resolveGooglePlaceIdFromDetails({
+    googlePlaceId: options.googlePlaceId,
+    googleMapsUrl: options.googleMapsUrl,
+  });
+
+  if (placeId) {
+    return `https://www.google.com/maps?q=place_id:${encodeURIComponent(placeId)}&z=${zoom}&output=embed`;
+  }
+
+  const storedMapsUrl =
+    options.googleMapsUrl?.trim() && !isBrokenPlaceMapsUrl(options.googleMapsUrl)
+      ? options.googleMapsUrl.trim()
+      : '';
+
+  if (storedMapsUrl && isDirectPlaceMapsUrl(storedMapsUrl)) {
+    const fromUrl = extractPlaceIdFromMapsUrl(storedMapsUrl);
+    if (fromUrl) {
+      return `https://www.google.com/maps?q=place_id:${encodeURIComponent(fromUrl)}&z=${zoom}&output=embed`;
+    }
+    const pathName = storedMapsUrl.match(/\/place\/([^/?#]+)/)?.[1];
+    if (pathName) {
+      const label = decodeURIComponent(pathName.replace(/\+/g, ' '));
+      const q = encodeURIComponent(label);
+      const ll = hasCoords ? `&ll=${lat},${lng}` : '';
+      return `https://maps.google.com/maps?q=${q}${ll}&z=${zoom}&output=embed`;
+    }
+  }
+
+  if (title && hasCoords) {
+    const q = encodeURIComponent(areaHint ? `${title}, ${areaHint}` : title);
+    return `https://maps.google.com/maps?q=${q}&ll=${lat},${lng}&z=${zoom}&output=embed`;
+  }
+
+  if (title) {
+    const q = encodeURIComponent(areaHint ? `${title}, ${areaHint}` : title);
+    return `https://maps.google.com/maps?q=${q}&z=${zoom}&output=embed`;
+  }
+
+  if (hasCoords) {
+    return `https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&output=embed`;
+  }
+
+  return `https://maps.google.com/maps?q=${encodeURIComponent(areaHint || 'Greece')}&z=${zoom}&output=embed`;
+}
+
 function buildNavigateFromMapsUrl(
   googleMapsUrl: string,
   googlePlaceId?: string | null,
@@ -440,10 +514,34 @@ export function isValidExternalUrl(url?: string): boolean {
   }
 }
 
-/** Opens maps / external links reliably (mobile in-app browsers often ignore empty href). */
+const GUEST_EXTERNAL_WINDOW_NAME = 'vailoGuestExternal';
+
+function guestExternalWindowFeatures(): string {
+  const w = Math.min(1200, Math.round(window.screen.availWidth * 0.9));
+  const h = Math.min(900, Math.round(window.screen.availHeight * 0.85));
+  const left = Math.max(0, Math.round((window.screen.availWidth - w) / 2));
+  const top = Math.max(0, Math.round((window.screen.availHeight - h) / 2));
+  return [
+    `width=${w}`,
+    `height=${h}`,
+    `left=${left}`,
+    `top=${top}`,
+    'scrollbars=yes',
+    'resizable=yes',
+    'noopener=yes',
+    'noreferrer=yes',
+  ].join(',');
+}
+
+/** Opens external http(s) links in a dedicated guest popup window (not a new tab). */
 export function openExternalUrl(url: string): void {
   if (!isValidExternalUrl(url)) return;
-  window.open(url.trim(), '_blank', 'noopener,noreferrer');
+  const opened = window.open(
+    url.trim(),
+    GUEST_EXTERNAL_WINDOW_NAME,
+    guestExternalWindowFeatures()
+  );
+  if (opened) opened.opener = null;
 }
 
 /** Google Maps driving directions from a fixed origin (e.g. the property) to destination coords. */
@@ -466,14 +564,19 @@ export function getItemMapLinks(item: {
   lng?: number;
   navigateUrl?: string;
 }, areaHint: string) {
-  const title = item.title?.trim();
+  const title = sanitizePlaceSearchTitle(item.title?.trim() || '');
   const lat = item.latitude ?? item.lat;
   const lng = item.longitude ?? item.lng;
   const hasCoords =
     typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
 
+  const storedMapsUrl =
+    item.googleMapsUrl && !isBrokenPlaceMapsUrl(item.googleMapsUrl)
+      ? item.googleMapsUrl
+      : undefined;
+
   const placeId =
-    bareGooglePlaceId(item.googlePlaceId) || extractPlaceIdFromMapsUrl(item.googleMapsUrl);
+    bareGooglePlaceId(item.googlePlaceId) || extractPlaceIdFromMapsUrl(storedMapsUrl);
 
   // 1. Best — Google Place ID resolves to the exact business card.
   if (placeId) {
@@ -481,13 +584,13 @@ export function getItemMapLinks(item: {
   }
 
   // 2. Direct /place/ URL — already resolves to a business card. Pass through.
-  if (isDirectPlaceMapsUrl(item.googleMapsUrl)) {
+  if (storedMapsUrl && isDirectPlaceMapsUrl(storedMapsUrl)) {
     return {
-      googleMapsUrl: item.googleMapsUrl!,
+      googleMapsUrl: storedMapsUrl,
       navigateUrl:
         item.navigateUrl && isDirectPlaceMapsUrl(item.navigateUrl)
           ? item.navigateUrl
-          : buildNavigateFromMapsUrl(item.googleMapsUrl!, item.googlePlaceId, lat, lng),
+          : buildNavigateFromMapsUrl(storedMapsUrl, item.googlePlaceId, lat, lng),
       resolved: true,
     };
   }
@@ -521,12 +624,12 @@ export function getItemMapLinks(item: {
   }
 
   // 6. Stored URLs (even if not “direct” place URLs).
-  if (isValidExternalUrl(item.googleMapsUrl)) {
+  if (storedMapsUrl && isValidExternalUrl(storedMapsUrl)) {
     return {
-      googleMapsUrl: item.googleMapsUrl!.trim(),
+      googleMapsUrl: storedMapsUrl.trim(),
       navigateUrl: isValidExternalUrl(item.navigateUrl)
         ? item.navigateUrl!.trim()
-        : buildNavigateFromMapsUrl(item.googleMapsUrl!, undefined, lat, lng),
+        : buildNavigateFromMapsUrl(storedMapsUrl, undefined, lat, lng),
       resolved: true,
     };
   }
@@ -538,6 +641,89 @@ export function getItemMapLinks(item: {
     navigateUrl: `https://www.google.com/maps/dir/?api=1&destination=${encoded}`,
     resolved: false,
   };
+}
+
+export type MapEnrichmentContext = {
+  country: string;
+  areaId: string;
+  areaName?: string;
+};
+
+export function mergeGooglePlaceResolution(
+  item: Record<string, unknown>,
+  resolved: ResolvedPlacePhoto,
+  requestedTitle: string
+): Record<string, unknown> {
+  if (resolved.notFound) return item;
+
+  const next: Record<string, unknown> = { ...item };
+  if (resolved.photoUrl) next.photoUrl = resolved.photoUrl;
+  if (resolved.googlePlaceId) next.googlePlaceId = resolved.googlePlaceId;
+  if (resolved.latitude != null) next.latitude = resolved.latitude;
+  if (resolved.longitude != null) next.longitude = resolved.longitude;
+
+  const links = buildPlaceMapUrls(
+    resolved.googlePlaceId,
+    resolved.latitude ?? undefined,
+    resolved.longitude ?? undefined,
+    requestedTitle
+  );
+  if (resolved.googleMapsUrl && !isBrokenPlaceMapsUrl(resolved.googleMapsUrl)) {
+    next.googleMapsUrl = resolved.googleMapsUrl;
+  } else if (links.googleMapsUrl) {
+    next.googleMapsUrl = links.googleMapsUrl;
+  }
+  if (links.navigateUrl) next.navigateUrl = links.navigateUrl;
+
+  return next;
+}
+
+async function tryResolveViaGoogle(
+  item: Record<string, unknown>,
+  areaHint: string,
+  anchorCoords: { lat: number; lng: number } | null,
+  mapCtx: MapEnrichmentContext
+): Promise<Record<string, unknown> | null> {
+  const title = sanitizePlaceSearchTitle(
+    typeof item.title === 'string' ? item.title.trim() : ''
+  );
+  if (!title) return null;
+
+  try {
+    const lat = typeof item.latitude === 'number' ? item.latitude : undefined;
+    const lng = typeof item.longitude === 'number' ? item.longitude : undefined;
+    const resolved = await resolvePlacePhoto({
+      title,
+      area: mapCtx.areaName || areaHint,
+      country: mapCtx.country,
+      areaId: mapCtx.areaId,
+      latitude: lat,
+      longitude: lng,
+      anchorLat: anchorCoords?.lat,
+      anchorLng: anchorCoords?.lng,
+    });
+    if (resolved.notFound || (!resolved.googlePlaceId && !resolved.googleMapsUrl)) {
+      return null;
+    }
+    return mergeGooglePlaceResolution(item, resolved, title);
+  } catch (err) {
+    console.warn('Google place resolve failed for map link:', title, err);
+    return null;
+  }
+}
+
+function itemHasCuratedMap(item: Record<string, unknown>): boolean {
+  const lat = item.latitude ?? item.lat;
+  const lng = item.longitude ?? item.lng;
+  const hasCoords =
+    typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
+
+  return !!(
+    bareGooglePlaceId(item.googlePlaceId as string | undefined) ||
+    isDirectPlaceMapsUrl(item.googleMapsUrl as string | undefined) ||
+    (item.source === 'database' && item.googleMapsUrl) ||
+    (hasCoords && extractPlaceIdFromMapsUrl(item.googleMapsUrl as string | undefined))
+  );
 }
 
 async function resolvePlaceOnMap(
@@ -568,21 +754,40 @@ async function resolvePlaceOnMap(
   return null;
 }
 
-async function enrichItem(item: any, areaHint: string, anchorCoords: { lat: number; lng: number } | null) {
-  const lat = item.latitude ?? item.lat;
-  const lng = item.longitude ?? item.lng;
-  const hasCoords = typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
-  const hasCuratedMap =
-    item.googlePlaceId ||
-    isDirectPlaceMapsUrl(item.googleMapsUrl) ||
-    (item.source === 'database' && item.googleMapsUrl);
+async function enrichItem(
+  item: any,
+  areaHint: string,
+  anchorCoords: { lat: number; lng: number } | null,
+  mapCtx?: MapEnrichmentContext
+) {
+  if (item.isProperty || item.source === 'property') return item;
 
-  if (hasCuratedMap || hasCoords) {
+  if (itemHasCuratedMap(item)) {
     const links = getItemMapLinks(item, areaHint);
     return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
   }
 
-  const title = item.title?.trim();
+  const title = typeof item.title === 'string' ? item.title.trim() : '';
+  if (mapCtx?.country && mapCtx?.areaId && title) {
+    const googleMerged = await tryResolveViaGoogle(item, areaHint, anchorCoords, mapCtx);
+    if (googleMerged) {
+      const links = getItemMapLinks(googleMerged, areaHint);
+      return {
+        ...googleMerged,
+        googleMapsUrl: links.googleMapsUrl,
+        navigateUrl: links.navigateUrl,
+      };
+    }
+  }
+
+  const lat = item.latitude ?? item.lat;
+  const lng = item.longitude ?? item.lng;
+  const hasCoords = typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng);
+  if (hasCoords) {
+    const links = getItemMapLinks(item, areaHint);
+    return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
+  }
+
   if (!title) return item;
 
   const resolved = await resolvePlaceOnMap(title, areaHint, anchorCoords);
@@ -591,8 +796,6 @@ async function enrichItem(item: any, areaHint: string, anchorCoords: { lat: numb
     return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
   }
 
-  // Use name-search for "View" so guests get the rich place card (photo, reviews,
-  // hours), coordinate-based "Directions" for precise routing.
   const enriched = {
     ...item,
     latitude: resolved.lat,
@@ -627,13 +830,14 @@ async function mapConcurrent<T, R>(
 export async function enrichPlanWithMapLinks(
   planData: any,
   areaHint: string,
-  anchorCoords: { lat: number; lng: number } | null
+  anchorCoords: { lat: number; lng: number } | null,
+  mapCtx?: MapEnrichmentContext
 ): Promise<any> {
   if (!planData) return planData;
 
   if (planData.type === 'timeline' && Array.isArray(planData.plan)) {
     const plan = await mapConcurrent(planData.plan, (item) =>
-      enrichItem(item, areaHint, anchorCoords)
+      enrichItem(item, areaHint, anchorCoords, mapCtx)
     );
     return { ...planData, plan };
   }
@@ -642,7 +846,7 @@ export async function enrichPlanWithMapLinks(
     const categories = [];
     for (const cat of planData.categories) {
       const items = await mapConcurrent(cat.items || [], (item) =>
-        enrichItem(item, areaHint, anchorCoords)
+        enrichItem(item, areaHint, anchorCoords, mapCtx)
       );
       categories.push({ ...cat, items });
     }

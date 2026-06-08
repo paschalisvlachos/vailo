@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Anchor,
   Briefcase,
@@ -11,6 +12,7 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
+import { openExternalUrl } from '../../lib/geocoding';
 import {
   buildServiceEmailLink,
   buildServiceInquiryMessage,
@@ -19,7 +21,7 @@ import {
 import { normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
-
+import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 export type GuestPortalFeature = {
   id: string;
   name?: string;
@@ -37,6 +39,8 @@ type Props = {
   features: GuestPortalFeature[];
   propertyName: string;
   propertyTypeName?: string;
+  /** Notifies parent when the detail sheet opens — used to hide FABs and fix stacking. */
+  onDetailOpenChange?: (open: boolean) => void;
 };
 
 function featureTitle(
@@ -110,9 +114,17 @@ function ServiceDetailSheet({
   const emailHref = buildServiceEmailLink(feature.email, inquiryMessage, emailSubject);
   const hasContact = !!(whatsappHref || emailHref);
 
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   return (
     <div
-      className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-[#051F26]/55 backdrop-blur-sm p-0 sm:p-4"
+      className={`fixed inset-0 ${GUEST_PORTAL_Z.detailSheet} flex items-end sm:items-center justify-center bg-[#051F26]/55 backdrop-blur-sm p-0 sm:p-4`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="service-detail-title"
@@ -122,28 +134,28 @@ function ServiceDetailSheet({
         className="bg-white w-full sm:max-w-md max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-2.5 pb-1 sm:hidden shrink-0">
+        <div className="flex justify-center pt-2.5 pb-1 sm:hidden shrink-0 bg-white">
           <div className="w-10 h-1 rounded-full bg-gray-200" aria-hidden />
         </div>
 
-        <div className="overflow-y-auto flex-1 px-5 pb-5">
-          <div className="flex justify-end mb-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-xl text-gray-400 hover:text-[#0B4F5C] hover:bg-gray-50 shrink-0"
-              aria-label="Close"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-white">
           <h2
             id="service-detail-title"
-            className="font-luxury text-2xl text-[#051F26] font-medium text-center mb-4"
+            className="font-luxury text-lg text-[#051F26] font-medium truncate flex-1 min-w-0"
           >
             {title}
           </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl text-gray-400 hover:text-[#0B4F5C] hover:bg-gray-50 shrink-0"
+            aria-label="Close"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
 
           <div className="relative rounded-2xl overflow-hidden bg-gray-100 mb-4 aspect-[16/10]">
             {feature.photoUrl ? (
@@ -174,10 +186,9 @@ function ServiceDetailSheet({
 
           <div className="space-y-2.5">
             {whatsappHref && (
-              <a
-                href={whatsappHref}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => openExternalUrl(whatsappHref)}
                 className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white hover:border-[#25D366]/40 hover:bg-[#25D366]/5 transition-colors"
               >
                 <span className="flex items-center gap-2.5 text-[#25D366] font-semibold text-sm">
@@ -185,7 +196,7 @@ function ServiceDetailSheet({
                   WhatsApp
                 </span>
                 <ExternalLink size={16} className="text-gray-400" />
-              </a>
+              </button>
             )}
             {emailHref && (
               <a
@@ -215,10 +226,15 @@ export default function GuestLocalServices({
   features,
   propertyName,
   propertyTypeName,
+  onDetailOpenChange,
 }: Props) {
   const { locale, contentPrimaryLocale } = useGuestLocale();
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [selected, setSelected] = useState<GuestPortalFeature | null>(null);
+
+  useEffect(() => {
+    onDetailOpenChange?.(selected != null);
+  }, [selected, onDetailOpenChange]);
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(features.map((f) => f.categories?.[0]).filter(Boolean)))],
@@ -328,14 +344,17 @@ export default function GuestLocalServices({
         </div>
       </section>
 
-      {selected && (
-        <ServiceDetailSheet
-          feature={selected}
-          propertyName={propertyName}
-          propertyTypeName={propertyTypeName}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <ServiceDetailSheet
+            feature={selected}
+            propertyName={propertyName}
+            propertyTypeName={propertyTypeName}
+            onClose={() => setSelected(null)}
+          />,
+          document.body
+        )}
     </>
   );
 }

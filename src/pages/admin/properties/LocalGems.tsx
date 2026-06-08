@@ -17,6 +17,14 @@ import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { resolveLocalizedString } from '../../../lib/propertyContentLocales';
 import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
 import { Languages, Loader2 as Loader2Icon } from 'lucide-react';
+import {
+  categoryPrimaryName,
+  categorySelectionIncludes,
+  gemCategoryPrimaries,
+  normalizeCategorySelectionList,
+  resolveCategoryLabel,
+} from '../../../lib/categoryLocale';
+import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -49,7 +57,9 @@ export default function LocalGems() {
   
   // Database States
   const [gems, setGems] = useState<any[]>([]);
-  const [localGemsCategories, setLocalGemsCategories] = useState<string[]>([]);
+  const [localGemsCategoryDocs, setLocalGemsCategoryDocs] = useState<
+    { id: string; data: Record<string, unknown> }[]
+  >([]);
   
   // UI States
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -64,7 +74,7 @@ export default function LocalGems() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const initialFormState = {
-    name: '', category: '', description: '', rating: '',
+    name: '', category: '', categories: [] as string[], description: '', rating: '',
     googleMapsUrl: '', distanceKm: '', distanceTime: '',
     latitude: '', longitude: '',
     isLegitPick: false, isDailyTrip: false, photoUrl: ''
@@ -82,9 +92,63 @@ export default function LocalGems() {
   );
   const localeEditor = useContentLocaleEditor(
     localeSettings.primaryLocale,
-    ['name', 'description', 'category'],
+    ['name', 'description'],
     editingSourceDoc
   );
+
+  const categoryCatalogDocs = useMemo(
+    () => localGemsCategoryDocs.map((c) => c.data),
+    [localGemsCategoryDocs]
+  );
+
+  const normalizedGemCategories = useMemo(
+    () =>
+      normalizeCategorySelectionList(
+        formData.categories,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      ),
+    [formData.categories, categoryCatalogDocs, localeSettings.primaryLocale]
+  );
+
+  const categoryPillOptions = useMemo(
+    () =>
+      localGemsCategoryDocs.map((cat) => {
+        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+        const label = resolveCategoryLabel(
+          cat.data,
+          localeEditor.contentLocale,
+          localeSettings.primaryLocale
+        );
+        return { value: primaryName, label: label || primaryName };
+      }),
+    [localGemsCategoryDocs, localeEditor.contentLocale, localeSettings.primaryLocale]
+  );
+
+  const handleCategoryPillToggle = (value: string) => {
+    setFormData((prev) => {
+      const current = normalizeCategorySelectionList(
+        prev.categories,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      );
+      const lower = value.toLowerCase();
+      const has = current.some((c) => c.toLowerCase() === lower);
+      const next = has
+        ? current.filter((c) => c.toLowerCase() !== lower)
+        : [...current, value];
+      const normalized = normalizeCategorySelectionList(
+        next,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      );
+      return {
+        ...prev,
+        categories: normalized,
+        category: normalized[0] || '',
+      };
+    });
+  };
 
   // 1. Fetch Area Context (from Parent or Types)
   useEffect(() => {
@@ -119,14 +183,24 @@ export default function LocalGems() {
     const { country, areaId } = propertyAreaContext;
 
     // Fetch Global Categories
-    const unsubCats = onSnapshot(collection(db, 'countries', country, 'areas', areaId, 'localGemsCategories'), (snapshot) => {
-      const fetchedCats = snapshot.docs.map(doc => doc.data().name);
-      fetchedCats.sort((a, b) => a.localeCompare(b));
-      setLocalGemsCategories(fetchedCats);
-    });
+    const unsubCats = onSnapshot(
+      collection(db, 'countries', country, 'areas', areaId, 'localGemsCategories'),
+      (snapshot) => {
+        const fetchedCats = snapshot.docs.map((d) => ({
+          id: d.id,
+          data: d.data() as Record<string, unknown>,
+        }));
+        fetchedCats.sort((a, b) =>
+          categoryPrimaryName(a.data, localeSettings.primaryLocale).localeCompare(
+            categoryPrimaryName(b.data, localeSettings.primaryLocale)
+          )
+        );
+        setLocalGemsCategoryDocs(fetchedCats);
+      }
+    );
 
     return () => unsubCats();
-  }, [propertyAreaContext]);
+  }, [propertyAreaContext, localeSettings.primaryLocale]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -225,7 +299,7 @@ export default function LocalGems() {
       let finalDescription = googleData.description;
 
       try {
-        const categoryNames = localGemsCategories.join(', ');
+        const categoryNames = categoryPillOptions.map((o) => o.value).join(', ');
         const gType = googleData.category?.replace(/_/g, ' ') || "local spot";
 
         const prompt = `Act as a travel concierge for ${propertyAreaContext.areaName}. We are adding "${googleData.name || placeNameFallback}" (Google classification: ${gType}).
@@ -239,7 +313,10 @@ export default function LocalGems() {
         const rawText = aiResult.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(rawText);
 
-        if (parsed.category && localGemsCategories.includes(parsed.category)) {
+        if (
+          parsed.category &&
+          categoryPillOptions.some((o) => o.value === parsed.category)
+        ) {
           matchedCategory = parsed.category;
         }
         if (parsed.description && !googleData.description) {
@@ -248,30 +325,41 @@ export default function LocalGems() {
       } catch (e) {
         console.log("AI JSON mapping failed, falling back to simple match.", e);
         const gTypeLower = googleData.category?.toLowerCase().replace(/_/g, ' ') || "";
-        const possibleMatch = localGemsCategories.find(c => 
-          gTypeLower.includes(c.toLowerCase()) || c.toLowerCase().includes(gTypeLower)
+        const possibleMatch = categoryPillOptions.find(
+          (o) =>
+            gTypeLower.includes(o.value.toLowerCase()) ||
+            o.value.toLowerCase().includes(gTypeLower)
         );
-        if (possibleMatch) matchedCategory = possibleMatch;
+        if (possibleMatch) matchedCategory = possibleMatch.value;
       }
 
+      const nextCategories = matchedCategory
+        ? normalizeCategorySelectionList(
+            formData.categories.includes(matchedCategory)
+              ? formData.categories
+              : [...formData.categories, matchedCategory],
+            categoryCatalogDocs,
+            localeSettings.primaryLocale
+          )
+        : formData.categories;
+
       const primaryName = googleData.name || placeNameFallback;
-      const primaryCategory = matchedCategory || formData.category;
       const primaryDescription = finalDescription || formData.description;
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         name: primaryName,
-        category: primaryCategory,
+        categories: nextCategories,
+        category: nextCategories[0] || '',
         rating: googleData.rating ? googleData.rating.toString() : prev.rating,
         description: primaryDescription,
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
         distanceKm: distanceKm,
         distanceTime: distanceTime,
-        photoUrl: googleData.photoUrl || ''
+        photoUrl: googleData.photoUrl || '',
       }));
       localeEditor.applyPrimaryFields({
         name: primaryName,
-        category: primaryCategory,
         description: primaryDescription,
       });
 
@@ -298,6 +386,10 @@ export default function LocalGems() {
   const submitGem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!propertyId || !selectedTypeId) return;
+    if (normalizedGemCategories.length === 0) {
+      toast.warning('Select at least one category.');
+      return;
+    }
     setIsSubmitting(true);
     
     try {
@@ -315,6 +407,8 @@ export default function LocalGems() {
       const payload = {
         ...formData,
         ...localized,
+        categories: normalizedGemCategories,
+        category: normalizedGemCategories[0] || '',
         photoUrl: finalPhotoUrl,
         isLegitPick: Boolean(formData.isLegitPick),
         isDailyTrip: Boolean(formData.isDailyTrip),
@@ -341,10 +435,17 @@ export default function LocalGems() {
   };
 
   const handleEditClick = (gemData: any) => {
+    const normalized = gemCategoryPrimaries(
+      gemData,
+      categoryCatalogDocs,
+      localeSettings.primaryLocale
+    );
     setEditingSourceDoc(gemData);
     setFormData({
       ...initialFormState,
       ...gemData,
+      categories: normalized,
+      category: normalized[0] || '',
       isLegitPick: Boolean(gemData.isLegitPick),
       isDailyTrip: Boolean(gemData.isDailyTrip),
     });
@@ -365,7 +466,6 @@ export default function LocalGems() {
     const primaryFields = {
       name: localeEditor.getPrimaryValue('name') || formData.name,
       description: localeEditor.getPrimaryValue('description') || formData.description,
-      category: localeEditor.getPrimaryValue('category') || formData.category,
     };
     if (!primaryFields.name?.trim()) {
       toast.warning('Fill in the primary language first.');
@@ -533,7 +633,11 @@ export default function LocalGems() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 capitalize">{gem.category.replace('/', ' / ')}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).join(
+                        ' · '
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm text-center">
                       <div className="flex items-center justify-center text-gray-900 font-medium">
                         <Star size={14} className="text-yellow-400 fill-current mr-1" />
@@ -659,27 +763,27 @@ export default function LocalGems() {
               />
             </div>
             
-            {/* 3. DYNAMIC CATEGORY DROPDOWN */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-              <select
-                required
-                value={localeEditor.getValue('category')}
-                onChange={(e) => {
-                  localeEditor.setValue('category', e.target.value);
-                  if (localeEditor.contentLocale === localeSettings.primaryLocale) {
-                    setFormData((prev) => ({ ...prev, category: e.target.value }));
+            <div className="md:col-span-2">
+              {localGemsCategoryDocs.length > 0 ? (
+                <CategoryPillSelector
+                  label="Categories * (select all that apply)"
+                  options={categoryPillOptions}
+                  isSelected={(value) =>
+                    categorySelectionIncludes(
+                      normalizedGemCategories,
+                      value,
+                      categoryCatalogDocs,
+                      localeSettings.primaryLocale
+                    )
                   }
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
-              >
-                <option value="" disabled>
-                  {localGemsCategories.length === 0 ? "No Area Categories Found" : "Please select"}
-                </option>
-                {localGemsCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+                  onToggle={handleCategoryPillToggle}
+                  colorClass="blue"
+                />
+              ) : (
+                <p className="text-sm text-red-600 font-medium">
+                  No area categories found. Add them under Area Functionality → Local Gems Categories.
+                </p>
+              )}
             </div>
 
             {/* 4. GOOGLE RATING */}

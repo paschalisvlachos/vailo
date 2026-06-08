@@ -25,6 +25,8 @@ export async function resolvePlacePhoto(params: {
   longitude?: number;
   anchorLat?: number;
   anchorLng?: number;
+  maxKm?: number;
+  knowledgeMode?: 'areas' | 'business' | 'any';
 }): Promise<ResolvedPlacePhoto> {
   const normalized = normalizePlaceName(params.title);
   const coordSuffix =
@@ -46,6 +48,8 @@ export async function resolvePlacePhoto(params: {
     longitude: params.longitude,
     anchorLat: params.anchorLat,
     anchorLng: params.anchorLng,
+    maxKm: params.maxKm,
+    knowledgeMode: params.knowledgeMode || 'any',
   });
 
   const data = result.data as ResolvedPlacePhoto;

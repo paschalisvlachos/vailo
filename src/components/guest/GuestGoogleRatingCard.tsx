@@ -1,5 +1,6 @@
 import { ChevronRight, Star } from 'lucide-react';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
+import { openExternalUrl } from '../../lib/geocoding';
 
 type Props = {
   rating: number;
@@ -37,11 +38,10 @@ export default function GuestGoogleRatingCard({ rating, reviewUrl, listingName, 
   const hasHalf = displayRating - fullStars >= 0.25 && displayRating - fullStars < 0.85;
 
   return (
-    <a
-      href={reviewUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group block w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/40 via-white/30 to-[#C5A059]/40 shadow-[0_4px_20px_rgba(11,79,92,0.1)] hover:shadow-[0_8px_28px_rgba(11,79,92,0.14)] transition-all duration-200 hover:-translate-y-px"
+    <button
+      type="button"
+      onClick={() => openExternalUrl(reviewUrl)}
+      className="group block w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/40 via-white/30 to-[#C5A059]/40 shadow-[0_4px_20px_rgba(11,79,92,0.1)] hover:shadow-[0_8px_28px_rgba(11,79,92,0.14)] transition-all duration-200 hover:-translate-y-px text-left"
     >
       <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center gap-3">
         <div className="h-11 w-11 rounded-xl bg-white border border-gray-100 shadow-inner flex items-center justify-center shrink-0 p-2">
@@ -84,6 +84,6 @@ export default function GuestGoogleRatingCard({ rating, reviewUrl, listingName, 
           />
         </div>
       </div>
-    </a>
+    </button>
   );
 }

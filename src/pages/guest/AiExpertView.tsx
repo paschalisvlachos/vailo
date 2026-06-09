@@ -15,11 +15,12 @@ import {
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
   effectiveMaxDistanceKm,
+  filterShowableAiPicksFromPlan,
   maxPicksForRadius,
   normalizeFlexiblePicksPlan,
   trimFlexiblePicksToDisplayCap,
 } from '../../lib/flexiblePicks';
-import { filterUnverifiedFromPicksPlan } from '../../lib/pickVerification';
+import { filterAreasCommercialAiPicksFromPlan } from '../../lib/areasPickFilter';
 import { buildWizardDistanceTiers } from '../../lib/categoryCoverageDistances';
 import { mergeCuratedFeatures, mergeCuratedGems } from '../../lib/mergeCuratedContent';
 import {
@@ -65,14 +66,21 @@ import {
   getCategoryKnowledgeMode,
   stripExcludedCategoriesFromPlan,
 } from '../../lib/liveLikeLocalCategories';
+import { stripTrailingLocality } from '../../lib/placeNameUtils';
 import { guestUiTFormat, type GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import AiExpertCuratingLoader from '../../components/guest/AiExpertCuratingLoader';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 import {
+  coerceTimelineToFlexiblePicks,
   extractChatPlanPayload,
   inferCategoryPrimariesFromText,
+  isAmbiguousFollowup,
+  isFlexibleTimeFrame,
   looksLikePlanRequest,
+  parseRequestedCount,
+  parseRequestedDistanceKm,
+  wantsRefinement,
 } from '../../lib/aiExpertChatIntent';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Compass, Heart, Eye } from 'lucide-react';
 
@@ -160,6 +168,96 @@ async function resolvePropertyTypeAreaContext(
   };
 }
 
+/**
+ * Parse the model's JSON reply, tolerating markdown fences and truncated output.
+ * gemini can occasionally cut a long response mid-object; we attempt to close
+ * any dangling strings/brackets so a partial-but-usable plan still renders.
+ */
+function parseAiJson(raw: string): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'string') return null;
+
+  const tryParse = (s: string): Record<string, unknown> | null => {
+    try {
+      const parsed = JSON.parse(s);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = tryParse(raw.trim());
+  if (direct) return direct;
+
+  const firstBrace = raw.indexOf('{');
+  const lastBrace = raw.lastIndexOf('}');
+  if (firstBrace === -1) return null;
+
+  if (lastBrace > firstBrace) {
+    const sliced = tryParse(raw.substring(firstBrace, lastBrace + 1));
+    if (sliced) return sliced;
+  }
+
+  return repairTruncatedJson(raw.substring(firstBrace));
+}
+
+/** Best-effort repair of a JSON object that was cut off before completion. */
+function repairTruncatedJson(fragment: string): Record<string, unknown> | null {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  let lastSafe = -1;
+
+  for (let i = 0; i < fragment.length; i++) {
+    const ch = fragment[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{' || ch === '[') {
+      stack.push(ch === '{' ? '}' : ']');
+    } else if (ch === '}' || ch === ']') {
+      stack.pop();
+    }
+    // A comma or closing bracket outside a string marks a clean cut point.
+    if (!inString && (ch === ',' || ch === '}' || ch === ']')) {
+      lastSafe = i;
+    }
+  }
+
+  if (lastSafe === -1) return null;
+
+  // Trim a trailing comma, then close any still-open brackets/braces.
+  let candidate = fragment.substring(0, lastSafe + 1).replace(/,\s*$/, '');
+  const reopen: string[] = [];
+  inString = false;
+  escaped = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') reopen.push('}');
+    else if (ch === '[') reopen.push(']');
+    else if (ch === '}' || ch === ']') reopen.pop();
+  }
+  candidate += reopen.reverse().join('');
+
+  try {
+    const parsed = JSON.parse(candidate);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Pull every DB-sourced item from a finalized plan (picks or timeline) for fairness tracking. */
 function collectDbItemsFromPlan(plan: any): any[] {
   if (!plan) return [];
@@ -179,6 +277,31 @@ function collectDbItemsFromPlan(plan: any): any[] {
 }
 
 /** Prepend synced AllTrails hiking categories; strip duplicate AI hiking sections. */
+/**
+ * Display-only: drop a trailing ", <town>" the AI sometimes appends to an AI
+ * pick's name. The verified map link / coordinates carry the real location, and
+ * the appended town is frequently wrong (e.g. "Taverna Glaros, Kalyves" when the
+ * place is actually in Georgioupolis). Database picks keep their curated names.
+ */
+function cleanAiPickDisplayTitles(plan: any) {
+  if (!plan || typeof plan !== 'object') return plan;
+  const cleanItem = (it: any) =>
+    it && it.source !== 'database' && typeof it.title === 'string'
+      ? { ...it, title: stripTrailingLocality(it.title) }
+      : it;
+  const next = { ...plan };
+  if (Array.isArray(next.categories)) {
+    next.categories = next.categories.map((cat: any) => ({
+      ...cat,
+      items: Array.isArray(cat?.items) ? cat.items.map(cleanItem) : cat?.items,
+    }));
+  }
+  if (Array.isArray(next.plan)) {
+    next.plan = next.plan.map(cleanItem);
+  }
+  return next;
+}
+
 function mergeTrailCategoriesIntoPlan(
   plan: any,
   trailBlocks: Array<{ categoryName: string; isTrails: true; items: unknown[] }>
@@ -509,6 +632,44 @@ export default function AiExpertView({
     return location === getNearPropertyLabel() || location.startsWith('Near ');
   };
 
+  /** Default starting point = guest's property (does not advance the wizard step). */
+  const ensureDefaultPropertyLocation = (): typeof preferences => {
+    if (preferences.location?.trim()) {
+      if (!locationCoordsRef.current && preferences.locationCoords) {
+        locationCoordsRef.current = preferences.locationCoords;
+      }
+      return preferences;
+    }
+
+    const { coords: propCoords } = getLocationContext();
+    if (!propCoords) return preferences;
+
+    const nearLabel = getNearPropertyLabel();
+    const next = {
+      ...preferences,
+      location: nearLabel,
+      locationCoords: propCoords,
+      locationFullName: '',
+    };
+    locationCoordsRef.current = propCoords;
+    locationFullNameRef.current = '';
+    setPreferences(next);
+    return next;
+  };
+
+  useEffect(() => {
+    if (!propertyCoords || preferences.location?.trim()) return;
+    const nearLabel = getNearPropertyLabel();
+    locationCoordsRef.current = propertyCoords;
+    locationFullNameRef.current = '';
+    setPreferences((prev) => ({
+      ...prev,
+      location: nearLabel,
+      locationCoords: propertyCoords,
+      locationFullName: '',
+    }));
+  }, [propertyCoords]);
+
   /**
    * Geographic hint we pass to Google Maps "View" URLs and to Nominatim. MUST be
    * a real city / region, not the user's start-point label, otherwise queries
@@ -829,15 +990,6 @@ export default function AiExpertView({
       areaName: listingAreaCtx.masterArea || getGeographicAreaHint(),
     };
   }, [listingAreaCtx]);
-
-  /** Fast pass: Google place resolve + map URLs for immediate render. */
-  const enrichForImmediateRender = async (
-    planData: any,
-    mapAreaHint: string,
-    startCoords: ReturnType<typeof getStartCoords>
-  ) => {
-    return enrichPlanWithMapLinks(planData, mapAreaHint, startCoords, getMapEnrichmentContext());
-  };
 
   /** Photos then re-sync map links from resolved Google Place IDs. */
   const enrichPhotosAndMapLinks = async (
@@ -1230,7 +1382,8 @@ export default function AiExpertView({
 
   const runPlanGeneration = async (
     timeFrameStr: string,
-    planPreferences: typeof preferences
+    planPreferences: typeof preferences,
+    options?: { requestedCount?: number }
   ) => {
     try {
       const aiTimeFrame = timeFrameStr
@@ -1340,8 +1493,14 @@ export default function AiExpertView({
 
       const hardCapKm = effectiveMaxDistanceKm(distanceLimitNum);
 
-      const displayMax = maxPicksForRadius(distanceLimitNum);
-      const poolSize = aiCandidatePoolSize();
+      // Honour an explicit "10 best" style request; otherwise the radius default.
+      const requestedCount =
+        options?.requestedCount && options.requestedCount > 0
+          ? Math.min(options.requestedCount, 10)
+          : undefined;
+      const displayMax = requestedCount ?? maxPicksForRadius(distanceLimitNum);
+      // Over-generate enough candidates to survive verification and fill the cap.
+      const poolSize = Math.min(Math.max(aiCandidatePoolSize(), displayMax * 2), 24);
 
       const systemInstruction = `You are Vailo, an elite local concierge for this specific region. Reply only with a valid JSON object (no markdown, no prose outside JSON).
 
@@ -1351,9 +1510,10 @@ Core rules:
 - AUTHENTIC PICKS: Prefer neighbourhood haunts residents use over tourist-trap lists, cruise-ship restaurants, and generic "top 10" roundups.
 - TONE: Descriptions must be concrete and varied. Do not repeat "locals love/prefer" on every item.
 - VERIFICATION: Every AI pick is checked against Google Maps after your response. Unverified titles are silently removed. Use exact official Google Maps names — invented or descriptive labels fail (e.g. "Phylaki" not "Filaki Village"; "Kalyvaki Beach" not "western river mouth").
-- CANDIDATE POOL: Return up to ${poolSize} AI candidates per category. Guests see only the closest ${displayMax} verified picks. Over-generate real names so enough survive verification.
-- 50 / 50 SPLIT (business categories): ~half Vailo database picks (property local gems + area local gems, balanced) + ~half verified AI picks. Never duplicate a database business. For [AREAS ONLY] categories, all picks are geographic AI places — no database businesses.
+- CANDIDATE POOL: Return up to ${poolSize} AI candidates per category, ordered best-first (most worth visiting), NOT by distance. Guests see the best ${displayMax} verified picks. Over-generate real names so enough survive verification.
+- 50 / 50 SPLIT (business categories): ~half Vailo database picks (property local gems + area local gems, balanced) + ~half verified AI picks. Never duplicate a database business. For [AREAS ONLY] categories, all picks are geographic AI places only — no database businesses, beach bars, operators, or paid venues.
 - NAMED PLACES ONLY: Each item must be a specific real place on Google Maps — never a generic area, "old town", or invented landmark. Skip if uncertain.
+- TITLES: Use the venue's own name only — never append a town/village/area to it (no "Name, Town"). Do NOT state a specific town/village in the description unless you are certain it is correct; the verified map link already shows the exact location.
 - AI pick fields: photoUrl and googleMapsUrl = empty string. googlePlaceId only if certain. distanceKm required and ≤ each category's hardCapKm (see pools below).
 - Never suggest permanently closed businesses.`;
 
@@ -1402,7 +1562,9 @@ Return JSON with this schema:
           aiCategories,
           distanceLimitNum,
           picksDbContext!,
-          categoryKnowledgeByPrimary
+          categoryKnowledgeByPrimary,
+          displayMax,
+          poolSize
         );
         promptText += `
 
@@ -1428,7 +1590,7 @@ Return JSON with this schema:
     }
   ]
 }
-Return up to ${poolSize} AI candidates per category (source: "ai") plus database picks from the pools. After Google verification guests see ${displayMax} per category. Official Google Maps titles only. Fill from within ${distanceLimitNum}km first; extended range uses beyondRadius: true. No duplicates. Sort closest to furthest.`;
+Return up to ${poolSize} AI candidates per category (source: "ai") plus database picks from the pools. After Google verification guests see the best ${displayMax} per category. Official Google Maps titles only. Treat anywhere within ${distanceLimitNum}km as equally valid; extended range uses beyondRadius: true. No duplicates. Order BEST-FIRST (most worth visiting), not by distance — we re-sort by distance for display.`;
       }
 
       const model = getGenerativeModel(ai, {
@@ -1437,6 +1599,11 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.7,
+          // Large picks responses (many categories × candidates) need room.
+          // gemini-2.5-flash enables "thinking" by default, which eats the
+          // output budget and truncates the JSON. Disable it and raise the cap.
+          maxOutputTokens: 16384,
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -1449,25 +1616,24 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       const result = await model.generateContent(promptText);
       const rawText = result.response.text();
 
-      let parsedData: any;
-      try {
-        parsedData = JSON.parse(rawText);
-      } catch {
-        const firstBrace = rawText.indexOf('{');
-        const lastBrace = rawText.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1) throw new Error('AI did not return a recognizable JSON object.');
-        parsedData = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
+      const parsedData: any = parseAiJson(rawText);
+      if (!parsedData) {
+        throw new Error('AI did not return a recognizable JSON object.');
       }
 
       const mapAreaHint = getGeographicAreaHint() || startLocationName || planPreferences.location;
-      let initialPlan = applyTimelinePropertyBookends(parsedData, isNearProperty);
-      initialPlan = mergeTrailCategoriesIntoPlan(initialPlan, trailCategoryBlocks);
-      initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);
+      let basePlan = applyTimelinePropertyBookends(parsedData, isNearProperty);
+      basePlan = mergeTrailCategoriesIntoPlan(basePlan, trailCategoryBlocks);
 
-      let candidatePlan = initialPlan;
+      // Paint from the model's own data — no geocoding on the critical path.
+      // Map links fall back to a name search and exact place links + photos
+      // stream in from the background pass below, so the guest sees results
+      // in seconds instead of waiting on ~24 place lookups.
+      let candidatePlan = basePlan;
+      let initialPlan = basePlan;
       if (isFlexiblePicks && picksDbContext) {
         candidatePlan = normalizeFlexiblePicksPlan(
-          initialPlan,
+          basePlan,
           distanceLimitNum,
           picksDbContext,
           startCoords,
@@ -1475,9 +1641,9 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
           categoryKnowledgeByPrimary,
           poolSize
         );
-        initialPlan = trimFlexiblePicksToDisplayCap(candidatePlan, distanceLimitNum);
+        initialPlan = trimFlexiblePicksToDisplayCap(candidatePlan, distanceLimitNum, displayMax);
       } else {
-        initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
+        initialPlan = filterTimelinePlanByDistance(basePlan, distanceLimitNum, startCoords, recentlyShown);
         initialPlan = scheduleTimelineIfNeeded(initialPlan, !!timeFrameStr);
       }
 
@@ -1499,41 +1665,93 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       // Record which DB items we just showed so they get rotated out next time.
       markItemsShown(collectDbItemsFromPlan(initialPlan));
 
-      // Background photo + map enrichment — updates the same message when ready.
-      enrichPhotosAndMapLinks(candidatePlan, mapAreaHint, startCoords, {
+      const photoExtras = {
         guestMaxKm: distanceLimitNum,
         knowledgeByPrimary: categoryKnowledgeByPrimary,
-      })
-        .then((withPhotosAndMaps) => {
-          let finalPlan = withPhotosAndMaps;
-          finalPlan = mergeTrailCategoriesIntoPlan(finalPlan, trailCategoryBlocks);
-          if (isFlexiblePicks && picksDbContext) {
-            finalPlan = normalizeFlexiblePicksPlan(
-              finalPlan,
+      };
+
+      // Stage 1 — resolve photos + exact maps for ONLY the visible picks first,
+      // so images appear in a couple of seconds instead of waiting on the whole
+      // candidate pool. We ALSO verify + filter this set here, so the first paint
+      // is already final: picks that survive will never be removed by Stage 2
+      // (which only re-ranks and back-fills). This stops the "appears then
+      // disappears" flicker — guests never see a pick that later vanishes.
+      enrichPhotosAndMapLinks(initialPlan, mapAreaHint, startCoords, photoExtras)
+        .then((displayEnriched) => {
+          let shown = displayEnriched as Record<string, unknown>;
+          if (isFlexiblePicks) {
+            shown = filterShowableAiPicksFromPlan(
+              shown,
               distanceLimitNum,
-              picksDbContext,
               startCoords,
-              recentlyShown,
-              categoryKnowledgeByPrimary,
-              poolSize
-            );
-            finalPlan = filterUnverifiedFromPicksPlan(finalPlan);
-            finalPlan = trimFlexiblePicksToDisplayCap(finalPlan, distanceLimitNum);
-          } else {
-            finalPlan = filterTimelinePlanByDistance(finalPlan, distanceLimitNum, startCoords, recentlyShown);
-            finalPlan = scheduleTimelineIfNeeded(finalPlan, !!timeFrameStr);
+              categoryKnowledgeByPrimary
+            ) as Record<string, unknown>;
+            shown = filterAreasCommercialAiPicksFromPlan(
+              shown,
+              categoryKnowledgeByPrimary
+            ) as Record<string, unknown>;
+            shown = trimFlexiblePicksToDisplayCap(shown, distanceLimitNum, displayMax);
           }
-          finalPlan =
+          shown = mergeTrailCategoriesIntoPlan(shown, trailCategoryBlocks);
+          shown = cleanAiPickDisplayTitles(shown);
+          shown =
             stripExcludedCategoriesFromPlan(
-              finalPlan as Record<string, unknown>,
+              shown as Record<string, unknown>,
               excludedLiveLikeLocalPrimaries
-            ) ?? finalPlan;
+            ) ?? shown;
           setMessages(prev =>
-            prev.map(m => (m.id === planMessageId ? { ...m, data: finalPlan } : m))
+            prev.map(m => (m.id === planMessageId ? { ...m, data: shown } : m))
           );
         })
         .catch((err) => {
-          console.error('Background photo/map enrichment failed:', err);
+          console.error('Display photo/map enrichment failed:', err);
+        })
+        // Stage 2 — refine against the full candidate pool: back-fill from spares
+        // and re-rank by real distance. Runs after the fast paint above, so it
+        // only ever improves what's already on screen.
+        .finally(() => {
+          enrichPhotosAndMapLinks(candidatePlan, mapAreaHint, startCoords, photoExtras)
+            .then((withPhotosAndMaps) => {
+              let finalPlan = withPhotosAndMaps;
+              finalPlan = mergeTrailCategoriesIntoPlan(finalPlan, trailCategoryBlocks);
+              if (isFlexiblePicks && picksDbContext) {
+                finalPlan = normalizeFlexiblePicksPlan(
+                  finalPlan,
+                  distanceLimitNum,
+                  picksDbContext,
+                  startCoords,
+                  recentlyShown,
+                  categoryKnowledgeByPrimary,
+                  poolSize
+                );
+                finalPlan = filterShowableAiPicksFromPlan(
+                  finalPlan,
+                  distanceLimitNum,
+                  startCoords,
+                  categoryKnowledgeByPrimary
+                );
+                finalPlan = filterAreasCommercialAiPicksFromPlan(
+                  finalPlan,
+                  categoryKnowledgeByPrimary
+                );
+                finalPlan = trimFlexiblePicksToDisplayCap(finalPlan, distanceLimitNum, displayMax);
+              } else {
+                finalPlan = filterTimelinePlanByDistance(finalPlan, distanceLimitNum, startCoords, recentlyShown);
+                finalPlan = scheduleTimelineIfNeeded(finalPlan, !!timeFrameStr);
+              }
+              finalPlan = cleanAiPickDisplayTitles(finalPlan);
+              finalPlan =
+                stripExcludedCategoriesFromPlan(
+                  finalPlan as Record<string, unknown>,
+                  excludedLiveLikeLocalPrimaries
+                ) ?? finalPlan;
+              setMessages(prev =>
+                prev.map(m => (m.id === planMessageId ? { ...m, data: finalPlan } : m))
+              );
+            })
+            .catch((err) => {
+              console.error('Background photo/map enrichment failed:', err);
+            });
         });
 
     } catch (error: any) {
@@ -1595,39 +1813,67 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       inferredPrimaries,
       excludedLiveLikeLocalPrimaries
     );
-    const effectiveCategories =
-      wizardCategories.length > 0 ? wizardCategories : inferredCategories;
+    // Open by default: the latest message's own topics take priority over the
+    // categories the wizard happened to use earlier. The wizard set is only a
+    // fallback when the new message names no interest of its own.
+    const openCategories =
+      inferredCategories.length > 0 ? inferredCategories : wizardCategories;
 
-    if (looksLikePlanRequest(userText, effectiveCategories) && effectiveCategories.length > 0) {
+    const hasPriorPlan = messages.some((m) => m.type === 'plan');
+    const refineRequested = hasPriorPlan && wantsRefinement(userText);
+    // A plan request is driven by the message itself (verbs / its own topics),
+    // not by the fact that a wizard ran before — so follow-up questions about the
+    // existing picks fall through to chat instead of regenerating.
+    const isPlanRequest = looksLikePlanRequest(userText, inferredCategories);
+
+    const activePrefs = ensureDefaultPropertyLocation();
+
+    // Results already on screen + a vague "more / something else" with no new
+    // topic and no clear reference to the current set → ask which they want.
+    if (
+      hasPriorPlan &&
+      !refineRequested &&
+      inferredCategories.length === 0 &&
+      isAmbiguousFollowup(userText)
+    ) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString() + 'clarify',
+          role: 'ai',
+          type: 'text',
+          text: t('aiExpertRefineOrNew'),
+        },
+      ]);
+      return;
+    }
+
+    if (!refineRequested && isPlanRequest && openCategories.length > 0) {
       if (step !== 'DONE') setStep('DONE');
       setIsThinking(true);
       setCuratingStepIndex(0);
       setThinkingLabel(CURATING_STEP_KEYS[0]);
 
       const { coords: propCoords } = getLocationContext();
-      let effectivePrefs = { ...preferences };
-
-      if (!effectivePrefs.location) {
-        const nearLabel = getNearPropertyLabel();
-        effectivePrefs = {
-          ...effectivePrefs,
-          location: nearLabel,
-          locationCoords: propCoords,
-          locationFullName: '',
-        };
-        locationCoordsRef.current = propCoords;
-      }
-
-      if (effectivePrefs.categories.length === 0) {
-        effectivePrefs = { ...effectivePrefs, categories: effectiveCategories };
-        setSelectedCats(effectiveCategories);
-      }
+      // Honour an explicit distance / count from the message itself, e.g.
+      // "the 10 best beaches within 50km". These override the wizard's settings.
+      const requestedKm = parseRequestedDistanceKm(userText);
+      const requestedCount = parseRequestedCount(userText) ?? undefined;
+      // Fresh, open generation — apply the new topics and browse-as-picks mode,
+      // and never anchor on the previously shown plan.
+      let effectivePrefs = {
+        ...activePrefs,
+        categories: openCategories,
+        timeFrame: 'flexible',
+        ...(requestedKm ? { distance: `${requestedKm}km` } : {}),
+      };
+      setSelectedCats(openCategories);
 
       if (!effectivePrefs.distance) {
         const startCoords =
           locationCoordsRef.current ?? effectivePrefs.locationCoords ?? propCoords;
         const primaryCats = normalizeCategorySelectionList(
-          effectiveCategories,
+          openCategories,
           categoryCatalogDocs,
           contentSettings.primaryLocale
         );
@@ -1644,12 +1890,8 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
         effectivePrefs = { ...effectivePrefs, distance: options[0] || '29km' };
       }
 
-      if (!effectivePrefs.timeFrame) {
-        effectivePrefs = { ...effectivePrefs, timeFrame: 'flexible' };
-      }
-
       setPreferences(effectivePrefs);
-      await runPlanGeneration('', effectivePrefs);
+      await runPlanGeneration('', effectivePrefs, { requestedCount });
       return;
     }
 
@@ -1661,11 +1903,10 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     try {
       const { fullLocationContext } = getLocationContext();
       const startCoords = getStartCoords();
-      const isNearProperty =
-        !preferences.location || isNearPropertyLocation(preferences.location);
+      const isNearProperty = isNearPropertyLocation(activePrefs.location);
       const startLocationName = isNearProperty
         ? fullLocationContext
-        : (locationFullNameRef.current || preferences.locationFullName || preferences.location);
+        : (locationFullNameRef.current || activePrefs.locationFullName || activePrefs.location);
       const gpsString = startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown';
 
       const conversationHistory = messages
@@ -1680,11 +1921,11 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
         .join('\n');
 
       let distanceLimitNum = 9999;
-      if (preferences.distance) {
-        const match = preferences.distance.match(/\d+(\.\d+)?/);
+      if (activePrefs.distance) {
+        const match = activePrefs.distance.match(/\d+(\.\d+)?/);
         if (match) {
           distanceLimitNum = parseFloat(match[0]);
-        } else if (preferences.distance.toLowerCase().includes('walk')) {
+        } else if (activePrefs.distance.toLowerCase().includes('walk')) {
           distanceLimitNum = 2;
         }
       }
@@ -1706,21 +1947,36 @@ Rules:
 - When providing a picks plan: return up to ${chatPoolSize} AI candidates per category; guests see ${chatDisplayMax} verified. Over-generate real names.
 - 50 / 50 SPLIT: ~half Vailo database (property + area local gems) + ~half verified AI for business categories. Never duplicate database businesses. [AREAS ONLY] = geographic AI picks only.
 - NAMED places only — never generic areas. Skip if unsure a place exists.
+- TITLES: venue's own name only — never append a town/area (no "Name, Town"). Don't assert a specific town/village in descriptions unless certain; the map link shows the exact location.
 - Leave photoUrl and googleMapsUrl EMPTY for AI picks. googlePlaceId only if certain.
 - Never suggest permanently closed businesses.
 - Embed recommendations in the JSON 'plan' object — not in replyText.`;
 
       const chatCategories = filterPrimariesForLiveLikeLocal(
-        preferences.categories,
+        activePrefs.categories.length > 0 ? activePrefs.categories : inferredCategories,
         excludedLiveLikeLocalPrimaries
       ).filter((c) => !isHikingTrailsCategory(c));
+      const chatCategoryLabels = chatCategories.map(
+        (p) => availableCategories.find((c) => c.primary === p)?.label ?? p
+      );
       const categoryKnowledgeBlock = buildCategoryKnowledgePromptSection(
         chatCategories,
         categoryKnowledgeByPrimary
       );
+      const flexibleBrowse = isFlexibleTimeFrame(activePrefs.timeFrame);
+      const planTypeRule = flexibleBrowse
+        ? `- Guest is browsing at their own pace (no fixed schedule). When hasPlan is true, plan.type MUST be "picks" with one category block per requested topic — NEVER "timeline" or timed stops.`
+        : `- When hasPlan is true and preferences include a fixed timeframe, plan.type may be "timeline". Otherwise use "picks".`;
+
+      const followupRule = refineRequested
+        ? `- REFINE MODE: The guest is refining the recommendations currently on screen (see "AI generated plan on screen" above). Adjust, filter, re-rank, or swap THOSE picks to match the new request; keep the same theme. Return an updated picks plan.`
+        : hasPriorPlan
+          ? `- FRESH & OPEN: Treat the guest's latest message as a brand-new, open request. You may reference earlier picks ONLY to answer a direct question about them — do NOT silently re-list or merely tweak the previous recommendations when they ask for ideas. Give genuinely new places that fit what they just asked. If it is unclear whether they want to refine the current suggestions or see something new, ask them which they prefer (hasPlan=false) instead of guessing.`
+          : `- Provide open, relevant recommendations for exactly what the guest asked.`;
 
       const prompt = `Starting point: "${startLocationName}" (GPS: ${gpsString}).
-Preferences: ${JSON.stringify(preferences)}.
+Preferences: ${JSON.stringify(activePrefs)}.
+${chatCategoryLabels.length > 0 ? `Requested categories: ${chatCategoryLabels.join(', ')}.` : ''}
 ${categoryKnowledgeBlock}
 
 ${isNearProperty
@@ -1733,12 +1989,15 @@ ${conversationHistory}
 VAILO DATABASE (pre-filtered):
 ${JSON.stringify(filteredDatabase)}
 
+${planTypeRule}
+${followupRule}
+
 Return JSON with this schema:
 {
   "replyText": "Your conversational reply.",
   "hasPlan": true | false,
   "plan": null | {
-    "type": "picks" | "timeline",
+    "type": ${flexibleBrowse ? '"picks"' : '"picks" | "timeline"'},
     "plan": [ { "time": "", "title": "", "description": "", "transportToNext": "", "source": "database" | "ai", "photoUrl": "", "googleMapsUrl": "" } ],
     "categories": [ { "categoryName": "", "items": [ { "title": "", "description": "", "estimatedDistance": "", "source": "database" | "ai", "photoUrl": "", "googleMapsUrl": "" } ] } ]
   }
@@ -1752,6 +2011,8 @@ User: ${userText}`;
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.7,
+          maxOutputTokens: 16384,
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -1764,15 +2025,8 @@ User: ${userText}`;
       const result = await model.generateContent(prompt);
       const rawText = result.response.text();
 
-      let parsedData: Record<string, unknown>;
-      try {
-        parsedData = JSON.parse(rawText);
-      } catch {
-        const firstBrace = rawText.indexOf('{');
-        const lastBrace = rawText.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1) throw new Error('JSON Parse failed.');
-        parsedData = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
-      }
+      const parsedData = parseAiJson(rawText) as Record<string, unknown> | null;
+      if (!parsedData) throw new Error('JSON Parse failed.');
 
       const { replyText, plan } = extractChatPlanPayload(parsedData);
 
@@ -1790,19 +2044,63 @@ User: ${userText}`;
       }
 
       if (plan) {
+        const flexibleBrowse = isFlexibleTimeFrame(activePrefs.timeFrame);
+        let resolvedPlan = plan as Record<string, unknown>;
+        if (flexibleBrowse && resolvedPlan.type === 'timeline') {
+          resolvedPlan = coerceTimelineToFlexiblePicks(resolvedPlan, chatCategoryLabels);
+        }
+
+        const isFlexiblePicks = flexibleBrowse && resolvedPlan.type === 'picks';
+        const { coords: propCoords } = getLocationContext();
+        const chatPoolSize = aiCandidatePoolSize();
+        const picksDbContext =
+          isFlexiblePicks && chatCategories.length > 0
+            ? buildFlexiblePicksDbContext(
+                chatCategories,
+                distanceLimitNum,
+                startCoords,
+                propCoords,
+                mergedGems,
+                mergedFeatures,
+                recentlyShown,
+                categoryCatalogDocs,
+                contentSettings.primaryLocale,
+                locale,
+                categoryKnowledgeByPrimary
+              )
+            : null;
+
         track('ai_expert_plan', {
-          planStopCount: countPlanStops(plan),
-          planCategories: Array.isArray(plan.categories)
-            ? ((plan.categories as { categoryName?: string }[])
+          planStopCount: countPlanStops(resolvedPlan),
+          planCategories: Array.isArray(resolvedPlan.categories)
+            ? ((resolvedPlan.categories as { categoryName?: string }[])
                 .map((c) => c.categoryName)
                 .filter(Boolean) as string[])
             : undefined,
         });
-        const mapAreaHint = getGeographicAreaHint() || startLocationName || preferences.location;
-        let initialPlan = applyTimelinePropertyBookends(plan, isNearProperty);
-        initialPlan = await enrichForImmediateRender(initialPlan, mapAreaHint, startCoords);
-        initialPlan = filterTimelinePlanByDistance(initialPlan, distanceLimitNum, startCoords, recentlyShown);
-        initialPlan = scheduleTimelineIfNeeded(initialPlan, !!preferences.timeFrame);
+        const mapAreaHint = getGeographicAreaHint() || startLocationName || activePrefs.location;
+        const basePlan = applyTimelinePropertyBookends(resolvedPlan, isNearProperty);
+
+        // Paint immediately from the model's data; resolve maps + photos in the
+        // background (see enrichPhotosAndMapLinks below) instead of blocking.
+        let candidatePlan = basePlan;
+        let initialPlan = basePlan;
+        if (isFlexiblePicks && picksDbContext) {
+          candidatePlan = normalizeFlexiblePicksPlan(
+            basePlan,
+            distanceLimitNum,
+            picksDbContext,
+            startCoords,
+            recentlyShown,
+            categoryKnowledgeByPrimary,
+            chatPoolSize
+          );
+          initialPlan = trimFlexiblePicksToDisplayCap(candidatePlan, distanceLimitNum);
+        } else {
+          initialPlan = filterTimelinePlanByDistance(basePlan, distanceLimitNum, startCoords, recentlyShown);
+          initialPlan = scheduleTimelineIfNeeded(initialPlan, !flexibleBrowse && !!activePrefs.timeFrame);
+        }
+
         initialPlan =
           stripExcludedCategoriesFromPlan(initialPlan, excludedLiveLikeLocalPrimaries) ?? initialPlan;
         const planMessageId = Date.now().toString() + 'plan';
@@ -1811,22 +2109,96 @@ User: ${userText}`;
 
         markItemsShown(collectDbItemsFromPlan(initialPlan));
 
-        enrichPhotosAndMapLinks(initialPlan, mapAreaHint, startCoords)
-          .then((withPhotosAndMaps) => {
-            let filtered = filterTimelinePlanByDistance(
-              withPhotosAndMaps,
-              distanceLimitNum,
-              startCoords,
-              recentlyShown
-            );
-            filtered = scheduleTimelineIfNeeded(filtered, !!preferences.timeFrame);
-            filtered =
-              stripExcludedCategoriesFromPlan(filtered, excludedLiveLikeLocalPrimaries) ?? filtered;
+        const photoExtras = {
+          guestMaxKm: distanceLimitNum,
+          knowledgeByPrimary: categoryKnowledgeByPrimary,
+        };
+
+        // Stage 1 — fast: photos + maps for just the visible picks. Verify +
+        // filter here too, so anything shown is final and never disappears in
+        // Stage 2 (which only re-ranks and back-fills).
+        enrichPhotosAndMapLinks(initialPlan, mapAreaHint, startCoords, photoExtras)
+          .then((displayEnriched) => {
+            let shown = displayEnriched as Record<string, unknown>;
+            if (isFlexiblePicks) {
+              shown = filterShowableAiPicksFromPlan(
+                shown,
+                distanceLimitNum,
+                startCoords,
+                categoryKnowledgeByPrimary
+              ) as Record<string, unknown>;
+              shown = filterAreasCommercialAiPicksFromPlan(
+                shown,
+                categoryKnowledgeByPrimary
+              ) as Record<string, unknown>;
+              shown = trimFlexiblePicksToDisplayCap(shown, distanceLimitNum);
+            }
+            shown = cleanAiPickDisplayTitles(shown);
+            shown =
+              stripExcludedCategoriesFromPlan(
+                shown as Record<string, unknown>,
+                excludedLiveLikeLocalPrimaries
+              ) ?? shown;
             setMessages(prev =>
-              prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
+              prev.map(m => (m.id === planMessageId ? { ...m, data: shown } : m))
             );
           })
-          .catch((err) => console.error('Background photo/map enrichment failed:', err));
+          .catch((err) => console.error('Display photo/map enrichment failed:', err))
+          // Stage 2 — refine against the full pool (verify, back-fill, re-rank).
+          .finally(() => {
+            enrichPhotosAndMapLinks(candidatePlan, mapAreaHint, startCoords, photoExtras)
+              .then((withPhotosAndMaps) => {
+                let filtered = withPhotosAndMaps;
+                if (isFlexiblePicks && picksDbContext) {
+                  filtered = normalizeFlexiblePicksPlan(
+                    filtered,
+                    distanceLimitNum,
+                    picksDbContext,
+                    startCoords,
+                    recentlyShown,
+                    categoryKnowledgeByPrimary,
+                    chatPoolSize
+                  );
+                  filtered = filterShowableAiPicksFromPlan(
+                    filtered,
+                    distanceLimitNum,
+                    startCoords,
+                    categoryKnowledgeByPrimary
+                  );
+                  filtered = filterAreasCommercialAiPicksFromPlan(
+                    filtered,
+                    categoryKnowledgeByPrimary
+                  );
+                  filtered = trimFlexiblePicksToDisplayCap(filtered, distanceLimitNum);
+                } else {
+                  filtered = filterTimelinePlanByDistance(
+                    filtered,
+                    distanceLimitNum,
+                    startCoords,
+                    recentlyShown
+                  );
+                  filtered = scheduleTimelineIfNeeded(filtered, !flexibleBrowse && !!activePrefs.timeFrame);
+                }
+                filtered = cleanAiPickDisplayTitles(filtered);
+                filtered =
+                  stripExcludedCategoriesFromPlan(filtered, excludedLiveLikeLocalPrimaries) ?? filtered;
+                setMessages(prev =>
+                  prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
+                );
+              })
+              .catch((err) => console.error('Background photo/map enrichment failed:', err));
+          });
+      } else if (!replyText) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: 'ai',
+            type: 'text',
+            text: t('aiExpertErrorConnect'),
+          },
+        ]);
+        setIsThinking(false);
       } else {
         setIsThinking(false);
       }
@@ -1868,10 +2240,18 @@ User: ${userText}`;
 
   const planAnotherDay = () => {
     setStep('LOCATION');
-    locationCoordsRef.current = null;
-    locationFullNameRef.current = '';
     setLocationCandidates([]);
-    setPreferences({ location: '', locationCoords: null, locationFullName: '', categories: [], distance: '', timeFrame: '' });
+    const nearLabel = propertyCoords ? getNearPropertyLabel() : '';
+    locationCoordsRef.current = propertyCoords;
+    locationFullNameRef.current = '';
+    setPreferences({
+      location: nearLabel,
+      locationCoords: propertyCoords,
+      locationFullName: '',
+      categories: [],
+      distance: '',
+      timeFrame: '',
+    });
     setSelectedCats([]);
     setCustomLoc('');
     setStartTime('09:00');
@@ -2070,6 +2450,11 @@ User: ${userText}`;
                       propertyId={property?.id}
                       viewMapLabel={t('aiExpertView')}
                       goMapLabel={t('aiExpertGo')}
+                      rangeSuffix={
+                        preferences.distance
+                          ? tf('aiExpertBestWithin', { distance: preferences.distance })
+                          : undefined
+                      }
                       emptyMessage={
                         !(cat.items?.length) &&
                         getCategoryKnowledgeMode(
@@ -2100,76 +2485,6 @@ User: ${userText}`;
       <div key={msg.id} className="mb-5 animate-in fade-in duration-300">
         <div className="bg-white/10 border border-white/15 text-white/90 px-4 py-3.5 rounded-2xl text-base leading-relaxed whitespace-pre-wrap">
           {msg.text}
-        </div>
-      </div>
-    );
-  };
-
-  const renderWizardSummary = () => {
-    if (step === 'DONE') return null;
-
-    const hasLocation = Boolean(preferences.location);
-    const hasCategories = preferences.categories.length > 0;
-    const hasDistance = Boolean(preferences.distance);
-    const hasSchedule = Boolean(preferences.timeFrame);
-    const pendingSchedule =
-      step === 'TIME' &&
-      timeChoiceMode === 'timeline' &&
-      startTime &&
-      tripDurationHours != null &&
-      !hasSchedule;
-
-    if (!hasLocation && !hasCategories && !hasDistance && !hasSchedule && !pendingSchedule) {
-      return null;
-    }
-
-    return (
-      <div className="mb-4 rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-white/10">
-          <p className="guest-eyebrow text-white/45">{t('aiExpertYourChoices')}</p>
-        </div>
-        <div className="px-4 py-3 space-y-2.5">
-          {hasLocation && (
-            <div className="flex items-start gap-2.5">
-              <MapPin size={14} className="text-vailo-gold shrink-0 mt-0.5" />
-              <span className="text-base text-white leading-snug">{preferences.location}</span>
-            </div>
-          )}
-          {hasCategories && (
-            <div className="flex flex-wrap gap-1.5 pl-6">
-              {filterPrimariesForLiveLikeLocal(
-                preferences.categories,
-                excludedLiveLikeLocalPrimaries
-              ).map((cat) => (
-                <span
-                  key={cat}
-                  className="text-xs sm:text-sm px-3 py-1.5 rounded-full bg-white/12 text-white font-semibold border border-white/10"
-                >
-                  {cat}
-                </span>
-              ))}
-            </div>
-          )}
-          {hasDistance && (
-            <div className="flex items-center gap-2.5">
-              <Compass size={14} className="text-vailo-gold shrink-0" />
-              <span className="text-base text-white">
-                {tf('aiExpertWithinDistance', { distance: preferences.distance })}
-              </span>
-            </div>
-          )}
-          {(hasSchedule || pendingSchedule) && (
-            <div className="flex items-center gap-2.5">
-              <Clock size={14} className="text-vailo-gold shrink-0" />
-              <span className="text-base text-white">
-                {hasSchedule
-                  ? preferences.timeFrame === 'flexible'
-                    ? t('aiExpertFlexibleSchedule')
-                    : preferences.timeFrame
-                  : formatTripWindow(startTime, tripDurationHours ?? 6)}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -2306,7 +2621,6 @@ User: ${userText}`;
 
         {!isThinking && step !== 'DONE' && (
           <div className="animate-in fade-in mt-1 w-full min-w-0 max-w-full">
-            {renderWizardSummary()}
             {renderWizardProgress()}
             
             {step === 'LOCATION' && (

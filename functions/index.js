@@ -109,6 +109,60 @@ const BUSINESS_HINTS = [
   "motel",
 ];
 
+/** Moderate commercial signals for [AREAS ONLY] AI verification. */
+const AREAS_COMMERCIAL_HINTS = [
+  ...BUSINESS_HINTS,
+  "cafeteria",
+  "beachbar",
+  "beachclub",
+  "bistro",
+  "pizzeria",
+  "operator",
+  "operators",
+  "tours",
+  "rental",
+  "rentals",
+  "pub",
+  "club",
+  "winery",
+  "brewery",
+  "watersports",
+  "divingcenter",
+  "snack",
+  "cantina",
+];
+
+const AREAS_BLOCKED_GOOGLE_TYPES = [
+  "restaurant",
+  "lodging",
+  "tour",
+  "travel_agency",
+  "store",
+  "food",
+  "cafe",
+  "bar",
+  "guest_house",
+  "bed_and_breakfast",
+  "apartment",
+  "campground",
+  "marina",
+  "night_club",
+  "coffee_shop",
+  "bakery",
+  "meal_",
+  "gym",
+  "spa",
+  "beauty_salon",
+  "car_rental",
+  "real_estate",
+  "shopping",
+  "pub",
+  "wine_bar",
+  "boat_rental",
+  "gas_station",
+  "parking",
+];
+
 function normalizePlaceName(name) {
   return String(name || "")
     .toLowerCase()
@@ -245,29 +299,39 @@ function validateResolvedPlace(place, title, anchorLat, anchorLng, maxKm, knowle
 
   if (knowledgeMode === "areas") {
     const type = String(place.category || "").toLowerCase();
-    const badTypes = [
-      "restaurant",
-      "lodging",
-      "tour",
-      "travel_agency",
-      "store",
-      "food",
-      "cafe",
-      "bar",
-    ];
-    if (badTypes.some((t) => type.includes(t))) return { ok: false, reason: "business_type" };
-    const reqNorm = normalizePlaceName(title);
+    if (AREAS_BLOCKED_GOOGLE_TYPES.some((t) => type.includes(t))) {
+      return { ok: false, reason: "business_type" };
+    }
+
     const nameNorm = normalizePlaceName(place.name || "");
-    if (
-      includesHint(reqNorm, GEO_HINTS) &&
-      !includesHint(nameNorm, GEO_HINTS) &&
-      includesHint(nameNorm, BUSINESS_HINTS)
-    ) {
-      return { ok: false, reason: "type_conflict" };
+    const reqNorm = normalizePlaceName(title);
+    if (includesHint(nameNorm, AREAS_COMMERCIAL_HINTS)) {
+      return { ok: false, reason: "commercial_name" };
+    }
+    if (includesHint(reqNorm, AREAS_COMMERCIAL_HINTS)) {
+      return { ok: false, reason: "commercial_title" };
+    }
+
+    const phone = String(place.phoneNumber || "").trim();
+    const website = String(place.websiteUri || "").trim();
+    if (phone && website) {
+      return { ok: false, reason: "commercial_signals" };
     }
   }
 
   return { ok: true };
+}
+
+function placeRecordForValidation(data, titleFallback) {
+  return {
+    latitude: data.latitude,
+    longitude: data.longitude,
+    country: data.country || "",
+    name: data.name || titleFallback,
+    category: data.category || "",
+    phoneNumber: data.phoneNumber || "",
+    websiteUri: data.websiteUri || "",
+  };
 }
 
 function placeNamesMatch(requested, resolved) {
@@ -673,7 +737,16 @@ function parseAddressComponents(components) {
   };
 }
 
-async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, requestedTitle) {
+async function fetchPlaceFromGoogle(
+  searchQuery,
+  apiKey,
+  biasLat,
+  biasLng,
+  requestedTitle,
+  options = {}
+) {
+  const fieldMask = options.fieldMask || PLACES_FIELD_MASK;
+  const skipPhoto = options.skipPhoto === true;
   const body = { textQuery: searchQuery, pageSize: 10 };
 
   const lat = typeof biasLat === "number" ? biasLat : null;
@@ -695,7 +768,7 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": PLACES_FIELD_MASK,
+        "X-Goog-FieldMask": fieldMask,
       },
     }
   );
@@ -716,7 +789,7 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": PLACES_FIELD_MASK,
+          "X-Goog-FieldMask": fieldMask,
         },
       }
     );
@@ -737,7 +810,7 @@ async function fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, reque
   const longitude = place.location?.longitude ?? null;
 
   let photoUrl = null;
-  if (place.photos && place.photos.length > 0) {
+  if (!skipPhoto && place.photos && place.photos.length > 0) {
     photoUrl = `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxHeightPx=800&maxWidthPx=800&key=${apiKey}`;
   }
 
@@ -902,6 +975,20 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       duplicateMatchesRequest(duplicate.data, normalizedName, title) &&
       cachedPlaceIsValidForRequest(duplicate.data, biasLat, biasLng, maxKm)
     ) {
+      const cacheCheck = validateResolvedPlace(
+        placeRecordForValidation(duplicate.data, title),
+        title,
+        biasLat,
+        biasLng,
+        maxKm,
+        knowledgeMode
+      );
+      if (!cacheCheck.ok) {
+        logger.warn(
+          `Rejected cached place "${duplicate.data.name}" for "${title}" — ${cacheCheck.reason}`
+        );
+        return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
+      }
       return bumpDiscoveredPlaceUsage(coll, duplicate.id, duplicate.data, title);
     }
 
@@ -1049,6 +1136,40 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
     );
   }
 
+  if (payload.hintsOnly === true) {
+    const coordInQuery = String(searchQuery).match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
+    const latitude = coordInQuery
+      ? parseFloat(coordInQuery[1])
+      : urlHints?.lat != null
+        ? urlHints.lat
+        : null;
+    const longitude = coordInQuery
+      ? parseFloat(coordInQuery[2])
+      : urlHints?.lng != null
+        ? urlHints.lng
+        : null;
+
+    return {
+      googlePlaceId: null,
+      name: matchTitle || rawQuery,
+      rating: null,
+      description: "",
+      category: "",
+      latitude,
+      longitude,
+      phoneNumber: "",
+      websiteUri: "",
+      photoUrl: null,
+      googleMapsUrl: rawQuery,
+      formattedAddress: "",
+      addressLine: "",
+      area: "",
+      city: "",
+      postCode: "",
+      country: "",
+    };
+  }
+
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
@@ -1056,13 +1177,19 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
     throw new HttpsError("internal", "Server configuration error.");
   }
 
+  const skipPhoto = payload.skipPhoto === true;
+  const fieldMask = skipPhoto
+    ? PLACES_FIELD_MASK.replace("places.photos,", "")
+    : PLACES_FIELD_MASK;
+
   try {
     const place = await fetchPlaceFromGoogle(
       searchQuery,
       apiKey,
       biasLat,
       biasLng,
-      matchTitle
+      matchTitle,
+      { fieldMask, skipPhoto }
     );
     await recordPlatformUsage("magicFill");
 

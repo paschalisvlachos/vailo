@@ -8,7 +8,23 @@ import { useToast } from '../../../context/ToastContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { getGenerativeModel } from "firebase/ai";
-import { Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Tag, Languages, Sparkles } from 'lucide-react';
+import {
+  Plus,
+  MapPin,
+  Wand2,
+  Star,
+  Image as ImageIcon,
+  Pencil,
+  Trash2,
+  Map,
+  Loader2,
+  Tag,
+  Languages,
+  Sparkles,
+  X,
+  ExternalLink,
+} from 'lucide-react';
+import { AdminCard, AdminEmptyState } from '../../../components/admin/AdminPageHeader';
 import { adminPath } from '../../../lib/adminRoutes';
 import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
@@ -35,6 +51,7 @@ export default function AreaLocalGems() {
   const [isLoading, setIsLoading] = useState(true);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [editingGemId, setEditingGemId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMagicFilling, setIsMagicFilling] = useState(false);
@@ -85,6 +102,43 @@ export default function AreaLocalGems() {
       ),
     [formData.categories, categoryCatalogDocs, localeSettings.primaryLocale]
   );
+
+  const categoryFilterOptions = useMemo(
+    () =>
+      categories.map((cat) => {
+        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+        const label = resolveCategoryLabel(
+          cat.data,
+          localeSettings.primaryLocale,
+          localeSettings.primaryLocale
+        );
+        return { value: primaryName, label: label || primaryName };
+      }),
+    [categories, localeSettings.primaryLocale]
+  );
+
+  const sortedGems = useMemo(
+    () => [...gems].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+    [gems]
+  );
+
+  const filteredGems = useMemo(() => {
+    if (categoryFilter === 'all') return sortedGems;
+    return sortedGems.filter((gem) =>
+      gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).some(
+        (cat) => cat.toLowerCase() === categoryFilter.toLowerCase()
+      )
+    );
+  }, [sortedGems, categoryFilter, categoryCatalogDocs, localeSettings.primaryLocale]);
+
+  const gemCountForCategory = (value: string) => {
+    if (value === 'all') return sortedGems.length;
+    return sortedGems.filter((gem) =>
+      gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).some(
+        (cat) => cat.toLowerCase() === value.toLowerCase()
+      )
+    ).length;
+  };
 
   const categoryPillOptions = useMemo(
     () =>
@@ -301,14 +355,7 @@ export default function AreaLocalGems() {
         await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGems'), gemData);
       }
 
-      setIsFormOpen(false);
-      setEditingGemId(null);
-      setEditingSourceDoc(null);
-      localeEditor.resetMaps();
-      setFormData(initialFormState);
-      setImageFile(null);
-      setImagePreview(null);
-      
+      closeForm();
     } catch (error) {
       console.error("Error saving Gem:", error);
       toast.error("Failed to save Local Gem.");
@@ -316,6 +363,35 @@ export default function AreaLocalGems() {
       setIsSubmitting(false);
     }
   };
+
+  const closeForm = () => {
+    setIsFormOpen(false);
+    setEditingGemId(null);
+    setEditingSourceDoc(null);
+    localeEditor.resetMaps();
+    setFormData(initialFormState);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const openAddForm = () => {
+    setEditingSourceDoc(null);
+    localeEditor.resetMaps();
+    setFormData(initialFormState);
+    setImagePreview(null);
+    setImageFile(null);
+    setEditingGemId(null);
+    setIsFormOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isFormOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isFormOpen]);
 
   const handleEdit = (gem: any) => {
     const normalized = gemCategoryPrimaries(
@@ -367,6 +443,197 @@ export default function AreaLocalGems() {
     }
   };
 
+  const renderGemForm = () => (
+    <form id="local-gem-form" onSubmit={handleSubmit} className="space-y-5">
+      <div className="flex flex-col sm:flex-row gap-3 bg-vailo-teal/5 p-3 sm:p-4 rounded-xl border border-vailo-teal/10 items-stretch sm:items-center">
+        <div className="flex-1 w-full min-w-0">
+          <label className="block text-xs font-bold text-vailo-dark uppercase tracking-wider mb-1">
+            Google Maps Link
+          </label>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-2.5 text-vailo-teal/50" size={16} />
+            <input
+              type="url"
+              name="googleMapsUrl"
+              value={formData.googleMapsUrl}
+              onChange={handleChange}
+              placeholder="Paste FULL or Short Google Maps URL here..."
+              className="w-full pl-9 pr-3 py-2 bg-white border border-vailo-teal/15 rounded-lg admin-input outline-none text-sm"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleMagicFill}
+          disabled={isMagicFilling || !formData.googleMapsUrl}
+          className="w-full sm:w-auto shrink-0 px-5 py-2.5 bg-vailo-teal hover:bg-vailo-teal-hover text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap"
+        >
+          {isMagicFilling ? (
+            <Loader2 size={16} className="animate-spin mr-2" />
+          ) : (
+            <Wand2 size={16} className="mr-2" />
+          )}
+          AI Magic Fill
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 sm:p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm font-bold text-orange-900 flex items-center gap-2">
+            <Languages size={16} /> Content language
+          </p>
+          {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+            <button
+              type="button"
+              onClick={handleAutoTranslateLocale}
+              disabled={isLocaleTranslating}
+              className="flex items-center px-3 py-2 bg-white border border-orange-300 rounded-lg text-xs sm:text-sm font-medium text-orange-800 disabled:opacity-50"
+            >
+              {isLocaleTranslating ? (
+                <Loader2 size={16} className="animate-spin mr-2" />
+              ) : (
+                <Sparkles size={16} className="mr-2" />
+              )}
+              Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+            </button>
+          )}
+        </div>
+        <ContentLocaleTabs
+          enabledLocales={localeSettings.enabledLocales}
+          primaryLocale={localeSettings.primaryLocale}
+          activeLocale={localeEditor.contentLocale}
+          onChange={localeEditor.setContentLocale}
+          languageOptions={languageOptions}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-bold text-gray-700 mb-1">Name *</label>
+          <input
+            type="text"
+            required
+            value={localeEditor.getValue('name')}
+            onChange={(e) => {
+              localeEditor.setValue('name', e.target.value);
+              if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                setFormData((prev) => ({ ...prev, name: e.target.value }));
+              }
+            }}
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <CategoryPillSelector
+            label="Categories * (select all that apply)"
+            options={categoryPillOptions}
+            isSelected={(value) =>
+              categorySelectionIncludes(
+                normalizedGemCategories,
+                value,
+                categoryCatalogDocs,
+                localeSettings.primaryLocale
+              )
+            }
+            onToggle={handleCategoryPillToggle}
+            colorClass="orange"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">Google Rating (1-5)</label>
+          <input
+            type="number"
+            step="0.1"
+            max="5"
+            name="rating"
+            value={formData.rating}
+            onChange={handleChange}
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">Daily Trip?</label>
+          <div className="flex items-center h-[42px]">
+            <input
+              type="checkbox"
+              name="isDailyTrip"
+              checked={formData.isDailyTrip}
+              onChange={handleChange}
+              className="h-5 w-5 text-orange-600 rounded cursor-pointer"
+            />
+            <span className="ml-2 text-sm text-gray-600">Tag as a full-day excursion</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold text-gray-700 mb-1">AI Description *</label>
+        <textarea
+          required
+          rows={4}
+          value={localeEditor.getValue('description')}
+          onChange={(e) => {
+            localeEditor.setValue('description', e.target.value);
+            if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+              setFormData((prev) => ({ ...prev, description: e.target.value }));
+            }
+          }}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-y text-sm min-h-[100px]"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">Latitude</label>
+          <input
+            type="text"
+            name="latitude"
+            value={formData.latitude}
+            onChange={handleChange}
+            className="w-full px-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">Longitude</label>
+          <input
+            type="text"
+            name="longitude"
+            value={formData.longitude}
+            onChange={handleChange}
+            className="w-full px-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg outline-none text-sm"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold text-gray-700 mb-2">Cover Photo</label>
+        <div className="flex flex-col sm:flex-row items-start gap-4">
+          <div className="w-full sm:w-40 h-28 rounded-xl border-2 border-dashed border-gray-300 overflow-hidden bg-gray-50 flex items-center justify-center shrink-0">
+            {imagePreview ? (
+              <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+            ) : (
+              <div className="text-gray-400 flex flex-col items-center">
+                <ImageIcon size={22} className="mb-1" />
+                <span className="text-xs font-medium">No Image</span>
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 cursor-pointer"
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Uploading manually will override the Google Maps photo.
+            </p>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+
   if (categories.length === 0 && !isLoading) {
     return (
       <div className="admin-page">
@@ -384,243 +651,260 @@ export default function AreaLocalGems() {
 
   return (
     <div className="admin-page">
-      
       <AreaHubBackLink />
 
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-              <Map className="mr-3 text-orange-600 shrink-0" size={28} />
-              Master Local Gems
-            </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              Global gems for <span className="font-bold text-orange-700">{decodedArea}, {decodedCountry}</span>
-            </p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center">
+            <Map className="mr-2.5 text-orange-600 shrink-0" size={26} />
+            Master Local Gems
+          </h2>
+          <p className="text-sm text-gray-500 mt-1.5">
+            Global gems for{' '}
+            <span className="font-bold text-orange-700">
+              {decodedArea}, {decodedCountry}
+            </span>
+          </p>
         </div>
-        {!isFormOpen && (
-          <button onClick={() => { setEditingSourceDoc(null); localeEditor.resetMaps(); setFormData(initialFormState); setImagePreview(null); setImageFile(null); setIsFormOpen(true); }} className="flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm">
-            <Plus size={18} className="mr-2" /> Add Gem
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={openAddForm}
+          className="flex items-center justify-center px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm w-full sm:w-auto"
+        >
+          <Plus size={18} className="mr-2" /> Add Gem
+        </button>
       </div>
 
-      {/* FORM SECTION */}
-      {isFormOpen && (
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="px-6 py-4 bg-orange-50 border-b border-orange-100 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-orange-900">
-              {editingGemId ? 'Edit Local Gem' : 'Add New Local Gem'}
-            </h3>
+      {/* Category filters */}
+      {!isLoading && sortedGems.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('all')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+              categoryFilter === 'all'
+                ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-700'
+            }`}
+          >
+            All ({gemCountForCategory('all')})
+          </button>
+          {categoryFilterOptions.map((opt) => (
             <button
+              key={opt.value}
               type="button"
-              onClick={() => {
-                setIsFormOpen(false);
-                setEditingGemId(null);
-                setEditingSourceDoc(null);
-                localeEditor.resetMaps();
-                setFormData(initialFormState);
-                setImageFile(null);
-                setImagePreview(null);
-              }}
-              className="text-orange-500 hover:text-orange-700 font-medium text-sm"
+              onClick={() => setCategoryFilter(opt.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${
+                categoryFilter === opt.value
+                  ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-700'
+              }`}
             >
-              Cancel
+              {opt.label} ({gemCountForCategory(opt.value)})
             </button>
-          </div>
-
-          <div className="p-6">
-            <div className="flex flex-col md:flex-row gap-4 mb-8 bg-vailo-teal/5/50 p-4 rounded-xl border border-vailo-teal/10 items-center">
-              <div className="flex-1 w-full">
-                <label className="block text-xs font-bold text-vailo-dark uppercase tracking-wider mb-1">Google Maps Link</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3 text-vailo-teal/50" size={18} />
-                  <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="Paste FULL or Short Google Maps URL here..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-vailo-teal/15 rounded-lg admin-input outline-none text-sm" />
-                </div>
-              </div>
-              <button type="button" onClick={handleMagicFill} disabled={isMagicFilling || !formData.googleMapsUrl} className="w-full md:w-auto mt-4 md:mt-0 px-6 py-2.5 bg-vailo-teal hover:bg-vailo-teal-hover text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap">
-                {isMagicFilling ? <Loader2 size={18} className="animate-spin mr-2" /> : <Wand2 size={18} className="mr-2" />}
-                AI Magic Fill
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <p className="text-sm font-bold text-orange-900 flex items-center gap-2">
-                    <Languages size={16} /> Content language
-                  </p>
-                  {localeEditor.contentLocale !== localeSettings.primaryLocale && (
-                    <button type="button" onClick={handleAutoTranslateLocale} disabled={isLocaleTranslating} className="flex items-center px-4 py-2 bg-white border border-orange-300 rounded-lg text-sm font-medium text-orange-800 disabled:opacity-50">
-                      {isLocaleTranslating ? <Loader2 size={16} className="animate-spin mr-2" /> : <Sparkles size={16} className="mr-2" />}
-                      Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
-                    </button>
-                  )}
-                </div>
-                <ContentLocaleTabs
-                  enabledLocales={localeSettings.enabledLocales}
-                  primaryLocale={localeSettings.primaryLocale}
-                  activeLocale={localeEditor.contentLocale}
-                  onChange={localeEditor.setContentLocale}
-                  languageOptions={languageOptions}
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={localeEditor.getValue('name')}
-                    onChange={(e) => {
-                      localeEditor.setValue('name', e.target.value);
-                      if (localeEditor.contentLocale === localeSettings.primaryLocale) {
-                        setFormData((prev) => ({ ...prev, name: e.target.value }));
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <CategoryPillSelector
-                    label="Categories * (select all that apply)"
-                    options={categoryPillOptions}
-                    isSelected={(value) =>
-                      categorySelectionIncludes(
-                        normalizedGemCategories,
-                        value,
-                        categoryCatalogDocs,
-                        localeSettings.primaryLocale
-                      )
-                    }
-                    onToggle={handleCategoryPillToggle}
-                    colorClass="orange"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Google Rating (1-5)</label>
-                  <input type="number" step="0.1" max="5" name="rating" value={formData.rating} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Daily Trip?</label>
-                  <div className="flex items-center h-[42px]">
-                    <input type="checkbox" name="isDailyTrip" checked={formData.isDailyTrip} onChange={handleChange} className="h-5 w-5 text-orange-600 rounded cursor-pointer" />
-                    <span className="ml-2 text-sm text-gray-600">Tag as a full-day excursion</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">AI Description *</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={localeEditor.getValue('description')}
-                  onChange={(e) => {
-                    localeEditor.setValue('description', e.target.value);
-                    if (localeEditor.contentLocale === localeSettings.primaryLocale) {
-                      setFormData((prev) => ({ ...prev, description: e.target.value }));
-                    }
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-y"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Latitude</label>
-                  <input type="text" name="latitude" value={formData.latitude} onChange={handleChange} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Longitude</label>
-                  <input type="text" name="longitude" value={formData.longitude} onChange={handleChange} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg outline-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Cover Photo</label>
-                <div className="flex items-start space-x-6">
-                  <div className="w-48 h-32 rounded-xl border-2 border-dashed border-gray-300 overflow-hidden bg-gray-50 flex items-center justify-center relative shrink-0">
-                    {imagePreview ? (
-                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="text-gray-400 flex flex-col items-center">
-                        <ImageIcon size={24} className="mb-1" />
-                        <span className="text-xs font-medium">No Image</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <input type="file" accept="image/*" onChange={handleImageChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 cursor-pointer" />
-                    <p className="text-xs text-gray-500 mt-2">Uploading manually will override the Google Maps photo.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-4 border-t border-gray-100">
-                <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-8 py-3 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-colors shadow-md">
-                  {(isSubmitting || isUploadingImage) ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
-                  Save Local Gem
-                </button>
-              </div>
-            </form>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* LIST OF GEMS */}
       {isLoading ? (
-        <div className="py-20 text-center text-gray-400"><Loader2 size={40} className="animate-spin mx-auto mb-4" /></div>
-      ) : gems.length === 0 && !isFormOpen ? (
-        <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center">
-          <Map size={40} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-bold text-gray-900 mb-2">No Local Gems Added</h3>
-          <p className="text-gray-500">Add the first local gem for {decodedArea}.</p>
+        <div className="py-16 text-center text-gray-400">
+          <Loader2 size={32} className="animate-spin mx-auto mb-3" />
+          <p className="text-sm">Loading gems…</p>
         </div>
+      ) : sortedGems.length === 0 ? (
+        <AdminEmptyState
+          icon={<Map size={28} />}
+          title="No Local Gems Added"
+          description={`Add the first local gem for ${decodedArea}.`}
+        />
+      ) : filteredGems.length === 0 ? (
+        <AdminEmptyState
+          icon={<Tag size={28} />}
+          title="No gems in this category"
+          description="Try another filter or add a gem with this category."
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {gems.map((gem) => (
-            <div key={gem.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-              <div className="h-48 bg-gray-200 relative">
-                {gem.photoUrl ? (
-                  <img src={gem.photoUrl} alt={gem.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon size={32} /></div>
-                )}
-                <div className="absolute top-3 left-3 flex flex-wrap gap-1 max-w-[70%]">
-                  {gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).map(
-                    (cat: string) => (
-                      <span
-                        key={cat}
-                        className="bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-[10px] font-bold text-gray-900 shadow-sm whitespace-nowrap"
-                      >
-                        {cat}
+        <AdminCard className="overflow-hidden">
+          <div className="hidden lg:grid lg:grid-cols-[2.5rem_1fr_10rem_5rem_5rem] gap-3 px-4 py-2 bg-vailo-surface-elevated border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+            <span />
+            <span>Place</span>
+            <span>Categories</span>
+            <span>Rating</span>
+            <span className="text-right">Actions</span>
+          </div>
+          <ul className="divide-y divide-gray-50">
+            {filteredGems.map((gem) => {
+              const gemCats = gemCategoryPrimaries(
+                gem,
+                categoryCatalogDocs,
+                localeSettings.primaryLocale
+              );
+              return (
+                <li key={gem.id}>
+                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 min-h-[52px] hover:bg-orange-50/30 transition-colors">
+                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-lg bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
+                      {gem.photoUrl ? (
+                        <img
+                          src={gem.photoUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-gray-300">
+                          <ImageIcon size={16} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0 lg:grid lg:grid-cols-[1fr_10rem_5rem] lg:gap-3 lg:items-center">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-sm text-gray-900 truncate">
+                            {gem.name}
+                          </span>
+                          {gem.isDailyTrip && (
+                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-teal/10 text-vailo-teal">
+                              Day trip
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-400 truncate mt-0.5 lg:hidden">
+                          {gemCats.join(', ') || 'Uncategorized'}
+                          {gem.rating ? ` · ★ ${gem.rating}` : ''}
+                        </p>
+                        {gem.description && (
+                          <p className="hidden sm:block text-[11px] text-gray-400 truncate mt-0.5 max-w-xl">
+                            {gem.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="hidden lg:flex flex-wrap gap-1">
+                        {gemCats.length > 0 ? (
+                          gemCats.map((cat: string) => (
+                            <span
+                              key={cat}
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-orange-50 text-orange-800 border border-orange-100 whitespace-nowrap"
+                            >
+                              {cat}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </div>
+
+                      <span className="hidden lg:flex items-center gap-0.5 text-xs text-gray-600">
+                        {gem.rating ? (
+                          <>
+                            <Star size={11} className="text-yellow-500 fill-yellow-500" />
+                            {gem.rating}
+                          </>
+                        ) : (
+                          '—'
+                        )}
                       </span>
-                    )
-                  )}
-                </div>
-                {gem.isDailyTrip && (
-                  <div className="absolute top-3 right-3 bg-vailo-teal text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-sm">
-                    Daily Trip
+                    </div>
+
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      {gem.googleMapsUrl && (
+                        <a
+                          href={gem.googleMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open in Maps"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+                        >
+                          <ExternalLink size={15} />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        title="Edit"
+                        onClick={() => handleEdit(gem)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Delete"
+                        onClick={() => handleDelete(gem.id, gem.name)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                )}
+                </li>
+              );
+            })}
+          </ul>
+        </AdminCard>
+      )}
+
+      {/* Add / Edit modal */}
+      {isFormOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-gray-900/45 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="local-gem-modal-title"
+          onClick={closeForm}
+        >
+          <div
+            className="bg-white w-full sm:max-w-2xl lg:max-w-3xl max-h-[92dvh] sm:max-h-[min(90vh,880px)] flex flex-col rounded-t-2xl sm:rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 px-4 sm:px-6 py-4 border-b border-orange-100 bg-orange-50 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3
+                  id="local-gem-modal-title"
+                  className="text-lg font-bold text-orange-900 truncate"
+                >
+                  {editingGemId ? 'Edit Local Gem' : 'Add New Local Gem'}
+                </h3>
+                <p className="text-xs text-orange-700/80 mt-0.5">
+                  {decodedArea}, {decodedCountry}
+                </p>
               </div>
-              <div className="p-5 flex-1 flex flex-col">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-lg font-bold text-gray-900 line-clamp-1">{gem.name}</h3>
-                  {gem.rating && (
-                    <span className="flex items-center text-sm font-bold text-gray-700 bg-yellow-100 px-2 py-0.5 rounded-md">
-                      <Star size={14} className="text-yellow-500 mr-1 fill-current" /> {gem.rating}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-500 line-clamp-3 mb-4 flex-1">{gem.description}</p>
-                <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100 mt-auto">
-                  <button onClick={() => handleEdit(gem)} className="p-2 text-vailo-teal hover:bg-vailo-teal/5 rounded-lg transition-colors"><Pencil size={18} /></button>
-                  <button onClick={() => handleDelete(gem.id, gem.name)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18} /></button>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={closeForm}
+                className="p-2 rounded-lg text-orange-600 hover:bg-orange-100 transition-colors shrink-0"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
             </div>
-          ))}
+
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 sm:py-5">
+              {renderGemForm()}
+            </div>
+
+            <div className="shrink-0 px-4 sm:px-6 py-4 border-t border-gray-100 bg-gray-50/80 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeForm}
+                disabled={isSubmitting || isUploadingImage}
+                className="w-full sm:w-auto px-5 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900 rounded-xl border border-gray-200 bg-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="local-gem-form"
+                disabled={isSubmitting || isUploadingImage}
+                className="w-full sm:w-auto flex items-center justify-center px-6 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-colors shadow-md"
+              >
+                {isSubmitting || isUploadingImage ? (
+                  <Loader2 size={18} className="animate-spin mr-2" />
+                ) : null}
+                Save Local Gem
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

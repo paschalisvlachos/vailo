@@ -31,6 +31,7 @@ type CategoryPickCarouselProps = {
   viewMapLabel?: string;
   goMapLabel?: string;
   emptyMessage?: string;
+  rangeSuffix?: string;
 };
 
 export default function CategoryPickCarousel({
@@ -41,6 +42,7 @@ export default function CategoryPickCarousel({
   viewMapLabel = 'View',
   goMapLabel = 'Go',
   emptyMessage,
+  rangeSuffix = 'nearest first',
 }: CategoryPickCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -87,7 +89,7 @@ export default function CategoryPickCarousel({
           {categoryName}
         </h4>
         <p className="text-sm text-white/55 mt-0.5">
-          {items.length} local {items.length === 1 ? 'pick' : 'picks'} · nearest first
+          {items.length} local {items.length === 1 ? 'pick' : 'picks'} · {rangeSuffix}
         </p>
       </div>
 

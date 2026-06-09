@@ -774,10 +774,10 @@ function GuestPortalPage({
                             <Sparkles size={22} className="text-white" />
                           </div>
                           <div className="text-left min-w-0">
-                            <p className="text-[#0B4F5C] text-sm font-semibold leading-tight tracking-wide">
+                            <p className="text-[#0B4F5C] text-base font-semibold leading-tight tracking-wide">
                               {t('liveLikeLocalHero')}
                             </p>
-                            <p className="text-[#0B4F5C]/65 text-xs mt-0.5 leading-snug">
+                            <p className="text-[#0B4F5C]/65 text-sm mt-0.5 leading-snug">
                               {t('liveLikeLocalHeroSub')}
                             </p>
                           </div>

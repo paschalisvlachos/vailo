@@ -93,7 +93,9 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertEnhancingTrail'
   | 'aiExpertTrailOpenAllTrailsHint'
   | 'aiExpertNoTrailsInRange'
-  | 'aiExpertNoPicksInRange';
+  | 'aiExpertNoPicksInRange'
+  | 'aiExpertRefineOrNew'
+  | 'aiExpertBestWithin';
 
 export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertConcierge: 'Vailo Concierge',
@@ -207,6 +209,9 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
     'No hiking trails in your selected range. Try widening the distance or check back after your host syncs local trails.',
   aiExpertNoPicksInRange:
     'No verified {category} picks within your range. Try widening the distance or choose another interest.',
+  aiExpertRefineOrNew:
+    'Would you like me to refine the recommendations I just showed, or find something completely new?',
+  aiExpertBestWithin: 'best within {distance}',
 };
 
 export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = {
@@ -322,4 +327,7 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
     'Δεν υπάρχουν μονοπάτια στην επιλεγμένη απόσταση. Δοκιμάστε μεγαλύτερη ακτίνα ή ελέγξτε αργότερα.',
   aiExpertNoPicksInRange:
     'Δεν βρέθηκαν επαληθευμένες επιλογές για {category} εντός της απόστασής σας. Δοκιμάστε μεγαλύτερη ακτίνα ή άλλο ενδιαφέρον.',
+  aiExpertRefineOrNew:
+    'Θέλετε να βελτιώσω τις προτάσεις που μόλις σας έδειξα ή να βρω κάτι εντελώς νέο;',
+  aiExpertBestWithin: 'καλύτερα εντός {distance}',
 };

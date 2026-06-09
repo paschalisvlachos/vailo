@@ -113,6 +113,9 @@ export const AI_EXPERT_UI_DE: Record<GuestLocaleAiExpertKey, string> = {
     'Keine Wanderwege in Ihrer gewählten Entfernung. Vergrößern Sie den Radius oder prüfen Sie später erneut.',
   aiExpertNoPicksInRange:
     'Keine verifizierten {category}-Tipps in Ihrer Entfernung. Vergrößern Sie den Radius oder wählen Sie ein anderes Interesse.',
+  aiExpertRefineOrNew:
+    'Soll ich die soeben gezeigten Empfehlungen verfeinern oder etwas ganz Neues finden?',
+  aiExpertBestWithin: 'Beste im Umkreis von {distance}',
 };
 
 /** French — full AI Expert UI pack */
@@ -228,6 +231,9 @@ export const AI_EXPERT_UI_FR: Record<GuestLocaleAiExpertKey, string> = {
     'Aucun sentier dans la distance choisie. Élargissez le rayon ou réessayez plus tard.',
   aiExpertNoPicksInRange:
     'Aucune recommandation {category} vérifiée à proximité. Élargissez la distance ou choisissez un autre intérêt.',
+  aiExpertRefineOrNew:
+    'Souhaitez-vous que j’affine les recommandations que je viens de montrer, ou que je trouve quelque chose de totalement nouveau ?',
+  aiExpertBestWithin: 'meilleurs à moins de {distance}',
 };
 export const AI_EXPERT_UI_IT: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertConcierge: 'Vailo Concierge',
@@ -341,4 +347,7 @@ export const AI_EXPERT_UI_IT: Record<GuestLocaleAiExpertKey, string> = {
     'Nessun sentiero nella distanza selezionata. Prova ad ampliare il raggio o controlla più tardi.',
   aiExpertNoPicksInRange:
     'Nessuna scelta {category} verificata nel raggio scelto. Prova ad ampliare la distanza o scegli un altro interesse.',
+  aiExpertRefineOrNew:
+    'Vuoi che perfezioni i suggerimenti appena mostrati o che trovi qualcosa di completamente nuovo?',
+  aiExpertBestWithin: 'i migliori entro {distance}',
 };

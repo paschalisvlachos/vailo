@@ -21,7 +21,7 @@ export default function AiExpertCuratingLoader({
       <div className="w-full max-w-full mt-4 animate-in fade-in duration-300">
         <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm px-4 py-3.5">
           <Loader2 size={18} className="animate-spin text-vailo-gold shrink-0" />
-          <p className="text-sm font-medium text-white/90 leading-snug min-w-0">{headline}</p>
+          <p className="text-base font-medium text-white/90 leading-snug min-w-0">{headline}</p>
         </div>
       </div>
     );
@@ -46,12 +46,12 @@ export default function AiExpertCuratingLoader({
           </div>
 
           {hint ? (
-            <p className="text-white/50 text-sm leading-relaxed">{hint}</p>
+            <p className="text-white/50 text-base leading-relaxed">{hint}</p>
           ) : null}
 
           {(steps ?? []).length > 0 ? (
             <div
-              className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
+              className="flex flex-wrap items-center gap-2 text-base"
               aria-live="polite"
             >
               {steps?.map((step, i) => {
@@ -60,7 +60,7 @@ export default function AiExpertCuratingLoader({
                 return (
                   <span
                     key={step.key}
-                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 transition-all duration-500 ${
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 transition-all duration-500 ${
                       active
                         ? 'bg-vailo-gold/12 border border-vailo-gold/25 text-white shadow-[0_0_12px_rgba(197,160,89,0.12)]'
                         : done

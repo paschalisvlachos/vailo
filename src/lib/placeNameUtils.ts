@@ -58,6 +58,23 @@ const BUSINESS_HINTS = [
   'lodge',
   'inn',
   'motel',
+  // Activity / tour operators — frequently sit next to a beach and get returned
+  // by Google for a beach search even though they are commercial venues.
+  'safari',
+  'jeep',
+  'quad',
+  'buggy',
+  'kayak',
+  'scuba',
+  'snorkel',
+  'cruise',
+  'charter',
+  'excursion',
+  'watersports',
+  'watersport',
+  'rentals',
+  'rental',
+  'jetski',
 ];
 
 export function normalizePlaceName(name: string): string {
@@ -125,20 +142,7 @@ export function namesLikelySame(a: string, b: string): boolean {
   return false;
 }
 
-/** Region/locality tokens must not alone justify a Google match. */
-const LOCALITY_STOPWORDS = new Set([
-  'georgioupolis',
-  'chania',
-  'crete',
-  'greece',
-  'apokoronas',
-  'rethymno',
-  'heraklion',
-  'municipality',
-  'regional',
-]);
-
-/** Stricter check when accepting a Google Places result for a requested business name. */
+/** Check when accepting a Google Places result for a requested place name. */
 export function placeNamesMatch(requested: string, resolved: string): boolean {
   const a = normalizePlaceName(requested);
   const b = normalizePlaceName(resolved);
@@ -150,6 +154,7 @@ export function placeNamesMatch(requested: string, resolved: string): boolean {
   const cb = nameCore(b);
   if (ca === cb && ca.length >= 4) return true;
 
+  // A distinctive core token (not a generic suffix) shared between the two names.
   if (ca.length >= 5 && b.includes(ca)) return true;
   if (cb.length >= 5 && a.includes(cb)) return true;
 
@@ -157,11 +162,33 @@ export function placeNamesMatch(requested: string, resolved: string): boolean {
     .toLowerCase()
     .replace(/[^a-z0-9\u0370-\u03ff\s]/g, ' ')
     .split(/\s+/)
-    .filter(
-      (w) =>
-        w.length >= 5 &&
-        !GENERIC_SUFFIXES.includes(w) &&
-        !LOCALITY_STOPWORDS.has(w)
-    );
+    .filter((w) => w.length >= 5 && !GENERIC_SUFFIXES.includes(w));
   return words.some((w) => b.includes(normalizePlaceName(w)));
+}
+
+/**
+ * True when a resolved Google place is a fundamentally different *kind* than the
+ * requested one (a geographic spot resolving to a business, or vice-versa). This
+ * is the only signal we use to reject a Google resolution — it is location- and
+ * language-agnostic, so it works for any region without hardcoded place lists.
+ */
+export function placeResolutionConflicts(requested: string, resolved: string): boolean {
+  const a = normalizePlaceName(requested);
+  const b = normalizePlaceName(resolved);
+  if (!a || !b) return false;
+  return placeKindsConflict(a, b);
+}
+
+/**
+ * Remove a trailing ", <place>" qualifier the AI sometimes appends to a venue
+ * name (e.g. "Taverna Glaros, Kalyves"). The map link and coordinates carry the
+ * real location, and the AI's appended town is frequently wrong, so this is a
+ * display-only cleanup applied to AI picks.
+ */
+export function stripTrailingLocality(title: string): string {
+  const raw = String(title || '').trim();
+  const commaIdx = raw.indexOf(',');
+  if (commaIdx < 0) return raw;
+  const head = raw.slice(0, commaIdx).trim();
+  return head.length >= 3 ? head : raw;
 }

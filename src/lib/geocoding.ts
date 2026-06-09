@@ -3,7 +3,7 @@
 import type { GuestLocale } from './guestLocale';
 import { guestUiTFormat, type GuestLocaleUiKey } from './guestLocaleUi';
 import { resolvePlacePhoto, type ResolvedPlacePhoto } from './placePhotoResolver';
-import { sanitizePlaceSearchTitle } from './placeNameUtils';
+import { sanitizePlaceSearchTitle, placeResolutionConflicts } from './placeNameUtils';
 
 const NOMINATIM_HEADERS = {
   'Accept-Language': 'en',
@@ -19,10 +19,22 @@ async function nominatimFetch(url: string): Promise<any[]> {
   if (elapsed < 1100) await sleep(1100 - elapsed);
   lastNominatimAt = Date.now();
 
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
+  // Guard against a hung request stalling the whole enrichment batch forever.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      headers: NOMINATIM_HEADERS,
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 const COUNTRY_CODES: Record<string, string> = {
@@ -72,19 +84,39 @@ export function locationSpellingVariants(input: string): string[] {
   return [...variants];
 }
 
+export type GeocodedPlaceKind = 'city' | 'town' | 'village' | 'settlement' | 'other';
+
 export type GeocodedPlace = {
   lat: number;
   lng: number;
   displayName: string;
   label: string;
   distanceFromPropertyKm?: number;
+  placeKind?: GeocodedPlaceKind;
+  nameMatched?: boolean;
+};
+
+type NominatimAddress = {
+  city?: string;
+  town?: string;
+  village?: string;
+  municipality?: string;
+  county?: string;
+  state?: string;
+  country?: string;
+  house_number?: string;
 };
 
 type NominatimHit = {
   lat: string;
   lon: string;
   display_name: string;
+  name?: string;
+  class?: string;
+  type?: string;
+  addresstype?: string;
   importance?: number;
+  address?: NominatimAddress;
 };
 
 function shortLabel(displayName: string, maxParts = 3): string {
@@ -95,9 +127,186 @@ function dedupeKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)},${lng.toFixed(3)}`;
 }
 
+function normalizePlaceToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9\u0370-\u03ff\s-]/gi, '')
+    .replace(/\s+/g, ' ');
+}
+
+/** Guest typed a place name — not coordinates or a street address. */
+export function looksLikePlaceName(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed || isCoordOnlyQuery(trimmed)) return false;
+  if (/^\d+\s*,\s*-?\d/.test(trimmed)) return false;
+  if (/^\d+\s+\S/.test(trimmed)) return false;
+  if (/\d{1,4}\s*,\s*\S/.test(trimmed) && trimmed.split(',').length > 2) return false;
+  return true;
+}
+
+function placeKindFromHit(hit: NominatimHit): GeocodedPlaceKind {
+  const addrType = (hit.addresstype || '').toLowerCase();
+  const typ = (hit.type || '').toLowerCase();
+
+  if (addrType === 'city' || typ === 'city') return 'city';
+  if (addrType === 'town' || typ === 'town') return 'town';
+  if (addrType === 'village' || typ === 'village') return 'village';
+  if (
+    ['suburb', 'neighbourhood', 'hamlet', 'locality', 'municipality'].includes(addrType) ||
+    (hit.class === 'place' && ['suburb', 'neighbourhood', 'hamlet', 'locality'].includes(typ))
+  ) {
+    return 'settlement';
+  }
+  if (hit.class === 'boundary' && hit.type === 'administrative') {
+    if (addrType === 'city' || typ === 'city') return 'city';
+    if (addrType === 'town' || typ === 'town') return 'town';
+    if (addrType === 'village' || typ === 'village') return 'village';
+    return 'settlement';
+  }
+  if (hit.class === 'place') return 'settlement';
+  return 'other';
+}
+
+function isSettlementKind(kind: GeocodedPlaceKind): boolean {
+  return kind !== 'other';
+}
+
+function nameTokensFromHit(hit: NominatimHit): string[] {
+  const raw = [
+    hit.name,
+    hit.address?.city,
+    hit.address?.town,
+    hit.address?.village,
+    hit.address?.municipality,
+  ].filter((v): v is string => Boolean(v?.trim()));
+
+  return [...new Set(raw.map(normalizePlaceToken))];
+}
+
+export function nameMatchesInput(hit: NominatimHit, userInput: string): boolean {
+  const normInput = normalizePlaceToken(userInput);
+  if (!normInput) return false;
+
+  return nameTokensFromHit(hit).some((token) => {
+    if (token === normInput) return true;
+    if (token.length >= 4 && normInput.length >= 4) {
+      return token.startsWith(normInput) || normInput.startsWith(token);
+    }
+    return false;
+  });
+}
+
+function isJunkForPlaceQuery(hit: NominatimHit): boolean {
+  const cls = (hit.class || '').toLowerCase();
+  const typ = (hit.type || '').toLowerCase();
+  const addrType = (hit.addresstype || '').toLowerCase();
+
+  if (cls === 'highway') return true;
+  if (cls === 'building' || typ === 'house' || addrType === 'building') return true;
+  if (cls === 'shop' || cls === 'tourism' || cls === 'office') return true;
+  if (hit.address?.house_number && !isSettlementKind(placeKindFromHit(hit))) return true;
+  if ((hit.importance ?? 0) < 0.01 && !isSettlementKind(placeKindFromHit(hit))) return true;
+  return false;
+}
+
+function placeKindTag(kind: GeocodedPlaceKind): string {
+  if (kind === 'city') return 'city';
+  if (kind === 'town') return 'town';
+  if (kind === 'village') return 'village';
+  if (kind === 'settlement') return 'area';
+  return '';
+}
+
+function buildPlaceLabel(hit: NominatimHit): string {
+  const kind = placeKindFromHit(hit);
+  const primaryName =
+    hit.name?.trim() ||
+    hit.address?.city ||
+    hit.address?.town ||
+    hit.address?.village ||
+    shortLabel(hit.display_name, 2);
+  const region = [hit.address?.state, hit.address?.county, hit.address?.country]
+    .filter(Boolean)
+    .join(', ');
+  const tag = placeKindTag(kind);
+
+  if (tag && region) return `${primaryName} (${tag}) · ${region}`;
+  if (tag) return `${primaryName} (${tag})`;
+  if (region) return `${primaryName} · ${region}`;
+  return primaryName;
+}
+
+function scorePlaceCandidate(
+  place: GeocodedPlace,
+  hit: NominatimHit,
+  userInput: string
+): number {
+  let score = 0;
+  const kind = place.placeKind ?? 'other';
+
+  if (place.nameMatched) score += 120;
+  if (kind === 'city') score += 80;
+  else if (kind === 'town') score += 65;
+  else if (kind === 'village') score += 55;
+  else if (kind === 'settlement') score += 40;
+
+  score += Math.min((hit.importance ?? 0) * 30, 30);
+  score -= Math.min((place.distanceFromPropertyKm ?? 0) / 4, 35);
+
+  const normInput = normalizePlaceToken(userInput);
+  const displayNorm = normalizePlaceToken(hit.display_name);
+  if (normInput && displayNorm.includes(normInput) && !place.nameMatched) score += 15;
+
+  return score;
+}
+
+function hitToPlace(
+  hit: NominatimHit,
+  userInput: string,
+  propCoords: { lat: number; lng: number } | null
+): GeocodedPlace | null {
+  const lat = parseFloat(hit.lat);
+  const lng = parseFloat(hit.lon);
+  if (isNaN(lat) || isNaN(lng)) return null;
+
+  const placeKind = placeKindFromHit(hit);
+  const nameMatched = nameMatchesInput(hit, userInput);
+  let distanceFromPropertyKm: number | undefined;
+  if (propCoords) {
+    distanceFromPropertyKm = haversineKm(propCoords.lat, propCoords.lng, lat, lng) * 1.35;
+  }
+
+  return {
+    lat,
+    lng,
+    displayName: hit.display_name,
+    label: buildPlaceLabel(hit),
+    distanceFromPropertyKm,
+    placeKind,
+    nameMatched,
+  };
+}
+
+type ScoredGeocodedPlace = GeocodedPlace & { relevanceScore: number };
+
+function sortScoredCandidates(places: ScoredGeocodedPlace[]): GeocodedPlace[] {
+  return [...places]
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .map(({ relevanceScore: _score, ...place }) => place);
+}
+
 async function searchNominatim(
   query: string,
-  opts: { limit?: number; viewbox?: string; bounded?: boolean; countrycodes?: string }
+  opts: {
+    limit?: number;
+    viewbox?: string;
+    bounded?: boolean;
+    countrycodes?: string;
+    featureType?: 'city' | 'settlement' | 'state' | 'country';
+  }
 ): Promise<NominatimHit[]> {
   const params = new URLSearchParams({
     format: 'json',
@@ -110,8 +319,37 @@ async function searchNominatim(
     params.set('bounded', opts.bounded ? '1' : '0');
   }
   if (opts.countrycodes) params.set('countrycodes', opts.countrycodes);
+  if (opts.featureType) params.set('featureType', opts.featureType);
 
   return nominatimFetch(`https://nominatim.openstreetmap.org/search?${params}`);
+}
+
+function ingestHits(
+  hits: NominatimHit[],
+  userInput: string,
+  propCoords: { lat: number; lng: number } | null,
+  seen: Map<string, ScoredGeocodedPlace>,
+  opts: { filterJunk: boolean; settlementsOnly: boolean }
+) {
+  for (const hit of hits) {
+    if (opts.filterJunk && isJunkForPlaceQuery(hit)) continue;
+
+    const kind = placeKindFromHit(hit);
+    if (opts.settlementsOnly && !isSettlementKind(kind)) continue;
+
+    const place = hitToPlace(hit, userInput, propCoords);
+    if (!place) continue;
+
+    const scored: ScoredGeocodedPlace = {
+      ...place,
+      relevanceScore: scorePlaceCandidate(place, hit, userInput),
+    };
+    const key = dedupeKey(scored.lat, scored.lng);
+    const existing = seen.get(key);
+    if (!existing || scored.relevanceScore > existing.relevanceScore) {
+      seen.set(key, scored);
+    }
+  }
 }
 
 export async function collectLocationCandidates(
@@ -125,7 +363,37 @@ export async function collectLocationCandidates(
   const { propCoords, country, cityArea } = context;
   const countrycodes = countryToIsoCode(country);
   const viewbox = propCoords ? buildViewbox(propCoords, 160) : undefined;
-  const seen = new Map<string, GeocodedPlace>();
+  const seen = new Map<string, ScoredGeocodedPlace>();
+  const placeLike = looksLikePlaceName(userInput);
+  const variants = locationSpellingVariants(userInput).slice(0, 3);
+
+  if (placeLike) {
+    const settlementQueries = new Set<string>();
+    for (const variant of variants) {
+      if (country) settlementQueries.add(`${variant}, ${country}`);
+      if (cityArea && country) {
+        settlementQueries.add(`${variant}, ${cityArea}, ${country}`.replace(/,\s*,/g, ',').trim());
+      }
+      settlementQueries.add(variant);
+    }
+
+    for (const q of [...settlementQueries].slice(0, 6)) {
+      const hits = await searchNominatim(q, {
+        limit: 8,
+        countrycodes,
+        featureType: 'settlement',
+      });
+      ingestHits(hits, userInput, propCoords, seen, {
+        filterJunk: true,
+        settlementsOnly: true,
+      });
+    }
+  }
+
+  const settlementResults = sortScoredCandidates([...seen.values()]);
+  if (placeLike && settlementResults.length > 0) {
+    return settlementResults;
+  }
 
   const queries: string[] = [];
   for (const variant of locationSpellingVariants(userInput)) {
@@ -134,71 +402,38 @@ export async function collectLocationCandidates(
     queries.push(variant);
   }
 
-  const uniqueQueries = [...new Set(queries)].slice(0, 8);
-
-  for (const q of uniqueQueries) {
+  for (const q of [...new Set(queries)].slice(0, 8)) {
     const hits = await searchNominatim(q, {
       limit: 5,
       viewbox,
-      bounded: !!viewbox,
+      bounded: !!viewbox && !placeLike,
       countrycodes,
     });
-
-    for (const hit of hits) {
-      const lat = parseFloat(hit.lat);
-      const lng = parseFloat(hit.lon);
-      if (isNaN(lat) || isNaN(lng)) continue;
-
-      const key = dedupeKey(lat, lng);
-      if (seen.has(key)) continue;
-
-      let distanceFromPropertyKm: number | undefined;
-      if (propCoords) {
-        distanceFromPropertyKm = haversineKm(propCoords.lat, propCoords.lng, lat, lng) * 1.35;
-      }
-
-      seen.set(key, {
-        lat,
-        lng,
-        displayName: hit.display_name,
-        label: shortLabel(hit.display_name),
-        distanceFromPropertyKm,
-      });
-    }
+    ingestHits(hits, userInput, propCoords, seen, {
+      filterJunk: placeLike,
+      settlementsOnly: false,
+    });
   }
 
-  // Wider search if bounded search found nothing near the property
-  if (propCoords && [...seen.values()].every((p) => (p.distanceFromPropertyKm ?? 9999) > 150)) {
-    for (const variant of locationSpellingVariants(userInput).slice(0, 3)) {
+  if (
+    propCoords &&
+    [...seen.values()].every((p) => (p.distanceFromPropertyKm ?? 9999) > 150)
+  ) {
+    for (const variant of variants) {
       const regionalQ = cityArea ? `${variant}, ${cityArea}` : variant;
       const hits = await searchNominatim(regionalQ, {
         limit: 5,
         countrycodes,
+        featureType: placeLike ? 'settlement' : undefined,
       });
-      for (const hit of hits) {
-        const lat = parseFloat(hit.lat);
-        const lng = parseFloat(hit.lon);
-        if (isNaN(lat) || isNaN(lng)) continue;
-        const key = dedupeKey(lat, lng);
-        if (seen.has(key)) continue;
-        seen.set(key, {
-          lat,
-          lng,
-          displayName: hit.display_name,
-          label: shortLabel(hit.display_name),
-          distanceFromPropertyKm: haversineKm(propCoords.lat, propCoords.lng, lat, lng) * 1.35,
-        });
-      }
+      ingestHits(hits, userInput, propCoords, seen, {
+        filterJunk: placeLike,
+        settlementsOnly: placeLike,
+      });
     }
   }
 
-  const all = [...seen.values()];
-  if (propCoords) {
-    return all.sort(
-      (a, b) => (a.distanceFromPropertyKm ?? 9999) - (b.distanceFromPropertyKm ?? 9999)
-    );
-  }
-  return all;
+  return sortScoredCandidates([...seen.values()]);
 }
 
 export type LocationResolveResult =
@@ -207,6 +442,26 @@ export type LocationResolveResult =
   | { type: 'not_found'; message: string };
 
 const MAX_DAY_TRIP_KM = 120;
+
+function isSettlementPlace(place: GeocodedPlace): boolean {
+  return Boolean(place.placeKind && place.placeKind !== 'other');
+}
+
+function withinKm(place: GeocodedPlace, km: number): boolean {
+  return (place.distanceFromPropertyKm ?? 9999) <= km;
+}
+
+function chooseFrom(
+  list: GeocodedPlace[],
+  userInput: string,
+  tf: (key: GuestLocaleUiKey, vars: Record<string, string | number>) => string
+): Extract<LocationResolveResult, { type: 'choose' }> {
+  return {
+    type: 'choose',
+    candidates: list.slice(0, 4),
+    message: tf('aiExpertGeoSeveralMatches', { input: userInput }),
+  };
+}
 
 export async function resolveCustomLocation(
   userInput: string,
@@ -234,57 +489,72 @@ export async function resolveCustomLocation(
 
   const { propCoords, cityArea } = context;
 
-  if (propCoords) {
-    const nearProperty = candidates.filter(
-      (c) => (c.distanceFromPropertyKm ?? 9999) <= MAX_DAY_TRIP_KM
-    );
+  if (!propCoords) {
+    return { type: 'single', place: candidates[0] };
+  }
 
-    if (nearProperty.length === 1) {
-      return { type: 'single', place: nearProperty[0] };
-    }
+  const dayTrip = candidates.filter((c) => withinKm(c, MAX_DAY_TRIP_KM));
+  const settlements = (list: GeocodedPlace[]) => list.filter(isSettlementPlace);
+  const nameMatched = (list: GeocodedPlace[]) => list.filter((c) => c.nameMatched);
 
-    if (nearProperty.length > 1) {
-      const top = nearProperty.slice(0, 4);
-      const best = top[0];
-      const second = top[1];
-      if (
-        second &&
-        (second.distanceFromPropertyKm ?? 0) - (best.distanceFromPropertyKm ?? 0) > 25
-      ) {
-        return { type: 'single', place: best };
-      }
-      return {
-        type: 'choose',
-        candidates: top,
-        message: tf('aiExpertGeoSeveralMatches', { input: userInput }),
-      };
-    }
+  const dayNameMatchedSettlements = nameMatched(settlements(dayTrip));
+  if (dayNameMatchedSettlements.length === 1) {
+    return { type: 'single', place: dayNameMatchedSettlements[0] };
+  }
+  if (dayNameMatchedSettlements.length > 1) {
+    return chooseFrom(dayNameMatchedSettlements, userInput, tf);
+  }
 
-    const regional = candidates.filter((c) => (c.distanceFromPropertyKm ?? 9999) <= 200);
-    if (regional.length > 0) {
-      return {
-        type: 'choose',
-        candidates: regional.slice(0, 4),
-        message: tf('aiExpertGeoFarMatch', {
-          input: userInput,
-          km: Math.round(candidates[0].distanceFromPropertyKm ?? 0),
-          area: cityArea || tf('aiExpertTheRegion', {}),
-        }),
-      };
-    }
+  const daySettlements = settlements(dayTrip);
+  if (daySettlements.length === 1) {
+    return { type: 'single', place: daySettlements[0] };
+  }
+  if (daySettlements.length > 1) {
+    return chooseFrom(daySettlements, userInput, tf);
+  }
 
-    const nearHint = cityArea ? tf('aiExpertGeoNearHint', { area: cityArea }) : '';
+  if (dayTrip.length === 1) {
+    return { type: 'single', place: dayTrip[0] };
+  }
+  if (dayTrip.length > 1) {
+    return chooseFrom(dayTrip, userInput, tf);
+  }
+
+  const regional = candidates.filter((c) => withinKm(c, 200));
+  const regionalNameMatchedSettlements = nameMatched(settlements(regional));
+  if (regionalNameMatchedSettlements.length === 1) {
+    return { type: 'single', place: regionalNameMatchedSettlements[0] };
+  }
+
+  const regionalSettlements = settlements(regional);
+  const regionalChoices =
+    regionalNameMatchedSettlements.length > 1
+      ? regionalNameMatchedSettlements
+      : regionalSettlements.length > 0
+        ? regionalSettlements
+        : regional;
+
+  if (regionalChoices.length > 0) {
     return {
-      type: 'not_found',
-      message: tf('aiExpertGeoTooFarFromProperty', {
+      type: 'choose',
+      candidates: regionalChoices.slice(0, 4),
+      message: tf('aiExpertGeoFarMatch', {
         input: userInput,
-        km: Math.round(candidates[0].distanceFromPropertyKm ?? 0),
-        nearHint,
+        km: Math.round(regionalChoices[0].distanceFromPropertyKm ?? 0),
+        area: cityArea || tf('aiExpertTheRegion', {}),
       }),
     };
   }
 
-  return { type: 'single', place: candidates[0] };
+  const nearHint = cityArea ? tf('aiExpertGeoNearHint', { area: cityArea }) : '';
+  return {
+    type: 'not_found',
+    message: tf('aiExpertGeoTooFarFromProperty', {
+      input: userInput,
+      km: Math.round(candidates[0].distanceFromPropertyKm ?? 0),
+      nearHint,
+    }),
+  };
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -703,6 +973,16 @@ async function tryResolveViaGoogle(
       anchorLng: anchorCoords?.lng,
     });
     if (resolved.notFound || (!resolved.googlePlaceId && !resolved.googleMapsUrl)) {
+      return null;
+    }
+    // Guard against Google returning a different *kind* of place — e.g. a beach
+    // search resolving to a commercial operator ("Georgioupoli Beach" → "…Safari
+    // Jeep"). We only reject on a geo↔business kind conflict, so a legitimate
+    // business returned for a business search (often with a different official
+    // name than the AI's label) is still accepted and verified.
+    const resolvedName = resolved.placeName || '';
+    if (resolvedName && placeResolutionConflicts(title, resolvedName)) {
+      console.warn('Rejected Google map link — kind conflict:', title, '→', resolvedName);
       return null;
     }
     return mergeGooglePlaceResolution(item, resolved, title);

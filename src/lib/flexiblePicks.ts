@@ -1,13 +1,14 @@
 /** Flexible picks: up to 5 unique businesses per category, distance-sorted, local-first. */
 
 import { normalizePlaceName, namesLikelySame } from './placeNameUtils';
-import { bareGooglePlaceId } from './geocoding';
+import { bareGooglePlaceId, isDirectPlaceMapsUrl } from './geocoding';
 import { pickKeyForItem } from './picksFairness';
 import {
   featureBelongsToCategory,
   gemBelongsToCategory,
   gemCategoryPrimaries,
 } from './categoryLocale';
+import { shouldDropAreasCommercialAiPick } from './areasPickFilter';
 import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
 
 /**
@@ -551,6 +552,7 @@ function padCategoryFromDb(
   return out.map((i) => enrichPickItem(i, maxKm, startCoords, recentlyShown));
 }
 
+/** DISPLAY order — nearest first. Applied to the already-selected items. */
 function sortPickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
   return [...items].sort((a, b) => {
     const aBeyond = a.beyondRadius ? 1 : 0;
@@ -565,15 +567,117 @@ function sortPickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
   });
 }
 
-export function trimFlexiblePicksToDisplayCap(planData: any, maxKm: number): any {
+/**
+ * SELECTION order — which picks make the cut, by *quality* rather than mere
+ * proximity. Within-radius picks come first, then curated Vailo "legit" picks,
+ * then the AI's own best-first ordering is preserved (stable). Distance is NOT
+ * used here, so widening the radius surfaces genuinely better places (a renowned
+ * beach 35 km away can outrank a mediocre one 4 km away) instead of repeating
+ * the nearest cluster. The displayed list is re-sorted by distance afterwards.
+ */
+function sortPickItemsForSelection(items: FlexiblePickItem[]): FlexiblePickItem[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const aBeyond = a.item.beyondRadius ? 1 : 0;
+      const bBeyond = b.item.beyondRadius ? 1 : 0;
+      if (aBeyond !== bBeyond) return aBeyond - bBeyond;
+      const aLegit = a.item.isLegitPick ? 0 : 1;
+      const bLegit = b.item.isLegitPick ? 0 : 1;
+      if (aLegit !== bLegit) return aLegit - bLegit;
+      return a.index - b.index;
+    })
+    .map((entry) => entry.item);
+}
+
+/**
+ * The single, location-agnostic quality gate for an *AI* pick. A pick is only
+ * shown when we can fully stand behind it — otherwise it is dropped (and the
+ * over-generated candidate pool back-fills its slot). This is what stops
+ * low-confidence Google matches (no photo / wrong-location same-name results)
+ * from ever reaching the guest. Database / property picks are pre-curated and
+ * always pass. No extra API calls — it reads only data we already resolved.
+ *
+ * An AI pick must:
+ *  1. resolve to a real Google place (place id) with a direct place map link
+ *     (not a bare "?query=Name" search),
+ *  2. carry a photo — a reliable proxy that Google matched a real, established
+ *     place rather than a weak text guess, and
+ *  3. sit within the category's allowed radius of the start, measured on the
+ *     *resolved* coordinates (so a same-named place in another region is cut
+ *     even if the AI claimed it was nearby).
+ */
+export function isAiPickShowable(
+  item: any,
+  anchor: { lat: number; lng: number } | null | undefined,
+  hardCapKm: number
+): boolean {
+  if (!item || typeof item !== 'object') return false;
+  if (item.source === 'database' || item.source === 'property' || item.isProperty === true) {
+    return true;
+  }
+
+  const placeId = bareGooglePlaceId(item.googlePlaceId);
+  const mapsUrl = typeof item.googleMapsUrl === 'string' ? item.googleMapsUrl : '';
+  if (!placeId && !extractsPlaceIdFromUrl(mapsUrl)) return false;
+  if (!isDirectPlaceMapsUrl(mapsUrl)) return false;
+
+  const hasPhoto = typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0;
+  if (!hasPhoto) return false;
+
+  const coords = extractCoords(item);
+  if (!coords) return false;
+
+  if (anchor && isFinite(hardCapKm) && hardCapKm > 0) {
+    const km = drivingKm(anchor.lat, anchor.lng, coords.lat, coords.lng);
+    if (km > hardCapKm) return false;
+  }
+  return true;
+}
+
+function extractsPlaceIdFromUrl(url: string): boolean {
+  return /[?&](?:query_place_id|destination_place_id|place_id)=/i.test(url || '');
+}
+
+/**
+ * Apply {@link isAiPickShowable} across a picks plan, using each category's own
+ * hard-cap radius. Trail categories are passed through untouched.
+ */
+export function filterShowableAiPicksFromPlan(
+  planData: any,
+  maxKm: number,
+  anchor: { lat: number; lng: number } | null | undefined,
+  knowledgeByPrimary: Record<string, string> = {}
+): any {
   if (!planData || planData.type !== 'picks' || !Array.isArray(planData.categories)) {
     return planData;
   }
-  const displayMax = maxPicksForRadius(maxKm);
-  const categories = planData.categories.map((cat: any) => ({
-    ...cat,
-    items: (cat.items || []).slice(0, displayMax),
-  }));
+  const categories = planData.categories.map((cat: any) => {
+    if (cat?.isTrails) return cat;
+    const categoryName = String(cat?.categoryName || '');
+    const hardCapKm = categoryHardCapKm(maxKm, categoryName, knowledgeByPrimary);
+    const items = (cat?.items || []).filter((it: any) => isAiPickShowable(it, anchor, hardCapKm));
+    return { ...cat, items };
+  });
+  return { ...planData, categories };
+}
+
+export function trimFlexiblePicksToDisplayCap(
+  planData: any,
+  maxKm: number,
+  capOverride?: number
+): any {
+  if (!planData || planData.type !== 'picks' || !Array.isArray(planData.categories)) {
+    return planData;
+  }
+  const displayMax =
+    capOverride && capOverride > 0 ? capOverride : maxPicksForRadius(maxKm);
+  const categories = planData.categories.map((cat: any) => {
+    // Items arrive in SELECTION (best-first) order — take the best N, then show
+    // them nearest-first.
+    const selected = (cat.items || []).slice(0, displayMax);
+    return { ...cat, items: cat?.isTrails ? selected : sortPickItems(selected) };
+  });
   return { ...planData, categories };
 }
 
@@ -611,10 +715,18 @@ export function normalizeFlexiblePicksPlan(
     const knowledgeMode = getCategoryKnowledgeMode(knowledgeByPrimary[cat.categoryName] || '');
     if (knowledgeMode === 'areas') {
       items = items.filter((item) => item.source !== 'database');
+      items = items.filter(
+        (item) =>
+          !shouldDropAreasCommercialAiPick(
+            item as Record<string, unknown>,
+            cat.categoryName,
+            knowledgeByPrimary
+          )
+      );
     }
 
     items = dedupePickItems(items);
-    items = sortPickItems(items);
+    items = sortPickItemsForSelection(items);
 
     items = padCategoryFromDb(
       items,
@@ -627,7 +739,9 @@ export function normalizeFlexiblePicksPlan(
       itemCap
     );
     items = dedupePickItems(items);
-    items = sortPickItems(items);
+    // Keep best-first (selection) order so the slice below takes the BEST items,
+    // not the nearest. The display list is re-sorted by distance at trim time.
+    items = sortPickItemsForSelection(items);
     items = items.slice(0, itemCap);
 
     return { ...cat, items };
@@ -640,10 +754,16 @@ export function buildFlexiblePicksPromptSection(
   categories: string[],
   maxKm: number,
   dbContext: Record<string, { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] }>,
-  knowledgeByPrimary: Record<string, string> = {}
+  knowledgeByPrimary: Record<string, string> = {},
+  displayMaxOverride?: number,
+  poolSizeOverride?: number
 ): string {
-  const displayMax = maxPicksForRadius(maxKm);
-  const poolSize = aiCandidatePoolSize();
+  const displayMax =
+    displayMaxOverride && displayMaxOverride > 0
+      ? displayMaxOverride
+      : maxPicksForRadius(maxKm);
+  const poolSize =
+    poolSizeOverride && poolSizeOverride > 0 ? poolSizeOverride : aiCandidatePoolSize();
 
   const perCategory = categories.map((cat) => {
     const pool = dbContext[cat] || { withinRadius: [], beyondRadius: [] };
@@ -715,16 +835,18 @@ export function buildFlexiblePicksPromptSection(
         - knowledgeMode "areas" (Beach, Culture, etc.): ZERO database businesses. ALL candidates must be geographic AI picks — beaches, coves, villages, gorges, archaeological sites. Provide up to ${poolSize} distinct official place names.
 
         AI PICKS — REAL PLACES ONLY:
-        - knowledgeMode "areas": geographic spots ONLY. No restaurants, tours, shops, marinas, or operators. Title = official Maps name ("Kalyvaki Beach", "Phylaki", "Aptera", "Argyroupoli"). NEVER invent descriptive names ("unorganized section", "river mouth", "hidden cove near X").
+        - knowledgeMode "areas": geographic spots ONLY. No restaurants, beach bars, tours, shops, marinas, operators, or paid venues — even if the Google name contains Beach/Cove/Village. Title = official Maps name ("Kalyvaki Beach", "Phylaki", "Aptera", "Argyroupoli"). NEVER suggest hotels, studios, apartments, or establishments named after a beach. NEVER invent descriptive names ("unorganized section", "river mouth", "hidden cove near X").
         - knowledgeMode "business": named establishments ONLY. Format: "Business Name, Village" (e.g. "Taverna To Steki, Vryses"). No generic "old town stroll" without a specific venue.
         - If unsure a place exists on Google Maps within the radius, SKIP it — never guess.
         - Never suggest permanently closed businesses.
 
         DISTANCE RULES:
-        - Prefer places within ${maxKm}km. Use beyondRadius: true only for the extended band up to each category's hardCapKm.
+        - Anywhere within ${maxKm}km is equally valid — do NOT bias toward the closest spots. Use beyondRadius: true only for the extended band up to each category's hardCapKm.
         - distanceKm is REQUIRED on every item and must respect hardCapKm.
         - estimatedDistance: "12.4km" or "Further · 18.0km" when beyondRadius is true.
-        - Sort each category CLOSEST to FURTHEST.
+
+        RANKING (IMPORTANT):
+        - Order each category BEST-FIRST — most worth visiting / most renowned / highest quality — REGARDLESS of distance. A standout place near the edge of the radius should rank ABOVE an average one nearby. We re-sort the final shortlist by distance for display, so your ordering decides WHICH places are chosen, not the order shown.
 
         UNIQUENESS:
         - One place = one entry. Same business, same beach, same village = one entry only.

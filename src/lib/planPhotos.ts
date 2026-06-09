@@ -1,7 +1,13 @@
 /** Plan photos: Tier 1 = Vailo DB ($0), Tier 3 = cached Google Places (low cost). */
 
 import { resolvePlacePhoto } from './placePhotoResolver';
-import { normalizePlaceName, placeNamesMatch, sanitizePlaceSearchTitle } from './placeNameUtils';
+import {
+  normalizePlaceName,
+  placeNamesMatch,
+  placeResolutionConflicts,
+  sanitizePlaceSearchTitle,
+} from './placeNameUtils';
+import { looksLikeCommercialPlaceName } from './areasPickFilter';
 import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
 import { categoryDistanceLimitKm } from './flexiblePicks';
 import { placeSearchTitleVariants } from './pickVerification';
@@ -195,7 +201,7 @@ async function enrichItemWithGooglePhoto(
 ): Promise<Record<string, unknown>> {
   const local = resolveFromLocalSources(item, ctx);
   if (local) {
-    return applyResolvedPhoto(item, local, String(item.title || ''));
+    return applyResolvedPhoto(item, local, String(item.title || ''), ctx);
   }
 
   if (!itemNeedsGooglePhoto(item)) return item;
@@ -211,7 +217,7 @@ async function enrichItemWithGooglePhoto(
   const sessionKey = `${normalized}::${lat?.toFixed(4) ?? 'x'}::${lng?.toFixed(4) ?? 'x'}`;
   const cached = planSessionCache.get(sessionKey);
   if (cached) {
-    return applyResolvedPhoto(item, cached, title);
+    return applyResolvedPhoto(item, cached, title, ctx);
   }
 
   const categoryName = ctx.categoryName || '';
@@ -247,7 +253,7 @@ async function enrichItemWithGooglePhoto(
     }
 
     planSessionCache.set(sessionKey, resolved);
-    return applyResolvedPhoto(item, resolved, title);
+    return applyResolvedPhoto(item, resolved, title, ctx);
   } catch (e) {
     console.warn('Google photo resolve failed for', title, e);
     return item;
@@ -259,15 +265,30 @@ type ResolvedPlacePhoto = Awaited<ReturnType<typeof resolvePlacePhoto>>;
 function applyResolvedPhoto(
   item: Record<string, unknown>,
   resolved: ResolvedPlacePhoto,
-  requestedTitle: string
+  requestedTitle: string,
+  ctx: ItemPhotoContext
 ): Record<string, unknown> {
   if (resolved.notFound) return item;
   if (!resolved.photoUrl && !resolved.googleMapsUrl && !resolved.googlePlaceId) return item;
 
   const resolvedName = resolved.placeName || '';
-  if (resolvedName && requestedTitle && !placeNamesMatch(requestedTitle, resolvedName)) {
-    console.warn(`Rejected place mismatch: requested "${requestedTitle}", got "${resolvedName}"`);
+  if (resolvedName && requestedTitle && placeResolutionConflicts(requestedTitle, resolvedName)) {
+    console.warn(`Rejected place kind conflict: requested "${requestedTitle}", got "${resolvedName}"`);
     return item;
+  }
+
+  const categoryName = String(ctx.categoryName || '');
+  const knowledgeMode = getCategoryKnowledgeMode(ctx.knowledgeByPrimary?.[categoryName] || '');
+  if (knowledgeMode === 'areas') {
+    if (
+      (requestedTitle && looksLikeCommercialPlaceName(requestedTitle)) ||
+      (resolvedName && looksLikeCommercialPlaceName(resolvedName))
+    ) {
+      console.warn(
+        `Rejected commercial pick for areas category "${categoryName}": "${requestedTitle}" → "${resolvedName}"`
+      );
+      return item;
+    }
   }
 
   const next: Record<string, unknown> = { ...item };

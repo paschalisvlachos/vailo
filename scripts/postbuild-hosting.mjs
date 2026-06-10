@@ -24,11 +24,16 @@ if (existsSync(assetsDir)) {
 }
 
 const publicDir = join(process.cwd(), 'public');
-for (const name of ['favicon.svg', 'vailoLogo.png']) {
+for (const name of ['V.png', 'vailoLogo.png']) {
   const src = join(publicDir, name);
   if (existsSync(src)) {
     cpSync(src, join(appDir, name));
   }
+}
+
+const faviconIoDir = join(publicDir, 'favicon_io');
+if (existsSync(faviconIoDir)) {
+  cpSync(faviconIoDir, join(appDir, 'favicon_io'), { recursive: true });
 }
 
 // Marketing landing page at /

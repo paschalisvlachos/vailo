@@ -999,8 +999,9 @@ exports.resolvePlacePhoto = onCall(async (request) => {
     }
 
     let place = null;
+    let searchQuery = "";
     for (const variant of placeSearchTitleVariants(title)) {
-      const searchQuery = [variant, area, country].filter(Boolean).join(", ");
+      searchQuery = [variant, area, country].filter(Boolean).join(", ");
       place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, variant);
       if (place) break;
     }

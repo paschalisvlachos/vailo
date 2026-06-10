@@ -1,4 +1,10 @@
+import {
+  fieldsForHouseGuideCategoryId,
+  HOUSE_GUIDE_CATEGORIES,
+  type HouseGuideFieldDef,
+} from './houseGuideCategories';
 import { getGuideTextValue } from './houseGuideLocales';
+import { normalizeLocaleCode } from './propertyContentLocales';
 
 /**
  * Maps admin House Guide categories to the "featured keys" that can be
@@ -29,7 +35,8 @@ export type FeaturedKey =
   | 'cleaning'
   | 'supplies'
   | 'devices'
-  | 'faq';
+  | 'faq'
+  | 'daily-needs';
 
 export type FeaturedConfig = {
   id: FeaturedKey;
@@ -55,7 +62,8 @@ export type FeaturedConfig = {
     | 'Sparkles'
     | 'Box'
     | 'Wrench'
-    | 'MessageCircleQuestion';
+    | 'MessageCircleQuestion'
+    | 'ShoppingBag';
   /** Admin CategoryDef.id values that feed this featured key. */
   sourceCategoryIds: string[];
 };
@@ -187,6 +195,13 @@ export const FEATURED_CONFIGS: FeaturedConfig[] = [
     iconName: 'MessageCircleQuestion',
     sourceCategoryIds: ['faq'],
   },
+  {
+    id: 'daily-needs',
+    title: 'Daily Needs',
+    description: 'Nearby shops, pharmacy, ATM, and everyday essentials.',
+    iconName: 'ShoppingBag',
+    sourceCategoryIds: ['dailyNeeds'],
+  },
 ];
 
 const FEATURED_CONFIG_BY_ID: Record<FeaturedKey, FeaturedConfig> =
@@ -197,6 +212,15 @@ const FEATURED_CONFIG_BY_ID: Record<FeaturedKey, FeaturedConfig> =
 
 export function getFeaturedConfig(id: string): FeaturedConfig | null {
   return (FEATURED_CONFIG_BY_ID as Record<string, FeaturedConfig | undefined>)[id] || null;
+}
+
+/** Admin category description shown under the title in House Guide (guest menu subtitle). */
+export function featuredKeyCategoryDescription(key: FeaturedKey): string {
+  const cfg = getFeaturedConfig(key);
+  if (!cfg) return '';
+  const primaryCategoryId = cfg.sourceCategoryIds[0];
+  const cat = HOUSE_GUIDE_CATEGORIES.find((c) => c.id === primaryCategoryId);
+  return cat?.description?.trim() || cfg.description;
 }
 
 /**
@@ -221,6 +245,56 @@ export function pairedFeaturedKeyForCategory(categoryId: string): FeaturedKey | 
     }
   }
   return null;
+}
+
+function fieldHasPortalContent(
+  guideData: Record<string, unknown>,
+  field: HouseGuideFieldDef,
+  locale: string,
+  primaryLocale: string
+): boolean {
+  if (field.type === 'textarea') {
+    return Boolean(getGuideTextValue(guideData, field.id, locale, primaryLocale).trim());
+  }
+  const value = guideData[field.id];
+  if (!Array.isArray(value) || value.length === 0) return false;
+  return value.some((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    return Object.values(entry as Record<string, unknown>).some(
+      (v) => typeof v === 'string' && v.trim().length > 0
+    );
+  });
+}
+
+/** Whether a featured key has enough source content to show on the guest portal. */
+export function featuredKeyHasPortalContent(
+  key: FeaturedKey,
+  guideData: Record<string, unknown>,
+  primaryLocale: string
+): boolean {
+  const cfg = getFeaturedConfig(key);
+  if (!cfg) return false;
+  const primary = normalizeLocaleCode(primaryLocale) || 'en';
+  for (const categoryId of cfg.sourceCategoryIds) {
+    const fields = fieldsForHouseGuideCategoryId(categoryId);
+    if (fields.some((field) => fieldHasPortalContent(guideData, field, primary, primary))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function normalizeFeaturedOnPortal(
+  raw: unknown,
+  guideData: Record<string, unknown>,
+  primaryLocale: string
+): FeaturedKey[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((k): k is string => typeof k === 'string')
+    .filter((k): k is FeaturedKey => !!getFeaturedConfig(k))
+    .filter((k) => featuredKeyHasPortalContent(k, guideData, primaryLocale))
+    .slice(0, PORTAL_FEATURED_CAP);
 }
 
 /** Stable string used as input to the AI summary + hashed for staleness detection. */

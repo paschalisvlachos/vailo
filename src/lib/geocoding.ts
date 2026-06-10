@@ -14,7 +14,7 @@ let lastNominatimAt = 0;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function nominatimFetch(url: string): Promise<any[]> {
+async function nominatimFetch(url: string, attempt = 0): Promise<any[]> {
   const elapsed = Date.now() - lastNominatimAt;
   if (elapsed < 1100) await sleep(1100 - elapsed);
   lastNominatimAt = Date.now();
@@ -27,10 +27,26 @@ async function nominatimFetch(url: string): Promise<any[]> {
       headers: NOMINATIM_HEADERS,
       signal: controller.signal,
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      // Transient server/rate-limit error (429/5xx): one short retry so a
+      // momentary hiccup doesn't turn a real place into "not found". A genuine
+      // 200-with-empty-array (place truly absent) is NOT retried.
+      if (attempt < 1 && (res.status === 429 || res.status >= 500)) {
+        clearTimeout(timeout);
+        await sleep(1200);
+        return nominatimFetch(url, attempt + 1);
+      }
+      return [];
+    }
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch {
+    // Network error / abort (timeout): one short retry before giving up.
+    if (attempt < 1) {
+      clearTimeout(timeout);
+      await sleep(1200);
+      return nominatimFetch(url, attempt + 1);
+    }
     return [];
   } finally {
     clearTimeout(timeout);
@@ -833,6 +849,8 @@ export function getItemMapLinks(item: {
   lat?: number;
   lng?: number;
   navigateUrl?: string;
+  source?: string;
+  isProperty?: boolean;
 }, areaHint: string) {
   const title = sanitizePlaceSearchTitle(item.title?.trim() || '');
   const lat = item.latitude ?? item.lat;
@@ -844,6 +862,23 @@ export function getItemMapLinks(item: {
     item.googleMapsUrl && !isBrokenPlaceMapsUrl(item.googleMapsUrl)
       ? item.googleMapsUrl
       : undefined;
+
+  // Curated Vailo picks (admin-saved local gems / the property itself) ALWAYS
+  // use their stored DB map link verbatim — it is the source of truth and every
+  // gem is saved with one. Never reconstruct it from a place id or, worse, a
+  // name search that can resolve to a different same-named business.
+  const isCurated =
+    item.source === 'database' || item.source === 'property' || item.isProperty === true;
+  if (isCurated && storedMapsUrl && isValidExternalUrl(storedMapsUrl)) {
+    return {
+      googleMapsUrl: storedMapsUrl.trim(),
+      navigateUrl:
+        item.navigateUrl && isValidExternalUrl(item.navigateUrl)
+          ? item.navigateUrl.trim()
+          : buildNavigateFromMapsUrl(storedMapsUrl, item.googlePlaceId, lat, lng),
+      resolved: true,
+    };
+  }
 
   const placeId =
     bareGooglePlaceId(item.googlePlaceId) || extractPlaceIdFromMapsUrl(storedMapsUrl);
@@ -1041,6 +1076,30 @@ async function enrichItem(
   mapCtx?: MapEnrichmentContext
 ) {
   if (item.isProperty || item.source === 'property') return item;
+
+  // Vailo DB picks are admin-curated. Their stored map link is the source of
+  // truth — use it 100%, never regenerate or re-resolve it on Google (also keeps
+  // these picks instant since no network call is made). Only synthesise a
+  // navigate URL when one isn't already stored.
+  if (item.source === 'database') {
+    const storedMapsUrl =
+      typeof item.googleMapsUrl === 'string' ? item.googleMapsUrl.trim() : '';
+    if (storedMapsUrl) {
+      let navigateUrl =
+        typeof item.navigateUrl === 'string' ? item.navigateUrl.trim() : '';
+      if (!navigateUrl) {
+        const lat = item.latitude ?? item.lat;
+        const lng = item.longitude ?? item.lng;
+        const placeId =
+          bareGooglePlaceId(item.googlePlaceId) || extractPlaceIdFromMapsUrl(storedMapsUrl);
+        navigateUrl = buildPlaceMapUrls(placeId, lat, lng, item.title).navigateUrl;
+      }
+      return { ...item, googleMapsUrl: storedMapsUrl, navigateUrl };
+    }
+    // DB pick without a stored link — fall back to a link built from its coords.
+    const links = getItemMapLinks(item, areaHint);
+    return { ...item, googleMapsUrl: links.googleMapsUrl, navigateUrl: links.navigateUrl };
+  }
 
   if (itemHasCuratedMap(item)) {
     const links = getItemMapLinks(item, areaHint);

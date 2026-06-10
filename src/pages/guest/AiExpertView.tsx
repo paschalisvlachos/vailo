@@ -70,6 +70,7 @@ import { stripTrailingLocality } from '../../lib/placeNameUtils';
 import { guestUiTFormat, type GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import AiExpertCuratingLoader from '../../components/guest/AiExpertCuratingLoader';
+import VailoMark from '../../components/guest/VailoMark';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 import {
   coerceTimelineToFlexiblePicks,
@@ -632,6 +633,19 @@ export default function AiExpertView({
     return location === getNearPropertyLabel() || location.startsWith('Near ');
   };
 
+  /** Human-readable label for the chosen starting point (property or custom). */
+  const getStartingPointLabel = (): string => {
+    if (isNearPropertyLocation(preferences.location)) {
+      return getPropertyDisplayName();
+    }
+    return (
+      locationFullNameRef.current ||
+      preferences.locationFullName ||
+      preferences.location ||
+      ''
+    );
+  };
+
   /** Default starting point = guest's property (does not advance the wizard step). */
   const ensureDefaultPropertyLocation = (): typeof preferences => {
     if (preferences.location?.trim()) {
@@ -780,7 +794,6 @@ export default function AiExpertView({
           
           const richName = [village, municipality].filter(Boolean).join(', ');
           setRichLocationName(richName);
-          console.log("📍 Reverse Geocoder Found:", richName);
         }
       } catch (error) {
         console.error("Free Geocoding failed:", error);
@@ -1151,7 +1164,7 @@ export default function AiExpertView({
     startCoordsOverride?: { lat: number; lng: number } | null,
     recentlyShown: Set<string> = new Set()
   ) => {
-    const { coords: propCoords } = getLocationContext();
+    //const { coords: propCoords } = getLocationContext();
     const startCoords = startCoordsOverride ?? getStartCoords();
 
     const primary = contentSettings.primaryLocale;
@@ -1608,12 +1621,6 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
         },
       });
 
-      console.group('[AiExpert] Gemini plan request');
-      console.log('model:', 'gemini-2.5-flash');
-      console.log('systemInstruction:\n', systemInstruction);
-      console.log('prompt:\n', promptText);
-      console.groupEnd();
-
       const result = await model.generateContent(promptText);
       const rawText = result.response.text();
 
@@ -1806,19 +1813,18 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     ]);
 
     const inferredPrimaries = inferCategoryPrimariesFromText(userText, availableCategories);
-    const wizardCategories = filterPrimariesForLiveLikeLocal(
-      preferences.categories,
-      excludedLiveLikeLocalPrimaries
-    );
     const inferredCategories = filterPrimariesForLiveLikeLocal(
       inferredPrimaries,
       excludedLiveLikeLocalPrimaries
     );
-    // Open by default: the latest message's own topics take priority over the
-    // categories the wizard happened to use earlier. The wizard set is only a
-    // fallback when the new message names no interest of its own.
-    const openCategories =
-      inferredCategories.length > 0 ? inferredCategories : wizardCategories;
+
+    // The "exclude from Live like a local" flag is a filter for PROACTIVE
+    // suggestions (the wizard) — it keeps admin-only categories like "Winery"
+    // out of plans the guest didn't ask for. In free-text chat the guest is
+    // explicitly driving the request, so that filter must not censor a direct
+    // ask (otherwise "give me wineries" returns an empty plan). Build the plan
+    // for THIS message from exactly what the model answered.
+    const effectiveExcluded = new Set<string>();
 
     const hasPriorPlan = messages.some((m) => m.type === 'plan');
     const refineRequested = hasPriorPlan && wantsRefinement(userText);
@@ -1826,6 +1832,12 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     // not by the fact that a wizard ran before — so follow-up questions about the
     // existing picks fall through to chat instead of regenerating.
     const isPlanRequest = looksLikePlanRequest(userText, inferredCategories);
+
+    // Default radius for a casual chat ask (no explicit "within X km"). Generous
+    // enough that real picks survive verification — NOT the wizard's smallest
+    // tier, which can be ~9 km and drop almost everything — but still local to
+    // the chosen starting point so we don't wander into the next city.
+    const NEW_TOPIC_LOCAL_KM = 35;
 
     const activePrefs = ensureDefaultPropertyLocation();
 
@@ -1849,13 +1861,17 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       return;
     }
 
-    if (!refineRequested && isPlanRequest && openCategories.length > 0) {
+    // Fast, structured generation ONLY when the latest message names a configured
+    // "Live like a local" category. A new topic that is NOT a configured category
+    // (e.g. "wineries") must fall through to the open chat path below — it must
+    // never silently reuse the wizard's earlier categories, which would re-list
+    // the same picks instead of answering the new request.
+    if (!refineRequested && isPlanRequest && inferredCategories.length > 0) {
       if (step !== 'DONE') setStep('DONE');
       setIsThinking(true);
       setCuratingStepIndex(0);
       setThinkingLabel(CURATING_STEP_KEYS[0]);
 
-      const { coords: propCoords } = getLocationContext();
       // Honour an explicit distance / count from the message itself, e.g.
       // "the 10 best beaches within 50km". These override the wizard's settings.
       const requestedKm = parseRequestedDistanceKm(userText);
@@ -1864,31 +1880,14 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       // and never anchor on the previously shown plan.
       let effectivePrefs = {
         ...activePrefs,
-        categories: openCategories,
+        categories: inferredCategories,
         timeFrame: 'flexible',
         ...(requestedKm ? { distance: `${requestedKm}km` } : {}),
       };
-      setSelectedCats(openCategories);
+      setSelectedCats(inferredCategories);
 
       if (!effectivePrefs.distance) {
-        const startCoords =
-          locationCoordsRef.current ?? effectivePrefs.locationCoords ?? propCoords;
-        const primaryCats = normalizeCategorySelectionList(
-          openCategories,
-          categoryCatalogDocs,
-          contentSettings.primaryLocale
-        );
-        const { options } = buildWizardDistanceTiers(primaryCats, startCoords, {
-          gems: mergedGems,
-          features: mergedFeatures,
-          discoveredPlaces: discoveredPlaces || [],
-          trails: guestEligibleTrails,
-          catalogDocs: categoryCatalogDocs,
-          knowledgeByPrimary: categoryKnowledgeByPrimary,
-          primaryLocale: contentSettings.primaryLocale,
-          guestLocale: locale,
-        });
-        effectivePrefs = { ...effectivePrefs, distance: options[0] || '29km' };
+        effectivePrefs = { ...effectivePrefs, distance: `${NEW_TOPIC_LOCAL_KM}km` };
       }
 
       setPreferences(effectivePrefs);
@@ -1921,14 +1920,25 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
         })
         .join('\n');
 
+      // Distance for the chat search. When REFINING the picks already on screen,
+      // keep the current radius. For a brand-new open topic, do NOT inherit the
+      // previous search's (often tight) radius — it would filter out perfectly
+      // good picks for the new topic. But also do not search the WHOLE region:
+      // the guest picked this starting point on purpose, so a casual "nice pizza"
+      // must return places near it, not a famous spot in the next city 60 km away.
+      // Use a local-exploration radius by default; an explicit "within X km" in
+      // the message always overrides it.
+      const requestedKmChat = parseRequestedDistanceKm(userText);
       let distanceLimitNum = 9999;
-      if (activePrefs.distance) {
+      if (refineRequested && activePrefs.distance) {
         const match = activePrefs.distance.match(/\d+(\.\d+)?/);
         if (match) {
           distanceLimitNum = parseFloat(match[0]);
         } else if (activePrefs.distance.toLowerCase().includes('walk')) {
           distanceLimitNum = 2;
         }
+      } else {
+        distanceLimitNum = requestedKmChat ?? NEW_TOPIC_LOCAL_KM;
       }
       const recentlyShown = getRecentlyShownKeys();
       const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
@@ -1953,8 +1963,13 @@ Rules:
 - Never suggest permanently closed businesses.
 - Embed recommendations in the JSON 'plan' object — not in replyText.`;
 
+      // When refining, stay on the topic of the picks already on screen. For any
+      // other message use only the categories named in THIS message — never the
+      // stale wizard set — so a new free-text topic (e.g. "wineries") isn't
+      // answered with the previous search's categories. When the message names no
+      // configured category, leave this empty and let the AI read the request.
       const chatCategories = filterPrimariesForLiveLikeLocal(
-        activePrefs.categories.length > 0 ? activePrefs.categories : inferredCategories,
+        refineRequested ? activePrefs.categories : inferredCategories,
         excludedLiveLikeLocalPrimaries
       ).filter((c) => !isHikingTrailsCategory(c));
       const chatCategoryLabels = chatCategories.map(
@@ -1976,7 +1991,7 @@ Rules:
           : `- Provide open, relevant recommendations for exactly what the guest asked.`;
 
       const prompt = `Starting point: "${startLocationName}" (GPS: ${gpsString}).
-Preferences: ${JSON.stringify(activePrefs)}.
+Preferences: ${JSON.stringify({ ...activePrefs, categories: chatCategories, distance: distanceLimitNum >= 9999 ? activePrefs.distance : `${distanceLimitNum}km` })}.
 ${chatCategoryLabels.length > 0 ? `Requested categories: ${chatCategoryLabels.join(', ')}.` : ''}
 ${categoryKnowledgeBlock}
 
@@ -2017,12 +2032,6 @@ User: ${userText}`;
         },
       });
 
-      console.group('[AiExpert] Gemini chat request');
-      console.log('model:', 'gemini-2.5-flash');
-      console.log('systemInstruction:\n', systemInstruction);
-      console.log('prompt:\n', prompt);
-      console.groupEnd();
-
       const result = await model.generateContent(prompt);
       const rawText = result.response.text();
 
@@ -2051,7 +2060,11 @@ User: ${userText}`;
           resolvedPlan = coerceTimelineToFlexiblePicks(resolvedPlan, chatCategoryLabels);
         }
 
-        const isFlexiblePicks = flexibleBrowse && resolvedPlan.type === 'picks';
+        // Any picks plan (whatever the timeframe) must run through the picks
+        // pipeline — verified + trimmed + shown. Only a genuine timeline goes
+        // through the timeline path. This stops chat picks from being silently
+        // dropped by the timeline filter when a prior timeline left timeFrame set.
+        const isFlexiblePicks = resolvedPlan.type === 'picks';
         const { coords: propCoords } = getLocationContext();
         const chatPoolSize = aiCandidatePoolSize();
         const picksDbContext =
@@ -2086,16 +2099,22 @@ User: ${userText}`;
         // background (see enrichPhotosAndMapLinks below) instead of blocking.
         let candidatePlan = basePlan;
         let initialPlan = basePlan;
-        if (isFlexiblePicks && picksDbContext) {
-          candidatePlan = normalizeFlexiblePicksPlan(
-            basePlan,
-            distanceLimitNum,
-            picksDbContext,
-            startCoords,
-            recentlyShown,
-            categoryKnowledgeByPrimary,
-            chatPoolSize
-          );
+        if (isFlexiblePicks) {
+          // A picks plan for a configured category is normalised against the
+          // Vailo DB; a free-text topic (no DB context) is shown as AI-only picks
+          // — both get verified + trimmed below. Never route picks through the
+          // timeline filter, which would discard them.
+          candidatePlan = picksDbContext
+            ? normalizeFlexiblePicksPlan(
+                basePlan,
+                distanceLimitNum,
+                picksDbContext,
+                startCoords,
+                recentlyShown,
+                categoryKnowledgeByPrimary,
+                chatPoolSize
+              )
+            : basePlan;
           initialPlan = trimFlexiblePicksToDisplayCap(candidatePlan, distanceLimitNum);
         } else {
           initialPlan = filterTimelinePlanByDistance(basePlan, distanceLimitNum, startCoords, recentlyShown);
@@ -2103,7 +2122,7 @@ User: ${userText}`;
         }
 
         initialPlan =
-          stripExcludedCategoriesFromPlan(initialPlan, excludedLiveLikeLocalPrimaries) ?? initialPlan;
+          stripExcludedCategoriesFromPlan(initialPlan, effectiveExcluded) ?? initialPlan;
         const planMessageId = Date.now().toString() + 'plan';
         setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
         setIsThinking(false);
@@ -2138,7 +2157,7 @@ User: ${userText}`;
             shown =
               stripExcludedCategoriesFromPlan(
                 shown as Record<string, unknown>,
-                excludedLiveLikeLocalPrimaries
+                effectiveExcluded
               ) ?? shown;
             setMessages(prev =>
               prev.map(m => (m.id === planMessageId ? { ...m, data: shown } : m))
@@ -2150,16 +2169,18 @@ User: ${userText}`;
             enrichPhotosAndMapLinks(candidatePlan, mapAreaHint, startCoords, photoExtras)
               .then((withPhotosAndMaps) => {
                 let filtered = withPhotosAndMaps;
-                if (isFlexiblePicks && picksDbContext) {
-                  filtered = normalizeFlexiblePicksPlan(
-                    filtered,
-                    distanceLimitNum,
-                    picksDbContext,
-                    startCoords,
-                    recentlyShown,
-                    categoryKnowledgeByPrimary,
-                    chatPoolSize
-                  );
+                if (isFlexiblePicks) {
+                  if (picksDbContext) {
+                    filtered = normalizeFlexiblePicksPlan(
+                      filtered,
+                      distanceLimitNum,
+                      picksDbContext,
+                      startCoords,
+                      recentlyShown,
+                      categoryKnowledgeByPrimary,
+                      chatPoolSize
+                    );
+                  }
                   filtered = filterShowableAiPicksFromPlan(
                     filtered,
                     distanceLimitNum,
@@ -2182,7 +2203,7 @@ User: ${userText}`;
                 }
                 filtered = cleanAiPickDisplayTitles(filtered);
                 filtered =
-                  stripExcludedCategoriesFromPlan(filtered, excludedLiveLikeLocalPrimaries) ?? filtered;
+                  stripExcludedCategoriesFromPlan(filtered, effectiveExcluded) ?? filtered;
                 setMessages(prev =>
                   prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
                 );
@@ -2269,7 +2290,7 @@ User: ${userText}`;
       if (msg.type === 'selection') return null;
       return (
         <div key={msg.id} className="flex justify-end mb-5 animate-in fade-in duration-300">
-          <div className="max-w-[90%] bg-white/12 text-white px-4 py-3 rounded-2xl rounded-tr-md border border-white/10 shadow-sm text-base leading-relaxed whitespace-pre-wrap">
+          <div className="max-w-[85%] bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/15 text-white px-4 py-3 rounded-2xl rounded-br-md border border-vailo-gold/35 shadow-[0_2px_12px_rgba(197,160,89,0.18)] text-base leading-relaxed whitespace-pre-wrap">
             {msg.text}
           </div>
         </div>
@@ -2460,7 +2481,7 @@ User: ${userText}`;
                         !(cat.items?.length) &&
                         getCategoryKnowledgeMode(
                           categoryKnowledgeByPrimary[cat.categoryName] || ''
-                        ) === 'business'
+                        ) !== 'areas'
                           ? tf('aiExpertNoPicksInRange', { category: cat.categoryName })
                           : undefined
                       }
@@ -2483,8 +2504,11 @@ User: ${userText}`;
     }
 
     return (
-      <div key={msg.id} className="mb-5 animate-in fade-in duration-300">
-        <div className="bg-white/10 border border-white/15 text-white/90 px-4 py-3.5 rounded-2xl text-base leading-relaxed whitespace-pre-wrap">
+      <div key={msg.id} className="mb-5 flex items-end gap-2.5 animate-in fade-in duration-300">
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-vailo-gold/35 to-vailo-gold/10 border border-vailo-gold/30 flex items-center justify-center shrink-0 shadow-inner p-1">
+          <VailoMark alt="" className="w-full h-full object-contain" />
+        </div>
+        <div className="max-w-[85%] bg-white/[0.16] border border-white/20 text-white px-4 py-3 rounded-2xl rounded-bl-md shadow-sm text-base leading-relaxed whitespace-pre-wrap">
           {msg.text}
         </div>
       </div>
@@ -2608,8 +2632,8 @@ User: ${userText}`;
             onChange={setLocale}
             options={localeOptions}
           />
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner hidden sm:flex">
-            <span className="font-bold text-vailo-gold text-sm font-luxury">V</span>
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner hidden sm:flex p-1">
+            <VailoMark alt="Vailo" className="w-full h-full object-contain" />
           </div>
         </div>
       </div>
@@ -2623,7 +2647,19 @@ User: ${userText}`;
         {!isThinking && step !== 'DONE' && (
           <div className="animate-in fade-in mt-1 w-full min-w-0 max-w-full">
             {renderWizardProgress()}
-            
+
+            {step !== 'LOCATION' && getStartingPointLabel() && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-white/8 border border-white/12 px-3.5 py-2.5">
+                <MapPin size={14} className="text-vailo-gold shrink-0" />
+                <span className="guest-eyebrow text-[10px] text-white/45 shrink-0">
+                  {t('aiExpertStartingFrom')}
+                </span>
+                <span className="text-sm text-white/85 font-medium truncate">
+                  {getStartingPointLabel()}
+                </span>
+              </div>
+            )}
+
             {step === 'LOCATION' && (
               <div className={AI_EXPERT_PANEL}>
                 <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertLocationTitle')}</p>

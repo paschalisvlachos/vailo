@@ -1,4 +1,4 @@
-import { Loader2, Sparkles } from 'lucide-react';
+import VailoMark from './VailoMark';
 import type { GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 
 type Props = {
@@ -20,7 +20,10 @@ export default function AiExpertCuratingLoader({
     return (
       <div className="w-full max-w-full mt-4 animate-in fade-in duration-300">
         <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 backdrop-blur-sm px-4 py-3.5">
-          <Loader2 size={18} className="animate-spin text-vailo-gold shrink-0" />
+          <div className="relative h-8 w-8 shrink-0">
+            <div className="absolute inset-0 rounded-full border-2 border-vailo-gold/30 border-t-vailo-gold animate-spin" />
+            <VailoMark alt="" className="absolute inset-1 w-auto h-auto object-contain" />
+          </div>
           <p className="text-base font-medium text-white/90 leading-snug min-w-0">{headline}</p>
         </div>
       </div>
@@ -38,8 +41,8 @@ export default function AiExpertCuratingLoader({
           <div className="flex items-center gap-3">
             <div className="relative shrink-0 h-11 w-11">
               <div className="absolute inset-0 rounded-xl bg-vailo-gold/25 animate-ping opacity-30" />
-              <div className="relative h-11 w-11 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shadow-inner">
-                <Sparkles className="text-vailo-gold animate-pulse" size={20} />
+              <div className="relative h-11 w-11 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shadow-inner p-1.5">
+                <VailoMark alt="" className="w-full h-full object-contain animate-pulse" />
               </div>
             </div>
             <p className="text-white font-semibold text-base leading-snug">{headline}</p>

@@ -51,6 +51,7 @@ export const AI_EXPERT_UI_DE: Record<GuestLocaleAiExpertKey, string> = {
     'Wählen Sie bis zu drei Interessen — wir finden besondere Orte in der Nähe.',
   aiExpertLoadingCategories: 'Lokale Kategorien werden geladen…',
   aiExpertContinueSelected: 'Weiter · {count} ausgewählt',
+  aiExpertStartingFrom: 'Startpunkt',
   aiExpertDistanceTitle: 'Wie weit möchten Sie fahren?',
   aiExpertDistanceSub:
     'Von {location} — die besten Orte sind oft näher, als man denkt.',
@@ -169,6 +170,7 @@ export const AI_EXPERT_UI_FR: Record<GuestLocaleAiExpertKey, string> = {
     'Choisissez jusqu’à trois centres d’intérêt — nous trouverons des lieux remarquables à proximité.',
   aiExpertLoadingCategories: 'Chargement des catégories locales…',
   aiExpertContinueSelected: 'Continuer · {count} sélectionné(s)',
+  aiExpertStartingFrom: 'Point de départ',
   aiExpertDistanceTitle: 'Jusqu’où souhaitez-vous aller ?',
   aiExpertDistanceSub:
     'Depuis {location} — les meilleurs endroits sont souvent plus proches qu’on ne le pense.',
@@ -285,6 +287,7 @@ export const AI_EXPERT_UI_IT: Record<GuestLocaleAiExpertKey, string> = {
     'Seleziona fino a tre interessi — troveremo posti interessanti nelle vicinanze.',
   aiExpertLoadingCategories: 'Caricamento categorie locali…',
   aiExpertContinueSelected: 'Continua · {count} selezionati',
+  aiExpertStartingFrom: 'Punto di partenza',
   aiExpertDistanceTitle: 'Quanto lontano vuoi andare?',
   aiExpertDistanceSub:
     'Da {location} — i posti migliori sono spesso più vicini di quanto pensi.',

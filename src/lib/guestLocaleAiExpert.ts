@@ -45,6 +45,7 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertCategoriesSub'
   | 'aiExpertLoadingCategories'
   | 'aiExpertContinueSelected'
+  | 'aiExpertStartingFrom'
   | 'aiExpertDistanceTitle'
   | 'aiExpertDistanceSub'
   | 'aiExpertDistanceNearestLine'
@@ -147,6 +148,7 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
     'Choose up to three interests — we’ll find standout places nearby.',
   aiExpertLoadingCategories: 'Loading local categories…',
   aiExpertContinueSelected: 'Continue · {count} selected',
+  aiExpertStartingFrom: 'Starting from',
   aiExpertDistanceTitle: 'How far will you venture?',
   aiExpertDistanceSub:
     'From {location} — the best spots are often closer than you think.',
@@ -264,6 +266,7 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
     'Επιλέξτε έως τρία ενδιαφέροντα — θα βρούμε ξεχωριστά μέρη κοντά σας.',
   aiExpertLoadingCategories: 'Φόρτωση τοπικών κατηγοριών…',
   aiExpertContinueSelected: 'Συνέχεια · {count} επιλεγμένα',
+  aiExpertStartingFrom: 'Αφετηρία',
   aiExpertDistanceTitle: 'Πόσο μακριά θα πάτε;',
   aiExpertDistanceSub:
     'Από {location} — τα καλύτερα συχνά είναι πιο κοντά απ\' ό,τι νομίζετε.',

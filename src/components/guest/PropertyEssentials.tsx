@@ -18,6 +18,7 @@ import {
   Box,
   Wrench,
   MessageCircleQuestion,
+  ShoppingBag,
   ChevronDown,
   Bot,
 } from 'lucide-react';
@@ -30,6 +31,7 @@ import {
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { resolveFeaturedDigest } from '../../lib/propertyContentLocales';
+import GuestLinkifiedText from './GuestLinkifiedText';
 
 type Props = {
   featuredOnPortal: FeaturedKey[];
@@ -56,6 +58,7 @@ const ICONS: Record<string, ReactNode> = {
   Box: <Box size={18} />,
   Wrench: <Wrench size={18} />,
   MessageCircleQuestion: <MessageCircleQuestion size={18} />,
+  ShoppingBag: <ShoppingBag size={18} />,
 };
 
 export default function PropertyEssentials({
@@ -142,9 +145,10 @@ export default function PropertyEssentials({
               >
                 <div className="px-5 pb-5">
                   {digest ? (
-                    <div className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed">
-                      {digest}
-                    </div>
+                    <GuestLinkifiedText
+                      text={digest}
+                      className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
+                    />
                   ) : (
                     <p className="text-base text-gray-500 italic">
                       Your host has not added details for this section yet.

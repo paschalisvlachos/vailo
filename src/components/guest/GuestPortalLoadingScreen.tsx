@@ -1,3 +1,5 @@
+import VailoMark from './VailoMark';
+
 type Props = {
   /** Status line shown under the logo (e.g. Checking access…). */
   status: string;
@@ -17,14 +19,9 @@ export default function GuestPortalLoadingScreen({ status }: Props) {
       <div className="flex flex-col items-center">
         <div className="relative w-16 h-16" aria-hidden>
           <div className="absolute inset-0 rounded-full border-2 border-vailo-gold/30 border-t-vailo-gold animate-spin" />
-          <img
-            src="/vailoLogo.png"
-            alt=""
-            className="absolute inset-2 w-auto h-auto object-contain opacity-90"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+          <div className="absolute inset-0 flex items-center justify-center p-3.5">
+            <VailoMark className="h-7 w-7 object-contain opacity-95" alt="" />
+          </div>
         </div>
         <p className="guest-eyebrow text-center mt-8" role="status" aria-live="polite">
           {status}

@@ -10,6 +10,13 @@ const COVERAGE_BUFFER_KM = 2;
 const DEFAULT_COVERAGE_KM = 10;
 /** When a business category has no local gems yet, assume AI can find picks nearby. */
 const BUSINESS_NO_CURATED_FLOOR_KM = 10;
+/**
+ * Local-exploration ceiling for the coverage minimum. A curated pick farther than
+ * this means the guest started somewhere without nearby curated content (e.g. a
+ * custom start far from the property), so we should NOT inflate the smallest tier
+ * just to reach distant gems — offer local tiers and let AI fill them in.
+ */
+const COVERAGE_NEAREST_CAP_KM = 25;
 const MIN_TIER_KM = 5;
 /** Local regional tier between coverage minimum and wide explore. */
 const NEAR_REGIONAL_TIER_KM = 29;
@@ -147,10 +154,17 @@ function effectiveMinForCoverage(
   rawNearest: number | null,
   knowledgeByPrimary: Record<string, string>
 ): number | null {
-  if (rawNearest != null && isFinite(rawNearest)) return rawNearest;
   const mode = getCategoryKnowledgeMode(knowledgeByPrimary[cat] || '');
-  if (mode === 'business' || mode === 'any') return BUSINESS_NO_CURATED_FLOOR_KM;
-  return null;
+  const noCuratedFloor =
+    mode === 'business' || mode === 'any' ? BUSINESS_NO_CURATED_FLOOR_KM : null;
+  if (rawNearest != null && isFinite(rawNearest)) {
+    // Distant curated content (start far from curated picks) must not force the
+    // smallest tier outward — fall back to a local floor so the guest still gets
+    // close-range options around their chosen starting point.
+    if (rawNearest > COVERAGE_NEAREST_CAP_KM) return noCuratedFloor;
+    return rawNearest;
+  }
+  return noCuratedFloor;
 }
 
 function buildTierValues(coverageKm: number): number[] {

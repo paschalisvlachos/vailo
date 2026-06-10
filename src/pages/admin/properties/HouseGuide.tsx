@@ -15,7 +15,9 @@ import {
   PORTAL_FEATURED_CAP,
   buildSourceTextForFeaturedKey,
   featuredKeyForPrimaryCategory,
+  featuredKeyHasPortalContent,
   getFeaturedConfig,
+  normalizeFeaturedOnPortal,
   pairedFeaturedKeyForCategory,
   shortContentHash,
   type FeaturedKey,
@@ -45,6 +47,7 @@ import {
   fieldsForHouseGuideCategoryId,
 } from '../../../lib/houseGuideCategories';
 import { Languages } from 'lucide-react';
+import HouseGuideImportPanel from '../../../components/admin/HouseGuideImportPanel';
 
 // --- TYPE DEFINITIONS ---
 type Device = { room: string; device: string; brand: string; model: string };
@@ -81,6 +84,10 @@ type SaveGuideOptions = {
   /** Quick-edit modal: upload only this section's fields. */
   category?: CategoryDef;
   forcePreviewKeys?: FeaturedKey[];
+  /** Use when saving immediately after a local form merge (e.g. AI import). */
+  formDataOverride?: FormData;
+  /** Skip the default success toast when the caller shows its own. */
+  quietSuccess?: boolean;
 };
 
 // --- CONSTANTS & OPTIONS ---
@@ -196,18 +203,11 @@ export default function HouseGuide() {
         );
         setFormData(guideRecord as FormData);
         setFeaturedOnPortal(
-          Array.isArray(featuredRaw)
-            ? (featuredRaw as unknown[])
-                .filter((k): k is string => typeof k === 'string')
-                .filter((k): k is FeaturedKey => !!getFeaturedConfig(k))
-                .filter((k) =>
-                  buildSourceTextForFeaturedKey(k, guideRecord, (categoryId) => {
-                    const cat = CATEGORIES.find((c) => c.id === categoryId);
-                    return cat ? cat.fields : [];
-                  }).trim().length > 0
-                )
-                .slice(0, PORTAL_FEATURED_CAP)
-            : []
+          normalizeFeaturedOnPortal(
+            featuredRaw,
+            guideRecord as Record<string, unknown>,
+            localeSettings.primaryLocale
+          )
         );
         setFeaturedPreviews(
           previewsRaw && typeof previewsRaw === 'object'
@@ -224,11 +224,24 @@ export default function HouseGuide() {
   }, [propertyId, selectedTypeId, localeSettings.primaryLocale]);
 
   // --- LOGIC HELPERS ---
-  const fieldHasContent = useCallback((field: FieldDef) => {
-    const val = formData[field.id];
-    if (field.type.startsWith('array_')) return Array.isArray(val) && val.length > 0;
-    return typeof val === 'string' && val.trim().length > 0;
-  }, [formData]);
+  const fieldHasContent = useCallback(
+    (field: FieldDef) => {
+      const guideRecord = formData as Record<string, unknown>;
+      const primary = localeSettings.primaryLocale;
+      if (field.type === 'textarea') {
+        return Boolean(getGuideTextValue(guideRecord, field.id, primary, primary).trim());
+      }
+      const val = formData[field.id];
+      if (!Array.isArray(val) || val.length === 0) return false;
+      return val.some((entry) => {
+        if (!entry || typeof entry !== 'object') return false;
+        return Object.values(entry as Record<string, unknown>).some(
+          (v) => typeof v === 'string' && v.trim().length > 0
+        );
+      });
+    },
+    [formData, localeSettings.primaryLocale]
+  );
 
   const checkIsComplete = useCallback(
     (category: CategoryDef) => category.fields.every(fieldHasContent),
@@ -260,14 +273,12 @@ export default function HouseGuide() {
 
   const hasFeaturedContent = useCallback(
     (key: FeaturedKey) =>
-      buildSourceTextForFeaturedKey(
+      featuredKeyHasPortalContent(
         key,
         formData as Record<string, unknown>,
-        fieldsForCategoryId,
-        localeSettings.primaryLocale,
         localeSettings.primaryLocale
-      ).trim().length > 0,
-    [formData, fieldsForCategoryId, localeSettings.primaryLocale]
+      ),
+    [formData, localeSettings.primaryLocale]
   );
 
   // Drop featured keys locally when their source content is cleared (star stays hidden).
@@ -498,19 +509,31 @@ export default function HouseGuide() {
   const saveToFirebase = async (opts?: FeaturedKey[] | SaveGuideOptions) => {
     if (!propertyId || !selectedTypeId) return;
     const options: SaveGuideOptions = Array.isArray(opts) ? { featuredOverride: opts } : opts ?? {};
+    const dataToSave = options.formDataOverride ?? formData;
     setIsSubmitting(true);
     try {
-      const featured = (options.featuredOverride ?? featuredOnPortal)
-        .filter((k) => hasFeaturedContent(k))
-        .slice(0, PORTAL_FEATURED_CAP);
+      const requested = (options.featuredOverride ?? featuredOnPortal).filter(
+        (k): k is FeaturedKey => !!getFeaturedConfig(k)
+      );
+      const featured = options.featuredOverride
+        ? requested.slice(0, PORTAL_FEATURED_CAP)
+        : requested
+            .filter((k) =>
+              featuredKeyHasPortalContent(
+                k,
+                dataToSave as Record<string, unknown>,
+                localeSettings.primaryLocale
+              )
+            )
+            .slice(0, PORTAL_FEATURED_CAP);
 
       const serialized = options.category
         ? serializeGuideCategoryForSave(
-            formData as Record<string, string | unknown[] | undefined>,
+            dataToSave as Record<string, string | unknown[] | undefined>,
             options.category.fields,
             localeSettings.primaryLocale
           )
-        : serializeGuideFormDataForSave(formData, localeSettings.primaryLocale);
+        : serializeGuideFormDataForSave(dataToSave, localeSettings.primaryLocale);
 
       const docRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'houseGuide', 'data');
       const updatedAt = new Date().toISOString();
@@ -527,9 +550,14 @@ export default function HouseGuide() {
       );
 
       setFeaturedOnPortal(featured);
-      toast.success(options.category ? 'Section saved.' : 'House guide saved.');
+      if (options.formDataOverride) {
+        setFormData(options.formDataOverride);
+      }
+      if (!options.quietSuccess) {
+        toast.success(options.category ? 'Section saved.' : 'House guide saved.');
+      }
 
-      const staleKeys = await getStaleFeaturedKeys(featured, formData, featuredPreviews);
+      const staleKeys = await getStaleFeaturedKeys(featured, dataToSave, featuredPreviews);
       const forceKeys = (options.forcePreviewKeys ?? []).filter((k) => featured.includes(k));
       const keysToRegen = [...new Set([...staleKeys, ...forceKeys])];
 
@@ -539,13 +567,14 @@ export default function HouseGuide() {
             ? 'Updating guest portal preview (AI)…'
             : `Updating ${keysToRegen.length} guest portal previews (AI)…`
         );
-        const updatedPreviews = await regeneratePreviewsForKeys(formData, keysToRegen, featuredPreviews);
+        const updatedPreviews = await regeneratePreviewsForKeys(dataToSave, keysToRegen, featuredPreviews);
         setFeaturedPreviews(updatedPreviews);
         await setDoc(docRef, { previews: updatedPreviews, updatedAt: new Date().toISOString() }, { merge: true });
       }
     } catch (error) {
       console.error('Error saving:', error);
       toast.error('Could not save. Please try again.');
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -828,7 +857,7 @@ export default function HouseGuide() {
         <Star size={16} className="text-vailo-gold shrink-0 mt-0.5" strokeWidth={2.4} />
         <p className="text-sm text-gray-700 leading-snug">
           <span className="font-bold">Featured on guest portal · {featuredCount} of {PORTAL_FEATURED_CAP}</span>
-          <span className="text-gray-500"> — pick the sections you want as preview cards on the guest portal. When featured content changes, save may take a few extra seconds while AI refreshes the <em>card preview only</em> (not Daily Needs unless featured). Full text is always what the 24/7 Assistant uses.</span>
+          <span className="text-gray-500"> — pick the sections you want as preview cards on the guest portal. When featured content changes, save may take a few extra seconds while AI refreshes the <em>card preview only</em>. Full text is always what the 24/7 Assistant uses.</span>
         </p>
       </div>
 
@@ -927,6 +956,19 @@ export default function HouseGuide() {
           );
         })}
       </div>
+
+      <HouseGuideImportPanel
+        formData={formData as Record<string, string | unknown[] | undefined>}
+        contentLocale={contentLocale}
+        primaryLocale={localeSettings.primaryLocale}
+        onApply={async (next) => {
+          await saveToFirebase({
+            formDataOverride: next as FormData,
+            quietSuccess: true,
+          });
+        }}
+        disabled={isSubmitting}
+      />
 
       {/* --- QUICK EDIT MODAL (DASHBOARD) --- */}
       {quickEditCategory && (() => {

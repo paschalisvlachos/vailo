@@ -8,7 +8,7 @@ const INTENT_CATEGORY_KEYWORDS: Array<{ intent: RegExp; category: RegExp }> = [
   },
   {
     intent: /\b(eat(?:ing)?|food|restaurant|taverna|lunch|dinner|breakfast|brunch|dine|meals?|supper|cuisine)\b/i,
-    category: /\b(dining|food|restaurant|taverna|eat|meal|kitchen|bakery)\b/i,
+    category: /\b(dining|food|restaurant|taverna|eat|meal|kitchen|bakery|breakfast|brunch)\b/i,
   },
   {
     intent: /\b(drink(?:s|ing)?|bar|wine|cocktail|beer|coffee|café|cafe|nightlife)\b/i,
@@ -41,6 +41,8 @@ export function inferCategoryPrimariesFromText(
   const norm = text.toLowerCase();
   const matches: string[] = [];
 
+  // Pass 1 — precise matches: the guest named a category (or its label) directly.
+  const directMatches = new Set<string>();
   for (const cat of categories) {
     const primaryNorm = cat.primary.trim().toLowerCase();
     const labelParts = cat.label
@@ -53,15 +55,24 @@ export function inferCategoryPrimariesFromText(
       (primaryNorm.length >= 3 && norm.includes(primaryNorm)) ||
       labelParts.some((part) => norm.includes(part));
 
-    if (hit) matches.push(cat.primary);
+    if (hit) {
+      matches.push(cat.primary);
+      directMatches.add(cat.primary);
+    }
   }
 
+  // Pass 2 — intent expansion for words that are NOT a category name themselves
+  // (e.g. "pizza" → Dining). Crucially, an intent only expands when the guest
+  // did NOT already name one of that intent's OWN sibling categories: that keeps
+  // "nice breakfast" → just Breakfast (the eat intent is consumed by Breakfast),
+  // while "pizza and beach" still adds Dining for the pizza intent.
   for (const { intent, category } of INTENT_CATEGORY_KEYWORDS) {
     if (!intent.test(norm)) continue;
-    for (const cat of categories) {
-      if (category.test(categoryTextBlob(cat))) {
-        matches.push(cat.primary);
-      }
+    const siblings = categories.filter((cat) => category.test(categoryTextBlob(cat)));
+    const namedASibling = siblings.some((cat) => directMatches.has(cat.primary));
+    if (namedASibling) continue;
+    for (const cat of siblings) {
+      matches.push(cat.primary);
     }
   }
 
@@ -202,42 +213,39 @@ export function parseRequestedCount(text: string): number | null {
   return null;
 }
 
-/** Accept wrapped chat JSON or a direct picks/timeline plan object. */
+/**
+ * Accept wrapped chat JSON or a direct picks/timeline plan object. The model is
+ * not always consistent about the envelope — it may omit `type`, nest the plan
+ * under `plan`, or put the categories/stops directly on the root. We infer a
+ * missing type from the actual shape (a `categories` array → picks, a `plan`
+ * array → timeline) so a perfectly good list of picks is never silently dropped.
+ */
 export function extractChatPlanPayload(parsed: Record<string, unknown> | null | undefined): {
   replyText?: string;
   plan: Record<string, unknown> | null;
 } {
   if (!parsed || typeof parsed !== 'object') return { plan: null };
+  const replyText = typeof parsed.replyText === 'string' ? parsed.replyText : undefined;
 
-  const type = parsed.type;
-  if (type === 'picks' || type === 'timeline') {
-    const replyText = typeof parsed.replyText === 'string' ? parsed.replyText : undefined;
-    return { replyText, plan: parsed };
-  }
-
-  const nested = parsed.plan;
-  const hasPlanFlag = parsed.hasPlan === true;
-  const nestedPlan =
-    nested && typeof nested === 'object' && (nested as { type?: string }).type
-      ? (nested as Record<string, unknown>)
-      : null;
-
-  if (hasPlanFlag && nestedPlan) {
-    return {
-      replyText: typeof parsed.replyText === 'string' ? parsed.replyText : undefined,
-      plan: nestedPlan,
-    };
-  }
-
-  if (nestedPlan && (nestedPlan.type === 'picks' || nestedPlan.type === 'timeline')) {
-    return {
-      replyText: typeof parsed.replyText === 'string' ? parsed.replyText : undefined,
-      plan: nestedPlan,
-    };
-  }
-
-  return {
-    replyText: typeof parsed.replyText === 'string' ? parsed.replyText : undefined,
-    plan: null,
+  const coerce = (obj: unknown): Record<string, unknown> | null => {
+    if (!obj || typeof obj !== 'object') return null;
+    const o = obj as Record<string, unknown>;
+    if (o.type === 'picks' || o.type === 'timeline') return o;
+    if (Array.isArray(o.categories) && o.categories.length > 0) {
+      return { ...o, type: 'picks' };
+    }
+    if (Array.isArray(o.plan) && (o.plan as unknown[]).length > 0) {
+      return { ...o, type: 'timeline' };
+    }
+    return null;
   };
+
+  // Prefer an explicit nested plan object, then fall back to the root itself.
+  const nested = coerce((parsed as Record<string, unknown>).plan);
+  if (nested) return { replyText, plan: nested };
+
+  const root = coerce(parsed);
+  if (root) return { replyText, plan: root };
+
+  return { replyText, plan: null };
 }

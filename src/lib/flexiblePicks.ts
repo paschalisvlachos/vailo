@@ -444,6 +444,29 @@ function dedupeDbRows(rows: DbPickRow[]): DbPickRow[] {
   return out;
 }
 
+/**
+ * Curated local gems/features are the source of truth. When the model returns a
+ * pick that matches a known DB row — whether it tagged it "database" (often with
+ * a copied or guessed map link) or "ai" — replace it with the DB row so the map
+ * link, photo, place id and coordinates ALWAYS come from our database (every gem
+ * is saved with a map link, so it is never blank). The model's prose description
+ * is kept only when the gem has none. This is global: it applies to every
+ * category/question, not any single topic.
+ */
+function reconcilePickWithDb(
+  item: FlexiblePickItem,
+  pool: { withinRadius: DbPickRow[]; beyondRadius: DbPickRow[] } | undefined
+): FlexiblePickItem {
+  if (!pool) return item;
+  for (const row of [...pool.withinRadius, ...pool.beyondRadius]) {
+    const dbPick = rowToPick(row);
+    if (isSameBusiness(dbPick, item)) {
+      return { ...dbPick, description: dbPick.description || item.description || '' };
+    }
+  }
+  return item;
+}
+
 function dedupePickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
   const out: FlexiblePickItem[] = [];
   for (const item of items) {
@@ -696,9 +719,12 @@ export function normalizeFlexiblePicksPlan(
 
   const categories = planData.categories.map((cat: any) => {
     const catHardCap = categoryHardCapKm(maxKm, cat.categoryName, knowledgeByPrimary);
+    const pool = dbContext[cat.categoryName];
 
+    // Reconcile against the DB FIRST so any pick that is really a curated gem
+    // carries the database's authoritative map link / photo before dedup runs.
     let items: FlexiblePickItem[] = (cat.items || []).map((item: FlexiblePickItem) =>
-      enrichPickItem(item, maxKm, startCoords, recentlyShown)
+      enrichPickItem(reconcilePickWithDb(item, pool), maxKm, startCoords, recentlyShown)
     );
 
     // HARD CAP: drop AI items that exceed the maximum effective distance.

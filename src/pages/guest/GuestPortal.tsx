@@ -17,12 +17,15 @@ import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
 import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
-import GuestHouseGuideSheet from '../../components/guest/GuestHouseGuideSheet';
-import { HOUSE_GUIDE_CATEGORIES } from '../../lib/houseGuideCategories';
-import { listHouseGuideCategoriesWithContent } from '../../lib/houseGuideGuestContent';
+import GuestFeaturedPreviewSheet from '../../components/guest/GuestFeaturedPreviewSheet';
 import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
 import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
-import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
+import {
+  getFeaturedConfig,
+  PORTAL_FEATURED_CAP,
+  type FeaturedKey,
+  type FeaturedPreviewsMap,
+} from '../../lib/houseGuidePortal';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { GuestLocaleProvider, useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestUiTFormat } from '../../lib/guestLocaleUi';
@@ -349,7 +352,7 @@ function GuestPortalPage({
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [portalMenuOpen, setPortalMenuOpen] = useState(false);
-  const [houseGuideOpen, setHouseGuideOpen] = useState(false);
+  const [featuredPreviewKey, setFeaturedPreviewKey] = useState<FeaturedKey | null>(null);
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
 
   // NEW: Dynamic Weather State
@@ -365,7 +368,6 @@ function GuestPortalPage({
 
   const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
-  const openHouseGuide = useCallback(() => setHouseGuideOpen(true), []);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -513,7 +515,10 @@ function GuestPortalPage({
   );
 
   const featuredOnPortal: FeaturedKey[] = Array.isArray(guide?.featuredOnPortal)
-    ? (guide.featuredOnPortal as unknown[]).filter((k): k is FeaturedKey => typeof k === 'string').slice(0, 4)
+    ? (guide.featuredOnPortal as unknown[])
+        .filter((k): k is string => typeof k === 'string')
+        .filter((k): k is FeaturedKey => !!getFeaturedConfig(k))
+        .slice(0, PORTAL_FEATURED_CAP)
     : [];
   const featuredPreviews: FeaturedPreviewsMap =
     guide && typeof guide.previews === 'object' && guide.previews !== null
@@ -543,22 +548,6 @@ function GuestPortalPage({
       }),
     [typeData, propertyLat, propertyLng]
   );
-
-  const houseGuideSectionCount = useMemo(
-    () =>
-      listHouseGuideCategoriesWithContent(
-        guide as Record<string, unknown> | null | undefined,
-        HOUSE_GUIDE_CATEGORIES,
-        locale,
-        contentPrimaryLocale
-      ).length,
-    [guide, locale, contentPrimaryLocale]
-  );
-
-  const houseGuideMenuSub = useMemo(() => {
-    if (houseGuideSectionCount === 0) return t('houseGuideMenuSubEmpty');
-    return t('houseGuideMenuSub').replace('{count}', String(houseGuideSectionCount));
-  }, [houseGuideSectionCount, locale, t]);
 
   const mapAreaHint = useMemo(() => {
     const parts = [typeData?.area, typeData?.city, typeData?.country].filter(Boolean);
@@ -710,9 +699,9 @@ function GuestPortalPage({
                       open={portalMenuOpen}
                       onOpenChange={setPortalMenuOpen}
                       t={t}
-                      houseGuideMenuSub={houseGuideMenuSub}
+                      featuredOnPortal={featuredOnPortal}
+                      onFeaturedPreview={setFeaturedPreviewKey}
                       onLiveLikeLocal={openLiveLikeLocal}
-                      onHouseGuide={openHouseGuide}
                       onAssistant={openAssistant}
                     />
                     <div className="flex items-center gap-2">
@@ -773,11 +762,11 @@ function GuestPortalPage({
                           <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0">
                             <Sparkles size={22} className="text-white" />
                           </div>
-                          <div className="text-left min-w-0">
-                            <p className="text-[#0B4F5C] text-base font-semibold leading-tight tracking-wide">
+                          <div className="text-left min-w-0 [text-shadow:0_0_12px_rgba(255,255,255,0.75),0_1px_2px_rgba(255,255,255,0.5)]">
+                            <p className="font-luxury text-[#051F26] text-base font-semibold leading-tight tracking-wide">
                               {t('liveLikeLocalHero')}
                             </p>
-                            <p className="text-[#0B4F5C]/65 text-sm mt-0.5 leading-snug">
+                            <p className="text-[#0B4F5C] text-sm mt-0.5 leading-snug font-medium">
                               {t('liveLikeLocalHeroSub')}
                             </p>
                           </div>
@@ -989,23 +978,18 @@ function GuestPortalPage({
         )}
       </div>
 
-      <GuestHouseGuideSheet
-        open={houseGuideOpen && activeView === 'portal'}
-        onClose={() => setHouseGuideOpen(false)}
-        guide={guide}
-        propertyLabel={
-          property?.propertyName && typeData?.propertyTypeName
-            ? `${property.propertyName} · ${typeData.propertyTypeName}`
-            : property?.propertyName
-        }
-        t={t}
+      <GuestFeaturedPreviewSheet
+        featuredKey={featuredPreviewKey}
+        previews={featuredPreviews}
+        onClose={() => setFeaturedPreviewKey(null)}
+        onAskAssistant={openAssistant}
       />
 
       {activeView === 'portal' &&
         !serviceDetailOpen &&
         !propertyMapOpen &&
         !reportSheetOpen &&
-        !houseGuideOpen &&
+        !featuredPreviewKey &&
         !legalModal && (
         <GuestFloatingActions
           mobileFramePreview={viewMode === 'mobile'}

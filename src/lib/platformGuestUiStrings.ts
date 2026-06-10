@@ -30,6 +30,27 @@ const STALE_GUEST_UI_OVERRIDES: Partial<Record<GuestUiStringKey, string[]>> = {
     'Plans du jour & adresses locales',
     'Piani giornalieri e consigli locali',
   ],
+  liveLikeLocalSub: [
+    'Plan your day with AI: restaurants, beaches, trails, and your host’s favourite local spots nearby.',
+    'Οργανώστε την ημέρα σας με AI: εστιατόρια, παραλίες, μονοπάτια και αγαπημένα σημεία του οικοδεσπότη.',
+    'Planen Sie Ihren Tag mit KI: Restaurants, Strände, Wanderwege und Lieblingsorte Ihres Gastgebers.',
+    'Organisez votre journée avec l’IA : restaurants, plages, sentiers et adresses préférées de votre hôte.',
+    'Organizza la giornata con l’IA: ristoranti, spiagge, sentieri e i posti preferiti dell’host.',
+  ],
+  assistantProperty: [
+    'AI Property Assistant',
+    'AI Βοηθός καταλύματος',
+    'KI-Unterkunftsassistent',
+    'Assistant IA du logement',
+    'Assistente IA della struttura',
+  ],
+  assistantPropertySub: [
+    'Ask about your stay anytime: Wi‑Fi, check-out, appliances (by model), house rules — or send a photo for help.',
+    'Ρωτήστε για τη διαμονή σας: Wi‑Fi, check-out, συσκευές (ανά μοντέλο), κανόνες — ή στείλτε φωτογραφία για βοήθεια.',
+    'Fragen zum Aufenthalt jederzeit: WLAN, Check-out, Geräte (nach Modell), Hausregeln — oder Foto zur Hilfe senden.',
+    'Posez vos questions sur le séjour : Wi‑Fi, départ, appareils (par modèle), règles — ou envoyez une photo.',
+    'Chiedi tutto sul soggiorno: Wi‑Fi, check-out, elettrodomestici (per modello), regole — o invia una foto.',
+  ],
   aiExpertOrEnterTown: [
     'or enter a town or village',
     'ή εισάγετε χωριό ή περιοχή',

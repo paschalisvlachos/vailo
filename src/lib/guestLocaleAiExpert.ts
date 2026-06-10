@@ -102,7 +102,7 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertYoureIn: "You're in",
   aiExpertWelcomeBody:
     "Forget the guidebooks — I'll show you where people in {area} actually go. The tavernas they pick, the coves they keep quiet, the corners tourists walk past every day.",
-  aiExpertWelcomeCta: "I'll show you where locals in {area} actually go.",
+  aiExpertWelcomeCta: 'Discover the best places and the best suggestions selected by locals.',
   aiExpertYourStay: 'your stay',
   aiExpertThinking: 'Curating your recommendations…',
   aiExpertCuratingHint: 'This usually takes a few moments — we’re being picky on your behalf.',

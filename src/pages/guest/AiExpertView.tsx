@@ -1184,12 +1184,13 @@ export default function AiExpertView({
 
     const filterItems = (items: any[]) => {
       return items?.map(item => {
-        let coords = extractCoords(item);
-        if (!coords) coords = propCoords; // assume property location if missing
-        
-        if (!coords) return { ...item, calculatedKm: null };
+        const coords = extractCoords(item);
+        // Items without coordinates cannot be distance-checked from a custom
+        // start — never assume they are at the property, as that would include
+        // property-area gems in a completely different city's search.
+        if (!coords) return null;
         return { ...item, calculatedKm: calculateRealisticDrivingDistance(startCoords!.lat, startCoords!.lng, coords.lat, coords.lng) };
-      }).filter(item => item.calculatedKm === null || item.calculatedKm <= maxKmLimit) || [];
+      }).filter(item => item !== null && item.calculatedKm <= maxKmLimit) || [];
     };
 
     const filteredGems = fairSort(filterItems(mergedGems), recentlyShown);
@@ -2761,7 +2762,12 @@ User: ${userText}`;
               <div className={AI_EXPERT_PANEL}>
                 <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertDistanceTitle')}</p>
                 <p className={AI_EXPERT_PANEL_SUB}>
-                  {tf('aiExpertDistanceSub', { location: preferences.location })}
+                  {tf('aiExpertDistanceSub', {
+                    location:
+                      locationFullNameRef.current ||
+                      preferences.locationFullName ||
+                      preferences.location,
+                  })}
                 </p>
                 {distanceNearestHint ? (
                   <p className="text-xs text-white/50 mb-3 leading-relaxed">

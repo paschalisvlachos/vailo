@@ -11,6 +11,7 @@ const STALE_GUEST_UI_OVERRIDES: Partial<Record<GuestUiStringKey, string[]>> = {
     'Pas de pièges à touristes. Des journées authentiques. Par où commencer ?',
     'Niente trappole per turisti. Giornate autentiche. Da dove iniziamo?',
     "I'll show you where people in {area} actually go.",
+    "I'll show you where locals in {area} actually go.",
     'Ich zeige Ihnen, wohin die Menschen in {area} wirklich gehen.',
     'Je vous montre où vont vraiment les habitants de {area}.',
     'Ti mostro dove vanno davvero le persone a {area}.',

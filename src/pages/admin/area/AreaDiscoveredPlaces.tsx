@@ -8,6 +8,11 @@ import { useToast } from '../../../context/ToastContext';
 import { adminPath } from '../../../lib/adminRoutes';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
+  bareGooglePlaceId,
+  extractPlaceIdFromMapsUrl,
+  extractPlaceIdFromPlacesPhotoUrl,
+} from '../../../lib/geocoding';
+import {
   isVerifiedGoogleMapsShortUrl,
   verifiedGoogleMapsUrlHint,
 } from '../../../lib/verifiedGoogleMapsUrl';
@@ -24,6 +29,13 @@ import {
   mergeAlternateTitleLists,
   filterAlternateTitleVocabularyVariants,
 } from '../../../lib/alternateTitles';
+import {
+  formatGoogleCategoriesList,
+  googleCategoriesFromPlace,
+  isGooglePlaceCategory,
+  mergeGoogleCategoriesText,
+  parseGoogleCategoriesText,
+} from '../../../lib/googlePlaceCategories';
 import {
   categoryPrimaryName,
   categorySelectionIncludes,
@@ -70,11 +82,13 @@ type DiscoveredPlace = {
   name?: string;
   category?: string;
   categories?: string[];
+  googleCategories?: string[];
   description?: string;
   latitude?: number | null;
   longitude?: number | null;
   googleMapsUrl?: string;
   verifiedGoogleMapsUrl?: string;
+  googlePlaceId?: string | null;
   photoUrl?: string;
   rating?: number | null;
   usageCount?: number;
@@ -116,6 +130,12 @@ function isAiGuestPlace(place: DiscoveredPlace): boolean {
   return String(place.source || '').toLowerCase() === 'ai_guest';
 }
 
+function parseCoord(value: string | number | null | undefined): number | null {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  const parsed = parseFloat(String(value ?? '').trim());
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 function placeCategoryLabels(
   place: DiscoveredPlace,
   catalogDocs: Record<string, unknown>[],
@@ -129,8 +149,47 @@ function formatPlaceCategoryDisplay(
   catalogDocs: Record<string, unknown>[],
   primaryLocale: string
 ): string {
-  const labels = placeCategoryLabels(place, catalogDocs, primaryLocale);
+  const labels = placeCategoryLabels(place, catalogDocs, primaryLocale).filter(
+    (label) => !isGooglePlaceCategory(label, catalogDocs, primaryLocale)
+  );
   return labels.length > 0 ? labels.join(', ') : 'Uncategorized';
+}
+
+function placeGoogleCategoryLabels(
+  place: DiscoveredPlace,
+  catalogDocs: Record<string, unknown>[],
+  primaryLocale: string
+): string[] {
+  return googleCategoriesFromPlace(place, catalogDocs, primaryLocale);
+}
+
+function PlaceCategoryDisplay({
+  place,
+  catalogDocs,
+  primaryLocale,
+  primaryClassName = 'truncate',
+  googleClassName = 'text-[10px] text-gray-400 truncate',
+}: {
+  place: DiscoveredPlace;
+  catalogDocs: Record<string, unknown>[];
+  primaryLocale: string;
+  primaryClassName?: string;
+  googleClassName?: string;
+}) {
+  const primary = formatPlaceCategoryDisplay(place, catalogDocs, primaryLocale);
+  const googleLabels = placeGoogleCategoryLabels(place, catalogDocs, primaryLocale);
+  const googleText = googleLabels.length > 0 ? googleLabels.join(', ') : '';
+
+  return (
+    <span className="inline-flex flex-col min-w-0 max-w-full">
+      <span className={primaryClassName}>{primary}</span>
+      {googleText ? (
+        <span className={googleClassName} title={googleText}>
+          ({googleText})
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 function getPromoteBlockReason(place: DiscoveredPlace): string | null {
@@ -228,6 +287,7 @@ export default function AreaDiscoveredPlaces() {
   const [mergePlan, setMergePlan] = useState<DiscoveredPlaceMergePlan | null>(null);
   const [isMerging, setIsMerging] = useState(false);
   const [isBulkPromoting, setIsBulkPromoting] = useState(false);
+  const [enrichingId, setEnrichingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -240,6 +300,7 @@ export default function AreaDiscoveredPlaces() {
     photoUrl: '',
     rating: '',
     alternateTitlesText: '',
+    googleCategoriesText: '',
   });
 
   useEffect(() => {
@@ -305,10 +366,21 @@ export default function AreaDiscoveredPlaces() {
         categoryCatalogDocs,
         localeSettings.primaryLocale
       );
+      const toCapture: string[] = [];
+      for (const c of [...current, prev.category]) {
+        if (isGooglePlaceCategory(c, categoryCatalogDocs, localeSettings.primaryLocale)) {
+          toCapture.push(c);
+        }
+      }
+      const googleCategoriesText =
+        toCapture.length > 0
+          ? mergeGoogleCategoriesText(prev.googleCategoriesText, ...toCapture)
+          : prev.googleCategoriesText;
       return {
         ...prev,
         categories: normalized,
         category: normalized[0] || '',
+        googleCategoriesText,
       };
     });
   };
@@ -485,7 +557,14 @@ export default function AreaDiscoveredPlaces() {
   const editingPlace = editingId ? places.find((p) => p.id === editingId) : undefined;
 
   const openEdit = (place: DiscoveredPlace) => {
-    const normalized = placeCategoryLabels(place, categoryCatalogDocs, localeSettings.primaryLocale);
+    const normalized = placeCategoryLabels(
+      place,
+      categoryCatalogDocs,
+      localeSettings.primaryLocale
+    ).filter(
+      (label) =>
+        !isGooglePlaceCategory(label, categoryCatalogDocs, localeSettings.primaryLocale)
+    );
     setEditingId(place.id);
     setFormData({
       name: place.name || '',
@@ -501,6 +580,9 @@ export default function AreaDiscoveredPlaces() {
         place.name || '',
         Array.isArray(place.alternateTitles) ? place.alternateTitles : []
       ).join('\n'),
+      googleCategoriesText: formatGoogleCategoriesList(
+        googleCategoriesFromPlace(place, categoryCatalogDocs, localeSettings.primaryLocale)
+      ),
     });
   };
 
@@ -541,6 +623,7 @@ export default function AreaDiscoveredPlaces() {
       photoUrl: formData.photoUrl,
       rating: formData.rating ? parseFloat(formData.rating) : null,
       alternateTitles,
+      googleCategories: parseGoogleCategoriesText(formData.googleCategoriesText),
       updatedAt: new Date(),
     };
   };
@@ -594,80 +677,32 @@ export default function AreaDiscoveredPlaces() {
 
     setIsMagicFilling(true);
     try {
-      const placeNameFallback = formData.name.trim() || editingPlace?.name || '';
-
-      const functions = getFunctions();
-      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      const result = await getGooglePlaceDetails({
-        searchQuery: url,
-        area: decodedArea,
-        skipPhoto: hasExistingPhoto,
+      const filled = await resolveMagicFillFromUrl(url, {
+        placeNameFallback: formData.name.trim() || editingPlace?.name || '',
+        existingCategories: formData.categories,
+        hasExistingPhoto,
+        existingDescription: formData.description,
+        biasLat: parseCoord(formData.latitude) ?? editingPlace?.latitude ?? null,
+        biasLng: parseCoord(formData.longitude) ?? editingPlace?.longitude ?? null,
+        googlePlaceId: editingPlace?.googlePlaceId ?? null,
+        photoUrl: formData.photoUrl?.trim() || editingPlace?.photoUrl || null,
       });
-      const googleData = result.data as {
-        name?: string;
-        rating?: number | null;
-        description?: string;
-        category?: string;
-        latitude?: number | null;
-        longitude?: number | null;
-        photoUrl?: string | null;
-      };
-
-      let matchedCategory = '';
-      const gType = googleData.category?.toLowerCase() || '';
-      const possibleMatch = categories.find((c) => {
-        const name = categoryPrimaryName(c.data, localeSettings.primaryLocale);
-        const lower = name.toLowerCase();
-        return gType.includes(lower) || lower.includes(gType);
-      });
-      if (possibleMatch) {
-        matchedCategory = categoryPrimaryName(possibleMatch.data, localeSettings.primaryLocale);
-      }
-
-      const nextCategories = matchedCategory
-        ? normalizeCategorySelectionList(
-            formData.categories.includes(matchedCategory)
-              ? formData.categories
-              : [...formData.categories, matchedCategory],
-            categoryCatalogDocs,
-            localeSettings.primaryLocale
-          )
-        : normalizeCategorySelectionList(
-            formData.categories,
-            categoryCatalogDocs,
-            localeSettings.primaryLocale
-          );
-
-      const primaryName = googleData.name || placeNameFallback;
-
-      let finalDescription = googleData.description?.trim() || '';
-      if (!finalDescription && primaryName) {
-        try {
-          const prompt = `Act as a luxury travel concierge for ${decodedArea}, ${decodedCountry}. Write a short, engaging 2-sentence description for a local spot called "${primaryName}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
-          const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
-          const aiResult = await model.generateContent(prompt);
-          finalDescription = aiResult.response.text().trim();
-        } catch (e) {
-          console.log('Gemini description fallback failed.', e);
-        }
-      }
 
       setFormData((prev) => ({
         ...prev,
-        name: primaryName || prev.name,
-        categories: nextCategories,
-        category: nextCategories[0] || prev.category,
-        rating:
-          googleData.rating != null && googleData.rating > 0
-            ? String(googleData.rating)
-            : prev.rating,
-        description: finalDescription || prev.description,
-        latitude:
-          googleData.latitude != null ? String(googleData.latitude) : prev.latitude,
-        longitude:
-          googleData.longitude != null ? String(googleData.longitude) : prev.longitude,
-        photoUrl: hasExistingPhoto ? prev.photoUrl : googleData.photoUrl || prev.photoUrl,
+        name: filled.primaryName || prev.name,
+        categories: filled.categories,
+        category: filled.categories[0] || prev.category,
+        rating: filled.rating != null ? String(filled.rating) : prev.rating,
+        description: filled.description || prev.description,
+        latitude: filled.latitude != null ? String(filled.latitude) : prev.latitude,
+        longitude: filled.longitude != null ? String(filled.longitude) : prev.longitude,
+        photoUrl: hasExistingPhoto ? prev.photoUrl : filled.photoUrl || prev.photoUrl,
         verifiedGoogleMapsUrl: url,
+        googleCategoriesText: mergeGoogleCategoriesText(
+          prev.googleCategoriesText,
+          filled.googleCategory
+        ),
       }));
 
       if (hasExistingPhoto) {
@@ -687,6 +722,193 @@ export default function AreaDiscoveredPlaces() {
       setIsMagicFilling(false);
     }
   };
+
+  const quickEnrichAndReview = async (place: DiscoveredPlace) => {
+    const url = String(place.googleMapsUrl || '').trim();
+    if (!url.startsWith('http')) {
+      toast.warning('Add a Google Maps link on this record before enriching.');
+      return;
+    }
+    if (enrichingId) return;
+
+    setEnrichingId(place.id);
+    try {
+      const existingCategories = placeCategoryLabels(
+        place,
+        categoryCatalogDocs,
+        localeSettings.primaryLocale
+      );
+      const hasExistingPhoto = Boolean(place.photoUrl?.trim());
+      const filled = await resolveMagicFillFromUrl(url, {
+        placeNameFallback: place.name || '',
+        existingCategories,
+        hasExistingPhoto,
+        existingDescription: place.description,
+        biasLat: parseCoord(place.latitude),
+        biasLng: parseCoord(place.longitude),
+        googlePlaceId: place.googlePlaceId ?? null,
+        photoUrl: place.photoUrl ?? null,
+      });
+
+      const alternateTitles = await suggestAlternatePlaceTitles(filled.primaryName, {
+        areaName: decodedArea,
+        category: filled.categories[0] || place.category,
+        existing: mergeAlternateTitleLists(
+          filled.primaryName,
+          place.lastMatchedTitle && place.lastMatchedTitle !== filled.primaryName
+            ? [place.lastMatchedTitle]
+            : [],
+          place.name && place.name !== filled.primaryName ? [place.name] : [],
+          filterAlternateTitleVocabularyVariants(
+            filled.primaryName,
+            place.alternateTitles || []
+          )
+        ),
+      });
+
+      const ref = doc(
+        db,
+        'countries',
+        decodedCountry,
+        'areas',
+        areaId,
+        'discoveredPlaces',
+        place.id
+      );
+      await updateDoc(ref, {
+        name: filled.primaryName,
+        category: filled.categories[0] || place.category || '',
+        categories: filled.categories.length > 0 ? filled.categories : existingCategories,
+        description: filled.description || place.description || '',
+        latitude: filled.latitude ?? place.latitude ?? null,
+        longitude: filled.longitude ?? place.longitude ?? null,
+        googleMapsUrl: filled.googleMapsUrl || url,
+        ...(filled.googlePlaceId ? { googlePlaceId: filled.googlePlaceId } : {}),
+        photoUrl: hasExistingPhoto ? place.photoUrl : filled.photoUrl || place.photoUrl || null,
+        rating: filled.rating ?? place.rating ?? null,
+        googleCategories: parseGoogleCategoriesText(
+          mergeGoogleCategoriesText(
+            formatGoogleCategoriesList(
+              googleCategoriesFromPlace(place, categoryCatalogDocs, localeSettings.primaryLocale)
+            ),
+            filled.googleCategory
+          )
+        ),
+        alternateTitles,
+        reviewStatus: 'reviewed',
+        needsReview: false,
+        updatedAt: new Date(),
+      });
+
+      if (editingId === place.id) setEditingId(null);
+      toast.success('Enriched from Maps link and marked as reviewed.');
+    } catch (error) {
+      console.error('Quick enrich error:', error);
+      toast.error(
+        httpsCallableMessage(
+          error,
+          'Could not enrich this place from its Maps link. Check the link and try again.'
+        )
+      );
+    } finally {
+      setEnrichingId(null);
+    }
+  };
+
+  async function resolveMagicFillFromUrl(
+    url: string,
+    opts: {
+      placeNameFallback: string;
+      existingCategories: string[];
+      hasExistingPhoto: boolean;
+      existingDescription?: string;
+      biasLat?: number | null;
+      biasLng?: number | null;
+      googlePlaceId?: string | null;
+      photoUrl?: string | null;
+    }
+  ) {
+    const functions = getFunctions();
+    const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+    const resolvedPlaceId =
+      bareGooglePlaceId(opts.googlePlaceId) ||
+      extractPlaceIdFromPlacesPhotoUrl(opts.photoUrl) ||
+      extractPlaceIdFromMapsUrl(url);
+    const result = await getGooglePlaceDetails({
+      searchQuery: url.trim(),
+      area: decodedArea,
+      skipPhoto: opts.hasExistingPhoto,
+      fallbackName: opts.placeNameFallback || undefined,
+      biasLat: parseCoord(opts.biasLat) ?? undefined,
+      biasLng: parseCoord(opts.biasLng) ?? undefined,
+      googlePlaceId: resolvedPlaceId ?? undefined,
+      photoUrl: opts.photoUrl ?? undefined,
+    });
+    const googleData = result.data as {
+      name?: string;
+      rating?: number | null;
+      description?: string;
+      category?: string;
+      latitude?: number | null;
+      longitude?: number | null;
+      photoUrl?: string | null;
+      googleMapsUrl?: string | null;
+      googlePlaceId?: string | null;
+    };
+
+    let matchedCategory = '';
+    const gType = googleData.category?.toLowerCase() || '';
+    const possibleMatch = categories.find((c) => {
+      const name = categoryPrimaryName(c.data, localeSettings.primaryLocale);
+      const lower = name.toLowerCase();
+      return gType.includes(lower) || lower.includes(gType);
+    });
+    if (possibleMatch) {
+      matchedCategory = categoryPrimaryName(possibleMatch.data, localeSettings.primaryLocale);
+    }
+
+    const nextCategories = matchedCategory
+      ? normalizeCategorySelectionList(
+          opts.existingCategories.includes(matchedCategory)
+            ? opts.existingCategories
+            : [...opts.existingCategories, matchedCategory],
+          categoryCatalogDocs,
+          localeSettings.primaryLocale
+        )
+      : normalizeCategorySelectionList(
+          opts.existingCategories,
+          categoryCatalogDocs,
+          localeSettings.primaryLocale
+        );
+
+    const primaryName = googleData.name || opts.placeNameFallback;
+
+    let finalDescription = googleData.description?.trim() || opts.existingDescription?.trim() || '';
+    if (!finalDescription && primaryName) {
+      try {
+        const prompt = `Act as a luxury travel concierge for ${decodedArea}, ${decodedCountry}. Write a short, engaging 2-sentence description for a local spot called "${primaryName}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
+        const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+        const aiResult = await model.generateContent(prompt);
+        finalDescription = aiResult.response.text().trim();
+      } catch (e) {
+        console.log('Gemini description fallback failed.', e);
+      }
+    }
+
+    return {
+      primaryName,
+      categories: nextCategories,
+      googleCategory: googleData.category?.trim() || null,
+      description: finalDescription,
+      latitude: googleData.latitude ?? null,
+      longitude: googleData.longitude ?? null,
+      rating:
+        googleData.rating != null && googleData.rating > 0 ? googleData.rating : null,
+      photoUrl: googleData.photoUrl || null,
+      googleMapsUrl: googleData.googleMapsUrl || url.trim(),
+      googlePlaceId: googleData.googlePlaceId || null,
+    };
+  }
 
   const markReviewed = async (placeId: string) => {
     const place = places.find((p) => p.id === placeId);
@@ -960,6 +1182,21 @@ export default function AreaDiscoveredPlaces() {
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
           />
+        </div>
+        <div className="col-span-2 sm:col-span-4 lg:col-span-6">
+          <AdminLabel>Alternative categories (Google types)</AdminLabel>
+          <AdminTextarea
+            rows={2}
+            className="py-2 text-xs min-h-[56px] font-mono"
+            value={formData.googleCategoriesText}
+            onChange={(e) =>
+              setFormData({ ...formData, googleCategoriesText: e.target.value })
+            }
+            placeholder="One per line — e.g. jewelry_store, cafe. Filled when you assign a Local Gems category or run Magic Fill."
+          />
+          <p className="text-[10px] text-gray-400 mt-1">
+            Raw Google primaryType values preserved for filtering and reference. Editable.
+          </p>
         </div>
         <div className="col-span-2 sm:col-span-4 lg:col-span-6">
           <AdminLabel>Alternative titles (spelling variants)</AdminLabel>
@@ -1460,6 +1697,9 @@ export default function AreaDiscoveredPlaces() {
               const hasVerifiedMaps = isVerifiedGoogleMapsShortUrl(
                 place.verifiedGoogleMapsUrl || ''
               );
+              const hasMapsLink = String(place.googleMapsUrl || '').trim().startsWith('http');
+              const canQuickEnrich = isNew && hasMapsLink;
+              const isEnriching = enrichingId === place.id;
               const canMarkReviewed = isNew && hasVerifiedMaps;
               const canPromote =
                 place.reviewStatus === 'reviewed' &&
@@ -1520,13 +1760,14 @@ export default function AreaDiscoveredPlaces() {
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-gray-400 truncate mt-0.5 lg:hidden">
-                          {formatPlaceCategoryDisplay(
-                            place,
-                            categoryCatalogDocs,
-                            localeSettings.primaryLocale
-                          )}{' '}
-                          · {place.usageCount || 1}×
+                        <div className="text-[11px] text-gray-400 mt-0.5 lg:hidden flex flex-wrap items-baseline gap-x-1 min-w-0">
+                          <PlaceCategoryDisplay
+                            place={place}
+                            catalogDocs={categoryCatalogDocs}
+                            primaryLocale={localeSettings.primaryLocale}
+                            primaryClassName="truncate text-gray-500"
+                          />
+                          <span className="shrink-0">· {place.usageCount || 1}×</span>
                           {place.rating != null && place.rating > 0 && (
                             <span
                               className={`inline-flex items-center gap-0.5${
@@ -1545,7 +1786,7 @@ export default function AreaDiscoveredPlaces() {
                               )}
                             </span>
                           )}
-                        </p>
+                        </div>
                         {place.description && (
                           <p className="hidden sm:block text-[11px] text-gray-400 truncate mt-0.5 max-w-xl">
                             {place.description}
@@ -1559,13 +1800,15 @@ export default function AreaDiscoveredPlaces() {
                       </div>
 
                       {/* Category — desktop */}
-                      <span className="hidden lg:block text-xs text-gray-600 truncate">
-                        {formatPlaceCategoryDisplay(
-                          place,
-                          categoryCatalogDocs,
-                          localeSettings.primaryLocale
-                        )}
-                      </span>
+                      <div className="hidden lg:block min-w-0">
+                        <PlaceCategoryDisplay
+                          place={place}
+                          catalogDocs={categoryCatalogDocs}
+                          primaryLocale={localeSettings.primaryLocale}
+                          primaryClassName="text-xs text-gray-600 truncate"
+                          googleClassName="text-[10px] text-gray-400 truncate font-mono"
+                        />
+                      </div>
 
                       {/* Rating — desktop */}
                       <span
@@ -1609,6 +1852,23 @@ export default function AreaDiscoveredPlaces() {
                       <IconBtn title="Edit" onClick={() => (isEditing ? setEditingId(null) : openEdit(place))}>
                         <Pencil size={15} />
                       </IconBtn>
+                      {canQuickEnrich && (
+                        <IconBtn
+                          title="Enrich from Maps link, add alternate titles, mark reviewed"
+                          onClick={() => void quickEnrichAndReview(place)}
+                          className={`${
+                            isEnriching
+                              ? 'opacity-60 cursor-wait'
+                              : 'hover:text-violet-700 hover:bg-violet-50'
+                          }`}
+                        >
+                          {isEnriching ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <Wand2 size={15} />
+                          )}
+                        </IconBtn>
+                      )}
                       {isNew && (
                         <IconBtn
                           title={

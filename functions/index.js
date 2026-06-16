@@ -39,6 +39,9 @@ setGlobalOptions({
 const PLACES_FIELD_MASK =
   "places.id,places.displayName,places.rating,places.editorialSummary,places.location,places.photos,places.primaryType,places.businessStatus,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.googleMapsUri,places.formattedAddress,places.addressComponents";
 
+const PLACE_DETAILS_FIELD_MASK =
+  "name,id,displayName,rating,editorialSummary,location,photos,primaryType,businessStatus,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri,formattedAddress,addressComponents";
+
 const DUPLICATE_RADIUS_METERS = 150;
 const FUZZY_NAME_RADIUS_METERS = 250;
 
@@ -487,6 +490,43 @@ function extractPlaceIdFromMapsUrl(url) {
   return null;
 }
 
+function extractPlaceIdFromPlacesPhotoUrl(url) {
+  const raw = String(url || "").trim();
+  const match = raw.match(/places\.googleapis\.com\/v1\/places\/(ChIJ[\w-]+)\//i);
+  return match?.[1] || null;
+}
+
+async function resolvePlaceIdFromMapsUrlFetch(url) {
+  const trimmed = String(url || "").trim();
+  if (!trimmed.startsWith("http")) return null;
+
+  const direct = extractPlaceIdFromMapsUrl(trimmed);
+  if (direct) return direct;
+
+  try {
+    const res = await fetch(trimmed, {
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    let finalUrl = res.url;
+    if (finalUrl.includes("consent.google.com") && finalUrl.includes("continue=")) {
+      try {
+        finalUrl = new URL(finalUrl).searchParams.get("continue") || finalUrl;
+      } catch (e) {
+        logger.info("Consent URL parse error ignored.");
+      }
+    }
+    return extractPlaceIdFromMapsUrl(finalUrl);
+  } catch (e) {
+    logger.warn("resolvePlaceIdFromMapsUrlFetch failed:", e.message || e);
+    return null;
+  }
+}
+
 function resolveGooglePlaceIdFromPlace(place, googleMapsUrl) {
   const fromApi = bareGooglePlaceId(place?.id || place?.name);
   if (fromApi) return fromApi;
@@ -503,6 +543,15 @@ function appendAreaIfNeeded(query, area) {
     return q;
   }
   return `${q} ${a}`;
+}
+
+function asCoord(value) {
+  if (typeof value === "number" && !Number.isNaN(value)) return value;
+  if (typeof value === "string") {
+    const parsed = parseFloat(value.trim());
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
 function matchTitleFromResolvedQuery(resolvedQuery, area) {
@@ -742,6 +791,83 @@ function parseAddressComponents(components) {
   };
 }
 
+function placeRecordFromApiPlace(place, apiKey, skipPhoto, searchQueryFallback) {
+  const latitude = place.location?.latitude ?? null;
+  const longitude = place.location?.longitude ?? null;
+
+  let photoUrl = null;
+  if (!skipPhoto && place.photos && place.photos.length > 0) {
+    photoUrl = `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxHeightPx=800&maxWidthPx=800&key=${apiKey}`;
+  }
+
+  const placeName = place.displayName?.text || searchQueryFallback || "";
+  const mapUrls = buildPlaceMapUrls(place.id || place.name, latitude, longitude, placeName);
+  let googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
+  if (isBrokenPlaceMapsUrl(googleMapsUrl)) {
+    googleMapsUrl = mapUrls.googleMapsUrl;
+  }
+  const googlePlaceId = resolveGooglePlaceIdFromPlace(place, googleMapsUrl);
+  const parsedAddress = parseAddressComponents(place.addressComponents);
+  const formattedAddress = place.formattedAddress || "";
+
+  return {
+    googlePlaceId,
+    name: placeName,
+    rating: place.rating || null,
+    description: place.editorialSummary?.text || "",
+    category: place.primaryType || "",
+    latitude,
+    longitude,
+    phoneNumber: place.internationalPhoneNumber || place.nationalPhoneNumber || "",
+    websiteUri: place.websiteUri || "",
+    photoUrl,
+    googleMapsUrl,
+    navigateUrl: mapUrls.navigateUrl,
+    formattedAddress,
+    addressLine: parsedAddress.addressLine || formattedAddress,
+    area: parsedAddress.area,
+    city: parsedAddress.city,
+    postCode: parsedAddress.postCode,
+    country: parsedAddress.country,
+  };
+}
+
+async function fetchPlaceDetailsById(googlePlaceId, apiKey, options = {}) {
+  const bareId = bareGooglePlaceId(googlePlaceId);
+  if (!bareId || !/^ChIJ/i.test(bareId)) return null;
+
+  const skipPhoto = options.skipPhoto === true;
+  let fieldMask = options.fieldMask || PLACE_DETAILS_FIELD_MASK;
+  if (skipPhoto) {
+    fieldMask = fieldMask.replace("photos,", "").replace(",photos", "");
+  }
+
+  const resourceIds = [bareId];
+  for (const resourceId of resourceIds) {
+    try {
+      const response = await axios.get(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(resourceId)}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": fieldMask,
+          },
+        }
+      );
+      const data = response.data;
+      if (!data?.displayName?.text && !data?.name && !data?.id) continue;
+      return placeRecordFromApiPlace(data, apiKey, skipPhoto, "");
+    } catch (e) {
+      logger.warn(
+        `fetchPlaceDetailsById failed for ${resourceId}:`,
+        e.response?.data || e.message
+      );
+    }
+  }
+  return null;
+}
+
 async function fetchPlaceFromGoogle(
   searchQuery,
   apiKey,
@@ -805,50 +931,124 @@ async function fetchPlaceFromGoogle(
     place = pickFallbackPlace(response.data.places, title, lat, lng);
   }
 
+  if (
+    !place &&
+    lat != null &&
+    lng != null &&
+    typeof options.pickClosestWithinMeters === "number" &&
+    options.pickClosestWithinMeters > 0
+  ) {
+    const operational = (response.data.places || []).filter(isPlaceOperational);
+    const closest = pickClosestPlace(operational, lat, lng);
+    if (closest) {
+      const plat = closest.location?.latitude;
+      const plng = closest.location?.longitude;
+      if (typeof plat === "number" && typeof plng === "number") {
+        const meters = haversineMeters(lat, lng, plat, plng);
+        if (meters <= options.pickClosestWithinMeters) {
+          place = closest;
+        }
+      }
+    }
+  }
+
   if (!place) {
     logger.warn(
       `No Google place name match for "${title}" among ${response.data.places.length} results`
     );
     return null;
   }
-  const latitude = place.location?.latitude ?? null;
-  const longitude = place.location?.longitude ?? null;
 
-  let photoUrl = null;
-  if (!skipPhoto && place.photos && place.photos.length > 0) {
-    photoUrl = `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxHeightPx=800&maxWidthPx=800&key=${apiKey}`;
-  }
+  return placeRecordFromApiPlace(place, apiKey, skipPhoto, searchQuery);
+}
 
-  const placeName = place.displayName?.text || searchQuery;
-  const mapUrls = buildPlaceMapUrls(place.id || place.name, latitude, longitude, placeName);
-  let googleMapsUrl = place.googleMapsUri || mapUrls.googleMapsUrl;
-  if (isBrokenPlaceMapsUrl(googleMapsUrl)) {
-    googleMapsUrl = mapUrls.googleMapsUrl;
+async function fetchPlaceNearbyByCoords(lat, lng, apiKey, requestedTitle, options = {}) {
+  const fieldMask = options.fieldMask || PLACES_FIELD_MASK;
+  const skipPhoto = options.skipPhoto === true;
+
+  try {
+    const response = await axios.post(
+      "https://places.googleapis.com/v1/places:searchNearby",
+      {
+        locationRestriction: {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius: 100,
+          },
+        },
+        maxResultCount: 10,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": fieldMask,
+        },
+      }
+    );
+
+    const places = response.data.places || [];
+    if (!places.length) return null;
+
+    const title = String(requestedTitle || "").trim();
+    let place = title ? pickBestPlaceMatch(places, title, lat, lng) : null;
+    if (!place && title) place = pickFallbackPlace(places, title, lat, lng);
+    if (!place) {
+      const operational = places.filter(isPlaceOperational);
+      const closest = pickClosestPlace(operational, lat, lng);
+      if (closest) {
+        const plat = closest.location?.latitude;
+        const plng = closest.location?.longitude;
+        if (typeof plat === "number" && typeof plng === "number") {
+          if (haversineMeters(lat, lng, plat, plng) <= 100) place = closest;
+        }
+      }
+    }
+
+    if (!place) return null;
+    return placeRecordFromApiPlace(place, apiKey, skipPhoto, title);
+  } catch (e) {
+    logger.warn("fetchPlaceNearbyByCoords failed:", e.response?.data || e.message);
+    return null;
   }
-  const googlePlaceId = resolveGooglePlaceIdFromPlace(place, googleMapsUrl);
-  const parsedAddress = parseAddressComponents(place.addressComponents);
-  const formattedAddress = place.formattedAddress || "";
+}
+
+async function resolveHintPlaceId(rawQuery, payload) {
+  return (
+    bareGooglePlaceId(payload.googlePlaceId) ||
+    extractPlaceIdFromMapsUrl(rawQuery) ||
+    extractPlaceIdFromPlacesPhotoUrl(payload.photoUrl) ||
+    (rawQuery.startsWith("http") ? await resolvePlaceIdFromMapsUrlFetch(rawQuery) : null)
+  );
+}
+
+async function finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto) {
+  let photoUrl = place.photoUrl;
+  if (photoUrl && !skipPhoto) {
+    photoUrl = await ensureStoredPlacePhoto(
+      photoUrl,
+      placePhotoStoragePath({ googlePlaceId: place.googlePlaceId })
+    );
+  }
 
   return {
-    googlePlaceId,
-    name: placeName,
-    rating: place.rating || null,
-    description: place.editorialSummary?.text || "",
-    category: place.primaryType || "",
-    latitude,
-    longitude,
-    phoneNumber:
-      place.internationalPhoneNumber || place.nationalPhoneNumber || "",
-    websiteUri: place.websiteUri || "",
+    googlePlaceId: place.googlePlaceId,
+    name: place.name,
+    rating: place.rating,
+    description: place.description,
+    category: place.category,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    phoneNumber: place.phoneNumber,
+    websiteUri: place.websiteUri,
     photoUrl,
-    googleMapsUrl,
-    navigateUrl: mapUrls.navigateUrl,
-    formattedAddress,
-    addressLine: parsedAddress.addressLine || formattedAddress,
-    area: parsedAddress.area,
-    city: parsedAddress.city,
-    postCode: parsedAddress.postCode,
-    country: parsedAddress.country,
+    googleMapsUrl: place.googleMapsUrl,
+    formattedAddress: place.formattedAddress,
+    addressLine: place.addressLine,
+    area: place.area,
+    city: place.city,
+    postCode: place.postCode,
+    country: place.country,
   };
 }
 
@@ -1110,6 +1310,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       normalizedName: resolvedNorm,
       googlePlaceId: place.googlePlaceId || null,
       category: place.category || "",
+      googleCategories: place.category ? [String(place.category).trim().toLowerCase()].filter(Boolean) : [],
       description: place.description || "",
       latitude: resolvedLat,
       longitude: resolvedLng,
@@ -1255,27 +1456,29 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   const payload = request.data || {};
   let searchQuery = payload.searchQuery;
   const area = payload.area || "";
-  const biasLat = typeof payload.biasLat === "number" ? payload.biasLat : null;
-  const biasLng = typeof payload.biasLng === "number" ? payload.biasLng : null;
+  const fallbackName = String(payload.fallbackName || "").trim();
+  const urlHints = String(searchQuery || "")
+    .trim()
+    .startsWith("http")
+    ? extractMapsUrlHints(String(searchQuery).trim())
+    : null;
+  const biasLat =
+    asCoord(payload.biasLat) ??
+    asCoord(payload.fallbackLat) ??
+    (urlHints?.lat != null ? urlHints.lat : null);
+  const biasLng =
+    asCoord(payload.biasLng) ??
+    asCoord(payload.fallbackLng) ??
+    (urlHints?.lng != null ? urlHints.lng : null);
 
   if (!searchQuery) {
     throw new HttpsError("invalid-argument", "The search query is missing.");
   }
 
   const rawQuery = String(searchQuery).trim();
-  const urlHints = rawQuery.startsWith("http") ? extractMapsUrlHints(rawQuery) : null;
-  let matchTitle = urlHints?.placeName || rawQuery;
+  let matchTitle = urlHints?.placeName || fallbackName || rawQuery;
 
-  try {
-    searchQuery = await resolveUrlSearchQuery(searchQuery, area);
-    matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
-  } catch (e) {
-    logger.error("CRITICAL: Link resolution blocked:", e);
-    throw new HttpsError(
-      "invalid-argument",
-      "Could not read that Maps link. Paste the full place URL from your browser, or a maps.app.goo.gl link."
-    );
-  }
+  const hintPlaceId = await resolveHintPlaceId(rawQuery, payload);
 
   if (payload.hintsOnly === true) {
     const coordInQuery = String(searchQuery).match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
@@ -1283,15 +1486,15 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
       ? parseFloat(coordInQuery[1])
       : urlHints?.lat != null
         ? urlHints.lat
-        : null;
+        : biasLat;
     const longitude = coordInQuery
       ? parseFloat(coordInQuery[2])
       : urlHints?.lng != null
         ? urlHints.lng
-        : null;
+        : biasLng;
 
     return {
-      googlePlaceId: null,
+      googlePlaceId: hintPlaceId && /^ChIJ/i.test(hintPlaceId) ? hintPlaceId : null,
       name: matchTitle || rawQuery,
       rating: null,
       description: "",
@@ -1322,49 +1525,82 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   const fieldMask = skipPhoto
     ? PLACES_FIELD_MASK.replace("places.photos,", "")
     : PLACES_FIELD_MASK;
+  const searchOptions = { fieldMask, skipPhoto, pickClosestWithinMeters: 300 };
 
   try {
-    const place = await fetchPlaceFromGoogle(
+    if (hintPlaceId && /^ChIJ/i.test(hintPlaceId)) {
+      const byId = await fetchPlaceDetailsById(hintPlaceId, apiKey, { skipPhoto });
+      if (byId) {
+        await recordPlatformUsage("magicFill");
+        return finishGetGooglePlaceDetailsResponse(byId, apiKey, skipPhoto);
+      }
+      logger.warn(`Place Details lookup missed for ${hintPlaceId}; falling back to text search.`);
+    }
+
+    try {
+      searchQuery = await resolveUrlSearchQuery(searchQuery, area);
+      matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
+    } catch (e) {
+      if (!hintPlaceId && !fallbackName && biasLat == null) {
+        logger.error("CRITICAL: Link resolution blocked:", e);
+        throw new HttpsError(
+          "invalid-argument",
+          "Could not read that Maps link. Paste the full place URL from your browser, or a maps.app.goo.gl link."
+        );
+      }
+      logger.info("Maps link resolution fallback:", e.message || e);
+      if (fallbackName) {
+        searchQuery = appendAreaIfNeeded(fallbackName, area);
+        matchTitle = fallbackName;
+      } else if (biasLat != null && biasLng != null) {
+        searchQuery = appendAreaIfNeeded(`${biasLat},${biasLng}`, area);
+      }
+    }
+
+    let place = await fetchPlaceFromGoogle(
       searchQuery,
       apiKey,
       biasLat,
       biasLng,
       matchTitle,
-      { fieldMask, skipPhoto }
+      searchOptions
     );
-    await recordPlatformUsage("magicFill");
-
-    if (!place) {
-      throw new HttpsError("not-found", "Place not found on Google.");
+    if (place) {
+      await recordPlatformUsage("magicFill");
+      return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
     }
 
-    let photoUrl = place.photoUrl;
-    if (photoUrl && !skipPhoto) {
-      photoUrl = await ensureStoredPlacePhoto(
-        photoUrl,
-        placePhotoStoragePath({ googlePlaceId: place.googlePlaceId })
+    if (fallbackName) {
+      const fallbackQuery = appendAreaIfNeeded(fallbackName, area);
+      place = await fetchPlaceFromGoogle(
+        fallbackQuery,
+        apiKey,
+        biasLat,
+        biasLng,
+        fallbackName,
+        searchOptions
       );
+      if (place) {
+        await recordPlatformUsage("magicFill");
+        return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
+      }
     }
 
-    return {
-      googlePlaceId: place.googlePlaceId,
-      name: place.name,
-      rating: place.rating,
-      description: place.description,
-      category: place.category,
-      latitude: place.latitude,
-      longitude: place.longitude,
-      phoneNumber: place.phoneNumber,
-      websiteUri: place.websiteUri,
-      photoUrl,
-      googleMapsUrl: place.googleMapsUrl,
-      formattedAddress: place.formattedAddress,
-      addressLine: place.addressLine,
-      area: place.area,
-      city: place.city,
-      postCode: place.postCode,
-      country: place.country,
-    };
+    if (biasLat != null && biasLng != null) {
+      place = await fetchPlaceNearbyByCoords(
+        biasLat,
+        biasLng,
+        apiKey,
+        fallbackName || matchTitle,
+        searchOptions
+      );
+      if (place) {
+        await recordPlatformUsage("magicFill");
+        return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
+      }
+    }
+
+    throw new HttpsError("not-found", "Place not found on Google.");
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Google API Error:", error.response?.data || error.message);

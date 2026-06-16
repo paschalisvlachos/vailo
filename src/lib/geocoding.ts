@@ -660,6 +660,13 @@ export function extractPlaceIdFromMapsUrl(url?: string | null): string | null {
   return null;
 }
 
+/** Extract ChIJ… from a Places API photo media URL. */
+export function extractPlaceIdFromPlacesPhotoUrl(url?: string | null): string | null {
+  const raw = String(url || '').trim();
+  const match = raw.match(/places\.googleapis\.com\/v1\/places\/(ChIJ[\w-]+)\//i);
+  return match?.[1] || null;
+}
+
 export function resolveGooglePlaceIdFromDetails(
   details: { googlePlaceId?: string | null; googleMapsUrl?: string | null },
   mapsUrlFallback?: string | null

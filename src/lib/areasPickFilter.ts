@@ -123,7 +123,11 @@ export function shouldDropAreasCommercialAiPick(
   if (resolvedName && looksLikeCommercialPlaceName(resolvedName)) return true;
 
   const googleType = String(item.googlePlaceCategory || item.category || '').trim();
-  if (googleType && isAreasBlockedGoogleType(googleType)) return true;
+  const googleCategories = Array.isArray(item.googleCategories)
+    ? item.googleCategories.map((c) => String(c || '').trim()).filter(Boolean)
+    : [];
+  const typeForFilter = googleCategories[0] || googleType;
+  if (typeForFilter && isAreasBlockedGoogleType(typeForFilter)) return true;
 
   return false;
 }

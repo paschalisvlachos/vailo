@@ -715,31 +715,6 @@ export default function AiExpertView({
     );
   };
 
-  /** Default starting point = guest's property (does not advance the wizard step). */
-  const ensureDefaultPropertyLocation = (): typeof preferences => {
-    if (preferences.location?.trim()) {
-      if (!locationCoordsRef.current && preferences.locationCoords) {
-        locationCoordsRef.current = preferences.locationCoords;
-      }
-      return preferences;
-    }
-
-    const { coords: propCoords } = getLocationContext();
-    if (!propCoords) return preferences;
-
-    const nearLabel = getNearPropertyLabel();
-    const next = {
-      ...preferences,
-      location: nearLabel,
-      locationCoords: propCoords,
-      locationFullName: '',
-    };
-    locationCoordsRef.current = propCoords;
-    locationFullNameRef.current = '';
-    setPreferences(next);
-    return next;
-  };
-
   useEffect(() => {
     if (!propertyCoords || preferences.location?.trim()) return;
     const nearLabel = getNearPropertyLabel();

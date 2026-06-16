@@ -65,7 +65,13 @@ export const AI_EXPERT_UI_DE: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertHowLongOut: 'Wie lange sind Sie unterwegs?',
   aiExpertPlanTimelineBtn: 'Meinen Tag mit Zeitplan planen',
   aiExpertBrowseFavoritesBtn: 'Kein fester Zeitplan. Einfach stöbern',
-  aiExpertChatPlaceholder: 'Ask Vailo',
+  aiExpertChatPlaceholder: 'Sagen Sie dem Concierge, wonach Sie suchen…',
+  aiExpertChatStartBtn: 'Mit Concierge chatten',
+  aiExpertChatOpening:
+    'Fragen Sie mich — ich verstehe zuerst, was Sie möchten, bevor ich Orte vorschlage, die Einheimische wirklich besuchen.',
+  aiExpertChatBackToWizard: 'Geführten Planer nutzen',
+  aiExpertConciergeThinking: 'Einen Moment…',
+  aiExpertChatWizardDisabled: 'Complete the steps above to ask Vailo',
   aiExpertChatDisclaimer:
     'Prüfen Sie vor der Abfahrt Öffnungszeiten und Routen.',
   aiExpertChatAria: 'Nachricht an den Concierge',
@@ -184,7 +190,13 @@ export const AI_EXPERT_UI_FR: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertHowLongOut: 'Combien de temps serez-vous dehors ?',
   aiExpertPlanTimelineBtn: 'Planifier ma journée avec un planning',
   aiExpertBrowseFavoritesBtn: 'Sans horaire fixe. Parcourir',
-  aiExpertChatPlaceholder: 'Ask Vailo',
+  aiExpertChatPlaceholder: 'Dites au concierge ce que vous cherchez…',
+  aiExpertChatStartBtn: 'Discuter avec le concierge',
+  aiExpertChatOpening:
+    'Demandez-moi — je comprends d’abord ce que vous voulez avant de suggérer des lieux où vont vraiment les locaux.',
+  aiExpertChatBackToWizard: 'Utiliser le planificateur guidé',
+  aiExpertConciergeThinking: 'Réflexion…',
+  aiExpertChatWizardDisabled: 'Complete the steps above to ask Vailo',
   aiExpertChatDisclaimer:
     'Vérifiez toujours horaires et itinéraires avant de partir.',
   aiExpertChatAria: 'Message au concierge',
@@ -301,7 +313,13 @@ export const AI_EXPERT_UI_IT: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertHowLongOut: 'Quanto tempo resterai fuori?',
   aiExpertPlanTimelineBtn: 'Pianifica la giornata con cronologia',
   aiExpertBrowseFavoritesBtn: 'Senza orario fisso. Sfoglia',
-  aiExpertChatPlaceholder: 'Ask Vailo',
+  aiExpertChatPlaceholder: 'Dite al concierge cosa cercate…',
+  aiExpertChatStartBtn: 'Chatta con il concierge',
+  aiExpertChatOpening:
+    'Chiedetemi — capisco prima cosa volete prima di suggerire posti dove vanno davvero i locali.',
+  aiExpertChatBackToWizard: 'Usa il planner guidato',
+  aiExpertConciergeThinking: 'Sto pensando…',
+  aiExpertChatWizardDisabled: 'Complete the steps above to ask Vailo',
   aiExpertChatDisclaimer:
     'Verifica sempre orari e percorsi prima di partire.',
   aiExpertChatAria: 'Messaggio al concierge',

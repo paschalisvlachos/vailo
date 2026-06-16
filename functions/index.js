@@ -48,6 +48,11 @@ const {
   getAppCodeKnowledgeMetaHandler,
   getAppCodeKnowledgeExportHandler,
 } = require("./codeKnowledge");
+const {
+  isGooglePlacesPhotoUrl,
+  placePhotoStoragePath,
+  ensureStoredPlacePhoto,
+} = require("./placePhotoMirror");
 
 const GENERIC_SUFFIXES = [
   "restaurant",
@@ -847,14 +852,41 @@ async function fetchPlaceFromGoogle(
   };
 }
 
-async function bumpDiscoveredPlaceUsage(coll, id, data, title) {
+async function mirrorDiscoveredPlacePhotoIfNeeded(coll, docId, data, country, areaId) {
+  const photoUrl = data.photoUrl;
+  if (!isGooglePlacesPhotoUrl(photoUrl)) return data;
+
+  const storagePath = placePhotoStoragePath({
+    country,
+    areaId,
+    docId,
+    googlePlaceId: data.googlePlaceId,
+  });
+  const mirrored = await ensureStoredPlacePhoto(photoUrl, storagePath);
+  if (!mirrored || mirrored === photoUrl) return data;
+
+  await coll.doc(docId).update({
+    photoUrl: mirrored,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { ...data, photoUrl: mirrored };
+}
+
+async function bumpDiscoveredPlaceUsage(coll, id, data, title, country, areaId) {
+  const withPhoto = await mirrorDiscoveredPlacePhotoIfNeeded(
+    coll,
+    id,
+    data,
+    country,
+    areaId
+  );
   await coll.doc(id).update({
     usageCount: admin.firestore.FieldValue.increment(1),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     lastMatchedTitle: title,
     alternateTitles: admin.firestore.FieldValue.arrayUnion(title),
   });
-  return placeToResponse({ ...data, id }, title);
+  return placeToResponse({ ...withPhoto, id }, title);
 }
 
 async function resolveUrlSearchQuery(searchQuery, area) {
@@ -989,7 +1021,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
         );
         return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
       }
-      return bumpDiscoveredPlaceUsage(coll, duplicate.id, duplicate.data, title);
+      return bumpDiscoveredPlaceUsage(coll, duplicate.id, duplicate.data, title, country, areaId);
     }
 
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -1049,7 +1081,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       duplicateMatchesRequest(geoDuplicate.data, normalizedName, title) &&
       cachedPlaceIsValidForRequest(geoDuplicate.data, biasLat, biasLng, maxKm)
     ) {
-      return bumpDiscoveredPlaceUsage(coll, geoDuplicate.id, geoDuplicate.data, title);
+      return bumpDiscoveredPlaceUsage(coll, geoDuplicate.id, geoDuplicate.data, title, country, areaId);
     }
 
     const docId = stablePlaceDocId(
@@ -1060,6 +1092,19 @@ exports.resolvePlacePhoto = onCall(async (request) => {
     );
     const docRef = coll.doc(docId);
 
+    let mirroredPhotoUrl = place.photoUrl || null;
+    if (mirroredPhotoUrl) {
+      mirroredPhotoUrl = await ensureStoredPlacePhoto(
+        mirroredPhotoUrl,
+        placePhotoStoragePath({
+          country,
+          areaId,
+          docId,
+          googlePlaceId: place.googlePlaceId,
+        })
+      );
+    }
+
     const newDoc = {
       name: place.name || title,
       normalizedName: resolvedNorm,
@@ -1069,7 +1114,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       latitude: resolvedLat,
       longitude: resolvedLng,
       googleMapsUrl: place.googleMapsUrl || null,
-      photoUrl: place.photoUrl || null,
+      photoUrl: mirroredPhotoUrl,
       rating: place.rating ?? null,
       phoneNumber: place.phoneNumber || "",
       websiteUri: place.websiteUri || "",
@@ -1103,12 +1148,107 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       }
     });
 
+    savedData = await mirrorDiscoveredPlacePhotoIfNeeded(
+      coll,
+      docId,
+      savedData,
+      country,
+      areaId
+    );
     return placeToResponse(savedData, title);
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("resolvePlacePhoto error:", error.response?.data || error.message);
     throw new HttpsError("internal", "Failed to resolve place photo.");
   }
+});
+
+/** Mirror a metered Google photo URL to Firebase Storage (no Text Search). */
+exports.mirrorPlacePhoto = onCall(async (request) => {
+  const payload = request.data || {};
+  const photoUrl = String(payload.photoUrl || "").trim();
+  if (!photoUrl) {
+    throw new HttpsError("invalid-argument", "photoUrl is required.");
+  }
+
+  const country = String(payload.country || "").trim();
+  const areaId = String(payload.areaId || "").trim();
+  const docId = String(payload.docId || "").trim();
+  const googlePlaceId = String(payload.googlePlaceId || "").trim() || null;
+
+  const storagePath =
+    placePhotoStoragePath({
+      country: country || undefined,
+      areaId: areaId || undefined,
+      docId: docId || undefined,
+      googlePlaceId,
+    }) || undefined;
+
+  const mirrored = await ensureStoredPlacePhoto(photoUrl, storagePath);
+  return { photoUrl: mirrored || null };
+});
+
+exports.recordGuestDiscoveredMention = onCall(async (request) => {
+  const payload = request.data || {};
+  const name = String(payload.name || "").trim();
+  const country = String(payload.country || "").trim();
+  const areaId = String(payload.areaId || "").trim();
+  const category = String(payload.category || "").trim();
+  const description = String(payload.description || "").trim();
+  const failureReason = String(payload.failureReason || "").trim();
+
+  if (!name || !country || !areaId) {
+    throw new HttpsError("invalid-argument", "name, country, and areaId are required.");
+  }
+
+  const coll = discoveredPlacesCollection(country, areaId);
+  const normalizedName = normalizePlaceName(name);
+  const docId = stablePlaceDocId(null, normalizedName, null, null);
+  const docRef = coll.doc(docId);
+
+  await firestore.runTransaction(async (t) => {
+    const snap = await t.get(docRef);
+    if (snap.exists) {
+      const updates = {
+        usageCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMatchedTitle: name,
+        alternateTitles: admin.firestore.FieldValue.arrayUnion(name),
+      };
+      if (failureReason) updates.lastFailureReason = failureReason;
+      if (category) updates.category = category;
+      t.update(docRef, updates);
+    } else {
+      t.set(docRef, {
+        name,
+        normalizedName,
+        category,
+        description,
+        googlePlaceId: null,
+        latitude: null,
+        longitude: null,
+        googleMapsUrl: null,
+        photoUrl: null,
+        rating: null,
+        phoneNumber: "",
+        websiteUri: "",
+        searchQuery: "",
+        source: "ai_guest",
+        status: "active",
+        needsReview: true,
+        reviewStatus: "new",
+        usageCount: 1,
+        lastMatchedTitle: name,
+        lastFailureReason: failureReason,
+        alternateTitles: [name],
+        promotedToLocalGemId: null,
+        firstSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  });
+
+  return { ok: true, id: docId };
 });
 
 exports.getGooglePlaceDetails = onCall(async (request) => {
@@ -1198,6 +1338,14 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
       throw new HttpsError("not-found", "Place not found on Google.");
     }
 
+    let photoUrl = place.photoUrl;
+    if (photoUrl && !skipPhoto) {
+      photoUrl = await ensureStoredPlacePhoto(
+        photoUrl,
+        placePhotoStoragePath({ googlePlaceId: place.googlePlaceId })
+      );
+    }
+
     return {
       googlePlaceId: place.googlePlaceId,
       name: place.name,
@@ -1208,7 +1356,7 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
       longitude: place.longitude,
       phoneNumber: place.phoneNumber,
       websiteUri: place.websiteUri,
-      photoUrl: place.photoUrl,
+      photoUrl,
       googleMapsUrl: place.googleMapsUrl,
       formattedAddress: place.formattedAddress,
       addressLine: place.addressLine,

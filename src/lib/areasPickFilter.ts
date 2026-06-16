@@ -1,4 +1,5 @@
 import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
+import { logPickEvent } from './aiExpertPlanDebug';
 
 /** Moderate commercial signals — establishments, not geographic spots. */
 const AREAS_COMMERCIAL_NAME_HINTS = [
@@ -136,9 +137,16 @@ export function filterAreasCommercialAiPicksFromPlan(
 
   const categories = (plan.categories as Array<Record<string, unknown>>).map((cat) => {
     const categoryName = String(cat.categoryName || '');
-    const items = ((cat.items as Record<string, unknown>[]) || []).filter(
-      (item) => !shouldDropAreasCommercialAiPick(item, categoryName, knowledgeByPrimary)
-    );
+    const items = ((cat.items as Record<string, unknown>[]) || []).filter((item) => {
+      if (!shouldDropAreasCommercialAiPick(item, categoryName, knowledgeByPrimary)) return true;
+      logPickEvent('FILTER_HIDE — areas commercial pick', {
+        category: categoryName,
+        title: item.title || item.name,
+        source: item.source,
+        reason: 'areas-only category — commercial/business blocked',
+      });
+      return false;
+    });
     return { ...cat, items };
   });
 

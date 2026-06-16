@@ -1,6 +1,6 @@
 /** Plan photos: Tier 1 = Vailo DB ($0), Tier 3 = cached Google Places (low cost). */
 
-import { resolvePlacePhoto } from './placePhotoResolver';
+import { resolvePlacePhoto, mirrorPlacePhotoUrl, type ResolvedPlacePhoto, isGooglePlacesPhotoUrl } from './placePhotoResolver';
 import {
   normalizePlaceName,
   placeNamesMatch,
@@ -11,6 +11,8 @@ import { looksLikeCommercialPlaceName } from './areasPickFilter';
 import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
 import { categoryDistanceLimitKm } from './flexiblePicks';
 import { placeSearchTitleVariants } from './pickVerification';
+import { logPickEvent } from './aiExpertPlanDebug';
+import { collectMatchableTitles, titleMatchesCatalogEntry } from './alternateTitles';
 
 function isPropertyPlanItem(item: Record<string, unknown>, ctx: PlanPhotoContext): boolean {
   if (item.isProperty === true || item.source === 'property') return true;
@@ -35,6 +37,8 @@ export type PlanPhotoContext = {
     googleMapsUrl?: string;
     latitude?: number | string;
     longitude?: number | string;
+    alternateTitles?: string[];
+    nameByLocale?: Record<string, string>;
   }>;
   features?: Array<{
     name?: string;
@@ -43,6 +47,7 @@ export type PlanPhotoContext = {
     googleMapsUrl?: string;
     latitude?: number | string;
     longitude?: number | string;
+    alternateTitles?: string[];
   }>;
   areaName?: string;
   country?: string;
@@ -54,6 +59,7 @@ export type PlanPhotoContext = {
     googlePlaceId?: string;
     latitude?: number;
     longitude?: number;
+    alternateTitles?: string[];
   }>;
   anchorCoords?: { lat: number; lng: number } | null;
   guestMaxKm?: number;
@@ -81,14 +87,24 @@ function parseCoord(value: unknown): number | undefined {
 
 function buildPhotoLookup(ctx: PlanPhotoContext): Map<string, string> {
   const map = new Map<string, string>();
-  const add = (label: string | undefined, url: string | undefined) => {
-    if (!label?.trim() || !url?.trim()) return;
-    const key = normalizeKey(label);
-    if (!map.has(key)) map.set(key, url);
+  const addEntry = (
+    entry: {
+      name?: string;
+      businessName?: string;
+      alternateTitles?: string[];
+      nameByLocale?: Record<string, string>;
+    },
+    url: string | undefined
+  ) => {
+    if (!url?.trim()) return;
+    for (const label of collectMatchableTitles(entry)) {
+      const key = normalizeKey(label);
+      if (key && !map.has(key)) map.set(key, url);
+    }
   };
-  for (const g of ctx.gems || []) add(g.name, g.photoUrl);
-  for (const f of ctx.features || []) add(f.businessName || f.name, f.photoUrl);
-  for (const d of ctx.discoveredPlaces || []) add(d.name, d.photoUrl);
+  for (const g of ctx.gems || []) addEntry(g, g.photoUrl);
+  for (const f of ctx.features || []) addEntry(f, f.photoUrl);
+  for (const d of ctx.discoveredPlaces || []) addEntry(d, d.photoUrl);
   return map;
 }
 
@@ -120,29 +136,44 @@ async function mapConcurrent<T, R>(
 
 function resolveFromLocalSources(
   item: Record<string, unknown>,
-  ctx: PlanPhotoContext
-): ResolvedPlacePhoto | null {
+  ctx: ItemPhotoContext
+) {
   const title = typeof item.title === 'string' ? item.title : '';
   if (!title) return null;
-  const key = normalizeKey(title);
 
-  const sources = [
+  const sources: Array<{
+    kind: string;
+    entry: {
+      name?: string;
+      businessName?: string;
+      alternateTitles?: string[];
+      nameByLocale?: Record<string, string>;
+    };
+    photoUrl?: string;
+    googleMapsUrl?: string;
+    lat?: number;
+    lng?: number;
+    googlePlaceId?: string;
+  }> = [
     ...(ctx.gems || []).map((g) => ({
-      name: g.name,
+      kind: 'property_local_gem',
+      entry: g,
       photoUrl: g.photoUrl,
       googleMapsUrl: g.googleMapsUrl,
       lat: parseCoord(g.latitude),
       lng: parseCoord(g.longitude),
     })),
     ...(ctx.features || []).map((f) => ({
-      name: f.businessName || f.name,
+      kind: 'property_feature',
+      entry: f,
       photoUrl: f.photoUrl,
       googleMapsUrl: f.googleMapsUrl,
       lat: parseCoord(f.latitude),
       lng: parseCoord(f.longitude),
     })),
     ...(ctx.discoveredPlaces || []).map((d) => ({
-      name: d.name,
+      kind: 'discovered_place_cache',
+      entry: d,
       photoUrl: d.photoUrl,
       googleMapsUrl: d.googleMapsUrl,
       googlePlaceId: d.googlePlaceId,
@@ -152,16 +183,27 @@ function resolveFromLocalSources(
   ];
 
   for (const src of sources) {
-    if (!src.name || normalizeKey(src.name) !== key) continue;
+    if (!titleMatchesCatalogEntry(title, src.entry)) continue;
     if (!src.photoUrl && !src.googleMapsUrl) continue;
+    // Legacy rows may still store a Google media URL — re-resolve to mirror to Storage.
+    if (isGooglePlacesPhotoUrl(src.photoUrl)) continue;
+    const matchedName = collectMatchableTitles(src.entry)[0] || title;
+    logPickEvent('PHOTO — FREE local DB hit (no Google call)', {
+      title,
+      matchedName,
+      localSource: src.kind,
+      category: ctx.categoryName || null,
+      chargedGoogleApi: false,
+    });
     return {
       photoUrl: src.photoUrl || null,
       googleMapsUrl: src.googleMapsUrl || null,
-      googlePlaceId: (src as { googlePlaceId?: string }).googlePlaceId || null,
+      googlePlaceId: src.googlePlaceId || null,
       latitude: src.lat ?? null,
       longitude: src.lng ?? null,
-      placeName: src.name,
+      placeName: matchedName,
       fromDiscoveredDb: true,
+      localSource: src.kind,
     };
   }
 
@@ -182,7 +224,10 @@ function itemNeedsGooglePhoto(item: Record<string, unknown>): boolean {
   const hasPlaceId =
     typeof item.googlePlaceId === 'string' && bareGooglePlaceId(item.googlePlaceId);
 
-  if (hasPhoto && (hasPlaceId || isDirectPlaceMapsUrl(mapsUrl))) return false;
+  if (hasPhoto && (hasPlaceId || isDirectPlaceMapsUrl(mapsUrl))) {
+    if (isGooglePlacesPhotoUrl(item.photoUrl)) return true;
+    return false;
+  }
 
   return true;
 }
@@ -194,29 +239,84 @@ function getItemCoords(item: Record<string, unknown>): { lat?: number; lng?: num
   return {};
 }
 
+async function mirrorItemPhotoIfNeeded(
+  item: Record<string, unknown>,
+  ctx: ItemPhotoContext
+): Promise<Record<string, unknown>> {
+  const photoUrl = typeof item.photoUrl === 'string' ? item.photoUrl.trim() : '';
+  if (!photoUrl || !isGooglePlacesPhotoUrl(photoUrl)) return item;
+  if (!ctx.country || !ctx.areaId) return item;
+
+  try {
+    const mirrored = await mirrorPlacePhotoUrl({
+      photoUrl,
+      country: ctx.country,
+      areaId: ctx.areaId,
+      googlePlaceId:
+        typeof item.googlePlaceId === 'string' ? item.googlePlaceId : undefined,
+    });
+    if (mirrored && mirrored !== photoUrl) {
+      logPickEvent('PHOTO — mirrored Google CDN URL to Firebase Storage', {
+        title: item.title,
+        category: ctx.categoryName || null,
+      });
+      return { ...item, photoUrl: mirrored };
+    }
+  } catch (err) {
+    console.warn('Photo mirror failed for', item.title, err);
+  }
+  return item;
+}
+
 async function enrichItemWithGooglePhoto(
   item: Record<string, unknown>,
   ctx: ItemPhotoContext,
   planSessionCache: Map<string, ResolvedPlacePhoto>
 ): Promise<Record<string, unknown>> {
+  const titleRaw = String(item.title || '').trim();
   const local = resolveFromLocalSources(item, ctx);
   if (local) {
-    return applyResolvedPhoto(item, local, String(item.title || ''), ctx);
+    return applyResolvedPhoto(item, local, titleRaw, ctx);
   }
 
-  if (!itemNeedsGooglePhoto(item)) return item;
+  if (!itemNeedsGooglePhoto(item)) {
+    logPickEvent('PHOTO — skip (already complete or curated)', {
+      title: titleRaw,
+      source: item.source,
+      category: ctx.categoryName || null,
+      chargedGoogleApi: false,
+      reason:
+        item.source === 'database'
+          ? 'Vailo database pick — never call Google'
+          : 'already has photo + place map link',
+    });
+    return item;
+  }
 
-  const title = sanitizePlaceSearchTitle(String(item.title || ''));
+  const title = sanitizePlaceSearchTitle(titleRaw);
   if (!title) return item;
   const area = ctx.areaName || '';
   const { lat, lng } = getItemCoords(item);
 
-  if (!ctx.country || !ctx.areaId) return item;
+  if (!ctx.country || !ctx.areaId) {
+    logPickEvent('PHOTO — skip (no area context)', {
+      title,
+      category: ctx.categoryName || null,
+      chargedGoogleApi: false,
+    });
+    return item;
+  }
 
   const normalized = normalizePlaceName(title);
   const sessionKey = `${normalized}::${lat?.toFixed(4) ?? 'x'}::${lng?.toFixed(4) ?? 'x'}`;
   const cached = planSessionCache.get(sessionKey);
-  if (cached) {
+  if (cached && !isGooglePlacesPhotoUrl(cached.photoUrl)) {
+    logPickEvent('PHOTO — FREE session cache hit', {
+      title,
+      category: ctx.categoryName || null,
+      chargedGoogleApi: false,
+      resolveOrigin: cached.resolveOrigin,
+    });
     return applyResolvedPhoto(item, cached, title, ctx);
   }
 
@@ -230,6 +330,13 @@ async function enrichItemWithGooglePhoto(
   try {
     let resolved: ResolvedPlacePhoto | null = null;
     for (const variant of placeSearchTitleVariants(title)) {
+      logPickEvent('PHOTO — calling resolvePlacePhoto cloud function', {
+        title: variant,
+        originalTitle: title,
+        category: categoryName,
+        maxKm: maxKm ?? null,
+        knowledgeMode,
+      });
       const attempt = await resolvePlacePhoto({
         title: variant,
         area,
@@ -242,13 +349,38 @@ async function enrichItemWithGooglePhoto(
         maxKm,
         knowledgeMode,
       });
-      if (!attempt.notFound) {
-        resolved = attempt;
-        break;
+      if (attempt.notFound) {
+        logPickEvent('PHOTO — Google/cache miss for variant', {
+          title: variant,
+          category: categoryName,
+          chargedGoogleApi: attempt.googleApiBilled === true,
+          resolveOrigin: attempt.resolveOrigin,
+        });
+        continue;
       }
+      resolved = attempt;
+      logPickEvent(
+        attempt.googleApiBilled ? 'PHOTO — BILLED Google Places API' : 'PHOTO — FREE cache via resolvePlacePhoto',
+        {
+          title: variant,
+          resolvedName: attempt.placeName,
+          category: categoryName,
+          chargedGoogleApi: attempt.googleApiBilled === true,
+          resolveOrigin: attempt.resolveOrigin,
+          fromDiscoveredDb: attempt.fromDiscoveredDb,
+          discoveredPlaceId: attempt.discoveredPlaceId,
+          hasPhoto: Boolean(attempt.photoUrl),
+        }
+      );
+      break;
     }
 
     if (!resolved) {
+      logPickEvent('PHOTO — all variants failed (pick may be hidden later)', {
+        title,
+        category: categoryName,
+        chargedGoogleApi: false,
+      });
       return item;
     }
 
@@ -256,11 +388,10 @@ async function enrichItemWithGooglePhoto(
     return applyResolvedPhoto(item, resolved, title, ctx);
   } catch (e) {
     console.warn('Google photo resolve failed for', title, e);
+    logPickEvent('PHOTO — error', { title, category: categoryName, error: String(e) });
     return item;
   }
 }
-
-type ResolvedPlacePhoto = Awaited<ReturnType<typeof resolvePlacePhoto>>;
 
 function applyResolvedPhoto(
   item: Record<string, unknown>,
@@ -273,7 +404,12 @@ function applyResolvedPhoto(
 
   const resolvedName = resolved.placeName || '';
   if (resolvedName && requestedTitle && placeResolutionConflicts(requestedTitle, resolvedName)) {
-    console.warn(`Rejected place kind conflict: requested "${requestedTitle}", got "${resolvedName}"`);
+    logPickEvent('PHOTO — rejected kind conflict', {
+      requestedTitle,
+      resolvedName,
+      category: ctx.categoryName || null,
+      reason: 'requested vs resolved place type mismatch',
+    });
     return item;
   }
 
@@ -284,9 +420,12 @@ function applyResolvedPhoto(
       (requestedTitle && looksLikeCommercialPlaceName(requestedTitle)) ||
       (resolvedName && looksLikeCommercialPlaceName(resolvedName))
     ) {
-      console.warn(
-        `Rejected commercial pick for areas category "${categoryName}": "${requestedTitle}" → "${resolvedName}"`
-      );
+      logPickEvent('PHOTO — rejected commercial in areas category', {
+        requestedTitle,
+        resolvedName,
+        category: categoryName,
+        reason: 'areas-only category blocks commercial names',
+      });
       return item;
     }
   }
@@ -428,5 +567,36 @@ export async function enrichPlanWithAllPhotos(
   ctx: PlanPhotoContext
 ): Promise<unknown> {
   const withGoogle = await enrichPlanWithGooglePhotos(planData, ctx);
-  return enrichPlanWithPhotos(withGoogle, ctx);
+  const withLocal = enrichPlanWithPhotos(withGoogle, ctx);
+  return enrichPlanWithMirroredPhotos(withLocal, ctx);
+}
+
+async function enrichPlanWithMirroredPhotos(
+  planData: unknown,
+  ctx: PlanPhotoContext
+): Promise<unknown> {
+  if (!planData || typeof planData !== 'object') return planData;
+  const data = planData as Record<string, unknown>;
+
+  if (data.type === 'timeline' && Array.isArray(data.plan)) {
+    const plan = await mapConcurrent(data.plan as Record<string, unknown>[], (item) =>
+      mirrorItemPhotoIfNeeded(item, ctx)
+    );
+    return { ...data, plan };
+  }
+
+  if (data.type === 'picks' && Array.isArray(data.categories)) {
+    const categories = [];
+    for (const cat of data.categories as Record<string, unknown>[]) {
+      const categoryName = String(cat.categoryName || '');
+      const items = await mapConcurrent(
+        (cat.items as Record<string, unknown>[]) || [],
+        (item) => mirrorItemPhotoIfNeeded(item, { ...ctx, categoryName })
+      );
+      categories.push({ ...cat, items });
+    }
+    return { ...data, categories };
+  }
+
+  return planData;
 }

@@ -23,9 +23,16 @@ type PickItem = {
   navigateUrl?: string;
 };
 
+type UnverifiedMention = {
+  title: string;
+  description?: string;
+  failureReason?: string;
+};
+
 type CategoryPickCarouselProps = {
   categoryName: string;
   items: PickItem[];
+  unverifiedMentions?: UnverifiedMention[];
   mapAreaHint: string;
   propertyId?: string;
   viewMapLabel?: string;
@@ -37,6 +44,7 @@ type CategoryPickCarouselProps = {
 export default function CategoryPickCarousel({
   categoryName,
   items,
+  unverifiedMentions = [],
   mapAreaHint,
   propertyId,
   viewMapLabel = 'View',
@@ -67,7 +75,7 @@ export default function CategoryPickCarousel({
   };
 
   if (!items?.length) {
-    if (!emptyMessage) return null;
+    if (!emptyMessage && unverifiedMentions.length === 0) return null;
     return (
       <div className="mb-2 min-w-0 max-w-full">
         <div className="mb-3">
@@ -75,9 +83,14 @@ export default function CategoryPickCarousel({
             {categoryName}
           </h4>
         </div>
-        <p className="text-sm text-white/55 leading-relaxed rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          {emptyMessage}
-        </p>
+        {emptyMessage && (
+          <p className="text-sm text-white/55 leading-relaxed rounded-2xl border border-white/10 bg-white/5 px-4 py-3 mb-3">
+            {emptyMessage}
+          </p>
+        )}
+        {unverifiedMentions.length > 0 && (
+          <UnverifiedMentionsBlock mentions={unverifiedMentions} />
+        )}
       </div>
     );
   }
@@ -194,6 +207,28 @@ export default function CategoryPickCarousel({
           ))}
         </div>
       )}
+
+      {unverifiedMentions.length > 0 && (
+        <UnverifiedMentionsBlock mentions={unverifiedMentions} />
+      )}
+    </div>
+  );
+}
+
+function UnverifiedMentionsBlock({ mentions }: { mentions: UnverifiedMention[] }) {
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-white/45 mb-2">
+        Also suggested
+      </p>
+      <ul className="space-y-2">
+        {mentions.map((m, i) => (
+          <li key={`${m.title}-${i}`} className="text-sm text-white/65 leading-relaxed">
+            <span className="font-medium text-white/80">{m.title}</span>
+            {m.description ? ` — ${m.description}` : ''}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

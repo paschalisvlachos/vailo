@@ -25,6 +25,7 @@ import {
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
 import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
+import { syncPropertyGemToArea } from '../../../lib/propertyGemAreaSync';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -414,14 +415,38 @@ export default function LocalGems() {
         isDailyTrip: Boolean(formData.isDailyTrip),
       };
 
+      let savedGemId = editingGemId;
       if (editingGemId) {
         await updateDoc(doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems', editingGemId), {
           ...payload, updatedAt: new Date().toISOString()
         });
       } else {
-        await addDoc(collection(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems'), {
+        const gemRef = await addDoc(collection(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'localGems'), {
           ...payload, createdAt: new Date().toISOString()
         });
+        savedGemId = gemRef.id;
+      }
+
+      const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
+      if (savedGemId && selectedType) {
+        try {
+          const syncResult = await syncPropertyGemToArea({
+            propertyId,
+            propertyTypeId: selectedTypeId,
+            propertyGemId: savedGemId,
+            propertyGem: payload,
+            propertyName: property?.propertyName || propertyId,
+            listingLabel: selectedType.propertyTypeName || selectedType.urlSlug,
+            propertyType: { country: selectedType.country, city: selectedType.city },
+          });
+          if (syncResult === 'created') {
+            toast.success('Synced to area Local Gems with AI alternate titles.');
+          } else if (syncResult === 'updated') {
+            toast.success('Updated matching area Local Gem.');
+          }
+        } catch (syncErr) {
+          console.warn('Area gem sync failed:', syncErr);
+        }
       }
 
       closeAndResetForm();

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { areaNameToId } from '../../lib/areaUtils';
+import { resolvePropertyTypeAreaContext, type ListingAreaContext } from '../../lib/listingAreaContext';
 import { getGenerativeModel } from "firebase/ai";
 import { ai, db } from '../../lib/firebase';
 import {
@@ -12,15 +13,19 @@ import {
 import { enrichPlanWithAllPhotos, type PlanPhotoContext } from '../../lib/planPhotos';
 import {
   aiCandidatePoolSize,
+  applyPickVerificationToPlan,
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
+  collectUnverifiedMentionsFromPlan,
   effectiveMaxDistanceKm,
-  filterShowableAiPicksFromPlan,
   maxPicksForRadius,
   normalizeFlexiblePicksPlan,
   trimFlexiblePicksToDisplayCap,
 } from '../../lib/flexiblePicks';
-import { filterAreasCommercialAiPicksFromPlan } from '../../lib/areasPickFilter';
+import {
+  isGuestVerifiedDiscoveredPlace,
+  persistUnverifiedAiMentions,
+} from '../../lib/guestDiscoveredPlaces';
 import { buildWizardDistanceTiers } from '../../lib/categoryCoverageDistances';
 import { mergeCuratedFeatures, mergeCuratedGems } from '../../lib/mergeCuratedContent';
 import {
@@ -72,17 +77,17 @@ import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import AiExpertCuratingLoader from '../../components/guest/AiExpertCuratingLoader';
 import VailoMark from '../../components/guest/VailoMark';
 import { truncateAnalyticsText } from '../../lib/guestAnalytics';
+import { logPickEvent, logPlanStage } from '../../lib/aiExpertPlanDebug';
 import {
-  coerceTimelineToFlexiblePicks,
-  extractChatPlanPayload,
-  inferCategoryPrimariesFromText,
-  isAmbiguousFollowup,
-  isFlexibleTimeFrame,
-  looksLikePlanRequest,
-  parseRequestedCount,
-  parseRequestedDistanceKm,
-  wantsRefinement,
-} from '../../lib/aiExpertChatIntent';
+  sendConciergeChatMessage,
+  type ConciergeChatContext,
+  type ConciergeChatMessage,
+} from '../../lib/liveLikeLocalConciergeChat';
+import {
+  buildConciergeMatchPool,
+  formatTextOnlyRecommendations,
+  processConciergeRecommendations,
+} from '../../lib/conciergeRecommendations';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Compass, Heart, Eye } from 'lucide-react';
 
 type GuestLocaleOption = { code: string; label: string; nativeLabel: string };
@@ -132,42 +137,12 @@ interface Message {
 }
 
 type Step = 'LOCATION' | 'CATEGORIES' | 'DISTANCE' | 'TIME' | 'DONE';
-
-type ListingAreaContext = {
-  country: string;
-  masterArea: string;
-  areaId: string;
-};
+type InteractionMode = 'wizard' | 'chat';
 
 type AreaConfigIssue = 'missing' | 'invalid-master' | null;
 
-/** Match listing country + city/master area to a configured Area Functionality region. */
-async function resolvePropertyTypeAreaContext(
-  propertyType?: any
-): Promise<{ ctx: ListingAreaContext | null; issue: AreaConfigIssue; cityRaw: string }> {
-  const country = typeof propertyType?.country === 'string' ? propertyType.country.trim() : '';
-  const cityRaw = typeof propertyType?.city === 'string' ? propertyType.city.trim() : '';
-
-  if (!country || !cityRaw) {
-    return { ctx: null, issue: 'missing', cityRaw };
-  }
-
-  const areasSnap = await getDocs(collection(db, 'countries', country, 'areas'));
-  const configuredAreas = areasSnap.docs
-    .map((d) => (typeof d.data().name === 'string' ? d.data().name.trim() : ''))
-    .filter(Boolean);
-
-  const match = configuredAreas.find((name) => name.toLowerCase() === cityRaw.toLowerCase());
-  if (!match) {
-    return { ctx: null, issue: 'invalid-master', cityRaw };
-  }
-
-  return {
-    ctx: { country, masterArea: match, areaId: areaNameToId(match) },
-    issue: null,
-    cityRaw,
-  };
-}
+/** Guest wizard + chat plan generation (swap to compare quality/latency). */
+const AI_EXPERT_GEMINI_MODEL = 'gemini-3.5-flash';
 
 /**
  * Parse the model's JSON reply, tolerating markdown fences and truncated output.
@@ -532,7 +507,12 @@ export default function AiExpertView({
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [step, setStep] = useState<Step>('LOCATION');
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('wizard');
+  /** Bottom chat visible at start; hidden after any wizard step; stays on in concierge chat. */
+  const [chatEnabled, setChatEnabled] = useState(true);
   const [chatInput, setChatInput] = useState('');
+  const [conciergeMessages, setConciergeMessages] = useState<ConciergeChatMessage[]>([]);
+  const [conciergeSending, setConciergeSending] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingLabel, setThinkingLabel] = useState<GuestLocaleUiKey>('aiExpertThinking');
   const [curatingStepIndex, setCuratingStepIndex] = useState(0);
@@ -541,8 +521,6 @@ export default function AiExpertView({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
   const isFirstScrollRef = useRef(true);
-  const prevMessagesLenRef = useRef(0);
-  const [timeChoiceMode, setTimeChoiceMode] = useState<'choose' | 'timeline'>('choose');
 
   const CHAT_TEXTAREA_MAX_PX = 128;
 
@@ -554,6 +532,9 @@ export default function AiExpertView({
     el.style.height = `${next}px`;
     el.style.overflowY = el.scrollHeight > CHAT_TEXTAREA_MAX_PX ? 'auto' : 'hidden';
   }, []);
+  const prevMessagesLenRef = useRef(0);
+  const prevConciergeLenRef = useRef(0);
+  const [timeChoiceMode, setTimeChoiceMode] = useState<'choose' | 'timeline'>('choose');
 
   const [availableCategories, setAvailableCategories] = useState<GemCategoryOption[]>([]);
   const [excludedLiveLikeLocalPrimaries, setExcludedLiveLikeLocalPrimaries] = useState<Set<string>>(
@@ -586,6 +567,10 @@ export default function AiExpertView({
     () => mergeCuratedFeatures(features, areaFeatures),
     [features, areaFeatures]
   );
+  const verifiedDiscoveredPlaces = useMemo(
+    () => discoveredPlaces.filter(isGuestVerifiedDiscoveredPlace),
+    [discoveredPlaces]
+  );
   const guestEligibleTrails = useMemo(() => filterGuestEligibleTrails(localTrails), [localTrails]);
   const propertyCoords = useMemo(
     () => extractCoords(property) || extractCoords(propertyType),
@@ -612,6 +597,90 @@ export default function AiExpertView({
 
   const getPropertyTypeName = () =>
     propertyType?.propertyTypeName || propertyType?.name || '';
+
+  const conciergeChatContext = useMemo((): ConciergeChatContext => {
+    const primary = contentSettings.primaryLocale;
+    const reviewed = contentSettings.reviewedLocales;
+    const localizeGem = (g: any) => ({
+      name: resolveLocalizedString(g, 'name', locale, primary, reviewed),
+      category: resolveLocalizedString(g, 'category', locale, primary, reviewed),
+      description: resolveLocalizedString(g, 'description', locale, primary, reviewed),
+    });
+    const localizeFeature = (f: any) => ({
+      name: resolveLocalizedString(f, 'name', locale, primary, reviewed) || f.businessName,
+      category: (f.categories as string[])?.join(', ') || 'Local',
+      description: resolveLocalizedString(f, 'description', locale, primary, reviewed),
+    });
+
+    const curatedPlaces = [
+      ...mergedGems.map((g) => {
+        const lg = localizeGem(g);
+        return {
+          name: lg.name,
+          category: lg.category,
+          description: lg.description,
+          scope: (g.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
+        };
+      }),
+      ...mergedFeatures.map((f) => {
+        const lf = localizeFeature(f);
+        return {
+          name: lf.name,
+          category: lf.category,
+          description: lf.description,
+          scope: (f.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
+        };
+      }),
+    ].filter((p) => p.name?.trim());
+
+    return {
+      propertyName: property?.propertyName || t('aiExpertYourStay'),
+      propertyTypeName: getPropertyTypeName() || undefined,
+      areaName:
+        listingAreaCtx?.masterArea ||
+        propertyType?.city ||
+        property?.city ||
+        t('aiExpertTheRegion'),
+      country: listingAreaCtx?.country || propertyType?.country || property?.country || '',
+      categories: availableCategories.map((cat) => ({
+        label: cat.label,
+        knowledge: categoryKnowledgeByPrimary[cat.primary],
+      })),
+      curatedPlaces,
+    };
+  }, [
+    availableCategories,
+    categoryKnowledgeByPrimary,
+    contentSettings.primaryLocale,
+    contentSettings.reviewedLocales,
+    listingAreaCtx,
+    locale,
+    mergedFeatures,
+    mergedGems,
+    property,
+    propertyType,
+    t,
+  ]);
+
+  const conciergeMatchPool = useMemo(
+    () =>
+      buildConciergeMatchPool({
+        gems: mergedGems,
+        features: mergedFeatures,
+        discoveredPlaces,
+        locale,
+        primaryLocale: contentSettings.primaryLocale,
+        reviewedLocales: contentSettings.reviewedLocales,
+      }),
+    [
+      mergedGems,
+      mergedFeatures,
+      discoveredPlaces,
+      locale,
+      contentSettings.primaryLocale,
+      contentSettings.reviewedLocales,
+    ]
+  );
 
   const getPropertyDisplayName = () => {
     const name = property?.propertyName;
@@ -892,13 +961,15 @@ export default function AiExpertView({
 
     const messagesGrew = messages.length > prevMessagesLenRef.current;
     prevMessagesLenRef.current = messages.length;
+    const conciergeGrew = conciergeMessages.length > prevConciergeLenRef.current;
+    prevConciergeLenRef.current = conciergeMessages.length;
 
-    if (messagesGrew || isThinking) {
+    if (messagesGrew || conciergeGrew || isThinking || conciergeSending) {
       requestAnimationFrame(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     }
-  }, [messages, isThinking]);
+  }, [messages, isThinking, conciergeMessages.length, conciergeSending]);
 
   useEffect(() => {
     const hasPlanMessage = messages.some((message) => message.type === 'plan');
@@ -991,6 +1062,7 @@ export default function AiExpertView({
         googlePlaceId: p.googlePlaceId,
         latitude: p.latitude,
         longitude: p.longitude,
+        alternateTitles: p.alternateTitles,
       })),
     };
   };
@@ -1003,6 +1075,19 @@ export default function AiExpertView({
       areaName: listingAreaCtx.masterArea || getGeographicAreaHint(),
     };
   }, [listingAreaCtx]);
+
+  const persistPlanUnverifiedMentions = useCallback(
+    (plan: Record<string, unknown> | null | undefined) => {
+      if (!listingAreaCtx?.country || !listingAreaCtx?.areaId || !plan) return;
+      const mentions = collectUnverifiedMentionsFromPlan(plan);
+      if (mentions.length === 0) return;
+      void persistUnverifiedAiMentions(mentions, {
+        country: listingAreaCtx.country,
+        areaId: listingAreaCtx.areaId,
+      });
+    },
+    [listingAreaCtx]
+  );
 
   /** Photos then re-sync map links from resolved Google Place IDs. */
   const enrichPhotosAndMapLinks = async (
@@ -1084,6 +1169,10 @@ export default function AiExpertView({
     return { ok: true };
   };
 
+  const engageWizard = useCallback(() => {
+    setChatEnabled(false);
+  }, []);
+
   const applyStartingLocation = (place: GeocodedPlace, userLabel: string) => {
     locationCoordsRef.current = { lat: place.lat, lng: place.lng };
     locationFullNameRef.current = place.displayName;
@@ -1099,6 +1188,7 @@ export default function AiExpertView({
   };
 
   const confirmLocationChoice = async (place: GeocodedPlace, userLabel: string) => {
+    engageWizard();
     setIsThinking(true);
     setThinkingLabel('aiExpertVerifyingLocation');
     try {
@@ -1238,6 +1328,7 @@ export default function AiExpertView({
   };
 
   const advanceStep = async (currentStep: Step, value: any, displayText: string) => {
+    engageWizard();
     track('ai_expert_selection', { text: truncateAnalyticsText(displayText) });
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'selection', text: displayText }]);
 
@@ -1359,7 +1450,7 @@ export default function AiExpertView({
         {
           gems: mergedGems,
           features: mergedFeatures,
-          discoveredPlaces: discoveredPlaces || [],
+          discoveredPlaces: verifiedDiscoveredPlaces,
           trails: guestEligibleTrails,
           catalogDocs: categoryCatalogDocs,
           knowledgeByPrimary: categoryKnowledgeByPrimary,
@@ -1497,6 +1588,7 @@ export default function AiExpertView({
             propCoords,
             mergedGems,
             mergedFeatures,
+            verifiedDiscoveredPlaces,
             recentlyShown,
             categoryCatalogDocs,
             contentSettings.primaryLocale,
@@ -1524,8 +1616,8 @@ Core rules:
 - AUTHENTIC PICKS: Prefer neighbourhood haunts residents use over tourist-trap lists, cruise-ship restaurants, and generic "top 10" roundups.
 - TONE: Descriptions must be concrete and varied. Do not repeat "locals love/prefer" on every item.
 - VERIFICATION: Every AI pick is checked against Google Maps after your response. Unverified titles are silently removed. Use exact official Google Maps names — invented or descriptive labels fail (e.g. "Phylaki" not "Filaki Village"; "Kalyvaki Beach" not "western river mouth").
-- CANDIDATE POOL: Return up to ${poolSize} AI candidates per category, ordered best-first (most worth visiting), NOT by distance. Guests see the best ${displayMax} verified picks. Over-generate real names so enough survive verification.
-- 50 / 50 SPLIT (business categories): ~half Vailo database picks (property local gems + area local gems, balanced) + ~half verified AI picks. Never duplicate a database business. For [AREAS ONLY] categories, all picks are geographic AI places only — no database businesses, beach bars, operators, or paid venues.
+- CANDIDATE POOL: Return up to ${poolSize} AI candidates per category, ordered best-first (most worth visiting), NOT by distance. Guests see up to ${displayMax} verified cards (Vailo curated + verified AI). Over-generate real names so enough survive verification.
+- CURATED + AI: Up to 3 Vailo database picks (gems, features, verified discovered places) + up to 3 verified AI picks. Never duplicate a database business. Failed AI verifications become text-only — not cards. For [AREAS ONLY] categories, AI picks must be geographic places only — no beach bars, operators, or paid venues.
 - NAMED PLACES ONLY: Each item must be a specific real place on Google Maps — never a generic area, "old town", or invented landmark. Skip if uncertain.
 - TITLES: Use the venue's own name only — never append a town/village/area to it (no "Name, Town"). Do NOT state a specific town/village in the description unless you are certain it is correct; the verified map link already shows the exact location.
 - AI pick fields: photoUrl and googleMapsUrl = empty string. googlePlaceId only if certain. distanceKm required and ≤ each category's hardCapKm (see pools below).
@@ -1608,14 +1700,12 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       }
 
       const model = getGenerativeModel(ai, {
-        model: 'gemini-2.5-flash',
+        model: AI_EXPERT_GEMINI_MODEL,
         systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.7,
           // Large picks responses (many categories × candidates) need room.
-          // gemini-2.5-flash enables "thinking" by default, which eats the
-          // output budget and truncates the JSON. Disable it and raise the cap.
           maxOutputTokens: 16384,
           thinkingConfig: { thinkingBudget: 0 },
         },
@@ -1670,6 +1760,16 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
       setIsThinking(false);
 
+      let lastPaintedPlan: unknown = initialPlan;
+      logPlanStage('PAINT_0 — instant AI JSON on screen (unverified)', {
+        path: 'wizard',
+        planMessageId,
+        isFlexiblePicks,
+        distanceKm: distanceLimitNum,
+        displayMax,
+        poolSize,
+      }, initialPlan);
+
       // Record which DB items we just showed so they get rotated out next time.
       markItemsShown(collectDbItemsFromPlan(initialPlan));
 
@@ -1686,19 +1786,21 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       // disappears" flicker — guests never see a pick that later vanishes.
       enrichPhotosAndMapLinks(initialPlan, mapAreaHint, startCoords, photoExtras)
         .then((displayEnriched) => {
+          logPickEvent('PIPELINE — stage 1 enrich complete', {
+            path: 'wizard',
+            planMessageId,
+            scope: 'initialPlan (visible slice only)',
+          });
           let shown = displayEnriched as Record<string, unknown>;
           if (isFlexiblePicks) {
-            shown = filterShowableAiPicksFromPlan(
+            shown = applyPickVerificationToPlan(
               shown,
               distanceLimitNum,
               startCoords,
               categoryKnowledgeByPrimary
             ) as Record<string, unknown>;
-            shown = filterAreasCommercialAiPicksFromPlan(
-              shown,
-              categoryKnowledgeByPrimary
-            ) as Record<string, unknown>;
             shown = trimFlexiblePicksToDisplayCap(shown, distanceLimitNum, displayMax);
+            persistPlanUnverifiedMentions(shown);
           }
           shown = mergeTrailCategoriesIntoPlan(shown, trailCategoryBlocks);
           shown = cleanAiPickDisplayTitles(shown);
@@ -1707,6 +1809,13 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
               shown as Record<string, unknown>,
               excludedLiveLikeLocalPrimaries
             ) ?? shown;
+          lastPaintedPlan = shown;
+          logPlanStage(
+            'STAGE_1 — enriched + verified (items may disappear here)',
+            { path: 'wizard', planMessageId },
+            shown,
+            initialPlan
+          );
           setMessages(prev =>
             prev.map(m => (m.id === planMessageId ? { ...m, data: shown } : m))
           );
@@ -1718,6 +1827,11 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
         // and re-rank by real distance. Runs after the fast paint above, so it
         // only ever improves what's already on screen.
         .finally(() => {
+          logPickEvent('PIPELINE — stage 2 enrich start', {
+            path: 'wizard',
+            planMessageId,
+            scope: 'candidatePlan (full AI pool + DB backfill)',
+          });
           enrichPhotosAndMapLinks(candidatePlan, mapAreaHint, startCoords, photoExtras)
             .then((withPhotosAndMaps) => {
               let finalPlan = withPhotosAndMaps;
@@ -1732,17 +1846,14 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                   categoryKnowledgeByPrimary,
                   poolSize
                 );
-                finalPlan = filterShowableAiPicksFromPlan(
+                finalPlan = applyPickVerificationToPlan(
                   finalPlan,
                   distanceLimitNum,
                   startCoords,
                   categoryKnowledgeByPrimary
                 );
-                finalPlan = filterAreasCommercialAiPicksFromPlan(
-                  finalPlan,
-                  categoryKnowledgeByPrimary
-                );
                 finalPlan = trimFlexiblePicksToDisplayCap(finalPlan, distanceLimitNum, displayMax);
+                persistPlanUnverifiedMentions(finalPlan as Record<string, unknown>);
               } else {
                 finalPlan = filterTimelinePlanByDistance(finalPlan, distanceLimitNum, startCoords, recentlyShown);
                 finalPlan = scheduleTimelineIfNeeded(finalPlan, !!timeFrameStr);
@@ -1753,6 +1864,12 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                   finalPlan as Record<string, unknown>,
                   excludedLiveLikeLocalPrimaries
                 ) ?? finalPlan;
+              logPlanStage(
+                'STAGE_2 — full pool re-normalized (items may appear/replace here)',
+                { path: 'wizard', planMessageId },
+                finalPlan,
+                lastPaintedPlan
+              );
               setMessages(prev =>
                 prev.map(m => (m.id === planMessageId ? { ...m, data: finalPlan } : m))
               );
@@ -1772,6 +1889,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
   };
 
   const executePlan = async (timeFrameStr: string) => {
+    engageWizard();
     const friendlySchedule = timeFrameStr
       ? formatTripWindow(startTime, tripDurationHours ?? 6)
       : 'flexible';
@@ -1790,8 +1908,13 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     setCuratingStepIndex(0);
     setThinkingLabel(CURATING_STEP_KEYS[0]);
 
-    await runPlanGeneration(timeFrameStr, updatedPrefs);
+    try {
+      await runPlanGeneration(timeFrameStr, updatedPrefs);
+    } finally {
+      setThinkingLabel('aiExpertThinking');
+    }
   };
+
 
   useLayoutEffect(() => {
     resizeChatTextarea();
@@ -1801,453 +1924,116 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     resizeChatTextarea();
   }, [resizeChatTextarea]);
 
-  const submitChatMessage = async () => {
-    if (!chatInput.trim() || isThinking) return;
+  const submitConciergeChat = async () => {
+    if (!chatInput.trim() || conciergeSending || isThinking) return;
+    if (interactionMode === 'wizard' && !chatEnabled) return;
 
     const userText = chatInput.trim();
     setChatInput('');
+    setInteractionMode('chat');
+
+    const userMessage: ConciergeChatMessage = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      text: userText,
+    };
+    const priorHistory = conciergeMessages;
+    setConciergeMessages((prev) => [...prev, userMessage]);
     track('ai_expert_user_message', { text: truncateAnalyticsText(userText) });
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now().toString(), role: 'user', type: 'text', text: userText },
-    ]);
-
-    const inferredPrimaries = inferCategoryPrimariesFromText(userText, availableCategories);
-    const inferredCategories = filterPrimariesForLiveLikeLocal(
-      inferredPrimaries,
-      excludedLiveLikeLocalPrimaries
-    );
-
-    // The "exclude from Live like a local" flag is a filter for PROACTIVE
-    // suggestions (the wizard) — it keeps admin-only categories like "Winery"
-    // out of plans the guest didn't ask for. In free-text chat the guest is
-    // explicitly driving the request, so that filter must not censor a direct
-    // ask (otherwise "give me wineries" returns an empty plan). Build the plan
-    // for THIS message from exactly what the model answered.
-    const effectiveExcluded = new Set<string>();
-
-    const hasPriorPlan = messages.some((m) => m.type === 'plan');
-    const refineRequested = hasPriorPlan && wantsRefinement(userText);
-    // A plan request is driven by the message itself (verbs / its own topics),
-    // not by the fact that a wizard ran before — so follow-up questions about the
-    // existing picks fall through to chat instead of regenerating.
-    const isPlanRequest = looksLikePlanRequest(userText, inferredCategories);
-
-    // Default radius for a casual chat ask (no explicit "within X km"). Generous
-    // enough that real picks survive verification — NOT the wizard's smallest
-    // tier, which can be ~9 km and drop almost everything — but still local to
-    // the chosen starting point so we don't wander into the next city.
-    const NEW_TOPIC_LOCAL_KM = 35;
-
-    const activePrefs = ensureDefaultPropertyLocation();
-
-    // Results already on screen + a vague "more / something else" with no new
-    // topic and no clear reference to the current set → ask which they want.
-    if (
-      hasPriorPlan &&
-      !refineRequested &&
-      inferredCategories.length === 0 &&
-      isAmbiguousFollowup(userText)
-    ) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString() + 'clarify',
-          role: 'ai',
-          type: 'text',
-          text: t('aiExpertRefineOrNew'),
-        },
-      ]);
-      return;
-    }
-
-    // Fast, structured generation ONLY when the latest message names a configured
-    // "Live like a local" category. A new topic that is NOT a configured category
-    // (e.g. "wineries") must fall through to the open chat path below — it must
-    // never silently reuse the wizard's earlier categories, which would re-list
-    // the same picks instead of answering the new request.
-    if (!refineRequested && isPlanRequest && inferredCategories.length > 0) {
-      if (step !== 'DONE') setStep('DONE');
-      setIsThinking(true);
-      setCuratingStepIndex(0);
-      setThinkingLabel(CURATING_STEP_KEYS[0]);
-
-      // Honour an explicit distance / count from the message itself, e.g.
-      // "the 10 best beaches within 50km". These override the wizard's settings.
-      const requestedKm = parseRequestedDistanceKm(userText);
-      const requestedCount = parseRequestedCount(userText) ?? undefined;
-      // Fresh, open generation — apply the new topics and browse-as-picks mode,
-      // and never anchor on the previously shown plan.
-      let effectivePrefs = {
-        ...activePrefs,
-        categories: inferredCategories,
-        timeFrame: 'flexible',
-        ...(requestedKm ? { distance: `${requestedKm}km` } : {}),
-      };
-      setSelectedCats(inferredCategories);
-
-      if (!effectivePrefs.distance) {
-        effectivePrefs = { ...effectivePrefs, distance: `${NEW_TOPIC_LOCAL_KM}km` };
-      }
-
-      setPreferences(effectivePrefs);
-      await runPlanGeneration('', effectivePrefs, { requestedCount });
-      return;
-    }
-
-    if (step !== 'DONE') setStep('DONE');
-
-    setIsThinking(true);
-    setThinkingLabel('aiExpertThinking');
+    setConciergeSending(true);
 
     try {
-      const { fullLocationContext } = getLocationContext();
-      const startCoords = getStartCoords();
-      const isNearProperty = isNearPropertyLocation(activePrefs.location);
-      const startLocationName = isNearProperty
-        ? fullLocationContext
-        : (locationFullNameRef.current || activePrefs.locationFullName || activePrefs.location);
-      const gpsString = startCoords ? `${startCoords.lat}, ${startCoords.lng}` : 'Unknown';
-
-      const conversationHistory = messages
-        .map(m => {
-          if (m.type === 'plan') return `AI generated plan on screen: ${JSON.stringify(m.data)}`;
-          if (m.text?.startsWith('welcome:')) {
-            return `AI: Welcomed guest to ${m.text.replace('welcome:', '')}.`;
-          }
-          if (m.type === 'selection') return `Guest selected: ${m.text}`;
-          return `${m.role === 'ai' ? 'AI' : 'Guest'}: ${m.text}`;
-        })
-        .join('\n');
-
-      // Distance for the chat search. When REFINING the picks already on screen,
-      // keep the current radius. For a brand-new open topic, do NOT inherit the
-      // previous search's (often tight) radius — it would filter out perfectly
-      // good picks for the new topic. But also do not search the WHOLE region:
-      // the guest picked this starting point on purpose, so a casual "nice pizza"
-      // must return places near it, not a famous spot in the next city 60 km away.
-      // Use a local-exploration radius by default; an explicit "within X km" in
-      // the message always overrides it.
-      const requestedKmChat = parseRequestedDistanceKm(userText);
-      let distanceLimitNum = 9999;
-      if (refineRequested && activePrefs.distance) {
-        const match = activePrefs.distance.match(/\d+(\.\d+)?/);
-        if (match) {
-          distanceLimitNum = parseFloat(match[0]);
-        } else if (activePrefs.distance.toLowerCase().includes('walk')) {
-          distanceLimitNum = 2;
-        }
-      } else {
-        distanceLimitNum = requestedKmChat ?? NEW_TOPIC_LOCAL_KM;
-      }
-      const recentlyShown = getRecentlyShownKeys();
-      const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
-
-      const chatDisplayMax = maxPicksForRadius(distanceLimitNum);
-      const chatPoolSize = aiCandidatePoolSize();
-
-      const systemInstruction = `You are Vailo, an elite local concierge. Always reply with a single valid JSON object (no markdown).
-
-${guestAiLanguageBlock(locale)}
-
-Rules:
-- Only answer questions about local travel, day planning, itineraries, and "live like a local" advice.
-- AUTHENTIC PICKS: Prefer neighbourhood haunts residents use over tourist-trap lists.
-- TONE: Be concrete and varied. Do not repeat "locals love/prefer" in every description or reply.
-- VERIFICATION: AI picks are resolved on Google Maps — unverified titles are dropped. Use exact official Maps names only.
-- When providing a picks plan: return up to ${chatPoolSize} AI candidates per category; guests see ${chatDisplayMax} verified. Over-generate real names.
-- 50 / 50 SPLIT: ~half Vailo database (property + area local gems) + ~half verified AI for business categories. Never duplicate database businesses. [AREAS ONLY] = geographic AI picks only.
-- NAMED places only — never generic areas. Skip if unsure a place exists.
-- TITLES: venue's own name only — never append a town/area (no "Name, Town"). Don't assert a specific town/village in descriptions unless certain; the map link shows the exact location.
-- Leave photoUrl and googleMapsUrl EMPTY for AI picks. googlePlaceId only if certain.
-- Never suggest permanently closed businesses.
-- Embed recommendations in the JSON 'plan' object — not in replyText.`;
-
-      // When refining, stay on the topic of the picks already on screen. For any
-      // other message use only the categories named in THIS message — never the
-      // stale wizard set — so a new free-text topic (e.g. "wineries") isn't
-      // answered with the previous search's categories. When the message names no
-      // configured category, leave this empty and let the AI read the request.
-      const chatCategories = filterPrimariesForLiveLikeLocal(
-        refineRequested ? activePrefs.categories : inferredCategories,
-        excludedLiveLikeLocalPrimaries
-      ).filter((c) => !isHikingTrailsCategory(c));
-      const chatCategoryLabels = chatCategories.map(
-        (p) => availableCategories.find((c) => c.primary === p)?.label ?? p
-      );
-      const categoryKnowledgeBlock = buildCategoryKnowledgePromptSection(
-        chatCategories,
-        categoryKnowledgeByPrimary
-      );
-      const flexibleBrowse = isFlexibleTimeFrame(activePrefs.timeFrame);
-      const planTypeRule = flexibleBrowse
-        ? `- Guest is browsing at their own pace (no fixed schedule). When hasPlan is true, plan.type MUST be "picks" with one category block per requested topic — NEVER "timeline" or timed stops.`
-        : `- When hasPlan is true and preferences include a fixed timeframe, plan.type may be "timeline". Otherwise use "picks".`;
-
-      const followupRule = refineRequested
-        ? `- REFINE MODE: The guest is refining the recommendations currently on screen (see "AI generated plan on screen" above). Adjust, filter, re-rank, or swap THOSE picks to match the new request; keep the same theme. Return an updated picks plan.`
-        : hasPriorPlan
-          ? `- FRESH & OPEN: Treat the guest's latest message as a brand-new, open request. You may reference earlier picks ONLY to answer a direct question about them — do NOT silently re-list or merely tweak the previous recommendations when they ask for ideas. Give genuinely new places that fit what they just asked. If it is unclear whether they want to refine the current suggestions or see something new, ask them which they prefer (hasPlan=false) instead of guessing.`
-          : `- Provide open, relevant recommendations for exactly what the guest asked.`;
-
-      const prompt = `Starting point: "${startLocationName}" (GPS: ${gpsString}).
-Preferences: ${JSON.stringify({ ...activePrefs, categories: chatCategories, distance: distanceLimitNum >= 9999 ? activePrefs.distance : `${distanceLimitNum}km` })}.
-${chatCategoryLabels.length > 0 ? `Requested categories: ${chatCategoryLabels.join(', ')}.` : ''}
-${categoryKnowledgeBlock}
-
-${isNearProperty
-  ? `Property context: ${fullLocationContext}`
-  : `User is NOT at their accommodation. Focus on places near "${startLocationName}".`}
-
-Conversation so far:
-${conversationHistory}
-
-VAILO DATABASE (pre-filtered):
-${JSON.stringify(filteredDatabase)}
-
-${planTypeRule}
-${followupRule}
-
-Return JSON with this schema:
-{
-  "replyText": "Your conversational reply.",
-  "hasPlan": true | false,
-  "plan": null | {
-    "type": ${flexibleBrowse ? '"picks"' : '"picks" | "timeline"'},
-    "plan": [ { "time": "", "title": "", "description": "", "transportToNext": "", "source": "database" | "ai", "photoUrl": "", "googleMapsUrl": "" } ],
-    "categories": [ { "categoryName": "", "items": [ { "title": "", "description": "", "estimatedDistance": "", "source": "database" | "ai", "photoUrl": "", "googleMapsUrl": "" } ] } ]
-  }
-}
-
-User: ${userText}`;
-
-      const model = getGenerativeModel(ai, {
-        model: 'gemini-2.5-flash',
-        systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-          maxOutputTokens: 16384,
-          thinkingConfig: { thinkingBudget: 0 },
-        },
+      const structured = await sendConciergeChatMessage({
+        locale,
+        context: conciergeChatContext,
+        history: priorHistory,
+        userMessage: userText,
       });
+      const processed = processConciergeRecommendations(structured, conciergeMatchPool);
 
-      const result = await model.generateContent(prompt);
-      const rawText = result.response.text();
-
-      const parsedData = parseAiJson(rawText) as Record<string, unknown> | null;
-      if (!parsedData) throw new Error('JSON Parse failed.');
-
-      const { replyText, plan } = extractChatPlanPayload(parsedData);
-
-      if (replyText) {
-        track('ai_expert_reply', { text: truncateAnalyticsText(replyText, 1000) });
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString() + 'text',
-            role: 'ai',
-            type: 'text',
-            text: replyText,
-          },
-        ]);
-      }
-
-      if (plan) {
-        const flexibleBrowse = isFlexibleTimeFrame(activePrefs.timeFrame);
-        let resolvedPlan = plan as Record<string, unknown>;
-        if (flexibleBrowse && resolvedPlan.type === 'timeline') {
-          resolvedPlan = coerceTimelineToFlexiblePicks(resolvedPlan, chatCategoryLabels);
-        }
-
-        // Any picks plan (whatever the timeframe) must run through the picks
-        // pipeline — verified + trimmed + shown. Only a genuine timeline goes
-        // through the timeline path. This stops chat picks from being silently
-        // dropped by the timeline filter when a prior timeline left timeFrame set.
-        const isFlexiblePicks = resolvedPlan.type === 'picks';
-        const { coords: propCoords } = getLocationContext();
-        const chatPoolSize = aiCandidatePoolSize();
-        const picksDbContext =
-          isFlexiblePicks && chatCategories.length > 0
-            ? buildFlexiblePicksDbContext(
-                chatCategories,
-                distanceLimitNum,
-                startCoords,
-                propCoords,
-                mergedGems,
-                mergedFeatures,
-                recentlyShown,
-                categoryCatalogDocs,
-                contentSettings.primaryLocale,
-                locale,
-                categoryKnowledgeByPrimary
-              )
-            : null;
-
-        track('ai_expert_plan', {
-          planStopCount: countPlanStops(resolvedPlan),
-          planCategories: Array.isArray(resolvedPlan.categories)
-            ? ((resolvedPlan.categories as { categoryName?: string }[])
-                .map((c) => c.categoryName)
-                .filter(Boolean) as string[])
-            : undefined,
-        });
-        const mapAreaHint = getGeographicAreaHint() || startLocationName || activePrefs.location;
-        const basePlan = applyTimelinePropertyBookends(resolvedPlan, isNearProperty);
-
-        // Paint immediately from the model's data; resolve maps + photos in the
-        // background (see enrichPhotosAndMapLinks below) instead of blocking.
-        let candidatePlan = basePlan;
-        let initialPlan = basePlan;
-        if (isFlexiblePicks) {
-          // A picks plan for a configured category is normalised against the
-          // Vailo DB; a free-text topic (no DB context) is shown as AI-only picks
-          // — both get verified + trimmed below. Never route picks through the
-          // timeline filter, which would discard them.
-          candidatePlan = picksDbContext
-            ? normalizeFlexiblePicksPlan(
-                basePlan,
-                distanceLimitNum,
-                picksDbContext,
-                startCoords,
-                recentlyShown,
-                categoryKnowledgeByPrimary,
-                chatPoolSize
-              )
-            : basePlan;
-          initialPlan = trimFlexiblePicksToDisplayCap(candidatePlan, distanceLimitNum);
-        } else {
-          initialPlan = filterTimelinePlanByDistance(basePlan, distanceLimitNum, startCoords, recentlyShown);
-          initialPlan = scheduleTimelineIfNeeded(initialPlan, !flexibleBrowse && !!activePrefs.timeFrame);
-        }
-
-        initialPlan =
-          stripExcludedCategoriesFromPlan(initialPlan, effectiveExcluded) ?? initialPlan;
-        const planMessageId = Date.now().toString() + 'plan';
-        setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
-        setIsThinking(false);
-
-        markItemsShown(collectDbItemsFromPlan(initialPlan));
-
-        const photoExtras = {
-          guestMaxKm: distanceLimitNum,
-          knowledgeByPrimary: categoryKnowledgeByPrimary,
+      let curatedItems = processed.curatedItems;
+      if (curatedItems.length > 0) {
+        const startCoords = getStartCoords();
+        const miniPlan = {
+          type: 'picks',
+          categories: [
+            {
+              categoryName: processed.categoryName,
+              items: curatedItems.map((item) => ({
+                ...item,
+                title: item.title,
+              })),
+            },
+          ],
         };
-
-        // Stage 1 — fast: photos + maps for just the visible picks. Verify +
-        // filter here too, so anything shown is final and never disappears in
-        // Stage 2 (which only re-ranks and back-fills).
-        enrichPhotosAndMapLinks(initialPlan, mapAreaHint, startCoords, photoExtras)
-          .then((displayEnriched) => {
-            let shown = displayEnriched as Record<string, unknown>;
-            if (isFlexiblePicks) {
-              shown = filterShowableAiPicksFromPlan(
-                shown,
-                distanceLimitNum,
-                startCoords,
-                categoryKnowledgeByPrimary
-              ) as Record<string, unknown>;
-              shown = filterAreasCommercialAiPicksFromPlan(
-                shown,
-                categoryKnowledgeByPrimary
-              ) as Record<string, unknown>;
-              shown = trimFlexiblePicksToDisplayCap(shown, distanceLimitNum);
-            }
-            shown = cleanAiPickDisplayTitles(shown);
-            shown =
-              stripExcludedCategoriesFromPlan(
-                shown as Record<string, unknown>,
-                effectiveExcluded
-              ) ?? shown;
-            setMessages(prev =>
-              prev.map(m => (m.id === planMessageId ? { ...m, data: shown } : m))
-            );
-          })
-          .catch((err) => console.error('Display photo/map enrichment failed:', err))
-          // Stage 2 — refine against the full pool (verify, back-fill, re-rank).
-          .finally(() => {
-            enrichPhotosAndMapLinks(candidatePlan, mapAreaHint, startCoords, photoExtras)
-              .then((withPhotosAndMaps) => {
-                let filtered = withPhotosAndMaps;
-                if (isFlexiblePicks) {
-                  if (picksDbContext) {
-                    filtered = normalizeFlexiblePicksPlan(
-                      filtered,
-                      distanceLimitNum,
-                      picksDbContext,
-                      startCoords,
-                      recentlyShown,
-                      categoryKnowledgeByPrimary,
-                      chatPoolSize
-                    );
-                  }
-                  filtered = filterShowableAiPicksFromPlan(
-                    filtered,
-                    distanceLimitNum,
-                    startCoords,
-                    categoryKnowledgeByPrimary
-                  );
-                  filtered = filterAreasCommercialAiPicksFromPlan(
-                    filtered,
-                    categoryKnowledgeByPrimary
-                  );
-                  filtered = trimFlexiblePicksToDisplayCap(filtered, distanceLimitNum);
-                } else {
-                  filtered = filterTimelinePlanByDistance(
-                    filtered,
-                    distanceLimitNum,
-                    startCoords,
-                    recentlyShown
-                  );
-                  filtered = scheduleTimelineIfNeeded(filtered, !flexibleBrowse && !!activePrefs.timeFrame);
-                }
-                filtered = cleanAiPickDisplayTitles(filtered);
-                filtered =
-                  stripExcludedCategoriesFromPlan(filtered, effectiveExcluded) ?? filtered;
-                setMessages(prev =>
-                  prev.map(m => (m.id === planMessageId ? { ...m, data: filtered } : m))
-                );
-              })
-              .catch((err) => console.error('Background photo/map enrichment failed:', err));
-          });
-      } else if (!replyText) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            role: 'ai',
-            type: 'text',
-            text: t('aiExpertErrorConnect'),
-          },
-        ]);
-        setIsThinking(false);
-      } else {
-        setIsThinking(false);
+        try {
+          const enriched = await enrichPhotosAndMapLinks(
+            miniPlan,
+            mapAreaHint,
+            startCoords
+          );
+          const enrichedItems = enriched?.categories?.[0]?.items;
+          if (Array.isArray(enrichedItems) && enrichedItems.length > 0) {
+            curatedItems = enrichedItems;
+          }
+        } catch (enrichErr) {
+          console.warn('concierge pick enrichment failed:', enrichErr);
+        }
       }
 
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'ai',
-        type: 'text',
-        text: t('aiExpertErrorConnect'),
-      }]);
-      setIsThinking(false);
+      if (processed.unverifiedMentions.length > 0) {
+        void persistUnverifiedAiMentions(processed.unverifiedMentions, {
+          country: listingAreaCtx?.country || '',
+          areaId: listingAreaCtx?.areaId || '',
+        });
+      }
+
+      const replyForAnalytics = [
+        processed.replyText,
+        formatTextOnlyRecommendations(processed.textOnly),
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      track('ai_expert_reply', { text: truncateAnalyticsText(replyForAnalytics, 1000) });
+
+      setConciergeMessages((prev) => [
+        ...prev,
+        {
+          id: `m-${Date.now()}`,
+          role: 'model',
+          text: processed.replyText,
+          curatedPicks:
+            curatedItems.length > 0
+              ? { categoryName: processed.categoryName, items: curatedItems }
+              : undefined,
+          textOnlyAppend: formatTextOnlyRecommendations(processed.textOnly) || undefined,
+        },
+      ]);
+    } catch (err) {
+      console.error('concierge chat error:', err);
+      setConciergeMessages((prev) => [
+        ...prev.slice(0, -1),
+        {
+          id: `err-${Date.now()}`,
+          role: 'model',
+          text: t('aiExpertErrorConnect'),
+        },
+      ]);
+      setChatInput(userText);
     } finally {
-      setThinkingLabel('aiExpertThinking');
+      setConciergeSending(false);
     }
   };
 
   const handleChatSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void submitChatMessage();
+    void submitConciergeChat();
   };
 
   const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
-    void submitChatMessage();
+    void submitConciergeChat();
   };
 
   // Used for "View" / "Directions" buttons rendered after the plan returns. We
@@ -2262,6 +2048,11 @@ User: ${userText}`;
 
   const planAnotherDay = () => {
     setStep('LOCATION');
+    setInteractionMode('wizard');
+    setChatEnabled(true);
+    setChatInput('');
+    setConciergeMessages([]);
+    setConciergeSending(false);
     setLocationCandidates([]);
     const nearLabel = propertyCoords ? getNearPropertyLabel() : '';
     locationCoordsRef.current = propertyCoords;
@@ -2468,6 +2259,7 @@ User: ${userText}`;
                       key={idx}
                       categoryName={cat.categoryName}
                       items={cat.items || []}
+                      unverifiedMentions={cat.unverifiedMentions}
                       mapAreaHint={mapAreaHint}
                       propertyId={property?.id}
                       viewMapLabel={t('aiExpertView')}
@@ -2644,7 +2436,70 @@ User: ${userText}`;
       >
         {messages.map(renderMessage)}
 
-        {!isThinking && step !== 'DONE' && (
+        {interactionMode === 'chat' &&
+          conciergeMessages.map((msg) =>
+            msg.role === 'user' ? (
+              <div key={msg.id} className="flex justify-end mb-5 animate-in fade-in duration-300">
+                <div className="max-w-[85%] bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/15 text-white px-4 py-3 rounded-2xl rounded-br-md border border-vailo-gold/35 shadow-[0_2px_12px_rgba(197,160,89,0.18)] text-base leading-relaxed whitespace-pre-wrap">
+                  {msg.text}
+                </div>
+              </div>
+            ) : (
+              <div key={msg.id} className="mb-6 animate-in fade-in duration-300">
+                {msg.text ? (
+                  <div className="mb-5 flex items-end gap-2.5">
+                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-vailo-gold/35 to-vailo-gold/10 border border-vailo-gold/30 flex items-center justify-center shrink-0 shadow-inner p-1">
+                      <VailoMark alt="" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="max-w-[85%] bg-white/[0.16] border border-white/20 text-white px-4 py-3 rounded-2xl rounded-bl-md shadow-sm text-base leading-relaxed whitespace-pre-wrap">
+                      {msg.text}
+                    </div>
+                  </div>
+                ) : null}
+
+                {msg.curatedPicks && msg.curatedPicks.items.length > 0 && (
+                  <div className="mb-4 pl-0 sm:pl-10">
+                    <CategoryPickCarousel
+                      categoryName={msg.curatedPicks.categoryName}
+                      items={msg.curatedPicks.items}
+                      mapAreaHint={mapAreaHint}
+                      propertyId={property?.id}
+                      viewMapLabel={t('aiExpertView')}
+                      goMapLabel={t('aiExpertGo')}
+                    />
+                  </div>
+                )}
+
+                {msg.textOnlyAppend ? (
+                  <div className="flex items-end gap-2.5">
+                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-vailo-gold/35 to-vailo-gold/10 border border-vailo-gold/30 flex items-center justify-center shrink-0 shadow-inner p-1 invisible sm:visible">
+                      <VailoMark alt="" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="max-w-[85%] sm:max-w-none flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70 leading-relaxed whitespace-pre-wrap">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/45 mb-2">
+                        Also suggested
+                      </p>
+                      {msg.textOnlyAppend}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )
+          )}
+
+        {conciergeSending && interactionMode === 'chat' && (
+          <div className="mb-5 flex items-end gap-2.5">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-vailo-gold/35 to-vailo-gold/10 border border-vailo-gold/30 flex items-center justify-center shrink-0 p-1">
+              <VailoMark alt="" className="w-full h-full object-contain" />
+            </div>
+            <div className="bg-white/[0.16] border border-white/20 text-white/70 px-4 py-3 rounded-2xl rounded-bl-md text-sm flex items-center gap-2">
+              <Loader2 size={14} className="animate-spin text-vailo-gold" />
+              {t('aiExpertConciergeThinking')}
+            </div>
+          </div>
+        )}
+
+        {!isThinking && interactionMode === 'wizard' && step !== 'DONE' && (
           <div className="animate-in fade-in mt-1 w-full min-w-0 max-w-full">
             {renderWizardProgress()}
 
@@ -2740,15 +2595,16 @@ User: ${userText}`;
                     availableCategories.map((cat) => (
                       <button
                         key={cat.primary}
-                        onClick={() =>
+                        onClick={() => {
+                          engageWizard();
                           setSelectedCats((prev) =>
                             prev.includes(cat.primary)
                               ? prev.filter((c) => c !== cat.primary)
                               : prev.length < 3
                                 ? [...prev, cat.primary]
                                 : prev
-                          )
-                        }
+                          );
+                        }}
                         className={`guest-pill px-4 py-2.5 rounded-full text-sm font-semibold transition-all border ${
                           selectedCats.includes(cat.primary)
                             ? AI_EXPERT_BTN_PRIMARY_PILL
@@ -2848,7 +2704,10 @@ User: ${userText}`;
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTimeChoiceMode('timeline')}
+                      onClick={() => {
+                        engageWizard();
+                        setTimeChoiceMode('timeline');
+                      }}
                       className={`w-full py-4 min-h-[48px] rounded-xl text-base flex items-center justify-center gap-2 ${AI_EXPERT_BTN_SECONDARY}`}
                     >
                       <Clock size={16} className="text-vailo-gold shrink-0" />
@@ -2942,33 +2801,35 @@ User: ${userText}`;
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="bg-vailo-teal-hover/95 backdrop-blur-sm p-3 md:p-4 shrink-0 border-t border-white/10 z-20 relative">
-        <form onSubmit={handleChatSubmit} className="flex gap-2 items-end">
-          <textarea
-            ref={chatTextareaRef}
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onInput={resizeChatTextarea}
-            onKeyDown={handleChatKeyDown}
-            disabled={isThinking}
-            rows={1}
-            placeholder={t('aiExpertChatPlaceholder')}
-            aria-label={t('aiExpertChatAria')}
-            className="flex-1 text-base leading-normal px-4 py-2.5 rounded-xl outline-none bg-white/10 border border-white/15 text-white placeholder:text-white/40 focus:ring-2 focus:ring-vailo-gold/25 focus:border-vailo-gold/40 transition-[height,box-shadow] disabled:opacity-50 resize-none overflow-y-auto max-h-32"
-          />
-          <button
-            type="submit"
-            disabled={!chatInput.trim() || isThinking}
-            className={`min-h-[48px] min-w-[48px] p-3 rounded-xl flex items-center justify-center shrink-0 self-end ${AI_EXPERT_BTN_PRIMARY}`}
-            aria-label={t('aiExpertSendAria')}
-          >
-            <Send size={20} />
-          </button>
-        </form>
-        <p className="text-center text-xs text-white/40 mt-2.5 leading-relaxed">
-          {t('aiExpertChatDisclaimer')}
-        </p>
-      </div>
+      {(chatEnabled || interactionMode === 'chat') && (
+        <div className="bg-vailo-teal-hover/95 backdrop-blur-sm p-3 md:p-4 shrink-0 border-t border-white/10 z-20 relative">
+          <form onSubmit={handleChatSubmit} className="flex gap-2 items-end">
+            <textarea
+              ref={chatTextareaRef}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onInput={resizeChatTextarea}
+              onKeyDown={handleChatKeyDown}
+              disabled={conciergeSending || isThinking}
+              rows={1}
+              placeholder={t('aiExpertChatPlaceholder')}
+              aria-label={t('aiExpertChatAria')}
+              className="flex-1 text-base leading-normal px-4 py-2.5 rounded-xl outline-none bg-white/10 border border-white/15 text-white placeholder:text-white/40 focus:ring-2 focus:ring-vailo-gold/25 focus:border-vailo-gold/40 transition-[height,box-shadow] disabled:opacity-50 resize-none overflow-y-auto max-h-32"
+            />
+            <button
+              type="submit"
+              disabled={!chatInput.trim() || conciergeSending || isThinking}
+              className={`min-h-[48px] min-w-[48px] p-3 rounded-xl flex items-center justify-center shrink-0 self-end ${AI_EXPERT_BTN_PRIMARY}`}
+              aria-label={t('aiExpertSendAria')}
+            >
+              <Send size={20} />
+            </button>
+          </form>
+          <p className="text-center text-xs text-white/40 leading-relaxed mt-2.5">
+            {t('aiExpertChatDisclaimer')}
+          </p>
+        </div>
+      )}
 
     </div>
   );

@@ -59,6 +59,11 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertPlanTimelineBtn'
   | 'aiExpertBrowseFavoritesBtn'
   | 'aiExpertChatPlaceholder'
+  | 'aiExpertChatStartBtn'
+  | 'aiExpertChatOpening'
+  | 'aiExpertChatBackToWizard'
+  | 'aiExpertConciergeThinking'
+  | 'aiExpertChatWizardDisabled'
   | 'aiExpertChatDisclaimer'
   | 'aiExpertChatAria'
   | 'aiExpertSendAria'
@@ -163,6 +168,12 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertPlanTimelineBtn: 'Plan my day with a timeline',
   aiExpertBrowseFavoritesBtn: 'No fixed schedule. Just browse',
   aiExpertChatPlaceholder: 'Ask Vailo',
+  aiExpertChatStartBtn: 'Chat with your concierge',
+  aiExpertChatOpening:
+    'Ask me anything — I’ll learn what you want before suggesting places locals actually go.',
+  aiExpertChatBackToWizard: 'Use guided planner instead',
+  aiExpertConciergeThinking: 'Thinking…',
+  aiExpertChatWizardDisabled: 'Complete the steps above to ask Vailo',
   aiExpertChatDisclaimer:
     'Always verify opening hours and routes before you go.',
   aiExpertChatAria: 'Message the concierge',
@@ -281,7 +292,13 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertHowLongOut: 'Πόση ώρα θα είστε έξω;',
   aiExpertPlanTimelineBtn: 'Σχέδιο ημέρας με χρονοδιάγραμμα',
   aiExpertBrowseFavoritesBtn: 'Χωρίς πρόγραμμα. Απλή περιήγηση',
-  aiExpertChatPlaceholder: 'Ask Vailo',
+  aiExpertChatPlaceholder: 'Πείτε στον concierge τι ψάχνετε…',
+  aiExpertChatStartBtn: 'Συνομιλία με τον concierge',
+  aiExpertChatOpening:
+    'Ρωτήστε με ό,τι θέλετε — θα καταλάβω τι σας ενδιαφέρει πριν προτείνω μέρη που πηγαίνουν οι ντόπιοι.',
+  aiExpertChatBackToWizard: 'Οδηγούμενος σχεδιασμός',
+  aiExpertConciergeThinking: 'Σκέφτομαι…',
+  aiExpertChatWizardDisabled: 'Ολοκληρώστε τα βήματα παραπάνω για να ρωτήσετε το Vailo',
   aiExpertChatDisclaimer:
     'Επιβεβαιώστε πάντα ώρες λειτουργίας και διαδρομές πριν φύγετε.',
   aiExpertChatAria: 'Μήνυμα στον concierge',

@@ -22,9 +22,11 @@ import {
   Languages,
   Sparkles,
   X,
+  RefreshCw,
   ExternalLink,
+  Search,
 } from 'lucide-react';
-import { AdminCard, AdminEmptyState } from '../../../components/admin/AdminPageHeader';
+import { AdminCard, AdminEmptyState, AdminInput } from '../../../components/admin/AdminPageHeader';
 import { adminPath } from '../../../lib/adminRoutes';
 import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
@@ -40,6 +42,18 @@ import {
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
 import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
+import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
+import { dedupeAlternateTitles } from '../../../lib/alternateTitles';
+
+function areaGemRowClass(index: number): string {
+  return index % 2 === 0 ? 'bg-white' : 'bg-gray-50/90';
+}
+
+function gemMatchesSearch(gem: { name?: string }, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return String(gem.name || '').toLowerCase().includes(q);
+}
 
 export default function AreaLocalGems() {
   const navigate = useNavigate();
@@ -52,9 +66,11 @@ export default function AreaLocalGems() {
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [searchText, setSearchText] = useState('');
   const [editingGemId, setEditingGemId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMagicFilling, setIsMagicFilling] = useState(false);
+  const [isSyncingPropertyGems, setIsSyncingPropertyGems] = useState(false);
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -70,7 +86,8 @@ export default function AreaLocalGems() {
     longitude: '',
     googleMapsUrl: '',
     photoUrl: '',
-    isDailyTrip: false
+    isDailyTrip: false,
+    alternateTitlesText: '',
   };
   
   const [formData, setFormData] = useState(initialFormState);
@@ -123,13 +140,18 @@ export default function AreaLocalGems() {
   );
 
   const filteredGems = useMemo(() => {
-    if (categoryFilter === 'all') return sortedGems;
-    return sortedGems.filter((gem) =>
-      gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).some(
-        (cat) => cat.toLowerCase() === categoryFilter.toLowerCase()
-      )
-    );
-  }, [sortedGems, categoryFilter, categoryCatalogDocs, localeSettings.primaryLocale]);
+    let list = sortedGems;
+    if (categoryFilter !== 'all') {
+      list = list.filter((gem) =>
+        gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).some(
+          (cat) => cat.toLowerCase() === categoryFilter.toLowerCase()
+        )
+      );
+    }
+    return list.filter((gem) => gemMatchesSearch(gem, searchText));
+  }, [sortedGems, categoryFilter, searchText, categoryCatalogDocs, localeSettings.primaryLocale]);
+
+  const hasSearch = searchText.trim().length > 0;
 
   const gemCountForCategory = (value: string) => {
     if (value === 'all') return sortedGems.length;
@@ -340,12 +362,22 @@ export default function AreaLocalGems() {
         setIsUploadingImage(false);
       }
 
+      const { alternateTitlesText, ...formRest } = formData;
+      const alternateTitles = dedupeAlternateTitles(
+        formData.name,
+        alternateTitlesText
+          .split(/[\n,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+
       const gemData = {
-        ...formData,
+        ...formRest,
         categories: normalizedGemCategories,
         category: normalizedGemCategories[0] || '',
         ...localeEditor.buildPayload(),
         photoUrl: finalPhotoUrl,
+        alternateTitles,
         updatedAt: new Date().toISOString(),
       };
 
@@ -404,10 +436,32 @@ export default function AreaLocalGems() {
       ...gem,
       categories: normalized,
       category: normalized[0] || '',
+      alternateTitlesText: Array.isArray(gem.alternateTitles)
+        ? gem.alternateTitles.join('\n')
+        : '',
     });
     setImagePreview(gem.photoUrl);
     setEditingGemId(gem.id);
     setIsFormOpen(true);
+  };
+
+  const handleSyncPropertyGems = async () => {
+    setIsSyncingPropertyGems(true);
+    try {
+      const stats = await syncAllPropertyGemsToArea({
+        country: decodedCountry,
+        areaId,
+        masterArea: decodedArea,
+      });
+      toast.success(
+        `Property gem sync done — ${stats.created} added, ${stats.updated} updated, ${stats.skipped} skipped (duplicate name+location).`
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to sync property local gems.');
+    } finally {
+      setIsSyncingPropertyGems(false);
+    }
   };
 
   const handleAutoTranslateLocale = async () => {
@@ -582,6 +636,23 @@ export default function AreaLocalGems() {
         />
       </div>
 
+      <div>
+        <label className="block text-sm font-bold text-gray-700 mb-1">
+          Alternative titles (AI matching)
+        </label>
+        <textarea
+          rows={3}
+          name="alternateTitlesText"
+          value={formData.alternateTitlesText}
+          onChange={handleChange}
+          placeholder={'One per line — spelling variants guests or AI might use\ne.g. Kalivaki beach'}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-y text-sm min-h-[72px]"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Used by AI Expert to match picks — not shown on property local gems.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-bold text-gray-700 mb-1">Latitude</label>
@@ -666,13 +737,28 @@ export default function AreaLocalGems() {
             </span>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAddForm}
-          className="flex items-center justify-center px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm w-full sm:w-auto"
-        >
-          <Plus size={18} className="mr-2" /> Add Gem
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={handleSyncPropertyGems}
+            disabled={isSyncingPropertyGems}
+            className="flex items-center justify-center px-4 py-2.5 bg-white border border-orange-200 text-orange-800 text-sm font-bold rounded-lg hover:bg-orange-50 transition-colors shadow-sm w-full sm:w-auto disabled:opacity-60"
+          >
+            {isSyncingPropertyGems ? (
+              <Loader2 size={18} className="mr-2 animate-spin" />
+            ) : (
+              <RefreshCw size={18} className="mr-2" />
+            )}
+            {isSyncingPropertyGems ? 'Syncing…' : 'Sync property gems'}
+          </button>
+          <button
+            type="button"
+            onClick={openAddForm}
+            className="flex items-center justify-center px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm w-full sm:w-auto"
+          >
+            <Plus size={18} className="mr-2" /> Add Gem
+          </button>
+        </div>
       </div>
 
       {/* Category filters */}
@@ -706,6 +792,23 @@ export default function AreaLocalGems() {
         </div>
       )}
 
+      {!isLoading && sortedGems.length > 0 && (
+        <div className="relative mb-4">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+          <AdminInput
+            type="search"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search by place name…"
+            className="pl-9 py-2 text-sm"
+            aria-label="Search local gems"
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <div className="py-16 text-center text-gray-400">
           <Loader2 size={32} className="animate-spin mx-auto mb-3" />
@@ -720,28 +823,32 @@ export default function AreaLocalGems() {
       ) : filteredGems.length === 0 ? (
         <AdminEmptyState
           icon={<Tag size={28} />}
-          title="No gems in this category"
-          description="Try another filter or add a gem with this category."
+          title={hasSearch ? 'No matching gems' : 'No gems in this category'}
+          description={
+            hasSearch
+              ? `Nothing matches "${searchText.trim()}".`
+              : 'Try another filter or add a gem with this category.'
+          }
         />
       ) : (
         <AdminCard className="overflow-hidden">
-          <div className="hidden lg:grid lg:grid-cols-[2.5rem_1fr_10rem_5rem_5rem] gap-3 px-4 py-2 bg-vailo-surface-elevated border-b border-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+          <div className="hidden lg:grid lg:grid-cols-[2.5rem_1fr_10rem_5rem_5rem] gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200/80 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
             <span />
             <span>Place</span>
             <span>Categories</span>
             <span>Rating</span>
             <span className="text-right">Actions</span>
           </div>
-          <ul className="divide-y divide-gray-50">
-            {filteredGems.map((gem) => {
+          <ul className="divide-y divide-gray-200/80">
+            {filteredGems.map((gem, index) => {
               const gemCats = gemCategoryPrimaries(
                 gem,
                 categoryCatalogDocs,
                 localeSettings.primaryLocale
               );
               return (
-                <li key={gem.id}>
-                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 min-h-[52px] hover:bg-orange-50/30 transition-colors">
+                <li key={gem.id} className={areaGemRowClass(index)}>
+                  <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 min-h-[52px]">
                     <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-lg bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
                       {gem.photoUrl ? (
                         <img
@@ -766,6 +873,11 @@ export default function AreaLocalGems() {
                           {gem.isDailyTrip && (
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-teal/10 text-vailo-teal">
                               Day trip
+                            </span>
+                          )}
+                          {gem.insertedByLabel && (
+                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">
+                              {gem.insertedByLabel}
                             </span>
                           )}
                         </div>

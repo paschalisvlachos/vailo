@@ -1,3 +1,5 @@
+import { formatCurrencyAmount } from './excursion';
+
 export const EXCURSION_DISCOUNTS_SUBCOLLECTION = 'discounts';
 
 export type ExcursionDiscountType = 'group_size' | 'promo_code';
@@ -122,11 +124,7 @@ export function formatDiscountValue(
   if (discount.valueType === 'percent') {
     return `${discount.value}% off`;
   }
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2,
-  }).format(discount.value);
+  return formatCurrencyAmount(discount.value, currency);
 }
 
 export function discountOfferSummary(

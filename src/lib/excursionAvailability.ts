@@ -16,6 +16,8 @@ export type ExcursionAvailability = {
   status: ExcursionAvailabilityStatus;
   capacityTotal: number;
   capacityBooked?: number;
+  /** When true, bookings are not capped by capacityTotal. */
+  capacityUnlimited?: boolean;
   /** HH:mm — optional departure time */
   departureTime?: string;
   priceOverrides?: ExcursionParticipantPrices;
@@ -26,6 +28,7 @@ export type ExcursionAvailability = {
 
 export type ExcursionAvailabilityFormData = {
   status: ExcursionAvailabilityStatus;
+  capacityUnlimited: boolean;
   capacityTotal: string;
   departureTime: string;
   overridePrices: boolean;
@@ -38,6 +41,7 @@ export type ExcursionAvailabilityFormData = {
 
 export const EMPTY_AVAILABILITY_FORM: ExcursionAvailabilityFormData = {
   status: 'open',
+  capacityUnlimited: false,
   capacityTotal: '20',
   departureTime: '',
   overridePrices: false,
@@ -137,6 +141,7 @@ export function availabilityFromDoc(id: string, data: Record<string, unknown>): 
       data.status === 'closed' || data.status === 'sold_out' ? data.status : 'open',
     capacityTotal: Number(data.capacityTotal) || 0,
     capacityBooked: data.capacityBooked != null ? Number(data.capacityBooked) : 0,
+    capacityUnlimited: data.capacityUnlimited === true,
     departureTime: data.departureTime ? String(data.departureTime) : undefined,
     priceOverrides,
     notes: data.notes ? String(data.notes) : undefined,
@@ -167,7 +172,10 @@ export function availabilityFormFromDoc(
   const overrides = availability.priceOverrides;
   return {
     status: availability.status,
-    capacityTotal: String(availability.capacityTotal || defaults.capacityTotal || 20),
+    capacityUnlimited: availability.capacityUnlimited === true,
+    capacityTotal: availability.capacityUnlimited
+      ? String(availability.capacityTotal || defaults.capacityTotal || 20)
+      : String(availability.capacityTotal || defaults.capacityTotal || 20),
     departureTime: availability.departureTime || '',
     overridePrices: Boolean(overrides),
     priceAdult: overrides?.adult != null ? String(overrides.adult) : '',
@@ -199,7 +207,12 @@ export function availabilityPayloadFromForm(
   return {
     date: dateIso,
     status: form.status,
-    capacityTotal: Number.isFinite(capacityTotal) ? capacityTotal : 0,
+    capacityTotal: form.capacityUnlimited
+      ? 0
+      : Number.isFinite(capacityTotal)
+        ? capacityTotal
+        : 0,
+    capacityUnlimited: form.capacityUnlimited || undefined,
     departureTime: form.departureTime.trim() || undefined,
     priceOverrides,
     notes: form.notes.trim() || undefined,
@@ -219,20 +232,22 @@ export function validateAvailabilityForm(
   const errors: ExcursionAvailabilityFieldError[] = [];
 
   if (form.status === 'open') {
-    const capacity = parseInt(form.capacityTotal, 10);
     const booked = existing?.capacityBooked || 0;
-    if (!form.capacityTotal.trim() || !Number.isFinite(capacity) || capacity < 1) {
-      errors.push({
-        field: 'capacityTotal',
-        label: 'Capacity',
-        message: 'Enter a valid capacity (at least 1).',
-      });
-    } else if (capacity < booked) {
-      errors.push({
-        field: 'capacityTotal',
-        label: 'Capacity',
-        message: `Capacity cannot be below ${booked} already booked.`,
-      });
+    if (!form.capacityUnlimited) {
+      const capacity = parseInt(form.capacityTotal, 10);
+      if (!form.capacityTotal.trim() || !Number.isFinite(capacity) || capacity < 1) {
+        errors.push({
+          field: 'capacityTotal',
+          label: 'Capacity',
+          message: 'Enter a valid capacity (at least 1).',
+        });
+      } else if (capacity < booked) {
+        errors.push({
+          field: 'capacityTotal',
+          label: 'Capacity',
+          message: `Capacity cannot be below ${booked} already booked.`,
+        });
+      }
     }
   }
 
@@ -276,7 +291,50 @@ export function formatAvailabilityPriceSummary(
   });
 }
 
+export function isAvailabilityCapacityUnlimited(
+  availability: Pick<ExcursionAvailability, 'capacityUnlimited'>
+): boolean {
+  return availability.capacityUnlimited === true;
+}
+
 export function availabilityRemaining(availability: ExcursionAvailability): number {
+  if (isAvailabilityCapacityUnlimited(availability)) {
+    return Number.MAX_SAFE_INTEGER;
+  }
   const booked = availability.capacityBooked || 0;
   return Math.max(0, availability.capacityTotal - booked);
+}
+
+export function availabilityHasRoomFor(
+  availability: ExcursionAvailability,
+  participantCount: number
+): boolean {
+  if (participantCount <= 0) return false;
+  if (isAvailabilityCapacityUnlimited(availability)) return true;
+  return availabilityRemaining(availability) >= participantCount;
+}
+
+export function isAvailabilityDayBookable(
+  availability: ExcursionAvailability,
+  todayIso?: string
+): boolean {
+  const today = todayIso || new Date().toISOString().slice(0, 10);
+  if (availability.status !== 'open') return false;
+  if (availability.date < today) return false;
+  return isAvailabilityCapacityUnlimited(availability) || availabilityRemaining(availability) > 0;
+}
+
+export function formatAvailabilitySpotsLabel(availability: ExcursionAvailability): string {
+  if (isAvailabilityCapacityUnlimited(availability)) return 'Unlimited';
+  const remaining = availabilityRemaining(availability);
+  if (remaining === Number.MAX_SAFE_INTEGER) return 'Unlimited';
+  return `${remaining} left`;
+}
+
+export function formatAvailabilityCapacitySummary(availability: ExcursionAvailability): string {
+  if (isAvailabilityCapacityUnlimited(availability)) {
+    const booked = availability.capacityBooked || 0;
+    return booked > 0 ? `${booked} booked · Unlimited` : 'Unlimited';
+  }
+  return `${availabilityRemaining(availability)} / ${availability.capacityTotal} spots`;
 }

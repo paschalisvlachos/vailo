@@ -23,6 +23,7 @@ import {
   type ExcursionProvider,
   type ExcursionProviderStatus,
 } from '../../../lib/excursionProvider';
+import { formatCurrencyAmount } from '../../../lib/excursion';
 import { adminExcursionsListPath } from '../../../lib/excursion';
 import AdminPageHeader, {
   AdminButtonLink,
@@ -289,7 +290,7 @@ export default function ExcursionProvidersPage() {
                     <td className="px-4 sm:px-6 py-4">
                       {provider.commissionType === 'fixed_per_booking' ? (
                         <span className="font-medium text-vailo-dark tabular-nums">
-                          €{provider.fixedCommissionAmount ?? 0} / booking
+                          {formatCurrencyAmount(provider.fixedCommissionAmount ?? 0, 'EUR')} / booking
                         </span>
                       ) : (
                         <span className="font-medium text-vailo-dark tabular-nums">

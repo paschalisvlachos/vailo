@@ -8,7 +8,7 @@ import {
   EXCURSION_PROVIDER_COLLECTION,
   EXCURSION_SUBCOLLECTION,
 } from './excursionProvider';
-import { EXCURSION_AVAILABILITY_SUBCOLLECTION } from './excursionAvailability';
+import { EXCURSION_AVAILABILITY_SUBCOLLECTION, isAvailabilityCapacityUnlimited } from './excursionAvailability';
 import { EXCURSION_DISCOUNTS_SUBCOLLECTION } from './excursionDiscount';
 import {
   EXCURSION_BOOKINGS_SUBCOLLECTION,
@@ -91,16 +91,21 @@ export async function createExcursionBookingRecord(
       if (!availSnap.exists() || availSnap.data().status !== 'open') {
         throw new Error('This date is no longer available.');
       }
-      const capacityTotal = Number(availSnap.data().capacityTotal) || 0;
-      const capacityBooked = Number(availSnap.data().capacityBooked) || 0;
+      const availData = availSnap.data();
+      const unlimited = isAvailabilityCapacityUnlimited({
+        capacityUnlimited: availData.capacityUnlimited === true,
+      });
+      const capacityTotal = Number(availData.capacityTotal) || 0;
+      const capacityBooked = Number(availData.capacityBooked) || 0;
       const nextBooked = capacityBooked + booking.participantCount;
-      if (nextBooked > capacityTotal) {
+      if (!unlimited && nextBooked > capacityTotal) {
         throw new Error('Not enough capacity for this booking.');
       }
 
       transaction.update(availRef, {
         capacityBooked: nextBooked,
-        status: nextBooked >= capacityTotal ? 'sold_out' : 'open',
+        status:
+          !unlimited && nextBooked >= capacityTotal ? 'sold_out' : 'open',
         updatedAt: new Date().toISOString(),
       });
 
@@ -162,15 +167,20 @@ export async function updateExcursionBookingStatus(
       if (!availSnap.exists() || availSnap.data().status === 'closed') {
         throw new Error('This date is not open for booking.');
       }
-      const capacityTotal = Number(availSnap.data().capacityTotal) || 0;
-      const capacityBooked = Number(availSnap.data().capacityBooked) || 0;
+      const availData = availSnap.data();
+      const unlimited = isAvailabilityCapacityUnlimited({
+        capacityUnlimited: availData.capacityUnlimited === true,
+      });
+      const capacityTotal = Number(availData.capacityTotal) || 0;
+      const capacityBooked = Number(availData.capacityBooked) || 0;
       const nextBooked = capacityBooked + booking.participantCount;
-      if (nextBooked > capacityTotal) {
+      if (!unlimited && nextBooked > capacityTotal) {
         throw new Error('Not enough capacity to confirm this booking.');
       }
       transaction.update(availRef, {
         capacityBooked: nextBooked,
-        status: nextBooked >= capacityTotal ? 'sold_out' : 'open',
+        status:
+          !unlimited && nextBooked >= capacityTotal ? 'sold_out' : 'open',
         updatedAt: new Date().toISOString(),
       });
 

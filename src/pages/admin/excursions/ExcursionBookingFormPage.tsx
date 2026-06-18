@@ -8,7 +8,9 @@ import { EXCURSION_PROVIDER_COLLECTION, EXCURSION_SUBCOLLECTION } from '../../..
 import { excursionFromDoc, formatExcursionPrice, type Excursion } from '../../../lib/excursion';
 import {
   availabilityFromDoc,
-  availabilityRemaining,
+  availabilityHasRoomFor,
+  formatAvailabilitySpotsLabel,
+  isAvailabilityDayBookable,
   type ExcursionAvailability,
 } from '../../../lib/excursionAvailability';
 import { discountFromDoc, type ExcursionDiscount } from '../../../lib/excursionDiscount';
@@ -100,12 +102,7 @@ export default function ExcursionBookingFormPage() {
         setOpenDates(
           snapshot.docs
             .map((d) => availabilityFromDoc(d.id, d.data()))
-            .filter(
-              (day) =>
-                day.status === 'open' &&
-                day.date >= today &&
-                availabilityRemaining(day) > 0
-            )
+            .filter((day) => isAvailabilityDayBookable(day, today))
             .sort((a, b) => a.date.localeCompare(b.date))
         );
         setAvailabilityLoading(false);
@@ -185,7 +182,7 @@ export default function ExcursionBookingFormPage() {
     }
 
     const participantCount = totalParticipants(participantCountFromForm(formData));
-    if (selectedAvailability && participantCount > availabilityRemaining(selectedAvailability)) {
+    if (selectedAvailability && !availabilityHasRoomFor(selectedAvailability, participantCount)) {
       toast.error('Not enough spots left on this date.');
       return;
     }
@@ -271,7 +268,7 @@ export default function ExcursionBookingFormPage() {
                     <option value="">Select open date</option>
                     {openDates.map((day) => (
                       <option key={day.date} value={day.date}>
-                        {day.date} · {availabilityRemaining(day)} spots left
+                        {day.date} · {formatAvailabilitySpotsLabel(day)}
                         {day.departureTime ? ` · ${day.departureTime}` : ''}
                       </option>
                     ))}

@@ -513,7 +513,17 @@ export default function ExcursionFormPage() {
                     onChange={handleChange}
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-3">
+                    <input
+                      type="checkbox"
+                      name="maxParticipantsUnlimited"
+                      checked={formData.maxParticipantsUnlimited}
+                      onChange={handleChange}
+                      className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                    />
+                    Unlimited maximum group size
+                  </label>
                   <AdminLabel htmlFor="maxParticipants">Max number of people</AdminLabel>
                   <AdminInput
                     id="maxParticipants"
@@ -522,9 +532,15 @@ export default function ExcursionFormPage() {
                     min={1}
                     value={formData.maxParticipants}
                     onChange={handleChange}
+                    disabled={formData.maxParticipantsUnlimited}
                     className={fieldErrorClass(Boolean(fieldErrors.maxParticipants))}
                   />
                   <FieldError message={fieldErrors.maxParticipants} />
+                  {formData.maxParticipantsUnlimited && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      No cap on how many guests can book in one reservation.
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
@@ -567,7 +583,7 @@ export default function ExcursionFormPage() {
                       onChange={handleChange}
                       className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
                     />
-                    Show lowest price as &ldquo;from&rdquo; (e.g. from €110)
+                    Show lowest price as &ldquo;from&rdquo; (e.g. from 110.00 €)
                   </label>
                 </div>
               </div>

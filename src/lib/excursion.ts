@@ -66,6 +66,8 @@ export type Excursion = {
   showPriceFrom?: boolean;
   minParticipants?: number;
   maxParticipants?: number;
+  /** When true, bookings are not limited by maxParticipants. */
+  maxParticipantsUnlimited?: boolean;
   bookingMode: ExcursionBookingMode;
   cutoffHoursBefore?: number;
   advanceBookingDaysMax?: number;
@@ -100,6 +102,7 @@ export type ExcursionFormData = {
   showPriceFrom: boolean;
   minParticipants: string;
   maxParticipants: string;
+  maxParticipantsUnlimited: boolean;
   bookingMode: ExcursionBookingMode;
   cutoffHoursBefore: string;
   advanceBookingDaysMax: string;
@@ -132,6 +135,7 @@ export const EMPTY_EXCURSION_FORM: ExcursionFormData = {
   showPriceFrom: true,
   minParticipants: '1',
   maxParticipants: '20',
+  maxParticipantsUnlimited: false,
   bookingMode: 'request',
   cutoffHoursBefore: '24',
   advanceBookingDaysMax: '90',
@@ -388,7 +392,22 @@ export function excursionSeasonsSummary(excursion: Pick<Excursion, 'seasonPrices
   return seasons.map((s) => formatExcursionSeasonRange(s)).join(' · ');
 }
 
+export function isExcursionMaxParticipantsUnlimited(
+  excursion: Pick<Excursion, 'maxParticipantsUnlimited' | 'maxParticipants'>
+): boolean {
+  return excursion.maxParticipantsUnlimited === true;
+}
+
+export function excursionEffectiveMaxParticipants(
+  excursion: Pick<Excursion, 'maxParticipantsUnlimited' | 'maxParticipants'>
+): number | undefined {
+  if (isExcursionMaxParticipantsUnlimited(excursion)) return undefined;
+  return excursion.maxParticipants;
+}
+
 export function excursionFormFromDoc(data: Record<string, unknown>): ExcursionFormData {
+  const maxUnlimited =
+    data.maxParticipantsUnlimited === true || data.maxParticipants == null;
   return {
     title: String(data.title || ''),
     subtitle: String(data.subtitle || ''),
@@ -411,7 +430,11 @@ export function excursionFormFromDoc(data: Record<string, unknown>): ExcursionFo
     currency: String(data.currency || 'EUR'),
     showPriceFrom: data.showPriceFrom !== false,
     minParticipants: data.minParticipants != null ? String(data.minParticipants) : '1',
-    maxParticipants: data.maxParticipants != null ? String(data.maxParticipants) : '',
+    maxParticipantsUnlimited: maxUnlimited,
+    maxParticipants:
+      data.maxParticipants != null && !maxUnlimited
+        ? String(data.maxParticipants)
+        : '20',
     bookingMode: data.bookingMode === 'instant' ? 'instant' : 'request',
     cutoffHoursBefore:
       data.cutoffHoursBefore != null ? String(data.cutoffHoursBefore) : '24',
@@ -463,7 +486,12 @@ export function excursionPayloadFromForm(
     seasonPrices: seasonPricesPayloadFromForm(seasonPriceRows),
     showPriceFrom: form.showPriceFrom,
     minParticipants: Number.isFinite(minParticipants) ? minParticipants : undefined,
-    maxParticipants: Number.isFinite(maxParticipants) ? maxParticipants : undefined,
+    maxParticipantsUnlimited: form.maxParticipantsUnlimited || undefined,
+    maxParticipants: form.maxParticipantsUnlimited
+      ? undefined
+      : Number.isFinite(maxParticipants)
+        ? maxParticipants
+        : undefined,
     bookingMode: form.bookingMode,
     cutoffHoursBefore: Number.isFinite(cutoffHoursBefore) ? cutoffHoursBefore : undefined,
     advanceBookingDaysMax: Number.isFinite(advanceBookingDaysMax)
@@ -558,12 +586,20 @@ export function validateExcursionForm(
 
   const minP = parseInt(form.minParticipants, 10);
   const maxP = parseInt(form.maxParticipants, 10);
-  if (form.maxParticipants.trim() && Number.isFinite(minP) && Number.isFinite(maxP) && maxP < minP) {
-    errors.push({
-      field: 'maxParticipants',
-      label: 'Max participants',
-      message: 'Max participants must be at least the minimum.',
-    });
+  if (!form.maxParticipantsUnlimited) {
+    if (!form.maxParticipants.trim() || !Number.isFinite(maxP) || maxP < 1) {
+      errors.push({
+        field: 'maxParticipants',
+        label: 'Max participants',
+        message: 'Enter a maximum or select unlimited.',
+      });
+    } else if (Number.isFinite(minP) && maxP < minP) {
+      errors.push({
+        field: 'maxParticipants',
+        label: 'Max participants',
+        message: 'Max participants must be at least the minimum.',
+      });
+    }
   }
 
   return errors;
@@ -609,16 +645,30 @@ export function excursionFromDoc(id: string, data: Record<string, unknown>): Exc
   return excursion;
 }
 
+export function formatCurrencyAmountParts(
+  amount: number,
+  currency = 'EUR'
+): { amount: string; symbol: string } {
+  const amountStr = new Intl.NumberFormat('en-GB', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+  const symbols: Record<string, string> = { EUR: '€', GBP: '£', USD: '$' };
+  return { amount: amountStr, symbol: symbols[currency] || currency };
+}
+
+/** Currency with symbol on the right — e.g. `45.00 €`. */
+export function formatCurrencyAmount(amount: number, currency = 'EUR'): string {
+  const { amount: value, symbol } = formatCurrencyAmountParts(amount, currency);
+  return `${value} ${symbol}`;
+}
+
 export function formatExcursionPrice(
   amount: number | undefined,
   currency = 'EUR',
   options?: { from?: boolean }
 ): string {
   if (amount == null || !Number.isFinite(amount)) return '—';
-  const formatted = new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  const formatted = formatCurrencyAmount(amount, currency);
   return options?.from ? `from ${formatted}` : formatted;
 }

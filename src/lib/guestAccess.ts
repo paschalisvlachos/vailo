@@ -123,6 +123,14 @@ export function sessionMatchesUnit(
   return session.propertyId === propertyId && session.typeId === typeId;
 }
 
+/** Guest name for booking forms — skips admin preview / tester placeholder names. */
+export function guestBookingNamePrefill(): string {
+  const session = readGuestPortalSession();
+  if (!session?.guestName?.trim()) return '';
+  if (session.source === 'admin_preview' || session.source === 'tester') return '';
+  return session.guestName.trim();
+}
+
 /** Admin “Preview portal” — requires signed-in admin + Cloud Function (not a public bypass). */
 export function buildAdminGuestPortalPreviewUrl(
   origin: string,

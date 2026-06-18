@@ -38,10 +38,10 @@ import {
   availabilityFormFromDoc,
   availabilityFromDoc,
   availabilityPayloadFromForm,
-  availabilityRemaining,
   availabilityStatusLabel,
   availabilityValidationSummary,
   findSeasonPriceForDate,
+  formatAvailabilityCapacitySummary,
   formatAvailabilityPriceSummary,
   monthDateRange,
   parseAvailabilityDateId,
@@ -480,7 +480,7 @@ export default function ExcursionAvailabilityPage() {
                     </p>
                     {availability.status === 'open' && (
                       <p className="text-[10px] text-gray-600 leading-tight">
-                        {availabilityRemaining(availability)} / {availability.capacityTotal} spots
+                        {formatAvailabilityCapacitySummary(availability)}
                       </p>
                     )}
                     {availability.departureTime && (
@@ -539,6 +539,17 @@ export default function ExcursionAvailabilityPage() {
 
               {formData.status === 'open' && (
                 <>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-3">
+                    <input
+                      type="checkbox"
+                      name="capacityUnlimited"
+                      checked={formData.capacityUnlimited}
+                      onChange={handleFormChange}
+                      className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                    />
+                    Unlimited spaces (no capacity cap)
+                  </label>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <AdminLabel htmlFor="capacityTotal">Capacity (spots) *</AdminLabel>
@@ -549,8 +560,14 @@ export default function ExcursionAvailabilityPage() {
                         min={1}
                         value={formData.capacityTotal}
                         onChange={handleFormChange}
+                        disabled={formData.capacityUnlimited}
                       />
                       <FieldError message={fieldErrors.capacityTotal} />
+                      {formData.capacityUnlimited && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Bookings won&apos;t be limited by spot count.
+                        </p>
+                      )}
                       {(selectedAvailability?.capacityBooked || 0) > 0 && (
                         <p className="text-xs text-gray-500 mt-1">
                           {selectedAvailability?.capacityBooked} already booked

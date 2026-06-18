@@ -45,6 +45,8 @@ import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import { isGuestPortalAccessRequired, type GuestPortalSession } from '../../lib/guestAccess';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
+import { resolvePropertyTypeAreaContext } from '../../lib/listingAreaContext';
+import { loadGuestExcursionsForArea } from '../../lib/guestExcursions';
 import {
   formatGuestSlug,
   getTypePublicSlug,
@@ -340,7 +342,7 @@ function GuestPortalPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant'>('portal');
+  const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant' | 'excursions'>('portal');
   // Starts in mobile view by default!
   const [viewMode, setViewMode] = useState<'web' | 'mobile'>('mobile');
   const [copiedWifi, setCopiedWifi] = useState(false);
@@ -357,7 +359,6 @@ function GuestPortalPage({
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
   const [excursionsAvailable, setExcursionsAvailable] = useState(false);
-  const excursionsSectionRef = useRef<HTMLElement | null>(null);
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
@@ -372,12 +373,7 @@ function GuestPortalPage({
 
   const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
-  const scrollToExcursions = useCallback(() => {
-    setActiveView('portal');
-    requestAnimationFrame(() => {
-      excursionsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, []);
+  const openExcursions = useCallback(() => setActiveView('excursions'), []);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -510,6 +506,36 @@ function GuestPortalPage({
       fetchWeather();
     }
   }, [property, typeData]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkExcursions() {
+      if (!typeData) {
+        setExcursionsAvailable(false);
+        return;
+      }
+
+      try {
+        const { ctx } = await resolvePropertyTypeAreaContext(typeData);
+        if (!ctx) {
+          if (!cancelled) setExcursionsAvailable(false);
+          return;
+        }
+
+        const items = await loadGuestExcursionsForArea(ctx);
+        if (!cancelled) setExcursionsAvailable(items.length > 0);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) setExcursionsAvailable(false);
+      }
+    }
+
+    checkExcursions();
+    return () => {
+      cancelled = true;
+    };
+  }, [typeData?.country, typeData?.city]);
 
   const wifiName = typeData?.wifiName || guide?.wifiName || property?.wifiName;
   const wifiPassword = typeData?.wifiPassword || guide?.wifiPassword || property?.wifiPassword;
@@ -714,7 +740,7 @@ function GuestPortalPage({
                       onLiveLikeLocal={openLiveLikeLocal}
                       onAssistant={openAssistant}
                       showExcursions={excursionsAvailable}
-                      onExcursions={scrollToExcursions}
+                      onExcursions={openExcursions}
                     />
                     <div className="flex items-center gap-2">
                       <GuestLanguageMenu
@@ -894,13 +920,6 @@ function GuestPortalPage({
                 />
               )}
 
-              <GuestExcursions
-                propertyType={typeData}
-                sectionRef={excursionsSectionRef}
-                onOverlayOpenChange={setExcursionOverlayOpen}
-                onListingCountChange={(count) => setExcursionsAvailable(count > 0)}
-              />
-
               {gems.length > 0 && (
                 <section
                   className={
@@ -977,6 +996,12 @@ function GuestPortalPage({
             locale={locale}
             setLocale={setLocale}
             localeOptions={localeOptions}
+          />
+        ) : activeView === 'excursions' ? (
+          <GuestExcursions
+            propertyType={typeData}
+            onClose={() => setActiveView('portal')}
+            onOverlayOpenChange={setExcursionOverlayOpen}
           />
         ) : (
           <GuestPropertyAssistant

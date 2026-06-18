@@ -1,4 +1,5 @@
 import type { Excursion, ExcursionParticipantPrices } from './excursion';
+import { excursionEffectiveMaxParticipants } from './excursion';
 import type { ExcursionAvailability } from './excursionAvailability';
 import { resolvePricesForDate } from './excursionAvailability';
 import type { ExcursionDiscount, ExcursionDiscountParticipant } from './excursionDiscount';
@@ -420,6 +421,7 @@ export function validateBookingForm(
     excursion: Excursion;
     availability: ExcursionAvailability | null;
     discounts: ExcursionDiscount[];
+    requireGuestContact?: boolean;
   }
 ): ExcursionBookingFieldError[] {
   const errors: ExcursionBookingFieldError[] = [];
@@ -434,6 +436,15 @@ export function validateBookingForm(
     errors.push({ field: 'guestName', label: 'Guest name', message: 'Guest name is required.' });
   }
 
+  if (ctx.requireGuestContact) {
+    if (!form.guestEmail.trim()) {
+      errors.push({ field: 'guestEmail', label: 'Email', message: 'Email is required.' });
+    }
+    if (!form.guestPhone.trim()) {
+      errors.push({ field: 'guestPhone', label: 'Phone', message: 'Phone number is required.' });
+    }
+  }
+
   if (participantCount <= 0) {
     errors.push({
       field: 'adults',
@@ -443,7 +454,7 @@ export function validateBookingForm(
   }
 
   const minP = ctx.excursion.minParticipants ?? 1;
-  const maxP = ctx.excursion.maxParticipants;
+  const maxP = excursionEffectiveMaxParticipants(ctx.excursion);
   if (participantCount < minP) {
     errors.push({
       field: 'adults',

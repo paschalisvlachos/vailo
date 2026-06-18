@@ -248,6 +248,7 @@ export default function OwnerFormPage() {
                     <option value="admin">Admin</option>
                     <option value="agent">Agent</option>
                     <option value="owner">Owner</option>
+                    <option value="excursion_provider">Excursion provider</option>
                   </AdminSelect>
                 </div>
                 <div>
@@ -272,7 +273,11 @@ export default function OwnerFormPage() {
                     placeholder={isEdit ? 'Leave blank to keep current' : '••••••••'}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {isEdit ? 'Only fill in to change the password' : 'Temporary password for initial login'}
+                    {isEdit
+                      ? 'Only fill in to change the password'
+                      : 'Temporary password for initial login'}
+                    {formData.role === 'excursion_provider' &&
+                      ' — then link this user to a provider under Excursions → Edit provider → Portal access.'}
                   </p>
                 </div>
               </div>

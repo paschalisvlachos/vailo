@@ -10,6 +10,7 @@ import GuestReportIssueSheet from '../../components/guest/GuestReportIssueSheet'
 import GuestPropertyAssistant from '../../components/guest/GuestPropertyAssistant';
 import PropertyEssentials from '../../components/guest/PropertyEssentials';
 import GuestLocalServices from '../../components/guest/GuestLocalServices';
+import GuestExcursions from '../../components/guest/GuestExcursions';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
@@ -354,6 +355,9 @@ function GuestPortalPage({
   const [portalMenuOpen, setPortalMenuOpen] = useState(false);
   const [featuredPreviewKey, setFeaturedPreviewKey] = useState<FeaturedKey | null>(null);
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
+  const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
+  const [excursionsAvailable, setExcursionsAvailable] = useState(false);
+  const excursionsSectionRef = useRef<HTMLElement | null>(null);
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
@@ -368,6 +372,12 @@ function GuestPortalPage({
 
   const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
+  const scrollToExcursions = useCallback(() => {
+    setActiveView('portal');
+    requestAnimationFrame(() => {
+      excursionsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -703,6 +713,8 @@ function GuestPortalPage({
                       onFeaturedPreview={setFeaturedPreviewKey}
                       onLiveLikeLocal={openLiveLikeLocal}
                       onAssistant={openAssistant}
+                      showExcursions={excursionsAvailable}
+                      onExcursions={scrollToExcursions}
                     />
                     <div className="flex items-center gap-2">
                       <GuestLanguageMenu
@@ -882,6 +894,13 @@ function GuestPortalPage({
                 />
               )}
 
+              <GuestExcursions
+                propertyType={typeData}
+                sectionRef={excursionsSectionRef}
+                onOverlayOpenChange={setExcursionOverlayOpen}
+                onListingCountChange={(count) => setExcursionsAvailable(count > 0)}
+              />
+
               {gems.length > 0 && (
                 <section
                   className={
@@ -987,6 +1006,7 @@ function GuestPortalPage({
 
       {activeView === 'portal' &&
         !serviceDetailOpen &&
+        !excursionOverlayOpen &&
         !propertyMapOpen &&
         !reportSheetOpen &&
         !featuredPreviewKey &&

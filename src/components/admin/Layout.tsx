@@ -11,13 +11,16 @@ import {
   BookOpen,
   Menu,
   X,
+  Compass,
+  MapPin,
+  ClipboardList,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
-import { scopeFromRoute, scopeKey } from '../../lib/adminAccess';
+import { scopeFromRoute, scopeKey, isExcursionProvider } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
@@ -43,6 +46,11 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    id: 'excursions',
+    label: 'Excursions',
+    items: [{ icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') }],
+  },
+  {
     id: 'knowledge',
     label: 'Knowledge',
     items: [{ icon: BookOpen, label: 'Knowledge base', to: adminPath('/knowledge') }],
@@ -63,7 +71,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [location.pathname, location.search, scopes, activeScope, isScopedUser, setActiveScope]);
 
-  const navSections = isScopedUser
+  const navSections = isExcursionProvider(profile)
+    ? (() => {
+        const providerScope = scopes.find((s) => s.kind === 'excursion_provider');
+        const providerId =
+          providerScope?.kind === 'excursion_provider' ? providerScope.providerId : null;
+        const profilePath = providerId
+          ? adminPath(`/excursion-portal/${providerId}`)
+          : adminPath('/excursion-portal');
+        const excursionsPath = providerId
+          ? adminPath(`/excursion-portal/${providerId}/excursions`)
+          : adminPath('/excursion-portal');
+        const bookingsPath = providerId
+          ? adminPath(`/excursion-portal/${providerId}/bookings`)
+          : adminPath('/excursion-portal');
+        return [
+          {
+            id: 'excursion-portal',
+            label: 'Excursion portal',
+            items: [
+              { icon: Compass, label: 'My business', to: profilePath },
+              { icon: MapPin, label: 'Excursions', to: excursionsPath },
+              { icon: ClipboardList, label: 'Bookings', to: bookingsPath },
+            ],
+          },
+        ];
+      })()
+    : isScopedUser
     ? [
         {
           id: 'portfolio',
@@ -102,7 +136,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white font-luxury">Vailo</h1>
             <p className="text-[11px] text-white/45 font-medium tracking-wide">
-              {isScopedUser ? profile?.role || 'Portal' : 'Admin Panel'}
+              {isExcursionProvider(profile)
+                ? 'Excursion portal'
+                : isScopedUser
+                  ? profile?.role || 'Portal'
+                  : 'Admin Panel'}
             </p>
           </div>
         </div>
@@ -121,7 +159,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   icon={<item.icon size={19} strokeWidth={1.75} />}
                   label={item.label}
                   to={item.to}
-                  badge={item.badgeOnArea ? newDiscoveredCount : 0}
+                  badge={'badgeOnArea' in item && item.badgeOnArea ? newDiscoveredCount : 0}
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
@@ -223,10 +261,14 @@ function NavItem({
   onNavigate?: () => void;
 }) {
   const location = useLocation();
+  const pathname = location.pathname;
+  const isProviderProfileLink = /\/excursion-portal\/[^/]+$/.test(to);
   const active =
     to === ADMIN_BASE
-      ? location.pathname === ADMIN_BASE
-      : location.pathname === to || location.pathname.startsWith(`${to}/`);
+      ? pathname === ADMIN_BASE
+      : pathname === to ||
+        (pathname.startsWith(`${to}/`) &&
+          !(isProviderProfileLink && pathname.includes('/excursions')));
 
   return (
     <Link

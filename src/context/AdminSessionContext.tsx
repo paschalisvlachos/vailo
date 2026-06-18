@@ -43,7 +43,12 @@ type AdminSessionContextValue = {
 const AdminSessionContext = createContext<AdminSessionContextValue | null>(null);
 
 function parseOwnerProfile(id: string, data: Record<string, unknown>): OwnerProfile {
-  const role = data.role === 'admin' || data.role === 'agent' ? data.role : 'owner';
+  const role =
+    data.role === 'admin' ||
+    data.role === 'agent' ||
+    data.role === 'excursion_provider'
+      ? data.role
+      : 'owner';
   return {
     id,
     fullName: typeof data.fullName === 'string' ? data.fullName : '',
@@ -70,7 +75,11 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       ownerId?: string;
     }[]
   >([]);
+  const [linkedExcursionProviders, setLinkedExcursionProviders] = useState<
+    { id: string; businessName?: string }[]
+  >([]);
   const [dataReady, setDataReady] = useState(false);
+  const [providersReady, setProvidersReady] = useState(false);
   const [activeScope, setActiveScopeState] = useState<AdminScope | null>(null);
 
   useEffect(() => {
@@ -119,7 +128,9 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
     if (!authUser) {
       setProperties([]);
       setTypes([]);
+      setLinkedExcursionProviders([]);
       setDataReady(true);
+      setProvidersReady(true);
       return;
     }
 
@@ -161,23 +172,59 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
     };
   }, [authUser]);
 
+  useEffect(() => {
+    if (!authUser || profile?.role !== 'excursion_provider' || !profile.id) {
+      setLinkedExcursionProviders([]);
+      setProvidersReady(true);
+      return;
+    }
+
+    setProvidersReady(false);
+    const q = query(
+      collection(db, 'excursionProviders'),
+      where('linkedOwnerIds', 'array-contains', profile.id)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setLinkedExcursionProviders(
+          snap.docs.map((d) => ({
+            id: d.id,
+            businessName: d.data().businessName as string | undefined,
+          }))
+        );
+        setProvidersReady(true);
+      },
+      () => {
+        setLinkedExcursionProviders([]);
+        setProvidersReady(true);
+      }
+    );
+    return () => unsub();
+  }, [authUser, profile?.id, profile?.role]);
+
   const scopes = useMemo(
-    () => buildAdminScopes(profile, properties, types),
-    [profile, properties, types]
+    () => buildAdminScopes(profile, properties, types, linkedExcursionProviders),
+    [profile, properties, types, linkedExcursionProviders]
   );
 
   useEffect(() => {
     if (!authReady || !profileReady || !dataReady) return;
+    if (profile?.role === 'excursion_provider' && !providersReady) return;
     const next = resolveActiveScope(scopes);
     setActiveScopeState(next);
-  }, [authReady, profileReady, dataReady, scopes]);
+  }, [authReady, profileReady, dataReady, providersReady, profile?.role, scopes]);
 
   const setActiveScope = useCallback((scope: AdminScope) => {
     writeStoredScopeKey(scopeKey(scope));
     setActiveScopeState(scope);
   }, []);
 
-  const loading = !authReady || !profileReady || !dataReady;
+  const loading =
+    !authReady ||
+    !profileReady ||
+    !dataReady ||
+    (profile?.role === 'excursion_provider' && !providersReady);
 
   const value = useMemo(
     () => ({

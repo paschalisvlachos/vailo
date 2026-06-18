@@ -26,6 +26,7 @@ import {
   Wrench,
   MessageCircleQuestion,
   ShoppingBag,
+  Compass,
 } from 'lucide-react';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
@@ -77,6 +78,8 @@ type Props = {
   onAssistant: () => void;
   onFeaturedPreview: (key: FeaturedKey) => void;
   featuredOnPortal: FeaturedKey[];
+  onExcursions?: () => void;
+  showExcursions?: boolean;
 };
 
 export default function GuestPortalNavMenu({
@@ -87,6 +90,8 @@ export default function GuestPortalNavMenu({
   onAssistant,
   onFeaturedPreview,
   featuredOnPortal,
+  onExcursions,
+  showExcursions = false,
 }: Props) {
   const close = () => onOpenChange(false);
 
@@ -162,6 +167,21 @@ export default function GuestPortalNavMenu({
                     }}
                   />
                 </li>
+
+                {showExcursions && onExcursions && (
+                  <li>
+                    <MenuRow
+                      label="Excursions"
+                      sub="Book local experiences and day trips"
+                      icon={<Compass size={20} strokeWidth={2} />}
+                      iconVariant="featured"
+                      onClick={() => {
+                        close();
+                        onExcursions();
+                      }}
+                    />
+                  </li>
+                )}
 
                 {featured.length > 0 &&
                   featured.map((key, index) => {

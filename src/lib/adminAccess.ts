@@ -1,4 +1,4 @@
-export type OwnerRole = 'admin' | 'agent' | 'owner';
+export type OwnerRole = 'admin' | 'agent' | 'owner' | 'excursion_provider';
 
 export type OwnerProfile = {
   id: string;
@@ -24,6 +24,12 @@ export type AdminScope =
       propertyName: string;
       listingName: string;
       label: string;
+    }
+  | {
+      kind: 'excursion_provider';
+      providerId: string;
+      providerName: string;
+      label: string;
     };
 
 import { adminPath, ADMIN_BASE } from './adminRoutes';
@@ -47,7 +53,15 @@ export function isPlatformAdmin(profile: OwnerProfile | null): boolean {
 
 export function isScopedUser(profile: OwnerProfile | null): boolean {
   if (!profile) return false;
-  return profile.role === 'agent' || profile.role === 'owner';
+  return (
+    profile.role === 'agent' ||
+    profile.role === 'owner' ||
+    profile.role === 'excursion_provider'
+  );
+}
+
+export function isExcursionProvider(profile: OwnerProfile | null): boolean {
+  return profile?.role === 'excursion_provider';
 }
 
 type PropertyRow = { id: string; propertyName?: string; ownerId?: string };
@@ -57,11 +71,13 @@ type TypeRow = {
   propertyTypeName?: string;
   ownerId?: string;
 };
+type ExcursionProviderRow = { id: string; businessName?: string };
 
 export function buildAdminScopes(
   profile: OwnerProfile | null,
   properties: PropertyRow[],
-  types: TypeRow[]
+  types: TypeRow[],
+  linkedExcursionProviders: ExcursionProviderRow[] = []
 ): AdminScope[] {
   if (!profile || isPlatformAdmin(profile)) {
     return [{ kind: 'platform' }];
@@ -69,6 +85,18 @@ export function buildAdminScopes(
 
   if (profile.status?.toLowerCase() === 'deactive') {
     return [];
+  }
+
+  if (profile.role === 'excursion_provider') {
+    return linkedExcursionProviders.map((provider) => {
+      const name = provider.businessName?.trim() || 'Excursion business';
+      return {
+        kind: 'excursion_provider' as const,
+        providerId: provider.id,
+        providerName: name,
+        label: name,
+      };
+    });
   }
 
   const managedPropertyIds = new Set(
@@ -129,6 +157,7 @@ export function pathForPropertyLanding(
 export function scopeKey(scope: AdminScope): string {
   if (scope.kind === 'platform') return 'platform';
   if (scope.kind === 'property') return `property:${scope.propertyId}`;
+  if (scope.kind === 'excursion_provider') return `excursion_provider:${scope.providerId}`;
   return `listing:${scope.propertyId}:${scope.typeId}`;
 }
 
@@ -166,8 +195,17 @@ export function resolveActiveScope(
 
 export function pathForScope(scope: AdminScope): string {
   if (scope.kind === 'platform') return adminPath('/properties');
+  if (scope.kind === 'excursion_provider') {
+    return adminPath(`/excursion-portal/${scope.providerId}`);
+  }
   if (scope.kind === 'property') return adminPath(`/properties/${scope.propertyId}`);
   return adminPath(`/properties/${scope.propertyId}/types?listing=${scope.typeId}`);
+}
+
+export function pathForExcursionProviderLanding(scopes: AdminScope[]): string {
+  const providerScope = scopes.find((s) => s.kind === 'excursion_provider');
+  if (providerScope) return pathForScope(providerScope);
+  return adminPath('/excursion-portal');
 }
 
 /** Match current route to an assignment scope (for scoped users). */
@@ -176,6 +214,18 @@ export function scopeFromRoute(
   search: string,
   scopes: AdminScope[]
 ): AdminScope | null {
+  const providerMatch = pathname.match(
+    new RegExp(`^${ADMIN_BASE.replace('/', '\\/')}/excursion-portal/([^/]+)`)
+  );
+  if (providerMatch) {
+    const providerId = providerMatch[1];
+    return (
+      scopes.find(
+        (s) => s.kind === 'excursion_provider' && s.providerId === providerId
+      ) || null
+    );
+  }
+
   const propertyMatch = pathname.match(
     new RegExp(`^${ADMIN_BASE.replace('/', '\\/')}/properties/([^/]+)`)
   );
@@ -233,10 +283,22 @@ export function canAccessPropertyId(
   scopes: AdminScope[]
 ): boolean {
   if (!profile || isPlatformAdmin(profile)) return true;
+  if (profile.role === 'excursion_provider') return false;
   return scopes.some(
     (s) =>
       (s.kind === 'property' && s.propertyId === propertyId) ||
       (s.kind === 'listing' && s.propertyId === propertyId)
+  );
+}
+
+export function canAccessExcursionProviderId(
+  profile: OwnerProfile | null,
+  providerId: string,
+  scopes: AdminScope[]
+): boolean {
+  if (!profile || isPlatformAdmin(profile)) return true;
+  return scopes.some(
+    (s) => s.kind === 'excursion_provider' && s.providerId === providerId
   );
 }
 

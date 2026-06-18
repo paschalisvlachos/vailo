@@ -7,8 +7,13 @@ import { db } from '../../../lib/firebase';
 import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
 import { formatGuestSlug, getTypePublicSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
+import {
+  buildGuestPortalPublicListingUrl,
+  downloadGuestPortalQrCode,
+  guestPortalQrFilename,
+} from '../../../lib/guestPortalQrCode';
 import { useToast } from '../../../context/ToastContext';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 
 export default function PropertyTypes() {
@@ -35,6 +40,7 @@ export default function PropertyTypes() {
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [qrDownloadingId, setQrDownloadingId] = useState<string | null>(null);
 
   // Master Area Database States
   const [countries, setCountries] = useState<string[]>([]);
@@ -416,6 +422,25 @@ export default function PropertyTypes() {
     toast.info("iCal Sync Initiated! (Backend cloud function required to parse .ics file and map bookings to the database).");
   };
 
+  const handleDownloadQr = async (type: (typeof propertyTypes)[0]) => {
+    const url = buildGuestPortalPublicListingUrl(property, type);
+    if (!url) {
+      toast.warning('Set property and unit URL slugs before downloading the QR code.');
+      return;
+    }
+
+    setQrDownloadingId(type.id);
+    try {
+      await downloadGuestPortalQrCode(url, guestPortalQrFilename(property, type));
+      toast.success('QR code downloaded.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to generate QR code.');
+    } finally {
+      setQrDownloadingId(null);
+    }
+  };
+
   // --- RENDER LIST VIEW --- //
   if (!isFormOpen) {
     return (
@@ -479,33 +504,49 @@ export default function PropertyTypes() {
                       )}
                     </div>
                     
-                    <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
+                    <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100 mt-auto">
                       <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors">
                         <Pencil size={14} className="mr-1.5" /> Edit
                       </button>
-                      <button 
-                        onClick={() => {
-                          const propSlug = formatGuestSlug(property.urlSlug);
-                          const unitSlug = getTypePublicSlug(type);
-                          if (!propSlug || !unitSlug) return;
-                          const url = buildAdminGuestPortalPreviewUrl(
-                            window.location.origin,
-                            propSlug,
-                            unitSlug,
-                            type.id
-                          );
-                          window.open(url, '_blank');
-                        }}
-                        className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
-                        title="Preview Guest Portal"
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadQr(type)}
+                        disabled={qrDownloadingId === type.id}
+                        className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors disabled:opacity-50"
+                        title={buildGuestPortalPublicListingUrl(property, type) || undefined}
                       >
-                        <ExternalLink size={18} />
+                        {qrDownloadingId === type.id ? (
+                          <Loader2 size={14} className="mr-1.5 animate-spin" />
+                        ) : (
+                          <QrCode size={14} className="mr-1.5" />
+                        )}
+                        Download QR
                       </button>
-                      {!isListingOnly && (
-                        <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="flex items-center text-sm font-medium text-gray-400 hover:text-red-600 transition-colors">
-                          <Trash2 size={16} />
+                      <div className="flex items-center gap-1 ml-auto">
+                        <button 
+                          onClick={() => {
+                            const propSlug = formatGuestSlug(property.urlSlug);
+                            const unitSlug = getTypePublicSlug(type);
+                            if (!propSlug || !unitSlug) return;
+                            const url = buildAdminGuestPortalPreviewUrl(
+                              window.location.origin,
+                              propSlug,
+                              unitSlug,
+                              type.id
+                            );
+                            window.open(url, '_blank');
+                          }}
+                          className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
+                          title="Preview Guest Portal"
+                        >
+                          <ExternalLink size={18} />
                         </button>
-                      )}
+                        {!isListingOnly && (
+                          <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -213,191 +213,25 @@
     .phone-stage {
       display: flex;
       justify-content: center;
-      perspective: 1200px;
+      position: relative;
     }
     .phone-float {
       animation: phoneFloat 6s ease-in-out infinite;
     }
     @keyframes phoneFloat {
-      0%, 100% { transform: translateY(0) rotateY(-8deg) rotateX(4deg); }
-      50% { transform: translateY(-12px) rotateY(-6deg) rotateX(2deg); }
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
     }
-    .phone {
-      width: 280px;
-      background: #111;
-      border-radius: 44px;
-      padding: 12px;
-      box-shadow:
-        var(--shadow-lg),
-        inset 0 0 0 2px rgba(255,255,255,0.08),
-        0 0 0 1px rgba(0,0,0,0.4);
-      position: relative;
+    .phone-mockup-img {
+      display: block;
+      width: min(440px, 100%);
+      height: auto;
+      filter: drop-shadow(0 28px 56px rgba(11, 79, 92, 0.22));
     }
-    .phone-notch {
-      position: absolute;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 96px;
-      height: 28px;
-      background: #111;
-      border-radius: 0 0 18px 18px;
-      z-index: 10;
-    }
-    .phone-screen {
-      border-radius: 34px;
-      overflow: hidden;
-      background: var(--surface);
-      height: 580px;
-      position: relative;
-    }
-    .mock-status {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 14px 20px 8px;
-      font-size: 0.65rem;
-      font-weight: 600;
-      color: rgba(255,255,255,0.9);
-      position: relative;
-      z-index: 5;
-    }
-    .mock-hero {
-      position: absolute;
-      inset: 0 0 auto 0;
-      height: 220px;
-      background:
-        linear-gradient(180deg, rgba(5,31,38,0.15) 0%, rgba(5,31,38,0.55) 55%, var(--surface) 100%),
-        linear-gradient(135deg, #1a6b7a 0%, #0B4F5C 40%, #083A43 100%);
-    }
-    .mock-hero::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-      opacity: 0.5;
-    }
-    .mock-topbar {
-      position: relative;
-      z-index: 5;
-      display: flex;
-      justify-content: space-between;
-      padding: 36px 16px 0;
-    }
-    .mock-menu, .mock-map {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.2);
-    }
-    .mock-welcome {
-      position: relative;
-      z-index: 5;
-      text-align: center;
-      padding: 20px 16px 0;
-      color: white;
-    }
-    .mock-welcome p {
-      font-size: 0.6rem;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      opacity: 0.85;
-      margin-bottom: 4px;
-    }
-    .mock-welcome h3 {
-      font-family: var(--font-display);
-      font-size: 1.15rem;
-      font-weight: 500;
-    }
-    .mock-welcome span {
-      font-size: 0.75rem;
-      opacity: 0.8;
-      font-style: italic;
-    }
-    .mock-cards {
-      position: relative;
-      z-index: 5;
-      padding: 16px 14px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .mock-card {
-      background: rgba(255,255,255,0.95);
-      border-radius: 14px;
-      padding: 10px 12px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      box-shadow: 0 4px 16px rgba(11,79,92,0.1);
-    }
-    .mock-card-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, rgba(11,79,92,0.12), rgba(11,79,92,0.06));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .mock-card-icon svg { width: 16px; height: 16px; color: var(--teal); }
-    .mock-card-text p { font-size: 0.55rem; color: #888; text-transform: uppercase; letter-spacing: 0.06em; }
-    .mock-card-text strong { font-size: 0.75rem; color: var(--teal-dark); }
-    .mock-cta {
-      margin: 12px 14px 0;
-      padding: 12px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
-      color: white;
-      text-align: center;
-      font-size: 0.72rem;
-      font-weight: 600;
-      box-shadow: 0 8px 20px rgba(11,79,92,0.3);
-    }
-    .mock-cta span { display: block; font-size: 0.55rem; opacity: 0.75; font-weight: 400; margin-top: 2px; }
-    .mock-section-label {
-      padding: 14px 14px 6px;
-      font-size: 0.6rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--text-muted);
-    }
-    .mock-gem {
-      margin: 0 14px;
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 2px 12px rgba(11,79,92,0.08);
-    }
-    .mock-gem-img {
-      height: 56px;
-      background: linear-gradient(135deg, #d4e8ec 0%, #a8cdd4 100%);
-    }
-    .mock-gem-body { padding: 8px 10px; }
-    .mock-gem-body p { font-size: 0.55rem; color: var(--gold); font-weight: 700; text-transform: uppercase; }
-    .mock-gem-body h4 { font-size: 0.72rem; color: var(--teal-dark); font-family: var(--font-display); }
-    .mock-fab {
-      position: absolute;
-      bottom: 20px;
-      right: 16px;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--gold), #a88648);
-      box-shadow: 0 6px 20px rgba(197,160,89,0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .mock-fab svg { width: 20px; height: 20px; color: white; }
     .phone-glow {
       position: absolute;
-      width: 320px;
-      height: 320px;
+      width: 460px;
+      height: 460px;
       background: radial-gradient(circle, rgba(197,160,89,0.25) 0%, transparent 70%);
       top: 50%;
       left: 50%;
@@ -1051,6 +885,7 @@
       .outcomes-grid { grid-template-columns: 1fr 1fr; }
       .hero-grid { gap: 48px; }
       .phone-stage { order: -1; }
+      .phone-mockup-img { width: min(400px, 90vw); }
       .hero { text-align: center; }
       .hero-lead { margin-inline: auto; }
       .hero-actions, .hero-stats { justify-content: center; }
@@ -1133,61 +968,15 @@
       <div class="phone-stage fade-up">
         <div class="phone-glow"></div>
         <div class="phone-float">
-          <div class="phone">
-            <div class="phone-notch"></div>
-            <div class="phone-screen">
-              <div class="mock-hero">
-                <div class="mock-status">
-                  <span>9:41</span>
-                  <span>●●●</span>
-                </div>
-                <div class="mock-topbar">
-                  <div class="mock-menu"></div>
-                  <div class="mock-map"></div>
-                </div>
-                <div class="mock-welcome">
-                  <p>Welcome to</p>
-                  <h3>Villa Serene</h3>
-                  <span>Sea View Suite</span>
-                </div>
-              </div>
-              <div class="mock-cards">
-                <div class="mock-card">
-                  <div class="mock-card-icon">
-                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0114.08 0M12 20v-9M9 17h6"/></svg>
-                  </div>
-                  <div class="mock-card-text">
-                    <p>Wi‑Fi</p>
-                    <strong>Villa_Guest ·•••••••</strong>
-                  </div>
-                </div>
-                <div class="mock-card">
-                  <div class="mock-card-icon">
-                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41"/></svg>
-                  </div>
-                  <div class="mock-card-text">
-                    <p>Today · Mykonos</p>
-                    <strong>28° · H: 31° L: 24°</strong>
-                  </div>
-                </div>
-              </div>
-              <div class="mock-cta">
-                Live like a local
-                <span>AI-curated day plans &amp; hidden gems</span>
-              </div>
-              <div class="mock-section-label">Local gems</div>
-              <div class="mock-gem">
-                <div class="mock-gem-img"></div>
-                <div class="mock-gem-body">
-                  <p>Beach · 12 min</p>
-                  <h4>Quiet cove at sunset</h4>
-                </div>
-              </div>
-              <div class="mock-fab">
-                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-              </div>
-            </div>
-          </div>
+          <img
+            class="phone-mockup-img"
+            src="guest-portal-mockup.png"
+            alt="Vailo guest portal on mobile — Villa Petra house guide, Wi‑Fi, weather, and local recommendations"
+            width="532"
+            height="1024"
+            loading="eager"
+            decoding="async"
+          />
         </div>
       </div>
     </div>

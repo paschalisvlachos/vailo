@@ -9,6 +9,7 @@ import {
 import { Loader2, Mail, Paperclip, Plus, RefreshCw, Reply, Send, X } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
+import { httpsCallableMessage } from '../../lib/callableError';
 import {
   formatInboxDate,
   getAdminInboxAttachmentCallable,
@@ -81,7 +82,12 @@ export default function MailboxPage() {
       toast.success(synced > 0 ? `Synced ${synced} email(s) from Resend.` : 'Mailbox is up to date.');
     } catch (err) {
       console.error(err);
-      toast.error('Could not sync from Resend.');
+      toast.error(
+        httpsCallableMessage(
+          err,
+          'Could not sync from Resend. Deploy Cloud Functions (syncResendInbox) and ensure RESEND_API_KEY is set.'
+        )
+      );
     } finally {
       setSyncing(false);
     }
@@ -99,7 +105,12 @@ export default function MailboxPage() {
       } catch (err) {
         if (!cancelled) {
           console.error(err);
-          toast.error('Could not sync from Resend.');
+          toast.error(
+            httpsCallableMessage(
+              err,
+              'Could not sync from Resend. Deploy Cloud Functions (syncResendInbox) and ensure RESEND_API_KEY is set.'
+            )
+          );
         }
       } finally {
         if (!cancelled) setSyncing(false);

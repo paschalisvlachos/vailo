@@ -26,8 +26,16 @@ export function httpsCallableMessage(error: unknown, fallback: string): string {
       );
     }
 
+    if (code === 'functions/not-found') {
+      return 'Mailbox sync is not deployed yet. Run firebase deploy for syncResendInbox.';
+    }
+
     if (code === 'functions/permission-denied') {
       return msg || 'You do not have permission for this action.';
+    }
+
+    if (code === 'functions/failed-precondition') {
+      return msg || 'This action is not available yet.';
     }
 
     if (code === 'functions/unauthenticated') {

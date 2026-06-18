@@ -5,7 +5,6 @@ const { Webhook } = require("svix");
 const { requirePlatformAdmin } = require("./platformAdmin");
 
 const resendApiKey = defineSecret("RESEND_API_KEY");
-const resendWebhookSecret = defineSecret("RESEND_WEBHOOK_SECRET");
 
 const INBOX_COLLECTION = "adminInboxMessages";
 const INBOX_FROM = "Vailo <info@vailo.app>";
@@ -173,7 +172,7 @@ function registerResendInbox({ firestore, logger, firebaseExports }) {
     {
       region: "us-central1",
       maxInstances: 10,
-      secrets: [resendApiKey, resendWebhookSecret],
+      secrets: [resendApiKey],
     },
     async (req, res) => {
       if (req.method !== "POST") {
@@ -181,8 +180,15 @@ function registerResendInbox({ firestore, logger, firebaseExports }) {
         return;
       }
 
+      const webhookSecret = String(process.env.RESEND_WEBHOOK_SECRET || "").trim();
+      if (!webhookSecret) {
+        logger.error("resendInboundWebhook: RESEND_WEBHOOK_SECRET not configured");
+        res.status(503).json({ error: "Inbound webhook not configured" });
+        return;
+      }
+
       try {
-        const wh = new Webhook(resendWebhookSecret.value());
+        const wh = new Webhook(webhookSecret);
         const payload = wh.verify(req.rawBody, {
           "svix-id": req.get("svix-id") || "",
           "svix-timestamp": req.get("svix-timestamp") || "",
@@ -210,8 +216,23 @@ function registerResendInbox({ firestore, logger, firebaseExports }) {
     { region: "us-central1", secrets: [resendApiKey] },
     async (request) => {
       await requirePlatformAdmin(request, firestore);
-      const synced = await syncAllReceived(firestore, resendApiKey.value(), logger);
-      return { ok: true, synced };
+      try {
+        const synced = await syncAllReceived(firestore, resendApiKey.value(), logger);
+        return { ok: true, synced };
+      } catch (err) {
+        logger.error("syncResendInbox failed", err);
+        const msg = String(err?.message || err || "Resend sync failed.");
+        if (/401|403|invalid api key/i.test(msg)) {
+          throw new HttpsError("failed-precondition", "Resend API key is missing or invalid.");
+        }
+        if (/404|not found/i.test(msg)) {
+          throw new HttpsError(
+            "failed-precondition",
+            "Resend inbound email is not configured for this domain yet."
+          );
+        }
+        throw new HttpsError("internal", msg.slice(0, 500));
+      }
     }
   );
 

@@ -24,7 +24,7 @@ if (existsSync(assetsDir)) {
 }
 
 const publicDir = join(process.cwd(), 'public');
-for (const name of ['V.png', 'vailoLogo.png']) {
+for (const name of ['V.png', 'vailoLogo.png', 'guest-portal-mockup.jpg']) {
   const src = join(publicDir, name);
   if (existsSync(src)) {
     cpSync(src, join(appDir, name));
@@ -47,7 +47,7 @@ if (existsSync(marketingIndex)) {
 
 const websiteDir = join(publicDir, 'website');
 if (existsSync(websiteDir)) {
-  for (const name of ['LdbkF.jpg', 'favicon.ico', 'robots.txt']) {
+  for (const name of ['LdbkF.jpg', 'favicon.ico', 'robots.txt', 'guest-portal-mockup.jpg']) {
     const src = join(websiteDir, name);
     if (existsSync(src)) cpSync(src, join(dist, name));
   }

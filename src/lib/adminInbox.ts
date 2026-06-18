@@ -95,3 +95,11 @@ export function formatInboxDate(ts?: { seconds: number } | null): string {
     timeStyle: 'short',
   });
 }
+
+export function isMailboxInboxMessage(message: AdminInboxMessage): boolean {
+  return message.direction === 'inbound' || message.direction === 'contact_form';
+}
+
+export function isMailboxSentMessage(message: AdminInboxMessage): boolean {
+  return message.direction === 'outbound';
+}

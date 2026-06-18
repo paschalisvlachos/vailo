@@ -6,7 +6,7 @@ import {
   query,
   type DocumentData,
 } from 'firebase/firestore';
-import { Loader2, Mail, Paperclip, Plus, RefreshCw, Reply, Send, X } from 'lucide-react';
+import { Loader2, Inbox, Mail, Paperclip, Plus, RefreshCw, Reply, Send, X } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { httpsCallableMessage } from '../../lib/callableError';
@@ -20,6 +20,8 @@ import {
   syncResendInboxCallable,
   type AdminInboxAttachment,
   type AdminInboxMessage,
+  isMailboxInboxMessage,
+  isMailboxSentMessage,
 } from '../../lib/adminInbox';
 import RichTextEditor from '../../components/admin/RichTextEditor';
 
@@ -59,6 +61,7 @@ function fileToBase64(file: File): Promise<string> {
 export default function MailboxPage() {
   const toast = useToast();
   const [messages, setMessages] = useState<AdminInboxMessage[]>([]);
+  const [folder, setFolder] = useState<'inbox' | 'sent'>('inbox');
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -73,6 +76,23 @@ export default function MailboxPage() {
   const selected = useMemo(
     () => messages.find((m) => m.id === selectedId) ?? null,
     [messages, selectedId]
+  );
+
+  const inboxMessages = useMemo(
+    () => messages.filter(isMailboxInboxMessage),
+    [messages]
+  );
+
+  const sentMessages = useMemo(
+    () => messages.filter(isMailboxSentMessage),
+    [messages]
+  );
+
+  const visibleMessages = folder === 'inbox' ? inboxMessages : sentMessages;
+
+  const inboxUnreadCount = useMemo(
+    () => inboxMessages.filter((m) => !m.readAt).length,
+    [inboxMessages]
   );
 
   const runSync = useCallback(async () => {
@@ -126,12 +146,8 @@ export default function MailboxPage() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const rows = snap.docs.map((d) => mapDoc(d.id, d.data()));
-        setMessages(rows);
+        setMessages(snap.docs.map((d) => mapDoc(d.id, d.data())));
         setLoading(false);
-        if (!selectedId && rows.length > 0) {
-          setSelectedId(rows[0].id);
-        }
       },
       (err) => {
         console.error(err);
@@ -141,6 +157,13 @@ export default function MailboxPage() {
     );
     return () => unsub();
   }, [toast]);
+
+  useEffect(() => {
+    setSelectedId((current) => {
+      if (current && visibleMessages.some((m) => m.id === current)) return current;
+      return visibleMessages[0]?.id ?? null;
+    });
+  }, [visibleMessages]);
 
   const openMessage = async (message: AdminInboxMessage) => {
     setSelectedId(message.id);
@@ -208,6 +231,7 @@ export default function MailboxPage() {
       });
       toast.success('Email sent.');
       setComposeOpen(false);
+      setFolder('sent');
     } catch (err) {
       console.error(err);
       toast.error('Failed to send email.');
@@ -300,20 +324,50 @@ export default function MailboxPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,320px)_1fr] gap-4 min-h-[520px]">
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-100 text-xs font-bold uppercase tracking-wider text-gray-400">
-            Messages
+          <div className="flex border-b border-gray-100">
+            <button
+              type="button"
+              onClick={() => setFolder('inbox')}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
+                folder === 'inbox'
+                  ? 'text-vailo-teal border-b-2 border-vailo-teal bg-vailo-teal/5'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Inbox size={14} />
+              Inbox
+              {inboxUnreadCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold">
+                  {inboxUnreadCount > 99 ? '99+' : inboxUnreadCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFolder('sent')}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
+                folder === 'sent'
+                  ? 'text-vailo-teal border-b-2 border-vailo-teal bg-vailo-teal/5'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Send size={14} />
+              Sent
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto admin-scroll-y max-h-[560px]">
             {loading ? (
               <div className="p-8 flex justify-center text-gray-400">
                 <Loader2 className="animate-spin" size={22} />
               </div>
-            ) : messages.length === 0 ? (
-              <p className="p-6 text-sm text-gray-500 text-center">No messages yet.</p>
+            ) : visibleMessages.length === 0 ? (
+              <p className="p-6 text-sm text-gray-500 text-center">
+                {folder === 'inbox' ? 'No messages in inbox.' : 'No sent messages yet.'}
+              </p>
             ) : (
               <ul>
-                {messages.map((m) => {
-                  const unread = !m.readAt;
+                {visibleMessages.map((m) => {
+                  const unread = folder === 'inbox' && !m.readAt;
                   const active = m.id === selectedId;
                   return (
                     <li key={m.id}>
@@ -333,7 +387,7 @@ export default function MailboxPage() {
                               {m.subject}
                             </p>
                             <p className="text-xs text-gray-500 truncate mt-0.5">
-                              {m.direction === 'outbound' ? `To ${m.to.join(', ')}` : m.from}
+                              {folder === 'sent' ? `To ${m.to.join(', ')}` : m.from}
                             </p>
                             <p className="text-[11px] text-gray-400 mt-1">{formatInboxDate(m.createdAt)}</p>
                           </div>

@@ -14,11 +14,13 @@ import {
   Compass,
   MapPin,
   ClipboardList,
+  Mail,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
+import { useAdminInboxUnreadCount } from '../../hooks/useAdminInboxUnreadCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { scopeFromRoute, scopeKey, isExcursionProvider } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
@@ -29,6 +31,7 @@ type NavItem = {
   label: string;
   to: string;
   badgeOnArea?: boolean;
+  badgeOnMailbox?: boolean;
 };
 
 const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
@@ -42,6 +45,7 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
       { icon: Globe, label: 'Area Functionality', to: adminPath('/area'), badgeOnArea: true },
       { icon: CreditCard, label: 'Billing & Usage', to: adminPath('/billing') },
       { icon: FileText, label: 'Legal Documents', to: adminPath('/legal') },
+      { icon: Mail, label: 'Mailbox', to: adminPath('/mailbox'), badgeOnMailbox: true },
       { icon: Settings, label: 'Settings', to: adminPath('/settings') },
     ],
   },
@@ -59,7 +63,8 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
-  const { isScopedUser, profile, scopes, activeScope, setActiveScope } = useAdminSession();
+  const { isScopedUser, profile, scopes, activeScope, setActiveScope, isPlatformAdmin } = useAdminSession();
+  const mailboxUnreadCount = useAdminInboxUnreadCount(isPlatformAdmin);
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -159,7 +164,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   icon={<item.icon size={19} strokeWidth={1.75} />}
                   label={item.label}
                   to={item.to}
-                  badge={'badgeOnArea' in item && item.badgeOnArea ? newDiscoveredCount : 0}
+                  badge={
+                    'badgeOnMailbox' in item && item.badgeOnMailbox
+                      ? mailboxUnreadCount
+                      : 'badgeOnArea' in item && item.badgeOnArea
+                        ? newDiscoveredCount
+                        : 0
+                  }
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
@@ -224,7 +235,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="hidden lg:flex items-center gap-2 text-sm text-gray-500">
             <span className="h-1.5 w-1.5 rounded-full bg-vailo-gold" />
-            <span className="font-medium">Hospitality management</span>
+            <span className="font-medium">
+              Hospitality management
+              {isPlatformAdmin && mailboxUnreadCount > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold">
+                  {mailboxUnreadCount > 99 ? '99+' : mailboxUnreadCount}
+                </span>
+              )}
+            </span>
           </div>
 
           <button

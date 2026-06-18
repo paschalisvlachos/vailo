@@ -1773,3 +1773,9 @@ registerGuestPortalAnalytics({ firestore, firebaseExports: exports });
 
 const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
 registerGuestApplianceGuide({ firestore, firebaseExports: exports });
+
+const { registerMarketingContact } = require("./marketingContact");
+registerMarketingContact({ firestore, logger, firebaseExports: exports });
+
+const { registerResendInbox } = require("./resendInbox");
+registerResendInbox({ firestore, logger, firebaseExports: exports });

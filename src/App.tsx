@@ -51,6 +51,7 @@ import PropertyTesters from "./pages/admin/properties/PropertyTesters";
 import PropertyAnalytics from "./pages/admin/properties/PropertyAnalytics";
 import GuestIssues from "./pages/admin/properties/GuestIssues";
 import PickFeedback from "./pages/admin/properties/PickFeedback";
+import MailboxPage from "./pages/admin/MailboxPage";
 import DashboardPage from "./pages/admin/DashboardPage";
 
 import { ToastProvider } from "./context/ToastContext";
@@ -147,6 +148,8 @@ export default function App() {
 
         {/* Admin app (vailo.app/admin) */}
         <Route path={adminPath()} element={<AdminRoute><PlatformAdminOnly><DashboardPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/mailbox')} element={<AdminRoute><PlatformAdminOnly><MailboxPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/inbox')} element={<Navigate to={adminPath('/mailbox')} replace />} />
         <Route
           path={adminPath('/properties')}
           element={

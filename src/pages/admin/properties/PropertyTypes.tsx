@@ -13,7 +13,7 @@ import {
   guestPortalQrFilename,
 } from '../../../lib/guestPortalQrCode';
 import { useToast } from '../../../context/ToastContext';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode } from 'lucide-react';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 
 export default function PropertyTypes() {
@@ -523,7 +523,8 @@ export default function PropertyTypes() {
                         Download QR
                       </button>
                       <div className="flex items-center gap-1 ml-auto">
-                        <button 
+                        <button
+                          type="button"
                           onClick={() => {
                             const propSlug = formatGuestSlug(property.urlSlug);
                             const unitSlug = getTypePublicSlug(type);
@@ -537,9 +538,29 @@ export default function PropertyTypes() {
                             window.open(url, '_blank');
                           }}
                           className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
-                          title="Preview Guest Portal"
+                          title="Open guest portal (responsive web)"
                         >
                           <ExternalLink size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const propSlug = formatGuestSlug(property.urlSlug);
+                            const unitSlug = getTypePublicSlug(type);
+                            if (!propSlug || !unitSlug) return;
+                            const url = buildAdminGuestPortalPreviewUrl(
+                              window.location.origin,
+                              propSlug,
+                              unitSlug,
+                              type.id,
+                              { mobileFrame: true }
+                            );
+                            window.open(url, '_blank');
+                          }}
+                          className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
+                          title="Mobile preview (admin only)"
+                        >
+                          <Smartphone size={18} />
                         </button>
                         {!isListingOnly && (
                           <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">

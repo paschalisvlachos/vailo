@@ -131,15 +131,17 @@ export function guestBookingNamePrefill(): string {
   return session.guestName.trim();
 }
 
-/** Admin “Preview portal” — requires signed-in admin + Cloud Function (not a public bypass). */
+/** Admin portal preview — requires signed-in admin + Cloud Function (not a public bypass). */
 export function buildAdminGuestPortalPreviewUrl(
   origin: string,
   propertySlug: string,
   typeSlug: string,
-  typeId: string
+  typeId: string,
+  options?: { mobileFrame?: boolean }
 ): string {
   const base = origin.replace(/\/$/, '');
   const qs = new URLSearchParams({ typeId, adminPreview: '1' });
+  if (options?.mobileFrame) qs.set('previewFrame', 'mobile');
   return `${base}/${propertySlug}/${typeSlug}?${qs.toString()}`;
 }
 

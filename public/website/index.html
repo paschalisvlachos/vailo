@@ -1,240 +1,1736 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vailo AI | The Future of Hospitality</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary-dark: #021a1f; 
-            --accent-teal: #00a8b5;
-            --accent-gold: #c5a059;
-            --soft-gold: #e2d1b0;
-            --bg-cream: #f9f9f7;
-            --white: #ffffff;
-            --text-gray: #555;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Vailo is the guest experience platform for vacation rentals, villas, and hospitality portfolios — AI concierge, digital house guide, and local discovery in one beautiful mobile portal." />
+  <title>Vailo — The future of hospitality</title>
+  <link rel="icon" href="/favicon_io/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --teal: #0B4F5C;
+      --teal-deep: #083A43;
+      --teal-dark: #051F26;
+      --gold: #C5A059;
+      --gold-soft: #E8D5A8;
+      --cream: #FDF9F3;
+      --surface: #F3F4F6;
+      --white: #ffffff;
+      --text: #1a2b2e;
+      --text-muted: #5c6b6f;
+      --border: rgba(11, 79, 92, 0.1);
+      --shadow-sm: 0 4px 24px rgba(11, 79, 92, 0.08);
+      --shadow-lg: 0 24px 80px rgba(5, 31, 38, 0.18);
+      --radius: 16px;
+      --radius-lg: 24px;
+      --nav-h: 72px;
+      --font-display: 'Lora', Georgia, serif;
+      --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
-        body { background-color: var(--bg-cream); color: #222; line-height: 1.6; }
-        a { text-decoration: none; transition: 0.3s; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-body);
+      color: var(--text);
+      background: var(--white);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    img { max-width: 100%; display: block; }
+    a { color: inherit; text-decoration: none; }
 
-        /* --- NAVIGATION --- */
-        nav {
-            background: var(--primary-dark);
-            padding: 15px 8%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-        }
-        .nav-logo img { height: 35px; }
-        .nav-links a { color: var(--white); margin-left: 25px; font-size: 0.9rem; font-weight: 500; }
-        .nav-links a:hover { color: var(--accent-gold); }
+    .container {
+      width: min(1120px, calc(100% - 48px));
+      margin-inline: auto;
+    }
 
-        /* --- HERO: THE GLOWING CENTERPIECE --- */
-        .hero {
-            background: radial-gradient(circle at center, #053a44 0%, #021a1f 100%);
-            padding: 100px 5% 120px;
-            text-align: center;
-            color: var(--white);
-            position: relative;
-            overflow: hidden;
-        }
+    /* ── Navigation ── */
+    .nav {
+      position: fixed;
+      inset: 0 0 auto 0;
+      height: var(--nav-h);
+      z-index: 100;
+      background: rgba(253, 249, 243, 0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: var(--teal-dark);
+    }
+    .nav-brand img { height: 36px; width: auto; }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--teal); }
+    .nav-toggle {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      color: var(--teal);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
+      color: var(--white);
+      box-shadow: 0 8px 24px rgba(11, 79, 92, 0.28);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 12px 32px rgba(11, 79, 92, 0.36);
+    }
+    .btn-secondary {
+      background: var(--white);
+      color: var(--teal);
+      border: 1.5px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--gold); color: var(--teal-dark); }
+    .btn-gold {
+      background: linear-gradient(135deg, var(--gold) 0%, #a88648 100%);
+      color: var(--white);
+      box-shadow: 0 8px 24px rgba(197, 160, 89, 0.35);
+    }
 
-        .logo-aura {
-            position: relative;
-            display: inline-block;
-            margin-bottom: 30px;
-        }
-        /* This creates the glow you loved in the design */
-        .logo-aura::before {
-            content: '';
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 350px; height: 350px;
-            background: radial-gradient(circle, rgba(197, 160, 89, 0.25) 0%, transparent 70%);
-            z-index: 1;
-        }
-        .main-logo-img {
-            height: 180px; 
-            position: relative;
-            z-index: 2;
-            filter: drop-shadow(0 0 20px rgba(0, 168, 181, 0.3));
-        }
+    /* ── Hero ── */
+    .hero {
+      padding: calc(var(--nav-h) + 64px) 0 96px;
+      background:
+        radial-gradient(ellipse 80% 60% at 70% 20%, rgba(197, 160, 89, 0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 60% 50% at 10% 80%, rgba(11, 79, 92, 0.08) 0%, transparent 50%),
+        linear-gradient(180deg, var(--cream) 0%, var(--white) 100%);
+      overflow: hidden;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(11, 79, 92, 0.07);
+      color: var(--teal);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .hero-eyebrow::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 4.5vw, 3.5rem);
+      font-weight: 600;
+      line-height: 1.12;
+      color: var(--teal-dark);
+      margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: italic;
+      color: var(--teal);
+    }
+    .hero-lead {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      max-width: 480px;
+      margin-bottom: 32px;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .hero-stats {
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .hero-stat strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--teal-dark);
+    }
+    .hero-stat span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
 
-        .hero h1 { font-size: 4rem; font-weight: 700; margin-bottom: 15px; }
-        .hero h1 span { color: var(--accent-gold); }
-        .hero p { max-width: 700px; margin: 0 auto 40px; font-size: 1.2rem; opacity: 0.8; }
-        
-        .hero-btns .btn {
-            padding: 14px 40px;
-            border-radius: 4px;
-            font-weight: 600;
-            display: inline-block;
-            margin: 10px;
-        }
-        .btn-gold { background: var(--accent-gold); color: white; border: none; cursor: pointer; }
-        .btn-outline { border: 2px solid var(--white); color: white; }
+    /* ── Phone mockup ── */
+    .phone-stage {
+      display: flex;
+      justify-content: center;
+      perspective: 1200px;
+    }
+    .phone-float {
+      animation: phoneFloat 6s ease-in-out infinite;
+    }
+    @keyframes phoneFloat {
+      0%, 100% { transform: translateY(0) rotateY(-8deg) rotateX(4deg); }
+      50% { transform: translateY(-12px) rotateY(-6deg) rotateX(2deg); }
+    }
+    .phone {
+      width: 280px;
+      background: #111;
+      border-radius: 44px;
+      padding: 12px;
+      box-shadow:
+        var(--shadow-lg),
+        inset 0 0 0 2px rgba(255,255,255,0.08),
+        0 0 0 1px rgba(0,0,0,0.4);
+      position: relative;
+    }
+    .phone-notch {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 96px;
+      height: 28px;
+      background: #111;
+      border-radius: 0 0 18px 18px;
+      z-index: 10;
+    }
+    .phone-screen {
+      border-radius: 34px;
+      overflow: hidden;
+      background: var(--surface);
+      height: 580px;
+      position: relative;
+    }
+    .mock-status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px 8px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+      position: relative;
+      z-index: 5;
+    }
+    .mock-hero {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 220px;
+      background:
+        linear-gradient(180deg, rgba(5,31,38,0.15) 0%, rgba(5,31,38,0.55) 55%, var(--surface) 100%),
+        linear-gradient(135deg, #1a6b7a 0%, #0B4F5C 40%, #083A43 100%);
+    }
+    .mock-hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      opacity: 0.5;
+    }
+    .mock-topbar {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      padding: 36px 16px 0;
+    }
+    .mock-menu, .mock-map {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .mock-welcome {
+      position: relative;
+      z-index: 5;
+      text-align: center;
+      padding: 20px 16px 0;
+      color: white;
+    }
+    .mock-welcome p {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      opacity: 0.85;
+      margin-bottom: 4px;
+    }
+    .mock-welcome h3 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 500;
+    }
+    .mock-welcome span {
+      font-size: 0.75rem;
+      opacity: 0.8;
+      font-style: italic;
+    }
+    .mock-cards {
+      position: relative;
+      z-index: 5;
+      padding: 16px 14px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mock-card {
+      background: rgba(255,255,255,0.95);
+      border-radius: 14px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 16px rgba(11,79,92,0.1);
+    }
+    .mock-card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(11,79,92,0.12), rgba(11,79,92,0.06));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .mock-card-icon svg { width: 16px; height: 16px; color: var(--teal); }
+    .mock-card-text p { font-size: 0.55rem; color: #888; text-transform: uppercase; letter-spacing: 0.06em; }
+    .mock-card-text strong { font-size: 0.75rem; color: var(--teal-dark); }
+    .mock-cta {
+      margin: 12px 14px 0;
+      padding: 12px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--teal) 0%, var(--teal-deep) 100%);
+      color: white;
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 600;
+      box-shadow: 0 8px 20px rgba(11,79,92,0.3);
+    }
+    .mock-cta span { display: block; font-size: 0.55rem; opacity: 0.75; font-weight: 400; margin-top: 2px; }
+    .mock-section-label {
+      padding: 14px 14px 6px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+    }
+    .mock-gem {
+      margin: 0 14px;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(11,79,92,0.08);
+    }
+    .mock-gem-img {
+      height: 56px;
+      background: linear-gradient(135deg, #d4e8ec 0%, #a8cdd4 100%);
+    }
+    .mock-gem-body { padding: 8px 10px; }
+    .mock-gem-body p { font-size: 0.55rem; color: var(--gold); font-weight: 700; text-transform: uppercase; }
+    .mock-gem-body h4 { font-size: 0.72rem; color: var(--teal-dark); font-family: var(--font-display); }
+    .mock-fab {
+      position: absolute;
+      bottom: 20px;
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold), #a88648);
+      box-shadow: 0 6px 20px rgba(197,160,89,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .mock-fab svg { width: 20px; height: 20px; color: white; }
+    .phone-glow {
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(197,160,89,0.25) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: -1;
+      pointer-events: none;
+    }
 
-        /* --- SECTION HEADERS --- */
-        .section-header { text-align: center; padding: 80px 10% 40px; }
-        .section-header h2 { font-size: 2.2rem; margin-bottom: 10px; }
+    /* ── Trust bar ── */
+    .trust {
+      padding: 28px 0;
+      border-block: 1px solid var(--border);
+      background: var(--white);
+    }
+    .trust-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+      flex-wrap: wrap;
+      text-align: center;
+    }
+    .trust-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+    }
+    .trust-tags {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .trust-tag {
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--surface);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--teal);
+    }
 
-        /* --- FEATURES TOP --- */
-        .features-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; padding: 0 8%; }
-        .feat-box { background: white; padding: 40px 20px; text-align: center; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.03); }
-        .feat-box i { font-size: 2rem; color: var(--accent-gold); margin-bottom: 15px; }
+    /* ── Sections ── */
+    section { padding: 96px 0; }
+    .section-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 600;
+      color: var(--teal-dark);
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+    .section-lead {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 560px;
+      line-height: 1.7;
+    }
+    .section-header { margin-bottom: 56px; }
+    .section-header.center { text-align: center; }
+    .section-header.center .section-lead { margin-inline: auto; }
 
-        /* --- PLATFORM GRID --- */
-        .platform-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 0 8% 80px; }
-        .platform-item { display: flex; align-items: center; background: white; padding: 20px; border-radius: 8px; border-left: 4px solid var(--accent-gold); }
-        .platform-item i { margin-right: 15px; color: var(--accent-teal); }
+    /* ── Product reveal ── */
+    .reveal {
+      background: var(--teal-dark);
+      color: white;
+      position: relative;
+      overflow: hidden;
+    }
+    .reveal::before {
+      content: '';
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(197,160,89,0.15) 0%, transparent 70%);
+      top: -200px;
+      right: -100px;
+      pointer-events: none;
+    }
+    .reveal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+      position: relative;
+    }
+    .reveal .section-eyebrow { color: var(--gold-soft); }
+    .reveal .section-title { color: white; }
+    .reveal .section-lead { color: rgba(255,255,255,0.72); }
+    .reveal-list {
+      list-style: none;
+      margin-top: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .reveal-list li {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      font-size: 0.95rem;
+      color: rgba(255,255,255,0.88);
+    }
+    .reveal-list li::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+      margin-top: 8px;
+      flex-shrink: 0;
+    }
+    .screen-labels {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .screen-label {
+      padding: 16px 20px;
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(8px);
+    }
+    .screen-label strong {
+      display: block;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+      color: var(--gold-soft);
+    }
+    .screen-label p { font-size: 0.85rem; color: rgba(255,255,255,0.65); }
 
-        /* --- PRICING --- */
-        .pricing-wrap { display: flex; justify-content: center; gap: 25px; padding: 0 8% 80px; }
-        .p-card { background: white; padding: 40px; border-radius: 15px; width: 320px; text-align: center; border: 1px solid #eee; }
-        .p-card.popular { border: 2px solid var(--accent-gold); transform: scale(1.05); box-shadow: 0 20px 40px rgba(0,0,0,0.05); }
-        .price-val { font-size: 2.8rem; font-weight: 700; color: var(--primary-dark); margin: 20px 0; }
-        .p-card ul { list-style: none; text-align: left; margin-bottom: 30px; font-size: 0.9rem; }
-        .p-card ul li { padding: 8px 0; border-bottom: 1px solid #fafafa; }
+    /* ── Audience cards ── */
+    .audience-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .audience-card {
+      padding: 40px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--white);
+      transition: box-shadow 0.3s, transform 0.3s;
+    }
+    .audience-card:hover {
+      box-shadow: var(--shadow-sm);
+      transform: translateY(-4px);
+    }
+    .audience-card.owners {
+      background: linear-gradient(160deg, var(--cream) 0%, var(--white) 100%);
+    }
+    .audience-card.managers {
+      background: linear-gradient(160deg, #eef5f6 0%, var(--white) 100%);
+    }
+    .audience-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .audience-card.owners .audience-icon { background: rgba(197,160,89,0.15); color: var(--gold); }
+    .audience-card.managers .audience-icon { background: rgba(11,79,92,0.1); color: var(--teal); }
+    .audience-icon svg { width: 26px; height: 26px; }
+    .audience-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--teal-dark);
+      margin-bottom: 12px;
+    }
+    .audience-card > p {
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.7;
+    }
+    .benefit-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .benefit-list li {
+      display: flex;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .benefit-list li svg {
+      width: 18px;
+      height: 18px;
+      color: var(--teal);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
 
-        /* --- FUNCTIONAL FAQ --- */
-        .faq-section { max-width: 800px; margin: 0 auto 100px; padding: 0 20px; }
-        .faq-item { background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
-        .faq-question { 
-            padding: 20px; 
-            cursor: pointer; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            font-weight: 600; 
-            transition: background 0.3s;
-        }
-        .faq-question:hover { background: #fcfcfc; }
-        .faq-answer { 
-            max-height: 0; 
-            overflow: hidden; 
-            transition: max-height 0.3s ease-out; 
-            padding: 0 20px; 
-            color: var(--text-gray);
-            font-size: 0.95rem;
-        }
-        .faq-item.active .faq-answer { max-height: 200px; padding-bottom: 20px; }
-        .faq-item.active i { transform: rotate(45deg); color: var(--accent-teal); }
-        .faq-question i { transition: transform 0.3s; color: var(--accent-gold); }
+    /* ── Features grid ── */
+    .features { background: var(--surface); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature-card {
+      padding: 28px;
+      border-radius: var(--radius);
+      background: var(--white);
+      border: 1px solid var(--border);
+      transition: box-shadow 0.3s;
+    }
+    .feature-card:hover { box-shadow: var(--shadow-sm); }
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(11,79,92,0.1), rgba(11,79,92,0.04));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      color: var(--teal);
+    }
+    .feature-icon svg { width: 22px; height: 22px; }
+    .feature-card h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--teal-dark);
+      margin-bottom: 8px;
+    }
+    .feature-card p { font-size: 0.875rem; color: var(--text-muted); line-height: 1.6; }
 
-        /* --- FOOTER --- */
-        footer { background: var(--primary-dark); color: white; padding: 80px 8% 40px; text-align: center; }
-        .footer-logo img { height: 50px; margin-bottom: 20px; }
+    /* ── How it works ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      counter-reset: step;
+    }
+    .step {
+      text-align: center;
+      position: relative;
+    }
+    .step-num {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--teal), var(--teal-deep));
+      color: white;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      box-shadow: 0 8px 24px rgba(11,79,92,0.25);
+    }
+    .step h4 {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      color: var(--teal-dark);
+      margin-bottom: 8px;
+    }
+    .step p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; }
 
-        @media (max-width: 900px) {
-            .platform-grid, .pricing-wrap { grid-template-columns: 1fr; flex-direction: column; align-items: center; }
-            .hero h1 { font-size: 2.5rem; }
-        }
-    </style>
+    /* ── Outcomes ── */
+    .outcomes {
+      background: linear-gradient(180deg, var(--cream) 0%, var(--white) 100%);
+    }
+    .outcomes-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+    .outcome {
+      text-align: center;
+      padding: 32px 20px;
+      border-radius: var(--radius);
+      background: var(--white);
+      border: 1px solid var(--border);
+    }
+    .outcome strong {
+      display: block;
+      font-family: var(--font-display);
+      font-size: 2rem;
+      color: var(--teal);
+      margin-bottom: 8px;
+    }
+    .outcome span { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+
+    /* ── FAQ ── */
+    .faq-list { max-width: 720px; margin-inline: auto; }
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-q {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--teal-dark);
+      font-family: var(--font-body);
+    }
+    .faq-q svg {
+      width: 20px;
+      height: 20px;
+      color: var(--gold);
+      flex-shrink: 0;
+      transition: transform 0.3s;
+    }
+    .faq-item.open .faq-q svg { transform: rotate(45deg); }
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease, padding 0.35s ease;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+    .faq-item.open .faq-a {
+      max-height: 200px;
+      padding-bottom: 20px;
+    }
+
+    /* ── CTA ── */
+    .cta {
+      padding: 80px 0;
+      background: var(--teal-dark);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 80% at 50% 120%, rgba(197,160,89,0.2) 0%, transparent 60%);
+    }
+    .cta .container { position: relative; }
+    .cta h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 3vw, 2.75rem);
+      color: white;
+      margin-bottom: 16px;
+    }
+    .cta p {
+      color: rgba(255,255,255,0.72);
+      font-size: 1.05rem;
+      max-width: 520px;
+      margin: 0 auto 32px;
+    }
+    .cta-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ── Footer ── */
+    footer {
+      padding: 48px 0 32px;
+      background: #041519;
+      color: rgba(255,255,255,0.55);
+      font-size: 0.85rem;
+    }
+    .footer-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      color: white;
+      margin-bottom: 8px;
+    }
+    .footer-brand img { height: 32px; }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+      list-style: none;
+    }
+    .footer-links a { transition: color 0.2s; }
+    .footer-links a:hover { color: var(--gold-soft); }
+    .footer-bottom {
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    /* ── Contact modal ── */
+    .contact-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: rgba(5, 31, 38, 0.55);
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    .contact-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+    .contact-dialog {
+      width: min(520px, 100%);
+      max-height: min(92vh, 820px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius-lg);
+      background: var(--white);
+      box-shadow: 0 32px 100px rgba(5, 31, 38, 0.35);
+      transform: translateY(16px) scale(0.98);
+      transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .contact-overlay.open .contact-dialog {
+      transform: translateY(0) scale(1);
+    }
+    .contact-header {
+      position: relative;
+      padding: 28px 28px 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(160deg, var(--cream) 0%, var(--white) 100%);
+    }
+    .contact-header::before {
+      content: '';
+      position: absolute;
+      top: -40px;
+      right: -40px;
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(197, 160, 89, 0.2) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .contact-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(11, 79, 92, 0.08);
+      color: var(--teal);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .contact-close:hover { background: rgba(11, 79, 92, 0.14); }
+    .contact-close svg { width: 20px; height: 20px; }
+    .contact-header .section-eyebrow { margin-bottom: 8px; }
+    .contact-header h2 {
+      font-family: var(--font-display);
+      font-size: 1.65rem;
+      color: var(--teal-dark);
+      line-height: 1.2;
+      padding-right: 40px;
+    }
+    .contact-header p {
+      margin-top: 8px;
+      font-size: 0.925rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .contact-body {
+      padding: 24px 28px 28px;
+      overflow-y: auto;
+    }
+    .contact-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-field label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .form-field label span { color: var(--gold); }
+    .form-field input,
+    .form-field select,
+    .form-field textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1.5px solid rgba(11, 79, 92, 0.12);
+      background: var(--surface);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      color: var(--text);
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    .form-field input:focus,
+    .form-field select:focus,
+    .form-field textarea:focus {
+      outline: none;
+      border-color: rgba(11, 79, 92, 0.35);
+      background: var(--white);
+      box-shadow: 0 0 0 4px rgba(11, 79, 92, 0.08);
+    }
+    .form-field textarea {
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+    .form-honeypot {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .contact-error {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .contact-submit {
+      width: 100%;
+      margin-top: 4px;
+      padding: 14px 20px;
+      min-height: 48px;
+    }
+    .contact-submit:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .contact-submit .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .contact-submit.loading .spinner { display: block; }
+    .contact-submit.loading .btn-label { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .contact-note {
+      margin-top: 14px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+    .contact-success {
+      text-align: center;
+      padding: 24px 8px 8px;
+    }
+    .contact-success-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(11, 79, 92, 0.12), rgba(197, 160, 89, 0.15));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--teal);
+    }
+    .contact-success-icon svg { width: 28px; height: 28px; }
+    .contact-success h3 {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      color: var(--teal-dark);
+      margin-bottom: 10px;
+    }
+    .contact-success p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.65;
+      max-width: 360px;
+      margin-inline: auto;
+    }
+    .contact-success .btn { margin-top: 24px; }
+
+    /* ── Animations ── */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .fade-up.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 960px) {
+      .hero-grid, .reveal-grid, .audience-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 40px; }
+      .outcomes-grid { grid-template-columns: 1fr 1fr; }
+      .hero-grid { gap: 48px; }
+      .phone-stage { order: -1; }
+      .hero { text-align: center; }
+      .hero-lead { margin-inline: auto; }
+      .hero-actions, .hero-stats { justify-content: center; }
+    }
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        top: var(--nav-h);
+        left: 0;
+        right: 0;
+        background: var(--cream);
+        padding: 24px;
+        border-bottom: 1px solid var(--border);
+        gap: 16px;
+      }
+      .nav-toggle { display: block; }
+      .nav-cta-desktop { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .outcomes-grid { grid-template-columns: 1fr; }
+      section { padding: 64px 0; }
+      .audience-card { padding: 28px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
 
-    <nav>
-        <div class="nav-logo"><img src="LdbkF.jpg" alt="Vailo"></div>
-        <div class="nav-links">
-            <a href="#features">Features</a>
-            <a href="#platform">Platform</a>
-            <a href="#pricing">Pricing</a>
-            <a href="/admin" class="btn-gold" style="padding: 8px 20px; border-radius: 4px;">Get Started</a>
-        </div>
-    </nav>
-
-    <header class="hero">
-        <div class="logo-aura">
-            <img src="LdbkF.jpg" class="main-logo-img" alt="Vailo AI Logo">
-        </div>
-        <h1>Vailo <span>AI</span></h1>
-        <p>The AI Solution for your business needs. Elevate guest experiences with an intelligent concierge that never sleeps.</p>
-        <div class="hero-btns">
-            <a href="/admin" class="btn btn-gold">Try it Free</a>
-            <a href="#" class="btn btn-outline">Watch Demo</a>
-        </div>
-    </header>
-
-    <section id="features" class="section-header">
-        <h2>What Your Guests Need</h2>
-    </section>
-
-    <div class="features-top">
-        <div class="feat-box"><i class="fa-solid fa-comments"></i><h3>AI Concierge</h3><p>Instant answers to guest queries.</p></div>
-        <div class="feat-box"><i class="fa-solid fa-car"></i><h3>Rent a Car</h3><p>Integrated vehicle booking services.</p></div>
-        <div class="feat-box"><i class="fa-solid fa-utensils"></i><h3>Smart Guide</h3><p>Personalized local recommendations.</p></div>
-        <div class="feat-box"><i class="fa-solid fa-hotel"></i><h3>e-Reception</h3><p>Digital check-in and house rules.</p></div>
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a href="#" class="nav-brand">
+        <img src="/vailoLogo.png" alt="" width="36" height="36" onerror="this.style.display='none'" />
+      </a>
+      <button class="nav-toggle" aria-label="Menu" id="navToggle">
+        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#product">Product</a></li>
+        <li><a href="#owners">For owners</a></li>
+        <li><a href="#managers">For managers</a></li>
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="#" data-open-contact>Contact</a></li>
+      </ul>
+      <a href="/admin" class="btn btn-primary nav-cta-desktop">Platform login</a>
     </div>
+  </nav>
 
-    <section id="platform" class="section-header">
-        <h2>A Complete Platform</h2>
-    </section>
+  <header class="hero">
+    <div class="container hero-grid">
+      <div class="fade-up">
+        <div class="hero-eyebrow">Guest experience platform</div>
+        <h1>The digital host your guests <em>actually</em> use</h1>
+        <p class="hero-lead">
+          Vailo turns every property into a polished mobile experience — house guide, AI assistant,
+          local discovery, and bookings in one place. Less inbox noise. More five-star moments.
+        </p>
+        <div class="hero-actions">
+          <button type="button" class="btn btn-gold" data-open-contact>Request a demo</button>
+          <a href="#product" class="btn btn-secondary">See the product</a>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <strong>One link</strong>
+            <span>No app download</span>
+          </div>
+          <div class="hero-stat">
+            <strong>24/7</strong>
+            <span>AI house assistant</span>
+          </div>
+          <div class="hero-stat">
+            <strong>Multilingual</strong>
+            <span>Guest-ready</span>
+          </div>
+        </div>
+      </div>
 
-    <div class="platform-grid">
-        <div class="platform-item"><i class="fa-solid fa-check"></i> 24/7 Support</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> Multilingual AI</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> CRM Integration</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> Real-time Analytics</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> Custom Branding</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> WhatsApp Support</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> Automated Tasks</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> Guest Insights</div>
-        <div class="platform-item"><i class="fa-solid fa-check"></i> Multi-Property Sync</div>
+      <div class="phone-stage fade-up">
+        <div class="phone-glow"></div>
+        <div class="phone-float">
+          <div class="phone">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="mock-hero">
+                <div class="mock-status">
+                  <span>9:41</span>
+                  <span>●●●</span>
+                </div>
+                <div class="mock-topbar">
+                  <div class="mock-menu"></div>
+                  <div class="mock-map"></div>
+                </div>
+                <div class="mock-welcome">
+                  <p>Welcome to</p>
+                  <h3>Villa Serene</h3>
+                  <span>Sea View Suite</span>
+                </div>
+              </div>
+              <div class="mock-cards">
+                <div class="mock-card">
+                  <div class="mock-card-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0114.08 0M12 20v-9M9 17h6"/></svg>
+                  </div>
+                  <div class="mock-card-text">
+                    <p>Wi‑Fi</p>
+                    <strong>Villa_Guest ·•••••••</strong>
+                  </div>
+                </div>
+                <div class="mock-card">
+                  <div class="mock-card-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41"/></svg>
+                  </div>
+                  <div class="mock-card-text">
+                    <p>Today · Mykonos</p>
+                    <strong>28° · H: 31° L: 24°</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="mock-cta">
+                Live like a local
+                <span>AI-curated day plans &amp; hidden gems</span>
+              </div>
+              <div class="mock-section-label">Local gems</div>
+              <div class="mock-gem">
+                <div class="mock-gem-img"></div>
+                <div class="mock-gem-body">
+                  <p>Beach · 12 min</p>
+                  <h4>Quiet cove at sunset</h4>
+                </div>
+              </div>
+              <div class="mock-fab">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  </header>
 
-    <div class="faq-section">
-        <h2 style="text-align: center; margin-bottom: 40px; font-size: 2.2rem;">Frequently Asked Questions</h2>
-        
-        <div class="faq-item">
-            <div class="faq-question">How does the AI learn about my property? <i class="fa-solid fa-plus"></i></div>
-            <div class="faq-answer">Vailo AI scans your existing property guides, website content, and house rules. You can also manually upload PDF guides or link your booking platform for real-time data sync.</div>
-        </div>
-
-        <div class="faq-item">
-            <div class="faq-question">Can I integrate it with my current PMS? <i class="fa-solid fa-plus"></i></div>
-            <div class="faq-answer">Yes! Vailo supports major Property Management Systems. This allows the AI to know exactly who is checking in, their booking dates, and specific guest requirements.</div>
-        </div>
-
-        <div class="faq-item">
-            <div class="faq-question">Is there a free trial? <i class="fa-solid fa-plus"></i></div>
-            <div class="faq-answer">Absolutely. Our Starter plan is free forever for 1 property, so you can test the AI concierge features before scaling to our Basic or Pro plans.</div>
-        </div>
-
-        <div class="faq-item">
-            <div class="faq-question">Does it support multiple languages? <i class="fa-solid fa-plus"></i></div>
-            <div class="faq-answer">Yes, Vailo is fluent in over 25 languages. It automatically detects the guest's language and responds naturally in their native tongue.</div>
-        </div>
+  <div class="trust">
+    <div class="container trust-inner">
+      <span class="trust-label">Designed for</span>
+      <div class="trust-tags">
+        <span class="trust-tag">Vacation rentals</span>
+        <span class="trust-tag">Boutique villas</span>
+        <span class="trust-tag">Apartment portfolios</span>
+        <span class="trust-tag">Hospitality operators</span>
+      </div>
     </div>
+  </div>
 
-    <footer>
-        <div class="footer-logo"><img src="LdbkF.jpg" alt="Vailo"></div>
-        <p>&copy; 2026 Vailo AI Solutions. All rights reserved.</p>
-    </footer>
+  <section class="reveal" id="product">
+    <div class="container reveal-grid">
+      <div class="fade-up">
+        <p class="section-eyebrow">What guests see</p>
+        <h2 class="section-title">A portal that feels like part of the stay</h2>
+        <p class="section-lead">
+          Guests scan a QR code or open a link — and land in a branded experience built around
+          your property. Everything they need before, during, and after check-in.
+        </p>
+        <ul class="reveal-list">
+          <li>Property essentials: Wi‑Fi, check-in info, house rules, and appliance guides</li>
+          <li>AI assistant trained on your house guide — answers in the guest's language</li>
+          <li>Curated local services, hidden gems, and bookable excursions</li>
+          <li>One-tap WhatsApp, maps, and review prompts when it matters</li>
+        </ul>
+      </div>
+      <div class="screen-labels fade-up">
+        <div class="screen-label">
+          <strong>House guide, reimagined</strong>
+          <p>No more PDFs lost in email threads. Your content lives in a beautiful, always-updated portal.</p>
+        </div>
+        <div class="screen-label">
+          <strong>AI that knows your property</strong>
+          <p>Guests ask about parking, the washing machine, or checkout — and get instant, accurate answers.</p>
+        </div>
+        <div class="screen-label">
+          <strong>Local revenue, built in</strong>
+          <p>Promote trusted partners, experiences, and services — with direct guest contact or booking flows.</p>
+        </div>
+        <div class="screen-label">
+          <strong>Add to home screen</strong>
+          <p>Guests save Vailo like an app. No App Store. No friction.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    <script>
-        document.querySelectorAll('.faq-question').forEach(item => {
-            item.addEventListener('click', event => {
-                const parent = item.parentElement;
-                parent.classList.toggle('active');
-                
-                // Optional: Close other open FAQ items when one is clicked
-                document.querySelectorAll('.faq-item').forEach(child => {
-                    if (child !== parent) {
-                        child.classList.remove('active');
-                    }
-                });
-            });
+  <section id="owners">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow">Built for your business</p>
+        <h2 class="section-title">Stronger stays. Lighter workload.</h2>
+        <p class="section-lead">
+          Whether you own a single villa or manage hundreds of units, Vailo gives guests
+          self-service without sacrificing the personal touch.
+        </p>
+      </div>
+      <div class="audience-grid">
+        <article class="audience-card owners fade-up">
+          <div class="audience-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
+          </div>
+          <h3>For property owners</h3>
+          <p>
+            Deliver a premium guest experience that reflects the care you put into every detail —
+            without answering the same questions on repeat.
+          </p>
+          <ul class="benefit-list">
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Branded guest portal per listing — your photos, your tone, your rules
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Fewer "what's the Wi‑Fi?" messages before and during the stay
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              QR codes for instant access — print, frame, or share digitally
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Showcase local gems and partners you trust
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Timely review prompts to grow your reputation
+            </li>
+          </ul>
+        </article>
+        <article class="audience-card managers fade-up" id="managers">
+          <div class="audience-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 7a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <h3>For property managers</h3>
+          <p>
+            Scale hospitality across a portfolio without scaling headcount. One platform to
+            configure, update, and monitor every guest touchpoint.
+          </p>
+          <ul class="benefit-list">
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Central dashboard for properties, listings, and house guides
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Multi-language content with locale-aware guest experiences
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Area-level local services and excursion marketplace
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Guest analytics — see what guests explore and where they need help
+            </li>
+            <li>
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              Consistent brand experience across every unit you operate
+            </li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow">Platform capabilities</p>
+        <h2 class="section-title">Everything guests expect — nothing they have to hunt for</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h4>AI vacation assistant</h4>
+          <p>Answers house-guide questions instantly — appliances, rules, parking, checkout — in the guest's language.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <h4>Live like a local</h4>
+          <p>AI-built day plans and category picks — beaches, dining, culture — tailored to the property's area.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+          </div>
+          <h4>Digital house guide</h4>
+          <p>Structured essentials, featured highlights, and expandable content — always current, never buried in chat.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <h4>Local services</h4>
+          <p>Promote vetted partners — transfers, chefs, boats, wellness — with direct WhatsApp or email contact.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20M2 12h20"/></svg>
+          </div>
+          <h4>Excursions &amp; experiences</h4>
+          <p>Guests browse and book local tours and activities — with availability, pricing, and instant confirmation flows.</p>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h4>Guest access &amp; privacy</h4>
+          <p>Secure portal access, platform legal compliance, and issue reporting — professional from first scan to checkout.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow">How it works</p>
+        <h2 class="section-title">Live in three steps</h2>
+        <p class="section-lead">From setup to first guest scan — Vailo is designed to launch fast and stay effortless.</p>
+      </div>
+      <div class="steps">
+        <div class="step fade-up">
+          <div class="step-num">1</div>
+          <h4>Configure your portal</h4>
+          <p>Add your property, house guide, photos, and local recommendations in the Vailo admin.</p>
+        </div>
+        <div class="step fade-up">
+          <div class="step-num">2</div>
+          <h4>Share with guests</h4>
+          <p>Print the QR code, add the link to your booking confirmation, or place it in the welcome folder.</p>
+        </div>
+        <div class="step fade-up">
+          <div class="step-num">3</div>
+          <h4>Let Vailo host</h4>
+          <p>Guests self-serve. You stay informed. The stay feels effortless — on both sides.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="outcomes">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow">The impact</p>
+        <h2 class="section-title">Hospitality that scales with grace</h2>
+      </div>
+      <div class="outcomes-grid">
+        <div class="outcome fade-up">
+          <strong>↓</strong>
+          <span>Repetitive guest messages before &amp; during stay</span>
+        </div>
+        <div class="outcome fade-up">
+          <strong>↑</strong>
+          <span>Guest satisfaction &amp; review readiness</span>
+        </div>
+        <div class="outcome fade-up">
+          <strong>↑</strong>
+          <span>Local partner visibility &amp; bookings</span>
+        </div>
+        <div class="outcome fade-up">
+          <strong>→</strong>
+          <span>Consistent experience across every listing</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow">Questions</p>
+        <h2 class="section-title">Common questions</h2>
+      </div>
+      <div class="faq-list fade-up">
+        <div class="faq-item">
+          <button class="faq-q" type="button">
+            Do guests need to download an app?
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a">No. Vailo runs in the browser. Guests can add it to their home screen for one-tap access — it feels like an app without the App Store.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" type="button">
+            How does the AI know about my property?
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a">The assistant is grounded in your house guide — rules, appliances, check-in details, and host notes you configure. It answers from your content, not generic travel advice.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" type="button">
+            Can I manage multiple properties?
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a">Yes. Vailo is built for portfolios. Each listing gets its own portal, QR code, and house guide — managed from a single admin dashboard.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" type="button">
+            Is it available in multiple languages?
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a">The guest portal and AI assistant support multiple languages. You can provide content in the locales your guests speak most.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" type="button">
+            How do I get started?
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a">Request a demo and we'll walk you through setup. Existing partners can log in directly to the platform admin to configure properties and publish guest portals.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="container fade-up">
+      <h2>Ready to elevate every stay?</h2>
+      <p>Join property owners and managers who treat guest experience as a product — not an afterthought.</p>
+      <div class="cta-actions">
+        <button type="button" class="btn btn-gold" data-open-contact>Request a demo</button>
+        <a href="/admin" class="btn btn-secondary" style="background: rgba(255,255,255,0.1); color: white; border-color: rgba(255,255,255,0.2);">Platform login</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div class="footer-brand">
+            <img src="/vailoLogo.png" alt="" height="32" onerror="this.style.display='none'" />
+          </div>
+          <p>The future of hospitality.</p>
+        </div>
+        <ul class="footer-links">
+          <li><a href="#product">Product</a></li>
+          <li><a href="#owners">Owners</a></li>
+          <li><a href="#managers">Managers</a></li>
+          <li><a href="#" data-open-contact>Contact</a></li>
+          <li><a href="/admin">Admin</a></li>
+        </ul>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 Vailo. All rights reserved.</span>
+        <span>Crafted for hosts who care about the details.</span>
+      </div>
+    </div>
+  </footer>
+
+  <div class="contact-overlay" id="contactOverlay" aria-hidden="true">
+    <div class="contact-dialog" role="dialog" aria-modal="true" aria-labelledby="contactTitle">
+      <div class="contact-header">
+        <button type="button" class="contact-close" id="contactClose" aria-label="Close contact form">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+        <p class="section-eyebrow">Get in touch</p>
+        <h2 id="contactTitle">Let's talk about your properties</h2>
+        <p>Tell us a little about yourself and we'll reach out from <strong>info@vailo.app</strong>.</p>
+      </div>
+      <div class="contact-body">
+        <form class="contact-form" id="contactForm" novalidate>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="contactName">Name <span>*</span></label>
+              <input id="contactName" name="name" type="text" autocomplete="name" required placeholder="Your name" />
+            </div>
+            <div class="form-field">
+              <label for="contactEmail">Email <span>*</span></label>
+              <input id="contactEmail" name="email" type="email" autocomplete="email" required placeholder="you@company.com" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="contactCompany">Company</label>
+              <input id="contactCompany" name="company" type="text" autocomplete="organization" placeholder="Optional" />
+            </div>
+            <div class="form-field">
+              <label for="contactRole">I am a…</label>
+              <select id="contactRole" name="role">
+                <option value="">Select</option>
+                <option value="Property owner">Property owner</option>
+                <option value="Property manager">Property manager</option>
+                <option value="Hospitality operator">Hospitality operator</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="contactCountry">Country</label>
+              <select id="contactCountry" name="country" autocomplete="country-name">
+                <option value="">Select country</option>
+                <option value="Greece">Greece</option>
+                <option value="Cyprus">Cyprus</option>
+                <option value="Italy">Italy</option>
+                <option value="Spain">Spain</option>
+                <option value="France">France</option>
+                <option value="Portugal">Portugal</option>
+                <option value="Croatia">Croatia</option>
+                <option value="Turkey">Turkey</option>
+                <option value="United Kingdom">United Kingdom</option>
+                <option value="Germany">Germany</option>
+                <option value="Netherlands">Netherlands</option>
+                <option value="Belgium">Belgium</option>
+                <option value="Switzerland">Switzerland</option>
+                <option value="Austria">Austria</option>
+                <option value="United States">United States</option>
+                <option value="Canada">Canada</option>
+                <option value="Australia">Australia</option>
+                <option value="United Arab Emirates">United Arab Emirates</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="contactPhone">Telephone</label>
+              <input id="contactPhone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+30 69…" />
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="contactMessage">Message <span>*</span></label>
+            <textarea id="contactMessage" name="message" required placeholder="Tell us about your portfolio, number of listings, or what you'd like to achieve with Vailo…"></textarea>
+          </div>
+          <div class="form-honeypot" aria-hidden="true">
+            <label for="contactWebsite">Website</label>
+            <input id="contactWebsite" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+          <div class="contact-error" id="contactError" hidden></div>
+          <button type="submit" class="btn btn-gold contact-submit" id="contactSubmit">
+            <span class="btn-label">Send message</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+          <p class="contact-note">We typically respond within one business day.</p>
+        </form>
+        <div class="contact-success" id="contactSuccess" hidden>
+          <div class="contact-success-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <h3>Message sent</h3>
+          <p>Thank you for reaching out. Our team at info@vailo.app will get back to you shortly.</p>
+          <button type="button" class="btn btn-primary" id="contactDone">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('navToggle')?.addEventListener('click', () => {
+      document.getElementById('navLinks')?.classList.toggle('open');
+    });
+
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.faq-item');
+        const wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+        if (!wasOpen) item.classList.add('open');
+      });
+    });
+
+    const observer = new IntersectionObserver(
+      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    );
+    document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+    const contactOverlay = document.getElementById('contactOverlay');
+    const contactForm = document.getElementById('contactForm');
+    const contactSuccess = document.getElementById('contactSuccess');
+    const contactError = document.getElementById('contactError');
+    const contactSubmit = document.getElementById('contactSubmit');
+    let contactOpenTrigger = null;
+
+    function openContact(trigger) {
+      contactOpenTrigger = trigger || null;
+      contactOverlay.classList.add('open');
+      contactOverlay.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      contactForm.hidden = false;
+      contactSuccess.hidden = true;
+      contactError.hidden = true;
+      contactSubmit.classList.remove('loading');
+      contactSubmit.disabled = false;
+      setTimeout(() => document.getElementById('contactName')?.focus(), 120);
+    }
+
+    function closeContact() {
+      contactOverlay.classList.remove('open');
+      contactOverlay.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      contactOpenTrigger?.focus?.();
+      contactOpenTrigger = null;
+    }
+
+    document.querySelectorAll('[data-open-contact]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.preventDefault();
+        openContact(el);
+      });
+    });
+
+    document.getElementById('contactClose')?.addEventListener('click', closeContact);
+    document.getElementById('contactDone')?.addEventListener('click', closeContact);
+
+    contactOverlay?.addEventListener('click', e => {
+      if (e.target === contactOverlay) closeContact();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && contactOverlay?.classList.contains('open')) closeContact();
+    });
+
+    contactForm?.addEventListener('submit', async e => {
+      e.preventDefault();
+      contactError.hidden = true;
+
+      const payload = {
+        name: document.getElementById('contactName').value.trim(),
+        email: document.getElementById('contactEmail').value.trim(),
+        company: document.getElementById('contactCompany').value.trim(),
+        role: document.getElementById('contactRole').value,
+        country: document.getElementById('contactCountry').value.trim(),
+        phone: document.getElementById('contactPhone').value.trim(),
+        message: document.getElementById('contactMessage').value.trim(),
+        website: document.getElementById('contactWebsite').value.trim(),
+      };
+
+      if (!payload.name || payload.name.length < 2) {
+        contactError.textContent = 'Please enter your name.';
+        contactError.hidden = false;
+        return;
+      }
+      if (!payload.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
+        contactError.textContent = 'Please enter a valid email address.';
+        contactError.hidden = false;
+        return;
+      }
+      if (payload.phone && !/^[\d\s+\-().]{6,}$/.test(payload.phone)) {
+        contactError.textContent = 'Please enter a valid telephone number.';
+        contactError.hidden = false;
+        return;
+      }
+      if (!payload.message || payload.message.length < 10) {
+        contactError.textContent = 'Please enter a message (at least 10 characters).';
+        contactError.hidden = false;
+        return;
+      }
+
+      contactSubmit.classList.add('loading');
+      contactSubmit.disabled = true;
+
+      try {
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         });
-    </script>
-
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Something went wrong. Please try again.');
+        }
+        contactForm.reset();
+        contactForm.hidden = true;
+        contactSuccess.hidden = false;
+      } catch (err) {
+        contactError.textContent = err.message || 'Could not send your message. Please try again.';
+        contactError.hidden = false;
+      } finally {
+        contactSubmit.classList.remove('loading');
+        contactSubmit.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>

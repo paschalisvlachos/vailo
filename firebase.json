@@ -9,6 +9,20 @@
     "predeploy": ["npm run build"],
     "rewrites": [
       {
+        "source": "/api/contact",
+        "function": {
+          "functionId": "submitMarketingContact",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/resend/webhook",
+        "function": {
+          "functionId": "resendInboundWebhook",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/admin",
         "destination": "/app/index.html"
       },

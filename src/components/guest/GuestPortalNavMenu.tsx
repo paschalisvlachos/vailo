@@ -62,12 +62,14 @@ const FEATURED_ICONS: Record<string, ReactNode> = {
   ShoppingBag: <ShoppingBag size={20} />,
 };
 
-type IconVariant = 'gold' | 'bot' | 'featured';
+type IconVariant = 'gold' | 'bot' | 'featured' | 'excursions';
 
 const ICON_STYLES: Record<IconVariant, string> = {
   gold: 'bg-gradient-to-br from-[#C5A059] to-[#8a6d2e] text-white shadow-[0_2px_12px_rgba(197,160,89,0.35)]',
   bot: 'bg-gradient-to-br from-[#5b6eae] to-[#3d4f8c] text-white shadow-[0_2px_12px_rgba(91,110,174,0.35)]',
   featured: 'bg-[#F8FAFA] border border-gray-100 text-[#0B4F5C]',
+  excursions:
+    'bg-gradient-to-br from-[#0B4F5C] to-[#083A43] text-[#E8D5A8] shadow-[0_2px_12px_rgba(11,79,92,0.32)]',
 };
 
 type Props = {
@@ -174,7 +176,7 @@ export default function GuestPortalNavMenu({
                       label="Excursions"
                       sub="Book local experiences and day trips"
                       icon={<Compass size={20} strokeWidth={2} />}
-                      iconVariant="featured"
+                      iconVariant="excursions"
                       onClick={() => {
                         close();
                         onExcursions();

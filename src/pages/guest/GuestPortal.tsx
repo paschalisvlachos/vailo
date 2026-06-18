@@ -58,7 +58,7 @@ import { gemCategoryPrimaries } from '../../lib/categoryLocale';
 const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
   MapPin, Globe, CloudSun, ChevronDown, Navigation, 
-  Star, Smartphone, Monitor, Sparkles,
+  Star, Sparkles,
   Wifi, Copy, Check, Map, Clock, Award
 } from 'lucide-react';
 
@@ -329,7 +329,9 @@ function GuestPortalPage({
   const typeIdFromQuery = searchParams.get('typeId') || searchParams.get('type');
   const inviteTokenFromQuery = searchParams.get('invite');
   const adminPreviewFromQuery = searchParams.get('adminPreview') === '1';
-  
+  const isMobileFramePreview =
+    adminPreviewFromQuery && searchParams.get('previewFrame') === 'mobile';
+
   const [property, setProperty] = useState<any>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [typeId, setTypeId] = useState<string | null>(null);
@@ -343,8 +345,6 @@ function GuestPortalPage({
   const [error, setError] = useState<string | null>(null);
 
   const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant' | 'excursions'>('portal');
-  // Starts in mobile view by default!
-  const [viewMode, setViewMode] = useState<'web' | 'mobile'>('mobile');
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [propertyMapOpen, setPropertyMapOpen] = useState(false);
   const { locale, setLocale, t, localeOptions, contentPrimaryLocale } = useGuestLocale();
@@ -667,8 +667,7 @@ function GuestPortalPage({
   );
 
   const portalMain = (
-    <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative pb-16 overflow-hidden font-sans">
-      
+    <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
       <style>
         {`
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
@@ -678,19 +677,9 @@ function GuestPortalPage({
         `}
       </style>
 
-      {/* FLOATING VIEW TOGGLE */}
-      <div className="fixed bottom-6 right-6 z-50 hidden md:flex items-center bg-white text-gray-500 rounded-full p-1 shadow-[0_4px_20px_rgba(0,0,0,0.08)] border border-gray-200">
-        <button type="button" onClick={() => setViewMode('mobile')} className={`p-2.5 rounded-full transition-all ${viewMode === 'mobile' ? 'bg-[#0B4F5C] text-[#C5A059] shadow-sm' : 'hover:bg-gray-100'}`}>
-          <Smartphone size={18} />
-        </button>
-        <button type="button" onClick={() => setViewMode('web')} className={`p-2.5 rounded-full transition-all ${viewMode === 'web' ? 'bg-[#0B4F5C] text-[#C5A059] shadow-sm' : 'hover:bg-gray-100'}`}>
-          <Monitor size={18} />
-        </button>
-      </div>
-
       <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col relative ${
-        viewMode === 'mobile' 
-          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden' 
+        isMobileFramePreview
+          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
           : 'max-w-none min-h-screen'
       }`}>
         
@@ -698,7 +687,7 @@ function GuestPortalPage({
           <>
             {/* ── HERO: tall property photo (to mid Live like a local) + CTA ── */}
             <section className="relative z-10">
-              <div className={`relative ${viewMode === 'mobile' ? 'md:rounded-t-[30px] overflow-hidden' : ''}`}>
+              <div className={`relative ${isMobileFramePreview ? 'md:rounded-t-[30px] overflow-hidden' : ''}`}>
                 {/* Photo height = full block minus half of Live like a local (min-h 72px → 2.25rem) */}
                 <div className="absolute inset-x-0 top-0 z-0 h-[calc(100%-2.25rem)] overflow-hidden">
                   {heroPhoto ? (
@@ -714,7 +703,7 @@ function GuestPortalPage({
                   <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/75 via-transparent to-black/35" />
                 </div>
 
-                <div className={`relative z-10 mx-auto px-4 sm:px-5 pt-5 min-h-[360px] sm:min-h-[400px] flex flex-col ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+                <div className={`relative z-10 mx-auto px-4 sm:px-5 pt-5 min-h-[360px] sm:min-h-[400px] flex flex-col ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
                   {pwaInstall.showBanner && (
                     <GuestAddToHomeBanner
                       t={t}
@@ -820,7 +809,7 @@ function GuestPortalPage({
             </section>
 
             {/* Weather, Wi‑Fi, Google — equal spacing */}
-            <div className={`mx-auto px-4 sm:px-5 relative z-20 w-full flex flex-col gap-3 mt-3 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+            <div className={`mx-auto px-4 sm:px-5 relative z-20 w-full flex flex-col gap-3 mt-3 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
               <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">
                 <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -904,7 +893,7 @@ function GuestPortalPage({
             )}
 
             {/* Main content */}
-            <div className={`mx-auto px-5 mt-6 space-y-14 pb-28 relative z-10 ${viewMode === 'web' ? 'max-w-4xl' : 'max-w-md'}`}>
+            <div className={`mx-auto px-5 mt-6 space-y-14 pb-28 relative z-10 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
               <PropertyEssentials
                 featuredOnPortal={featuredOnPortal}
                 previews={featuredPreviews}
@@ -1037,7 +1026,7 @@ function GuestPortalPage({
         !featuredPreviewKey &&
         !legalModal && (
         <GuestFloatingActions
-          mobileFramePreview={viewMode === 'mobile'}
+          mobileFramePreview={isMobileFramePreview}
           onOpenAssistant={() => setActiveView('assistant')}
           onOpenReport={() => setReportSheetOpen(true)}
           whatsappHref={whatsappHref}

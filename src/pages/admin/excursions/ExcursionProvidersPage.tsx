@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { Compass, Plus, Pencil, Trash2 } from 'lucide-react';
 import { db } from '../../../lib/firebase';
+import { loadCountryNames } from '../../../lib/countryNames';
 import { useToast } from '../../../context/ToastContext';
 import { adminPath } from '../../../lib/adminRoutes';
 import {
@@ -59,14 +60,8 @@ export default function ExcursionProvidersPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name')
-      .then((res) => res.json())
-      .then((data) => {
-        const names = data
-          .map((c: { name: { common: string } }) => c.name.common)
-          .sort((a: string, b: string) => a.localeCompare(b));
-        setCountries(names);
-      })
+    loadCountryNames()
+      .then(setCountries)
       .catch(console.error);
   }, []);
 

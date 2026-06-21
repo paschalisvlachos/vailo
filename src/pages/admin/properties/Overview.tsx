@@ -10,6 +10,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { loadCountryNames } from '../../../lib/countryNames';
 import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { useToast } from '../../../context/ToastContext';
 import {
@@ -96,15 +97,9 @@ export default function Overview() {
   }, [property, isEditing]);
 
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name')
-      .then((res) => res.json())
-      .then((data) => {
-        const names = data
-          .map((c: { name: { common: string } }) => c.name.common)
-          .sort((a: string, b: string) => a.localeCompare(b));
-        setCountries(names);
-      })
-      .catch((err) => console.error('Failed to fetch countries:', err));
+    loadCountryNames()
+      .then(setCountries)
+      .catch((err) => console.error('Failed to load countries:', err));
   }, []);
 
   useEffect(() => {

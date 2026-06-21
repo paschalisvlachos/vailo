@@ -16,6 +16,7 @@ import {
   applyPickVerificationToPlan,
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
+  buildWizardGemsOnlyPlan,
   collectUnverifiedMentionsFromPlan,
   effectiveMaxDistanceKm,
   maxPicksForRadius,
@@ -59,6 +60,7 @@ import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { usePropertyContentLocaleSettings } from '../../hooks/usePropertyContentLocaleSettings';
 import {
   categoryPrimaryName,
+  gemBelongsToCategory,
   normalizeCategorySelectionList,
   resolveCategoryLabel,
 } from '../../lib/categoryLocale';
@@ -88,6 +90,7 @@ import {
   formatTextOnlyRecommendations,
   processConciergeRecommendations,
 } from '../../lib/conciergeRecommendations';
+import { runSilentAiPlaceDiscovery } from '../../lib/silentAiDiscovery';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Compass, Heart, Eye } from 'lucide-react';
 
 type GuestLocaleOption = { code: string; label: string; nativeLabel: string };
@@ -1549,9 +1552,120 @@ export default function AiExpertView({
         return;
       }
 
+      const isFlexiblePicks = !timeFrameStr;
+
+      /** Wizard browse: instant local-gem cards; AI runs silently for discovered-places enrichment. */
+      if (isFlexiblePicks) {
+        const recentlyShown = getRecentlyShownKeys();
+        const gemsPlan = buildWizardGemsOnlyPlan({
+          categories: nonHikingCategories,
+          maxKm: distanceLimitNum,
+          startCoords,
+          gems: mergedGems,
+          recentlyShown,
+          catalogDocs: categoryCatalogDocs,
+          primaryLocale: contentSettings.primaryLocale,
+          guestLocale: locale,
+          resolveCategoryLabel: resolveCategoryDisplayLabel,
+        });
+
+        let initialPlan = mergeTrailCategoriesIntoPlan(gemsPlan, trailCategoryBlocks);
+        initialPlan =
+          stripExcludedCategoriesFromPlan(initialPlan, excludedLiveLikeLocalPrimaries) ??
+          initialPlan;
+
+        const categoriesWithContent = (initialPlan.categories || []).filter(
+          (c: { items?: unknown[]; isTrails?: boolean }) =>
+            c.isTrails || (Array.isArray(c.items) && c.items.length > 0)
+        );
+
+        if (categoriesWithContent.length === 0) {
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorPlan') },
+          ]);
+          setIsThinking(false);
+          return;
+        }
+
+        initialPlan = { ...initialPlan, categories: categoriesWithContent };
+
+        const planMessageId = `${Date.now()}-plan`;
+        track('ai_expert_plan', {
+          planStopCount: countPlanStops(initialPlan),
+          planCategories: categoriesWithContent
+            .map((c: { categoryName?: string }) => c.categoryName)
+            .filter(Boolean),
+        });
+        setMessages((prev) => [
+          ...prev,
+          { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan },
+        ]);
+        setIsThinking(false);
+        markItemsShown(collectDbItemsFromPlan(initialPlan));
+
+        if (listingAreaCtx?.country && listingAreaCtx?.areaId && nonHikingCategories.length > 0) {
+          const primary = contentSettings.primaryLocale;
+          const reviewed = contentSettings.reviewedLocales;
+          const knownGemNamesByCategory: Record<string, string[]> = {};
+          for (const cat of nonHikingCategories) {
+            const names: string[] = [];
+            for (const gem of mergedGems) {
+              if (
+                !gemBelongsToCategory(
+                  gem,
+                  cat,
+                  categoryCatalogDocs,
+                  primary,
+                  locale
+                )
+              ) {
+                continue;
+              }
+              const name = resolveLocalizedString(gem, 'name', locale, primary, reviewed);
+              if (name) names.push(name);
+            }
+            knownGemNamesByCategory[cat] = names;
+          }
+
+          void runSilentAiPlaceDiscovery({
+            locale,
+            categories: nonHikingCategories,
+            categoryKnowledgeByPrimary,
+            startLocationName,
+            gpsString,
+            distanceLimitKm: distanceLimitNum,
+            areaCtx: {
+              country: listingAreaCtx.country,
+              areaId: listingAreaCtx.areaId,
+              areaName: listingAreaCtx.masterArea || getGeographicAreaHint(),
+            },
+            startCoords,
+            knownGems: mergedGems.map((g) => ({
+              name: resolveLocalizedString(g, 'name', locale, primary, reviewed),
+              alternateTitles: Array.isArray(g.alternateTitles)
+                ? g.alternateTitles.map(String)
+                : undefined,
+              googlePlaceId: g.googlePlaceId as string | undefined,
+            })),
+            knownDiscovered: discoveredPlaces.map((p) => ({
+              name: String(p.name || ''),
+              alternateTitles: Array.isArray(p.alternateTitles)
+                ? p.alternateTitles.map(String)
+                : undefined,
+              googlePlaceId: p.googlePlaceId as string | undefined,
+            })),
+            knownGemNamesByCategory,
+          }).catch((err) => {
+            console.warn('[Vailo silent AI] background task failed', err);
+          });
+        }
+
+        return;
+      }
+
       const recentlyShown = getRecentlyShownKeys();
       const filteredDatabase = getFilteredDbSummary(distanceLimitNum, startCoords, recentlyShown);
-      const isFlexiblePicks = !timeFrameStr;
       const aiCategories =
         nonHikingCategories.length > 0 ? nonHikingCategories : liveLikeLocalCategories;
 

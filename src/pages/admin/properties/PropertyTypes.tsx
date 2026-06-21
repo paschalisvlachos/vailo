@@ -4,6 +4,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
+import { loadCountryNames } from '../../../lib/countryNames';
 import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
 import { formatGuestSlug, getTypePublicSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
@@ -56,17 +57,11 @@ export default function PropertyTypes() {
   };
   const [typeFormData, setTypeFormData] = useState(initialFormState);
 
-  // 1. Fetch Global Countries
+  // 1. Load country list for admin selects
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name')
-      .then(res => res.json())
-      .then(data => {
-        const countryNames = data
-          .map((c: any) => c.name.common)
-          .sort((a: string, b: string) => a.localeCompare(b));
-        setCountries(countryNames);
-      })
-      .catch(err => console.error("Failed to fetch countries:", err));
+    loadCountryNames()
+      .then(setCountries)
+      .catch((err) => console.error('Failed to load countries:', err));
   }, []);
 
   // 2. Fetch Master Areas for selected Country

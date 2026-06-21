@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
+import { loadCountryNames } from '../../../lib/countryNames';
 import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT } from '../../../lib/guestAccess';
 import { adminPath } from '../../../lib/adminRoutes';
@@ -51,15 +52,9 @@ export default function PropertyFormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name')
-      .then((res) => res.json())
-      .then((data) => {
-        const names = data
-          .map((c: { name: { common: string } }) => c.name.common)
-          .sort((a: string, b: string) => a.localeCompare(b));
-        setCountries(names);
-      })
-      .catch((err) => console.error('Failed to fetch countries:', err));
+    loadCountryNames()
+      .then(setCountries)
+      .catch((err) => console.error('Failed to load countries:', err));
   }, []);
 
   useEffect(() => {

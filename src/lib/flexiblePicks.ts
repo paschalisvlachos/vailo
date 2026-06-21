@@ -1067,3 +1067,146 @@ export function buildFlexiblePicksPromptSection(
         ${JSON.stringify(perCategory)}
       `;
 }
+
+/** Wizard browse mode: show this many local-gem cards per category (distance-sorted). */
+export const WIZARD_GEMS_PICKS_PER_CATEGORY = 5;
+
+/** Progressive search radii when fewer than {@link WIZARD_GEMS_PICKS_PER_CATEGORY} gems match. */
+function wizardGemsSearchRadiiKm(baseKm: number): number[] {
+  const radii: number[] = [];
+  const add = (v: number) => {
+    if (v > 0 && !radii.some((r) => Math.abs(r - v) < 0.01)) radii.push(v);
+  };
+  add(baseKm);
+  add(effectiveMaxDistanceKm(baseKm));
+  add(Math.min(baseKm * 1.75, effectiveMaxDistanceKm(baseKm) + beyondRadiusBufferKm(baseKm)));
+  add(Math.min(baseKm * 2.5, 120));
+  return radii.sort((a, b) => a - b);
+}
+
+function mapGemToRow(
+  item: Record<string, unknown>,
+  category: string,
+  startCoords: { lat: number; lng: number },
+  recentlyShown: Set<string>
+): DbPickRow | null {
+  const coords = extractCoords(item);
+  if (!coords) return null;
+
+  const distanceKm = drivingKm(startCoords.lat, startCoords.lng, coords.lat, coords.lng);
+  const key = pickKeyForItem({
+    name: String(item.businessName || item.name || ''),
+    googlePlaceId: item.googlePlaceId as string | undefined,
+    googleMapsUrl: item.googleMapsUrl as string | undefined,
+    latitude: coords.lat,
+    longitude: coords.lng,
+  });
+
+  return {
+    name: String(item.businessName || item.name || ''),
+    category,
+    distanceKm,
+    beyondRadius: false,
+    description: String(item.description || ''),
+    photoUrl: String(item.photoUrl || ''),
+    googleMapsUrl: String(item.googleMapsUrl || ''),
+    googlePlaceId: String(item.googlePlaceId || ''),
+    latitude: coords.lat,
+    longitude: coords.lng,
+    isLegitPick: !!item.isLegitPick,
+    previouslyShown: !!(key && recentlyShown.has(key)),
+    curatedScope: item.curatedScope === 'area' ? 'area' : 'property',
+    alternateTitles: Array.isArray(item.alternateTitles)
+      ? item.alternateTitles.map(String)
+      : undefined,
+  };
+}
+
+function selectWizardGemsForCategory(
+  rows: DbPickRow[],
+  maxKm: number,
+  cap = WIZARD_GEMS_PICKS_PER_CATEGORY
+): FlexiblePickItem[] {
+  if (rows.length === 0) return [];
+
+  for (const radiusKm of wizardGemsSearchRadiiKm(maxKm)) {
+    const inRadius = rows.filter((r) => r.distanceKm <= radiusKm);
+    if (inRadius.length === 0) continue;
+
+    const fair = sortRowsForFairness(inRadius);
+    const chosen = shuffleRows(fair).slice(0, cap).map((row) => {
+      const beyondRadius = row.distanceKm > maxKm;
+      return rowToPick({ ...row, beyondRadius });
+    });
+    if (chosen.length >= cap || radiusKm === wizardGemsSearchRadiiKm(maxKm).at(-1)) {
+      return sortPickItems(chosen);
+    }
+  }
+
+  const fair = sortRowsForFairness(rows);
+  return sortPickItems(shuffleRows(fair).slice(0, cap).map((row) => rowToPick(row)));
+}
+
+/**
+ * Build an instant wizard plan from property + area local gems only (no AI cards).
+ * Random {@link WIZARD_GEMS_PICKS_PER_CATEGORY} per category, sorted by distance;
+ * expands search radius when the pool is thin.
+ */
+export function buildWizardGemsOnlyPlan(params: {
+  categories: string[];
+  maxKm: number;
+  startCoords: { lat: number; lng: number } | null;
+  gems: Record<string, unknown>[];
+  recentlyShown: Set<string>;
+  catalogDocs: Record<string, unknown>[];
+  primaryLocale: string;
+  guestLocale?: string;
+  resolveCategoryLabel?: (primary: string) => string;
+}): { type: 'picks'; categories: Array<{ categoryName: string; items: FlexiblePickItem[] }> } {
+  const {
+    categories,
+    maxKm,
+    startCoords,
+    gems,
+    recentlyShown,
+    catalogDocs,
+    primaryLocale,
+    guestLocale,
+    resolveCategoryLabel,
+  } = params;
+
+  if (!startCoords) {
+    return {
+      type: 'picks',
+      categories: categories.map((cat) => ({
+        categoryName: resolveCategoryLabel?.(cat) ?? cat,
+        items: [],
+      })),
+    };
+  }
+
+  const categoriesOut = categories.map((cat) => {
+    const rows: DbPickRow[] = [];
+    for (const gem of gems || []) {
+      const belongs =
+        catalogDocs.length > 0
+          ? gemBelongsToCategory(gem, cat, catalogDocs, primaryLocale, guestLocale)
+          : gemCategoryPrimaries(gem, [], primaryLocale, guestLocale).some(
+              (p) => p.trim().toLowerCase() === cat.trim().toLowerCase()
+            );
+      if (!belongs) continue;
+      const row = mapGemToRow(gem, cat, startCoords, recentlyShown);
+      if (row) rows.push(row);
+    }
+
+    const unique = dedupeDbRows(rows);
+    const items = selectWizardGemsForCategory(unique, maxKm);
+
+    return {
+      categoryName: resolveCategoryLabel?.(cat) ?? cat,
+      items,
+    };
+  });
+
+  return { type: 'picks', categories: categoriesOut };
+}

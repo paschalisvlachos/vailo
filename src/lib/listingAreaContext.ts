@@ -1,6 +1,5 @@
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
-import { areaNameToId } from './areaUtils';
 
 export type ListingAreaContext = {
   country: string;
@@ -23,17 +22,20 @@ export async function resolvePropertyTypeAreaContext(propertyType?: {
   }
 
   const areasSnap = await getDocs(collection(db, 'countries', country, 'areas'));
-  const configuredAreas = areasSnap.docs
-    .map((d) => (typeof d.data().name === 'string' ? d.data().name.trim() : ''))
-    .filter(Boolean);
+  const matchDoc = areasSnap.docs.find((d) => {
+    const name = typeof d.data().name === 'string' ? d.data().name.trim() : '';
+    return name.toLowerCase() === cityRaw.toLowerCase();
+  });
 
-  const match = configuredAreas.find((name) => name.toLowerCase() === cityRaw.toLowerCase());
-  if (!match) {
+  if (!matchDoc) {
     return { ctx: null, issue: 'invalid-master', cityRaw };
   }
 
+  const masterArea =
+    typeof matchDoc.data().name === 'string' ? matchDoc.data().name.trim() : cityRaw;
+
   return {
-    ctx: { country, masterArea: match, areaId: areaNameToId(match) },
+    ctx: { country, masterArea, areaId: matchDoc.id },
     issue: null,
     cityRaw,
   };

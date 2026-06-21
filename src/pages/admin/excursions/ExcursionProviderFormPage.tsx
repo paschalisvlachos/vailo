@@ -4,6 +4,7 @@ import { collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where } 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Image as ImageIcon, Loader2, Lock, Plus, Users, X } from 'lucide-react';
 import { db, storage } from '../../../lib/firebase';
+import { loadCountryNames } from '../../../lib/countryNames';
 import { useToast } from '../../../context/ToastContext';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { adminPath } from '../../../lib/adminRoutes';
@@ -87,14 +88,8 @@ export default function ExcursionProviderFormPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name')
-      .then((res) => res.json())
-      .then((data) => {
-        const names = data
-          .map((c: { name: { common: string } }) => c.name.common)
-          .sort((a: string, b: string) => a.localeCompare(b));
-        setCountries(names);
-      })
+    loadCountryNames()
+      .then(setCountries)
       .catch(console.error);
   }, []);
 

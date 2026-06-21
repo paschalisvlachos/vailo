@@ -19,6 +19,7 @@ import {
   Footprints,
 } from 'lucide-react';
 import AreaLanguagesCard from '../../../components/admin/AreaLanguagesCard';
+import { loadCountryNames } from '../../../lib/countryNames';
 import AdminPageHeader, {
   AdminCard,
   AdminButton,
@@ -53,19 +54,13 @@ export default function AreaSelector() {
   const [isLoadingCountries, setIsLoadingCountries] = useState(true);
 
   useEffect(() => {
-    fetch('https://restcountries.com/v3.1/all?fields=name')
-      .then((res) => res.json())
-      .then((data) => {
-        const countryNames = data
-          .map((c: { name: { common: string } }) => c.name.common)
-          .sort((a: string, b: string) => a.localeCompare(b));
-        setCountries(countryNames);
+    loadCountryNames()
+      .then(setCountries)
+      .catch((err) => {
+        console.error('Failed to load countries:', err);
         setIsLoadingCountries(false);
       })
-      .catch((err) => {
-        console.error('Failed to fetch countries:', err);
-        setIsLoadingCountries(false);
-      });
+      .finally(() => setIsLoadingCountries(false));
   }, []);
 
   useEffect(() => {

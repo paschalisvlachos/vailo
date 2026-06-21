@@ -6,6 +6,7 @@ import {
   setLocaleFieldValue,
   type LocaleStringMap,
 } from './propertyContentLocales';
+import { deleteField, type FieldValue } from 'firebase/firestore';
 
 export const HOUSE_GUIDE_TEXTAREA_FIELD_IDS = [
   'arrivalInfo',
@@ -133,7 +134,7 @@ function serializeGuideTextFieldForSave(
   formData: HouseGuideFormData,
   fieldId: string,
   primaryLocale: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown | FieldValue>
 ): void {
   const primary = normalizeLocaleCode(primaryLocale) || DEFAULT_PRIMARY_LOCALE;
   const mapKey = guideFieldMapKey(fieldId);
@@ -153,11 +154,13 @@ function serializeGuideTextFieldForSave(
     const t = (v || '').trim();
     if (c && t) cleaned[c] = t;
   }
+  // merge: true keeps omitted keys — explicitly delete when cleared.
   if (Object.keys(cleaned).length > 0) payload[mapKey] = cleaned;
-  else delete payload[mapKey];
+  else payload[mapKey] = deleteField();
+
   const primaryText = (cleaned[primary] || '').trim();
   if (primaryText) payload[fieldId] = primaryText;
-  else delete payload[fieldId];
+  else payload[fieldId] = deleteField();
 }
 
 /** Merge-save payload for one admin category (quick edit) — smaller & faster than the full guide. */
@@ -165,8 +168,8 @@ export function serializeGuideCategoryForSave(
   formData: HouseGuideFormData,
   fields: Array<{ id: string; type: string }>,
   primaryLocale: string
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = {};
+): Record<string, unknown | FieldValue> {
+  const payload: Record<string, unknown | FieldValue> = {};
   for (const field of fields) {
     if (field.type === 'textarea' && TEXTAREA_FIELD_ID_SET.has(field.id)) {
       serializeGuideTextFieldForSave(formData, field.id, primaryLocale, payload);
@@ -180,8 +183,8 @@ export function serializeGuideCategoryForSave(
 export function serializeGuideFormDataForSave(
   formData: HouseGuideFormData,
   primaryLocale: string
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = { ...formData };
+): Record<string, unknown | FieldValue> {
+  const payload: Record<string, unknown | FieldValue> = { ...formData };
   for (const fieldId of HOUSE_GUIDE_TEXTAREA_FIELD_IDS) {
     serializeGuideTextFieldForSave(formData, fieldId, primaryLocale, payload);
   }

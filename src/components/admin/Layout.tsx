@@ -24,6 +24,7 @@ import { useAdminInboxUnreadCount } from '../../hooks/useAdminInboxUnreadCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { scopeFromRoute, scopeKey, isExcursionProvider } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
+import VailoMark from '../guest/VailoMark';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
 type NavItem = {
@@ -135,8 +136,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <>
       <div className="p-5 lg:p-6 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner">
-            <span className="font-bold text-vailo-gold text-lg font-luxury">V</span>
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/25 flex items-center justify-center shrink-0 shadow-inner p-2">
+            <VailoMark className="h-full w-full object-contain" alt="Vailo" />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white font-luxury">Vailo</h1>

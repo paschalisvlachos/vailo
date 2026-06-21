@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import VailoMark from '../guest/VailoMark';
 import { AdminAlert, AdminButton, AdminInput, AdminLabel } from './AdminPageHeader';
 
 export default function Login() {
@@ -27,8 +28,8 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-vailo-dark via-vailo-teal to-vailo-teal-hover flex flex-col justify-center py-10 px-4 sm:px-6">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
-        <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/30 mb-5 shadow-lg shadow-vailo-dark/20">
-          <span className="text-2xl font-bold text-vailo-gold font-luxury">V</span>
+        <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/30 mb-5 shadow-lg shadow-vailo-dark/20 p-2.5">
+          <VailoMark className="h-full w-full object-contain" alt="Vailo" />
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-luxury">Vailo Admin</h1>
         <p className="mt-2 text-sm text-white/55">Sign in to manage properties and guest experiences</p>

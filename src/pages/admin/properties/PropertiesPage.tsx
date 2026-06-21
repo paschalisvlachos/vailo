@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Building2, Plus, Pencil, Trash2, User, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { collection, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import AdminPageHeader, {
@@ -35,6 +35,37 @@ function KindBadge({ kind }: { kind?: ListingKind }) {
   );
 }
 
+function ListingCountLink({ propertyId, count }: { propertyId: string; count: number }) {
+  const label = count === 1 ? '1 listing' : `${count} listings`;
+  return (
+    <Link
+      to={adminPath(`/properties/${propertyId}/types`)}
+      className="text-sm font-normal text-gray-500 hover:text-vailo-teal hover:underline whitespace-nowrap"
+    >
+      ({label})
+    </Link>
+  );
+}
+
+function PropertyTitleCell({
+  property,
+  listingCount,
+  href,
+}: {
+  property: Property;
+  listingCount: number;
+  href: string;
+}) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+      <Link to={href} className="font-semibold text-vailo-teal hover:underline">
+        {property.propertyName}
+      </Link>
+      <ListingCountLink propertyId={property.id} count={listingCount} />
+    </span>
+  );
+}
+
 function LocationCell({ property }: { property: Property }) {
   const area = property.area || property.city;
   if (!property.country && !area) {
@@ -52,6 +83,7 @@ export default function PropertiesPage() {
   const toast = useToast();
   const { profile, scopes, isPlatformAdmin, isScopedUser } = useAdminSession();
   const [properties, setProperties] = useState<Property[]>([]);
+  const [listingCounts, setListingCounts] = useState<Record<string, number>>({});
   const [owners, setOwners] = useState<Record<string, { fullName?: string; role?: string }>>({});
   const [loading, setLoading] = useState(true);
 
@@ -73,6 +105,19 @@ export default function PropertiesPage() {
       unsubProps();
       unsubOwners();
     };
+  }, []);
+
+  useEffect(() => {
+    const unsubTypes = onSnapshot(collectionGroup(db, 'propertyTypes'), (snapshot) => {
+      const counts: Record<string, number> = {};
+      snapshot.forEach((d) => {
+        const propertyId = d.ref.parent.parent?.id;
+        if (!propertyId) return;
+        counts[propertyId] = (counts[propertyId] || 0) + 1;
+      });
+      setListingCounts(counts);
+    });
+    return () => unsubTypes();
   }, []);
 
   const handleDelete = async (id: string, propertyName: string) => {
@@ -142,12 +187,11 @@ export default function PropertiesPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <Link
-                          to={propertyHref(property.id)}
-                          className="font-semibold text-vailo-teal hover:underline truncate"
-                        >
-                          {property.propertyName}
-                        </Link>
+                        <PropertyTitleCell
+                          property={property}
+                          listingCount={listingCounts[property.id] ?? 0}
+                          href={propertyHref(property.id)}
+                        />
                         <KindBadge kind={property.listingKind} />
                       </div>
                       <p className="text-xs text-gray-500 font-mono">{property.internalRefCode}</p>
@@ -206,12 +250,11 @@ export default function PropertiesPage() {
                     return (
                       <tr key={property.id}>
                         <td>
-                          <Link
-                            to={propertyHref(property.id)}
-                            className="font-semibold text-vailo-teal hover:underline"
-                          >
-                            {property.propertyName}
-                          </Link>
+                          <PropertyTitleCell
+                            property={property}
+                            listingCount={listingCounts[property.id] ?? 0}
+                            href={propertyHref(property.id)}
+                          />
                         </td>
                         <td>
                           <KindBadge kind={property.listingKind} />

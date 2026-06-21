@@ -11,6 +11,7 @@ import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
+import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
 import {
   categoryPrimaryName,
@@ -306,7 +307,11 @@ export default function Features() {
 
       const functions = getFunctions();
       const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      const result = await getGooglePlaceDetails({ searchQuery, area: propertyAreaContext.areaName });
+      const result = await getGooglePlaceDetails({
+        searchQuery,
+        area: propertyAreaContext.areaName,
+        usageCaller: PLACES_USAGE_CALLER.propertyFeatures,
+      });
       const googleData: any = result.data;
 
       let matchedCategory = "";

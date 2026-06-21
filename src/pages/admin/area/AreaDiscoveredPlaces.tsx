@@ -7,6 +7,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useToast } from '../../../context/ToastContext';
 import { adminPath } from '../../../lib/adminRoutes';
 import { httpsCallableMessage } from '../../../lib/callableError';
+import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import {
   bareGooglePlaceId,
   extractPlaceIdFromMapsUrl,
@@ -843,6 +844,7 @@ export default function AreaDiscoveredPlaces() {
       biasLng: parseCoord(opts.biasLng) ?? undefined,
       googlePlaceId: resolvedPlaceId ?? undefined,
       photoUrl: opts.photoUrl ?? undefined,
+      usageCaller: PLACES_USAGE_CALLER.areaDiscoveredPlaces,
     });
     const googleData = result.data as {
       name?: string;

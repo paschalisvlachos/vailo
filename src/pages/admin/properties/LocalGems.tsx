@@ -8,6 +8,7 @@ import { getGenerativeModel } from "firebase/ai";
 import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, ExternalLink } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
+import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { formatGuestSlug, getTypePublicSlug } from '../../../lib/guestPortalSlug';
 import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
@@ -275,7 +276,11 @@ export default function LocalGems() {
 
       const functions = getFunctions();
       const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      const result = await getGooglePlaceDetails({ searchQuery, area: propertyAreaContext.areaName });
+      const result = await getGooglePlaceDetails({
+        searchQuery,
+        area: propertyAreaContext.areaName,
+        usageCaller: PLACES_USAGE_CALLER.propertyLocalGems,
+      });
       const googleData: any = result.data;
 
       // 1. Calculate Driving Distance

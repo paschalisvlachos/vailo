@@ -179,10 +179,10 @@ export default function Billing() {
 
       {activeTab === 'estimate' && (
         <div className="space-y-6">
-          <AdminAlert variant="info" icon={<AlertCircle size={18} />} title="Real-time approximations">
-            Counts every Google Places lookup triggered by Magic Fill (admin) and guest place-photo resolution.
-            Assumes a flat {formatUsd(MAGIC_FILL_UNIT_COST)} per call. Does not account for caching or
-            Google&apos;s $200 free tier.
+          <AdminAlert variant="info" icon={<AlertCircle size={18} />} title="Real-time Places API tracking">
+            Counts each billed Google Places HTTP request (Text Search, Place Details, Nearby, Photo).
+            Breakdown by endpoint and by feature. Cached discovered-place hits are free and not counted.
+            Does not include Google&apos;s $200/month free tier.
           </AdminAlert>
 
           {error && (
@@ -195,7 +195,7 @@ export default function Billing() {
             <AdminCard className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center text-vailo-dark font-bold">
-                  <Activity size={18} className="mr-2 text-vailo-teal" /> Total Magic Fills
+                  <Activity size={18} className="mr-2 text-vailo-teal" /> Places API calls
                 </div>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-vailo-teal bg-vailo-teal/8 px-2.5 py-1 rounded-full border border-vailo-teal/15">
                   <Radio size={12} className="animate-pulse" /> Live
@@ -203,7 +203,7 @@ export default function Billing() {
               </div>
               <div className="flex items-end gap-3">
                 <h3 className="text-4xl font-black text-vailo-dark font-luxury">
-                  {loading ? '—' : stats.magicFill.toLocaleString()}
+                  {loading ? '—' : (stats.placesApi.total || stats.magicFill).toLocaleString()}
                 </h3>
                 <p className="text-sm text-gray-500 pb-1">{formatMonthLabel(monthKey)}</p>
               </div>
@@ -218,7 +218,7 @@ export default function Billing() {
                   <TrendingUp size={18} className="mr-2 text-vailo-gold" /> Estimated Raw Cost
                 </div>
                 <span className="text-xs font-bold text-gray-400 bg-vailo-surface-elevated px-2 py-1 rounded-lg">
-                  {formatUsd(MAGIC_FILL_UNIT_COST)}/fill
+                  by SKU
                 </span>
               </div>
               <div className="flex items-end gap-3">
@@ -230,10 +230,64 @@ export default function Billing() {
             </AdminCard>
           </div>
 
-          {!loading && stats.magicFill === 0 && (
+          {!loading && stats.placesApi.byEndpoint.length > 0 && (
+            <AdminCard className="p-6">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                By Google API type
+              </p>
+              <div className="admin-table-wrap border-0">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Endpoint</th>
+                      <th className="text-right">Calls</th>
+                      <th className="text-right">Est. cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.placesApi.byEndpoint.map((row) => (
+                      <tr key={row.key}>
+                        <td className="font-medium text-vailo-dark">{row.label}</td>
+                        <td className="text-right text-gray-500 tabular-nums">{row.count.toLocaleString()}</td>
+                        <td className="text-right font-semibold tabular-nums">{formatUsd(row.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </AdminCard>
+          )}
+
+          {!loading && stats.placesApi.bySource.length > 0 && (
+            <AdminCard className="p-6">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                By Vailo feature (where calls originate)
+              </p>
+              <div className="admin-table-wrap border-0">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th className="text-right">Calls</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.placesApi.bySource.map((row) => (
+                      <tr key={row.key}>
+                        <td className="font-medium text-vailo-dark">{row.label}</td>
+                        <td className="text-right text-gray-500 tabular-nums">{row.count.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </AdminCard>
+          )}
+
+          {!loading && stats.magicFill === 0 && stats.placesApi.total === 0 && (
             <AdminAlert variant="info" icon={<CheckCircle2 size={18} />}>
-              No Magic Fill API calls recorded yet this month. Counts appear automatically when admins use Magic
-              Fill or guests trigger place photo lookups.
+              No Places API calls recorded yet this month. Counts appear when admins use Magic Fill or guests
+              use the AI concierge (photos / map links).
             </AdminAlert>
           )}
         </div>

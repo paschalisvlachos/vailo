@@ -7,6 +7,7 @@ import { db, storage, ai } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
+import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { getGenerativeModel } from "firebase/ai";
 import {
   Plus,
@@ -270,6 +271,7 @@ export default function AreaLocalGems() {
       const result = await getGooglePlaceDetails({
         searchQuery: url.trim(),
         area: decodedArea,
+        usageCaller: PLACES_USAGE_CALLER.areaLocalGems,
       });
       const googleData: any = result.data;
 

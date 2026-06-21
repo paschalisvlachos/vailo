@@ -13,6 +13,7 @@ import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
+import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { categoryPrimaryName, resolveCategoryLabel, normalizeCategorySelectionList, categorySelectionIncludes } from '../../../lib/categoryLocale';
 import { normalizeLocaleCode } from '../../../lib/propertyContentLocales';
 
@@ -291,7 +292,11 @@ export default function AreaFeatures() {
 
       const functions = getFunctions();
       const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      const result = await getGooglePlaceDetails({ searchQuery, area: decodedArea });
+      const result = await getGooglePlaceDetails({
+        searchQuery,
+        area: decodedArea,
+        usageCaller: PLACES_USAGE_CALLER.areaFeatures,
+      });
       const googleData: any = result.data;
 
       // 🔥 THE FIX: AI-POWERED CATEGORY MAPPING 🔥

@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const axios = require("axios");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
+const { recordPlacesApiCall } = require("./placesApiUsage");
 
 /** True when loading this URL in a browser bills Google Place Photos. */
 function isGooglePlacesPhotoUrl(url) {
@@ -120,6 +121,11 @@ async function ensureStoredPlacePhoto(googlePhotoUrl, storagePathArg) {
       timeout: 20000,
       maxRedirects: 5,
       validateStatus: (status) => status >= 200 && status < 400,
+    });
+
+    await recordPlacesApiCall(admin.firestore(), {
+      endpoint: "place_photo",
+      source: "photo_mirror",
     });
 
     const contentType =

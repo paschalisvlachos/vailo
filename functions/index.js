@@ -45,6 +45,12 @@ const PLACE_DETAILS_FIELD_MASK =
 const DUPLICATE_RADIUS_METERS = 150;
 const FUZZY_NAME_RADIUS_METERS = 250;
 
+const {
+  normalizeUsageCaller,
+  recordPlacesApiCall,
+  breakdownFromUsageDoc,
+  MAGIC_FILL_LEGACY_UNIT,
+} = require("./placesApiUsage");
 const { syncAllTrailsForAreaHandler } = require("./allTrailsSync");
 const {
   askAppCodeKnowledgeHandler,
@@ -634,7 +640,7 @@ function discoveredPlacesCollection(country, areaId) {
     .collection("discoveredPlaces");
 }
 
-function placeToResponse(data, placeNameFallback) {
+function placeToResponse(data, placeNameFallback, extras = {}) {
   const name = data.name || placeNameFallback;
   let googleMapsUrl = data.googleMapsUrl || null;
 
@@ -661,7 +667,9 @@ function placeToResponse(data, placeNameFallback) {
     longitude: data.longitude ?? null,
     placeName: name,
     discoveredPlaceId: data.id || null,
-    fromDiscoveredDb: true,
+    fromDiscoveredDb: extras.fromDiscoveredDb !== undefined ? extras.fromDiscoveredDb : true,
+    googleApiBilled: extras.googleApiBilled === true,
+    resolveOrigin: extras.resolveOrigin || "discovered_place",
   };
 }
 
@@ -857,6 +865,12 @@ async function fetchPlaceDetailsById(googlePlaceId, apiKey, options = {}) {
       );
       const data = response.data;
       if (!data?.displayName?.text && !data?.name && !data?.id) continue;
+      if (options.usageSource) {
+        await recordPlacesApiCall(firestore, {
+          endpoint: "place_details",
+          source: options.usageSource,
+        });
+      }
       return placeRecordFromApiPlace(data, apiKey, skipPhoto, "");
     } catch (e) {
       logger.warn(
@@ -903,6 +917,12 @@ async function fetchPlaceFromGoogle(
       },
     }
   );
+  if (options.usageSource) {
+    await recordPlacesApiCall(firestore, {
+      endpoint: "text_search",
+      source: options.usageSource,
+    });
+  }
 
   if (!response.data.places || response.data.places.length === 0) {
     return null;
@@ -924,6 +944,12 @@ async function fetchPlaceFromGoogle(
         },
       }
     );
+    if (options.usageSource) {
+      await recordPlacesApiCall(firestore, {
+        endpoint: "text_search",
+        source: options.usageSource,
+      });
+    }
     place = pickBestPlaceMatch(retry.data.places || [], title, lat, lng);
   }
 
@@ -986,6 +1012,13 @@ async function fetchPlaceNearbyByCoords(lat, lng, apiKey, requestedTitle, option
         },
       }
     );
+
+    if (options.usageSource) {
+      await recordPlacesApiCall(firestore, {
+        endpoint: "nearby_search",
+        source: options.usageSource,
+      });
+    }
 
     const places = response.data.places || [];
     if (!places.length) return null;
@@ -1086,7 +1119,11 @@ async function bumpDiscoveredPlaceUsage(coll, id, data, title, country, areaId) 
     lastMatchedTitle: title,
     alternateTitles: admin.firestore.FieldValue.arrayUnion(title),
   });
-  return placeToResponse({ ...withPhoto, id }, title);
+  return placeToResponse({ ...withPhoto, id }, title, {
+    fromDiscoveredDb: true,
+    googleApiBilled: false,
+    resolveOrigin: "discovered_place_cache",
+  });
 }
 
 async function resolveUrlSearchQuery(searchQuery, area) {
@@ -1234,10 +1271,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
     let searchQuery = "";
     for (const variant of placeSearchTitleVariants(title)) {
       searchQuery = [variant, area, country].filter(Boolean).join(", ");
-      place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, variant);
+      place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, variant, {
+        usageSource: "guest_ai_concierge",
+      });
       if (place) break;
     }
-    await recordPlatformUsage("magicFill");
 
     if (!place) {
       return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
@@ -1356,7 +1394,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       country,
       areaId
     );
-    return placeToResponse(savedData, title);
+    return placeToResponse(savedData, title, {
+      fromDiscoveredDb: true,
+      googleApiBilled: true,
+      resolveOrigin: "google",
+    });
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("resolvePlacePhoto error:", error.response?.data || error.message);
@@ -1522,16 +1564,24 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   }
 
   const skipPhoto = payload.skipPhoto === true;
+  const usageSource = normalizeUsageCaller(payload.usageCaller);
   const fieldMask = skipPhoto
     ? PLACES_FIELD_MASK.replace("places.photos,", "")
     : PLACES_FIELD_MASK;
-  const searchOptions = { fieldMask, skipPhoto, pickClosestWithinMeters: 300 };
+  const searchOptions = {
+    fieldMask,
+    skipPhoto,
+    pickClosestWithinMeters: 300,
+    usageSource,
+  };
 
   try {
     if (hintPlaceId && /^ChIJ/i.test(hintPlaceId)) {
-      const byId = await fetchPlaceDetailsById(hintPlaceId, apiKey, { skipPhoto });
+      const byId = await fetchPlaceDetailsById(hintPlaceId, apiKey, {
+        skipPhoto,
+        usageSource,
+      });
       if (byId) {
-        await recordPlatformUsage("magicFill");
         return finishGetGooglePlaceDetailsResponse(byId, apiKey, skipPhoto);
       }
       logger.warn(`Place Details lookup missed for ${hintPlaceId}; falling back to text search.`);
@@ -1566,7 +1616,6 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
       searchOptions
     );
     if (place) {
-      await recordPlatformUsage("magicFill");
       return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
     }
 
@@ -1581,7 +1630,6 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
         searchOptions
       );
       if (place) {
-        await recordPlatformUsage("magicFill");
         return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
       }
     }
@@ -1595,7 +1643,6 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
         searchOptions
       );
       if (place) {
-        await recordPlatformUsage("magicFill");
         return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
       }
     }
@@ -1608,7 +1655,7 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   }
 });
 
-const MAGIC_FILL_UNIT_COST = 0.027;
+const MAGIC_FILL_UNIT_COST = MAGIC_FILL_LEGACY_UNIT;
 
 async function queryBigQueryBilling(tableId, invoiceMonth) {
   const { BigQuery } = require("@google-cloud/bigquery");
@@ -1649,16 +1696,43 @@ async function queryBigQueryBilling(tableId, invoiceMonth) {
 async function buildUsageLedger(monthKey) {
   const usageSnap = await firestore.collection("platformUsage").doc(monthKey).get();
   const usage = usageSnap.data() || {};
-  const magicFill = typeof usage.magicFill === "number" ? usage.magicFill : 0;
-  const estimated = magicFill * MAGIC_FILL_UNIT_COST;
+  const breakdown = breakdownFromUsageDoc(usage);
+  const magicFill = typeof usage.magicFill === "number" ? usage.magicFill : breakdown.placesTotal;
+  const estimated =
+    breakdown.estimatedCostUsd > 0
+      ? breakdown.estimatedCostUsd
+      : magicFill * MAGIC_FILL_UNIT_COST;
+
+  const lineItems = [
+    ...breakdown.byEndpoint.map((row) => ({
+      label: row.label,
+      cost: row.cost,
+      count: row.count,
+      kind: "endpoint",
+    })),
+    ...breakdown.bySource.map((row) => ({
+      label: row.label,
+      cost: row.count * MAGIC_FILL_UNIT_COST,
+      count: row.count,
+      kind: "source",
+    })),
+  ];
+
+  if (lineItems.length === 0 && magicFill > 0) {
+    lineItems.push({
+      label: "Places API (tracked calls, legacy estimate)",
+      cost: magicFill * MAGIC_FILL_UNIT_COST,
+      count: magicFill,
+      kind: "legacy",
+    });
+  }
 
   return {
     totalCost: estimated,
-    lineItems: magicFill > 0
-      ? [{ label: "Places API (tracked Magic Fill calls)", cost: estimated, count: magicFill }]
-      : [],
+    lineItems,
     currency: "USD",
     magicFill,
+    placesBreakdown: breakdown,
   };
 }
 

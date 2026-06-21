@@ -13,6 +13,7 @@ import {
   guestPortalQrFilename,
 } from '../../../lib/guestPortalQrCode';
 import { useToast } from '../../../context/ToastContext';
+import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 
@@ -221,7 +222,11 @@ export default function PropertyTypes() {
 
       const functions = getFunctions();
       const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      const result = await getGooglePlaceDetails({ searchQuery, area: areaHint });
+      const result = await getGooglePlaceDetails({
+        searchQuery,
+        area: areaHint,
+        usageCaller: PLACES_USAGE_CALLER.propertyTypes,
+      });
       const googleData = result.data as {
         name?: string;
         rating?: number;

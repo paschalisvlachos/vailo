@@ -53,4 +53,72 @@ async function requirePlatformAdmin(request, firestore) {
   throw new HttpsError("permission-denied", "Platform admin access required.");
 }
 
-module.exports = { requirePlatformAdmin, normalizeAdminEmail };
+async function resolveCallerOwnerProfile(request, firestore) {
+  if (!request.auth?.uid) return null;
+  const rawEmail = String(request.auth.token?.email || "").trim();
+  const email = normalizeAdminEmail(rawEmail);
+  if (!email) return null;
+
+  const emailCandidates = [...new Set([email, rawEmail.toLowerCase(), rawEmail].filter(Boolean))];
+  for (const candidate of emailCandidates) {
+    const snap = await firestore
+      .collection("owners")
+      .where("email", "==", candidate)
+      .limit(1)
+      .get();
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      const data = doc.data();
+      return {
+        id: doc.id,
+        role: data.role,
+        email: normalizeAdminEmail(data.email),
+      };
+    }
+  }
+
+  if (platformAdminEmailsFromEnv().includes(email)) {
+    return { id: "", role: "admin", email };
+  }
+
+  return null;
+}
+
+async function requirePlatformAdminOrManagingAgent(request, firestore, targetOwnerId) {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in to continue.");
+  }
+
+  try {
+    await requirePlatformAdmin(request, firestore);
+    return;
+  } catch (error) {
+    if (error?.code !== "permission-denied") throw error;
+  }
+
+  const caller = await resolveCallerOwnerProfile(request, firestore);
+  if (!caller || caller.role !== "agent") {
+    throw new HttpsError("permission-denied", "Platform admin or agent access required.");
+  }
+
+  const ownerId = String(targetOwnerId || "").trim();
+  if (!ownerId) {
+    throw new HttpsError("invalid-argument", "ownerId is required.");
+  }
+
+  const targetSnap = await firestore.collection("owners").doc(ownerId).get();
+  if (!targetSnap.exists) {
+    throw new HttpsError("not-found", "Owner profile not found.");
+  }
+
+  const target = targetSnap.data();
+  if (target.role !== "owner" || target.agentId !== caller.id) {
+    throw new HttpsError("permission-denied", "You can only manage owners you created.");
+  }
+}
+
+module.exports = {
+  requirePlatformAdmin,
+  requirePlatformAdminOrManagingAgent,
+  normalizeAdminEmail,
+};

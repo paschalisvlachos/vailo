@@ -28,7 +28,6 @@ import {
 } from '../../lib/houseGuideAssistantContext';
 import { readGuestPortalSession } from '../../lib/guestAccess';
 import GuestLanguageMenu from './GuestLanguageMenu';
-import { truncateAnalyticsText } from '../../lib/guestAnalytics';
 
 const CONSENT_KEY = 'vailo:assistant-consent:v1';
 const MAX_USER_INPUT = 1000;
@@ -272,7 +271,7 @@ export default function GuestPropertyAssistant({
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     track('assistant_user_message', {
-      text: truncateAnalyticsText(trimmed || '(image)'),
+      text: trimmed || '(image)',
     });
     setInput('');
     const pendingImageSnapshot = pendingImage;
@@ -350,7 +349,7 @@ export default function GuestPropertyAssistant({
 
       const replyText =
         responseText || "I don't have that information in your house guide yet.";
-      track('assistant_reply', { text: truncateAnalyticsText(replyText, 1000) });
+      track('assistant_reply', { text: replyText });
       setMessages((prev) => [
         ...prev,
         {

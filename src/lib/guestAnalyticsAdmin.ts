@@ -1,6 +1,21 @@
 import { collection, getDocs, query, where, limit } from 'firebase/firestore';
 import { db } from './firebase';
-import type { GuestStayAnalyticsEvent, GuestStayAnalyticsSummary } from './guestAnalytics';
+import type {
+  GuestAnonymousAnalyticsSummary,
+  GuestStayAnalyticsEvent,
+  GuestStayAnalyticsSummary,
+} from './guestAnalytics';
+
+function deviceFieldsFromDoc(data: Record<string, unknown>) {
+  return {
+    firstDeviceType: String(data.firstDeviceType || ''),
+    firstOsName: String(data.firstOsName || ''),
+    firstDeviceLabel: String(data.firstDeviceLabel || ''),
+    lastDeviceType: String(data.lastDeviceType || ''),
+    lastOsName: String(data.lastOsName || ''),
+    lastDeviceLabel: String(data.lastDeviceLabel || ''),
+  };
+}
 
 export async function fetchGuestStaySummariesForType(
   propertyId: string,
@@ -29,6 +44,37 @@ export async function fetchGuestStaySummariesForType(
       firstSeenAt: String(data.firstSeenAt || ''),
       lastSeenAt: String(data.lastSeenAt || ''),
       updatedAt: String(data.updatedAt || ''),
+      subjectKind: 'booking',
+      ...deviceFieldsFromDoc(data),
+    };
+  });
+}
+
+export async function fetchGuestAnonymousSummariesForType(
+  propertyId: string,
+  typeId: string
+): Promise<GuestAnonymousAnalyticsSummary[]> {
+  const snap = await getDocs(
+    collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'guestAnonymousAnalytics')
+  );
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      visitorId: d.id,
+      typeId,
+      propertyId,
+      portalSessions: Number(data.portalSessions || 0),
+      liveLikeLocalOpens: Number(data.liveLikeLocalOpens || 0),
+      assistantTurns: Number(data.assistantTurns || 0),
+      aiExpertTurns: Number(data.aiExpertTurns || 0),
+      uniqueGemsSeen: Number(data.uniqueGemsSeen || 0),
+      accordionOpens: (data.accordionOpens as Record<string, number>) || {},
+      gemImpressions: (data.gemImpressions as Record<string, number>) || {},
+      firstSeenAt: String(data.firstSeenAt || ''),
+      lastSeenAt: String(data.lastSeenAt || ''),
+      updatedAt: String(data.updatedAt || ''),
+      subjectKind: 'anonymous',
+      ...deviceFieldsFromDoc(data),
     };
   });
 }
@@ -46,12 +92,34 @@ export async function fetchGuestStayEvents(
       limit(max)
     )
   );
-  const rows = snap.docs.map((d) => {
+  return mapAnalyticsEvents(snap.docs);
+}
+
+export async function fetchGuestAnonymousEvents(
+  propertyId: string,
+  typeId: string,
+  visitorId: string,
+  max = 150
+): Promise<GuestStayAnalyticsEvent[]> {
+  const snap = await getDocs(
+    query(
+      collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'guestAnonymousEvents'),
+      where('visitorId', '==', visitorId),
+      limit(max)
+    )
+  );
+  return mapAnalyticsEvents(snap.docs);
+}
+
+function mapAnalyticsEvents(
+  docs: { id: string; data: () => Record<string, unknown> }[]
+): GuestStayAnalyticsEvent[] {
+  const rows = docs.map((d) => {
     const data = d.data();
     return {
       id: d.id,
       at: String(data.at || ''),
-      type: data.type,
+      type: data.type as GuestStayAnalyticsEvent['type'],
       payload: (data.payload as GuestStayAnalyticsEvent['payload']) || {},
     };
   });
@@ -71,6 +139,20 @@ export function eventTypeLabel(type: string): string {
     ai_expert_reply: 'AI expert reply',
     ai_expert_selection: 'AI expert choice',
     ai_expert_plan: 'AI day plan',
+    ai_expert_wizard_message: 'Live like a local (wizard)',
+    ai_expert_chat_message: 'Live like a local (chat)',
   };
   return labels[type] || type;
+}
+
+export function formatAnalyticsSubjectLabel(row: {
+  subjectKind?: string;
+  guestName?: string;
+  visitorId?: string;
+}): string {
+  if (row.subjectKind === 'anonymous') {
+    const shortId = row.visitorId ? row.visitorId.slice(0, 8) : 'unknown';
+    return `Anonymous visitor (${shortId})`;
+  }
+  return row.guestName || 'Guest';
 }

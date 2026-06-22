@@ -20,7 +20,9 @@ import {
   buildAdminScopes,
   isPlatformAdmin,
   isScopedUser,
+  isAgent,
   normalizeAdminEmail,
+  normalizeOwnerRole,
   pathForScope,
   resolveActiveScope,
   scopeKey,
@@ -38,24 +40,20 @@ type AdminSessionContextValue = {
   setActiveScope: (scope: AdminScope) => void;
   isPlatformAdmin: boolean;
   isScopedUser: boolean;
+  isAgent: boolean;
 };
 
 const AdminSessionContext = createContext<AdminSessionContextValue | null>(null);
 
 function parseOwnerProfile(id: string, data: Record<string, unknown>): OwnerProfile {
-  const role =
-    data.role === 'admin' ||
-    data.role === 'agent' ||
-    data.role === 'excursion_provider'
-      ? data.role
-      : 'owner';
   return {
     id,
     fullName: typeof data.fullName === 'string' ? data.fullName : '',
     email: typeof data.email === 'string' ? data.email : '',
-    role,
+    role: normalizeOwnerRole(data.role),
     status: typeof data.status === 'string' ? data.status : 'active',
     company: typeof data.company === 'string' ? data.company : undefined,
+    agentId: typeof data.agentId === 'string' ? data.agentId : undefined,
   };
 }
 
@@ -236,6 +234,7 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       setActiveScope,
       isPlatformAdmin: isPlatformAdmin(profile),
       isScopedUser: isScopedUser(profile),
+      isAgent: isAgent(profile),
     }),
     [authUser, profile, loading, scopes, activeScope, setActiveScope]
   );

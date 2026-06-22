@@ -33,6 +33,10 @@ import {
   portalProviderBookingsPath,
 } from '../../../lib/excursionBooking';
 import {
+  findExcursionProviderAllocationConflict,
+  normalizeLinkedOwnerIds,
+} from '../../../lib/excursionProviderPortal';
+import {
   AdminAlert,
   AdminBackHeader,
   AdminButton,
@@ -74,6 +78,7 @@ export default function ExcursionProviderFormPage() {
 
   const [formData, setFormData] = useState<ExcursionProviderFormData>(EMPTY_EXCURSION_PROVIDER_FORM);
   const [linkedOwnerIds, setLinkedOwnerIds] = useState<string[]>([]);
+  const [allocatedOwnerIds, setAllocatedOwnerIds] = useState<Set<string>>(new Set());
   const [portalUsers, setPortalUsers] = useState<PortalUserOption[]>([]);
   const [isSuspendedByAdmin, setIsSuspendedByAdmin] = useState(false);
   const [countries, setCountries] = useState<string[]>([]);
@@ -188,6 +193,22 @@ export default function ExcursionProviderFormPage() {
   }, [showAdminSections]);
 
   useEffect(() => {
+    if (!showAdminSections) return;
+    return onSnapshot(collection(db, EXCURSION_PROVIDER_COLLECTION), (snapshot) => {
+      const taken = new Set<string>();
+      snapshot.docs.forEach((d) => {
+        if (docId && d.id === docId) return;
+        const linked = d.data().linkedOwnerIds;
+        if (!Array.isArray(linked)) return;
+        linked.forEach((ownerId) => {
+          if (typeof ownerId === 'string' && ownerId.trim()) taken.add(ownerId);
+        });
+      });
+      setAllocatedOwnerIds(taken);
+    });
+  }, [showAdminSections, docId]);
+
+  useEffect(() => {
     if (!docId) return;
 
     const load = async () => {
@@ -202,11 +223,11 @@ export default function ExcursionProviderFormPage() {
         const parsed = excursionProviderFormFromDoc(data);
         setFormData(parsed);
         setVisibleCountries(uniqueCountriesFromRegions(parsed.operatingRegions));
-        setLinkedOwnerIds(
+        setLinkedOwnerIds(normalizeLinkedOwnerIds(
           Array.isArray(data.linkedOwnerIds)
             ? data.linkedOwnerIds.filter((x): x is string => typeof x === 'string')
             : []
-        );
+        ));
         setIsSuspendedByAdmin(parsed.status === 'suspended');
         if (parsed.logoUrl) setLogoPreview(parsed.logoUrl);
       } catch (error) {
@@ -289,6 +310,21 @@ export default function ExcursionProviderFormPage() {
     setFieldErrors({});
     setIsSubmitting(true);
     try {
+      const normalizedLinkedOwnerIds = normalizeLinkedOwnerIds(linkedOwnerIds);
+      if (showAdminSections && normalizedLinkedOwnerIds.length > 0) {
+        const conflict = await findExcursionProviderAllocationConflict(
+          normalizedLinkedOwnerIds[0],
+          docId
+        );
+        if (conflict) {
+          toast.error(
+            `This user is already allocated to "${conflict.businessName}". Each excursion provider login can manage one business only.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const logoUrl = await uploadLogo();
       const basePayload = portalMode
         ? excursionProviderPortalPayloadFromForm(formData)
@@ -300,7 +336,7 @@ export default function ExcursionProviderFormPage() {
         ...basePayload,
         logoUrl,
         updatedAt: new Date().toISOString(),
-        ...(showAdminSections ? { linkedOwnerIds } : {}),
+        ...(showAdminSections ? { linkedOwnerIds: normalizedLinkedOwnerIds } : {}),
       });
 
       if (isEdit && docId) {
@@ -309,7 +345,7 @@ export default function ExcursionProviderFormPage() {
       } else {
         await addDoc(collection(db, EXCURSION_PROVIDER_COLLECTION), {
           ...payload,
-          linkedOwnerIds,
+          linkedOwnerIds: normalizedLinkedOwnerIds,
           createdAt: new Date().toISOString(),
         });
         toast.success('Provider created.');
@@ -328,6 +364,15 @@ export default function ExcursionProviderFormPage() {
     }
   };
 
+  const selectedLinkedOwnerId = linkedOwnerIds[0] ?? '';
+  const selectablePortalUsers = useMemo(
+    () =>
+      portalUsers.filter(
+        (user) => !allocatedOwnerIds.has(user.id) || user.id === selectedLinkedOwnerId
+      ),
+    [portalUsers, allocatedOwnerIds, selectedLinkedOwnerId]
+  );
+
   if (loading) {
     return (
       <div className="admin-page py-16 text-center text-gray-500 text-sm">Loading provider…</div>
@@ -339,6 +384,8 @@ export default function ExcursionProviderFormPage() {
       ? adminPath('/excursion-portal')
       : adminPath(`/excursion-portal/${docId}`)
     : adminPath('/excursions/providers');
+
+  const selectedPortalUser = portalUsers.find((user) => user.id === selectedLinkedOwnerId);
 
   return (
     <div className="admin-page">
@@ -507,6 +554,63 @@ export default function ExcursionProviderFormPage() {
                 </div>
               </div>
             </section>
+
+            {showAdminSections && (
+              <>
+                <hr className="border-gray-100" />
+
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Users size={16} className="text-vailo-teal" />
+                    <h3 className="admin-section-title border-0 pb-0 mb-0">Allocated excursion provider</h3>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Choose the Owners CRM user who can sign in and manage this business only
+                    (profile, excursions, calendar, bookings). Create the user under{' '}
+                    <strong>Owners CRM</strong> with role <strong>Excursion provider</strong> first.
+                  </p>
+                  {portalUsers.length === 0 ? (
+                    <AdminAlert variant="gold" className="mb-4">
+                      No excursion provider users in Owners CRM yet.{' '}
+                      <AdminButtonLink to={adminPath('/add-owner')} className="inline-flex mt-2">
+                        Add excursion provider user
+                      </AdminButtonLink>
+                    </AdminAlert>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                      <div className="md:col-span-2">
+                        <AdminLabel htmlFor="linkedOwnerId">Portal login user</AdminLabel>
+                        <AdminSelect
+                          id="linkedOwnerId"
+                          value={selectedLinkedOwnerId}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setLinkedOwnerIds(value ? [value] : []);
+                          }}
+                        >
+                          <option value="">Not allocated yet</option>
+                          {selectablePortalUsers.map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.fullName || user.email} ({user.email})
+                            </option>
+                          ))}
+                        </AdminSelect>
+                        {selectedPortalUser ? (
+                          <p className="text-xs text-gray-500 mt-2">
+                            When <strong>{selectedPortalUser.email}</strong> signs in, they will see
+                            only this business in the excursion portal.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Leave unallocated until you are ready for the operator to sign in.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
 
             <hr className="border-gray-100" />
 
@@ -773,62 +877,6 @@ export default function ExcursionProviderFormPage() {
 
             {showAdminSections && (
               <>
-                <hr className="border-gray-100" />
-
-                <section>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Users size={16} className="text-vailo-teal" />
-                    <h3 className="admin-section-title border-0 pb-0 mb-0">Portal access</h3>
-                  </div>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Link excursion provider users who can sign in and manage this business. Create
-                    users under Owners CRM with role &quot;Excursion provider&quot; first.
-                  </p>
-                  {portalUsers.length === 0 ? (
-                    <p className="text-sm text-amber-700">
-                      No excursion provider users yet. Add one in Owners CRM with role Excursion
-                      provider.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {portalUsers.map((user) => {
-                        const checked = linkedOwnerIds.includes(user.id);
-                        return (
-                          <label
-                            key={user.id}
-                            className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                              checked
-                                ? 'border-vailo-teal/30 bg-vailo-teal/5'
-                                : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setLinkedOwnerIds((prev) =>
-                                  checked
-                                    ? prev.filter((ownerId) => ownerId !== user.id)
-                                    : [...prev, user.id]
-                                );
-                              }}
-                              className="mt-0.5 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
-                            />
-                            <span className="min-w-0">
-                              <span className="block text-sm font-medium text-vailo-dark">
-                                {user.fullName || user.email}
-                              </span>
-                              <span className="block text-xs text-gray-500 truncate">
-                                {user.email}
-                              </span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
                 <hr className="border-gray-100" />
 
                 <section>

@@ -7,21 +7,29 @@ import {
   useRef,
 } from 'react';
 import {
-  ANALYTICS_LAST_SESSION_KEY,
+  analyticsPortalSessionStorageKey,
   PORTAL_SESSION_DEBOUNCE_MS,
   sanitizeAnalyticsPayload,
   type GuestAnalyticsEventInput,
   type GuestAnalyticsEventType,
   type GuestAnalyticsPayload,
+  type GuestAnalyticsSubjectKind,
 } from '../lib/guestAnalytics';
+import { getOrCreateAnonymousVisitorId } from '../lib/guestAnonymousVisitor';
+import { getGuestClientDevice } from '../lib/guestDeviceInfo';
 import {
   readGuestPortalSession,
   type GuestPortalSession,
 } from '../lib/guestAccess';
 import { logGuestPortalAnalyticsCallable } from '../lib/guestPortalCallables';
 
+type AnalyticsSubject =
+  | { kind: 'booking'; session: GuestPortalSession; id: string }
+  | { kind: 'anonymous'; visitorId: string };
+
 type GuestAnalyticsContextValue = {
   enabled: boolean;
+  subjectKind: GuestAnalyticsSubjectKind | null;
   session: GuestPortalSession | null;
   track: (type: GuestAnalyticsEventType, payload?: GuestAnalyticsPayload) => void;
   trackPortalSession: () => void;
@@ -29,15 +37,35 @@ type GuestAnalyticsContextValue = {
 
 const GuestAnalyticsContext = createContext<GuestAnalyticsContextValue>({
   enabled: false,
+  subjectKind: null,
   session: null,
   track: () => {},
   trackPortalSession: () => {},
 });
 
+function isExcludedSession(session: GuestPortalSession | null): boolean {
+  return session?.source === 'admin_preview' || session?.source === 'tester';
+}
+
 function isTrackableHouseGuestSession(session: GuestPortalSession | null): boolean {
   if (!session?.bookingId) return false;
-  if (session.source === 'admin_preview' || session.source === 'tester') return false;
+  if (isExcludedSession(session)) return false;
   return true;
+}
+
+function resolveAnalyticsSubject(
+  propertyId: string | null,
+  typeId: string | null,
+  session: GuestPortalSession | null
+): AnalyticsSubject | null {
+  if (!propertyId || !typeId) return null;
+  if (isExcludedSession(session)) return null;
+
+  if (isTrackableHouseGuestSession(session)) {
+    return { kind: 'booking', session: session!, id: session!.bookingId! };
+  }
+
+  return { kind: 'anonymous', visitorId: getOrCreateAnonymousVisitorId() };
 }
 
 export function GuestAnalyticsProvider({
@@ -56,27 +84,40 @@ export function GuestAnalyticsProvider({
     return s;
   }, [propertyId, typeId]);
 
-  const enabled = isTrackableHouseGuestSession(session);
+  const subject = useMemo(
+    () => resolveAnalyticsSubject(propertyId, typeId, session),
+    [propertyId, typeId, session]
+  );
+
+  const enabled = Boolean(subject && propertyId && typeId);
+  const clientDevice = useMemo(() => getGuestClientDevice(), []);
   const queueRef = useRef<GuestAnalyticsEventInput[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushingRef = useRef(false);
 
   const flush = useCallback(async () => {
-    if (!enabled || !session || !propertyId || !typeId) return;
+    if (!enabled || !subject || !propertyId || !typeId) return;
     if (flushingRef.current) return;
     const batch = queueRef.current.splice(0, 25);
     if (batch.length === 0) return;
 
     flushingRef.current = true;
     try {
-      await logGuestPortalAnalyticsCallable(propertyId, typeId, session.sessionId, batch);
+      await logGuestPortalAnalyticsCallable({
+        propertyId,
+        typeId,
+        sessionId: subject.kind === 'booking' ? subject.session.sessionId : undefined,
+        visitorId: subject.kind === 'anonymous' ? subject.visitorId : undefined,
+        clientDevice,
+        events: batch,
+      });
     } catch (err) {
       console.warn('guest analytics flush failed', err);
       queueRef.current.unshift(...batch);
     } finally {
       flushingRef.current = false;
     }
-  }, [enabled, session, propertyId, typeId]);
+  }, [enabled, subject, propertyId, typeId, clientDevice]);
 
   const scheduleFlush = useCallback(() => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
@@ -88,39 +129,37 @@ export function GuestAnalyticsProvider({
 
   const track = useCallback(
     (type: GuestAnalyticsEventType, payload?: GuestAnalyticsPayload) => {
-      if (!enabled || !session) return;
+      if (!enabled || !subject) return;
       queueRef.current.push({
         type,
         payload: sanitizeAnalyticsPayload(type, payload),
       });
       scheduleFlush();
     },
-    [enabled, session, scheduleFlush]
+    [enabled, subject, scheduleFlush]
   );
 
   const trackPortalSession = useCallback(() => {
-    if (!enabled || !session?.bookingId) return;
+    if (!enabled || !subject) return;
+
+    const subjectId = subject.kind === 'booking' ? subject.id : subject.visitorId;
+    const storageKey = analyticsPortalSessionStorageKey(subject.kind, subjectId);
+
     try {
-      const raw = localStorage.getItem(ANALYTICS_LAST_SESSION_KEY);
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
-        const parsed = JSON.parse(raw) as { bookingId?: string; at?: number };
-        if (
-          parsed.bookingId === session.bookingId &&
-          typeof parsed.at === 'number' &&
-          Date.now() - parsed.at < PORTAL_SESSION_DEBOUNCE_MS
-        ) {
+        const parsed = JSON.parse(raw) as { at?: number };
+        if (typeof parsed.at === 'number' && Date.now() - parsed.at < PORTAL_SESSION_DEBOUNCE_MS) {
           return;
         }
       }
     } catch {
       /* ignore */
     }
+
     track('portal_session');
-    localStorage.setItem(
-      ANALYTICS_LAST_SESSION_KEY,
-      JSON.stringify({ bookingId: session.bookingId, at: Date.now() })
-    );
-  }, [enabled, session, track]);
+    localStorage.setItem(storageKey, JSON.stringify({ at: Date.now() }));
+  }, [enabled, subject, track]);
 
   useEffect(() => {
     if (enabled) trackPortalSession();
@@ -128,7 +167,7 @@ export function GuestAnalyticsProvider({
 
   useEffect(() => {
     const onUnload = () => {
-      if (queueRef.current.length === 0 || !enabled || !session || !propertyId || !typeId) {
+      if (queueRef.current.length === 0 || !enabled || !subject || !propertyId || !typeId) {
         return;
       }
       void flush();
@@ -139,11 +178,17 @@ export function GuestAnalyticsProvider({
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       void flush();
     };
-  }, [enabled, session, propertyId, typeId, flush]);
+  }, [enabled, subject, propertyId, typeId, flush]);
 
   const value = useMemo(
-    () => ({ enabled, session, track, trackPortalSession }),
-    [enabled, session, track, trackPortalSession]
+    () => ({
+      enabled,
+      subjectKind: subject?.kind ?? null,
+      session: subject?.kind === 'booking' ? subject.session : session,
+      track,
+      trackPortalSession,
+    }),
+    [enabled, subject, session, track, trackPortalSession]
   );
 
   return (

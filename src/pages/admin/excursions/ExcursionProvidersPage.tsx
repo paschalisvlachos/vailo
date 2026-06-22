@@ -7,6 +7,8 @@ import {
   doc,
   getCountFromServer,
   onSnapshot,
+  query,
+  where,
 } from 'firebase/firestore';
 import { Compass, Plus, Pencil, Trash2 } from 'lucide-react';
 import { db } from '../../../lib/firebase';
@@ -57,6 +59,9 @@ export default function ExcursionProvidersPage() {
   const [filterCountry, setFilterCountry] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [excursionCounts, setExcursionCounts] = useState<Record<string, number>>({});
+  const [portalUsersById, setPortalUsersById] = useState<
+    Record<string, { fullName: string; email: string }>
+  >({});
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,6 +97,21 @@ export default function ExcursionProvidersPage() {
     );
     return () => unsub();
   }, [toast]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'owners'), where('role', '==', 'excursion_provider'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const map: Record<string, { fullName: string; email: string }> = {};
+      snapshot.docs.forEach((d) => {
+        map[d.id] = {
+          fullName: String(d.data().fullName || ''),
+          email: String(d.data().email || ''),
+        };
+      });
+      setPortalUsersById(map);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(collectionGroup(db, EXCURSION_SUBCOLLECTION), (snapshot) => {
@@ -230,6 +250,7 @@ export default function ExcursionProvidersPage() {
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Business</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Regions</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Contact</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Portal user</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Commission</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Excursions</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Status</th>
@@ -243,6 +264,10 @@ export default function ExcursionProvidersPage() {
                   const linkedExcursions = excursionCounts[provider.id || ''] || 0;
                   const canDelete = linkedExcursions === 0;
                   const isDeleting = deletingId === provider.id;
+                  const allocatedOwnerId = provider.linkedOwnerIds?.[0];
+                  const allocatedUser = allocatedOwnerId
+                    ? portalUsersById[allocatedOwnerId]
+                    : undefined;
 
                   return (
                   <tr
@@ -281,6 +306,20 @@ export default function ExcursionProvidersPage() {
                     <td className="px-4 sm:px-6 py-4 text-gray-600">
                       <p>{provider.email || '—'}</p>
                       <p className="text-xs text-gray-400">{provider.phone || provider.whatsapp || ''}</p>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 text-gray-600">
+                      {allocatedUser ? (
+                        <>
+                          <p className="font-medium text-vailo-dark">
+                            {allocatedUser.fullName || allocatedUser.email}
+                          </p>
+                          <p className="text-xs text-gray-400 truncate max-w-[12rem]">
+                            {allocatedUser.email}
+                          </p>
+                        </>
+                      ) : (
+                        <span className="text-gray-400">Not allocated</span>
+                      )}
                     </td>
                     <td className="px-4 sm:px-6 py-4">
                       {provider.commissionType === 'fixed_per_booking' ? (

@@ -35,6 +35,7 @@ import type { PropertyRecord } from './PropertyLayout';
 import type { ListingKind } from './PropertyFormPage';
 import PropertyLanguagesCard from '../../../components/admin/PropertyLanguagesCard';
 import { useAdminSession } from '../../../context/AdminSessionContext';
+import { PROPERTY_ASSIGNMENT_ROLES } from '../../../lib/adminAccess';
 import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
 
 interface OwnerOption {
@@ -103,7 +104,7 @@ export default function Overview() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'owners'), where('role', 'in', ['agent', 'owner']));
+    const q = query(collection(db, 'owners'), where('role', 'in', [...PROPERTY_ASSIGNMENT_ROLES]));
     return onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as OwnerOption[];
       list.sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -247,9 +248,22 @@ export default function Overview() {
           {isEditing ? 'Edit property details below, then save.' : 'Property summary and allocation.'}
         </p>
         {!isEditing ? (
-          <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>
-            <Pencil size={16} /> Edit overview
-          </AdminButton>
+          isPlatformAdmin ? (
+            <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>
+              <Pencil size={16} /> Edit overview
+            </AdminButton>
+          ) : (
+            <p className="text-sm text-gray-500">
+              To edit overview, contact Vailo at{' '}
+              <a
+                href="mailto:contact@vailo.app"
+                className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
+              >
+                contact@vailo.app
+              </a>
+              .
+            </p>
+          )
         ) : (
           <div className="flex gap-2">
             <AdminButton type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
@@ -403,7 +417,7 @@ export default function Overview() {
                   <option value="">Select a user…</option>
                   {ownersList.map((user) => (
                     <option key={user.id} value={user.id}>
-                      [{user.role}] {user.fullName}
+                      [{user.role === 'agent' ? 'Agent' : 'Owner'}] {user.fullName}
                       {user.company ? ` (${user.company})` : ''}
                     </option>
                   ))}

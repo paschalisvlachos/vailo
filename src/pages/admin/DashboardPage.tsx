@@ -35,7 +35,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 mb-10">
         {[
           { icon: Building2, label: 'Properties', to: adminPath('/properties'), desc: 'Portfolio & guest portals' },
-          { icon: Users, label: 'Owners CRM', to: adminPath('/owners'), desc: 'Owners & agents' },
+          { icon: Users, label: 'Owners CRM', to: adminPath('/owners'), desc: 'Agents, owners & providers' },
           { icon: Globe, label: 'Area data', to: adminPath('/area'), desc: 'Gems, features, AI rules' },
           { icon: Sparkles, label: 'AI concierge', desc: 'Powered by guest portal', muted: true },
         ].map((item) =>

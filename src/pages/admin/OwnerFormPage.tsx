@@ -4,6 +4,10 @@ import { collection, collectionGroup, addDoc, doc, getDoc, updateDoc, onSnapshot
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { adminPath } from '../../lib/adminRoutes';
+import { normalizeOwnerRole } from '../../lib/adminAccess';
+import { canAgentManageOwnerRecord } from '../../lib/agentOwners';
+import { provisionOwnerAuth } from '../../lib/provisionOwnerAuth';
+import { useAdminSession } from '../../context/AdminSessionContext';
 import {
   AdminBackHeader,
   AdminButton,
@@ -37,12 +41,15 @@ export default function OwnerFormPage() {
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const toast = useToast();
+  const { profile: sessionProfile, isPlatformAdmin, isAgent } = useAdminSession();
+  const agentMode = isAgent && !isPlatformAdmin;
 
   const [formData, setFormData] = useState<OwnerFormData>(EMPTY_FORM);
   const [managedCount, setManagedCount] = useState(0);
   const [allocatedTypeCount, setAllocatedTypeCount] = useState(0);
   const [loading, setLoading] = useState(isEdit);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [originalEmail, setOriginalEmail] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -56,9 +63,16 @@ export default function OwnerFormPage() {
           return;
         }
         const data = snap.data();
+        if (agentMode && !canAgentManageOwnerRecord(sessionProfile!.id, data)) {
+          toast.error('You can only edit owners you created.');
+          navigate(adminPath('/owners'));
+          return;
+        }
+        const email = data.email || '';
+        setOriginalEmail(email);
         setFormData({
           fullName: data.fullName || '',
-          email: data.email || '',
+          email,
           phone: data.phone || '',
           company: data.company || '',
           vatNumber: data.vatNumber || '',
@@ -67,7 +81,7 @@ export default function OwnerFormPage() {
           postalCode: data.postalCode || '',
           country: data.country || '',
           notes: data.notes || '',
-          role: data.role || 'owner',
+          role: normalizeOwnerRole(data.role),
           status: data.status || 'active',
           password: '',
         });
@@ -119,33 +133,68 @@ export default function OwnerFormPage() {
     setIsSubmitting(true);
 
     try {
-      const { password, ...profile } = formData;
+      const { password, ...formFields } = formData;
+      const normalizedEmail = formFields.email.trim().toLowerCase();
+      const trimmedPassword = password.trim();
       const payload: Record<string, unknown> = {
-        ...profile,
-        email: profile.email.trim().toLowerCase(),
+        ...formFields,
+        role: agentMode ? 'owner' : normalizeOwnerRole(formFields.role),
+        email: normalizedEmail,
         updatedAt: new Date().toISOString(),
       };
 
+      if (agentMode) {
+        payload.agentId = sessionProfile!.id;
+      }
+
+      let ownerId = id;
+
       if (isEdit && id) {
-        if (password.trim()) payload.password = password.trim();
+        if (trimmedPassword) payload.password = trimmedPassword;
         await updateDoc(doc(db, 'owners', id), payload);
       } else {
-        if (!password.trim()) {
+        if (!trimmedPassword) {
           toast.warning('Please set an initial login password.');
           setIsSubmitting(false);
           return;
         }
-        await addDoc(collection(db, 'owners'), {
+        const createPayload: Record<string, unknown> = {
           ...payload,
-          password: password.trim(),
+          password: trimmedPassword,
           createdAt: new Date().toISOString(),
-        });
+        };
+        if (agentMode) {
+          createPayload.agentId = sessionProfile!.id;
+        }
+        const ref = await addDoc(collection(db, 'owners'), createPayload);
+        ownerId = ref.id;
       }
 
+      if (!ownerId) {
+        throw new Error('Missing owner id.');
+      }
+
+      const authResult = await provisionOwnerAuth({
+        ownerId,
+        email: normalizedEmail,
+        status: formFields.status,
+        ...(trimmedPassword ? { password: trimmedPassword } : {}),
+        ...(isEdit && originalEmail && originalEmail !== normalizedEmail
+          ? { previousEmail: originalEmail.trim().toLowerCase() }
+          : {}),
+      });
+
+      toast.success(
+        authResult.created
+          ? 'Owner saved and Vailo Admin login created.'
+          : 'Owner saved and Vailo Admin login updated.'
+      );
       navigate(adminPath('/owners'));
     } catch (error) {
       console.error('Error saving owner:', error);
-      toast.error('Failed to save owner.');
+      const message =
+        error instanceof Error ? error.message : 'Failed to save owner or set up login.';
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -161,12 +210,14 @@ export default function OwnerFormPage() {
     <div className="admin-page">
       <AdminBackHeader
         backTo={adminPath('/owners')}
-        backLabel="Back to Owners CRM"
-        title={isEdit ? 'Edit Owner' : 'Add New Owner'}
+        backLabel={agentMode ? 'Back to my owners' : 'Back to Owners CRM'}
+        title={isEdit ? (agentMode ? 'Edit owner' : 'Edit user') : agentMode ? 'Add owner' : 'Add New User'}
         description={
           isEdit
             ? `Update contact details for ${formData.fullName || 'this user'}`
-            : 'Add a new client or team member to your CRM'
+            : agentMode
+              ? 'Add a property owner you can allocate to listings on your properties'
+              : 'Add a new client or team member to your CRM'
         }
       />
 
@@ -242,15 +293,22 @@ export default function OwnerFormPage() {
             <section>
               <h3 className="admin-section-title border-0 pb-0 mb-4">Account Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 mb-5">
-                <div>
-                  <AdminLabel htmlFor="role">Role *</AdminLabel>
-                  <AdminSelect id="role" name="role" value={formData.role} onChange={handleChange}>
-                    <option value="admin">Admin</option>
-                    <option value="agent">Agent</option>
-                    <option value="owner">Owner</option>
-                    <option value="excursion_provider">Excursion provider</option>
-                  </AdminSelect>
-                </div>
+                {isPlatformAdmin ? (
+                  <div>
+                    <AdminLabel htmlFor="role">Role *</AdminLabel>
+                    <AdminSelect id="role" name="role" value={formData.role} onChange={handleChange}>
+                      <option value="admin">Admin</option>
+                      <option value="agent">Agent</option>
+                      <option value="owner">Owner</option>
+                      <option value="excursion_provider">Excursion provider</option>
+                    </AdminSelect>
+                  </div>
+                ) : (
+                  <div>
+                    <AdminLabel>Role</AdminLabel>
+                    <AdminInput value="Owner" disabled className="bg-vailo-surface-elevated" />
+                  </div>
+                )}
                 <div>
                   <AdminLabel htmlFor="status">Status *</AdminLabel>
                   <AdminSelect id="status" name="status" value={formData.status} onChange={handleChange}>
@@ -274,10 +332,10 @@ export default function OwnerFormPage() {
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     {isEdit
-                      ? 'Only fill in to change the password'
-                      : 'Temporary password for initial login'}
+                      ? 'Only fill in to change the Vailo Admin login password'
+                      : 'Creates their Vailo Admin login at vailo.app/admin (not Firebase Console access)'}
                     {formData.role === 'excursion_provider' &&
-                      ' — then link this user to a provider under Excursions → Edit provider → Portal access.'}
+                      ' — then allocate this user on the business under Excursions → Edit provider → Allocated excursion provider.'}
                   </p>
                 </div>
               </div>
@@ -300,7 +358,7 @@ export default function OwnerFormPage() {
               Cancel
             </AdminButton>
             <AdminButton type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Owner'}
+              {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : agentMode ? 'Create owner' : 'Create user'}
             </AdminButton>
           </div>
         </AdminCard>

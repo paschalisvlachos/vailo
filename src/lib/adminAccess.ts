@@ -1,5 +1,11 @@
 export type OwnerRole = 'admin' | 'agent' | 'owner' | 'excursion_provider';
 
+/** Firestore values for users who can be assigned at property level. */
+export const PROPERTY_ASSIGNMENT_ROLES = ['owner', 'agent'] as const;
+
+/** End owners assignable to individual listings. */
+export const LISTING_ALLOCATION_ROLES = ['owner'] as const;
+
 export type OwnerProfile = {
   id: string;
   fullName: string;
@@ -7,7 +13,43 @@ export type OwnerProfile = {
   role: OwnerRole;
   status: string;
   company?: string;
+  /** Set when an agent creates this owner in CRM. */
+  agentId?: string;
 };
+
+export function normalizeOwnerRole(role: unknown): OwnerRole {
+  if (role === 'admin') return 'admin';
+  if (role === 'agent') return 'agent';
+  if (role === 'excursion_provider') return 'excursion_provider';
+  return 'owner';
+}
+
+export function formatOwnerRoleLabel(role: OwnerRole | string | undefined): string {
+  switch (normalizeOwnerRole(role)) {
+    case 'admin':
+      return 'Admin';
+    case 'agent':
+      return 'Agent';
+    case 'excursion_provider':
+      return 'Excursion provider';
+    default:
+      return 'Owner';
+  }
+}
+
+/** Tailwind classes for role badges in Owners CRM. */
+export function ownerRoleBadgeClass(role: OwnerRole | string | undefined): string {
+  switch (normalizeOwnerRole(role)) {
+    case 'admin':
+      return 'bg-slate-800/10 text-slate-800 border-slate-300';
+    case 'agent':
+      return 'bg-sky-600 text-white border-sky-700 shadow-sm font-bold tracking-wide';
+    case 'excursion_provider':
+      return 'bg-violet-50 text-violet-800 border-violet-200';
+    default:
+      return 'bg-vailo-gold/15 text-amber-900 border-vailo-gold/30';
+  }
+}
 
 export type AdminScope =
   | { kind: 'platform' }
@@ -45,19 +87,24 @@ export function normalizeAdminEmail(email: string | null | undefined): string {
 }
 
 export function isPlatformAdmin(profile: OwnerProfile | null): boolean {
-  // Legacy: while owners profile is still resolving, keep platform nav usable.
-  // Callable functions (e.g. App Code Knowledge) enforce admin separately on the server.
-  if (!profile) return true;
-  return profile.role === 'admin';
+  return profile?.role === 'admin';
+}
+
+export function isAgent(profile: OwnerProfile | null): boolean {
+  return profile?.role === 'agent';
+}
+
+export function isOwner(profile: OwnerProfile | null): boolean {
+  return profile?.role === 'owner';
+}
+
+export function isPropertyPortalUser(profile: OwnerProfile | null): boolean {
+  return isOwner(profile);
 }
 
 export function isScopedUser(profile: OwnerProfile | null): boolean {
   if (!profile) return false;
-  return (
-    profile.role === 'agent' ||
-    profile.role === 'owner' ||
-    profile.role === 'excursion_provider'
-  );
+  return isAgent(profile) || isOwner(profile) || isExcursionProvider(profile);
 }
 
 export function isExcursionProvider(profile: OwnerProfile | null): boolean {
@@ -87,7 +134,7 @@ export function buildAdminScopes(
     return [];
   }
 
-  if (profile.role === 'excursion_provider') {
+  if (isExcursionProvider(profile)) {
     return linkedExcursionProviders.map((provider) => {
       const name = provider.businessName?.trim() || 'Excursion business';
       return {
@@ -104,6 +151,24 @@ export function buildAdminScopes(
   );
 
   const scopes: AdminScope[] = [];
+
+  if (isAgent(profile)) {
+    for (const propertyId of managedPropertyIds) {
+      const property = properties.find((p) => p.id === propertyId);
+      const name = property?.propertyName?.trim() || 'Property';
+      scopes.push({
+        kind: 'property',
+        propertyId,
+        propertyName: name,
+        label: `${name} (all listings)`,
+      });
+    }
+    return scopes;
+  }
+
+  if (!isOwner(profile)) {
+    return [];
+  }
 
   for (const propertyId of managedPropertyIds) {
     const property = properties.find((p) => p.id === propertyId);
@@ -258,7 +323,12 @@ export function getPropertyAccessMode(
   propertyOwnerId: string | undefined,
   types: TypeRow[]
 ): PropertyAccessMode | null {
-  if (!profile || isPlatformAdmin(profile)) {
+  if (!profile) return null;
+  if (isPlatformAdmin(profile)) {
+    return { level: 'full' };
+  }
+
+  if (isAgent(profile) && propertyOwnerId === profile.id) {
     return { level: 'full' };
   }
 
@@ -282,8 +352,9 @@ export function canAccessPropertyId(
   propertyId: string,
   scopes: AdminScope[]
 ): boolean {
-  if (!profile || isPlatformAdmin(profile)) return true;
-  if (profile.role === 'excursion_provider') return false;
+  if (!profile) return false;
+  if (isPlatformAdmin(profile)) return true;
+  if (isExcursionProvider(profile)) return false;
   return scopes.some(
     (s) =>
       (s.kind === 'property' && s.propertyId === propertyId) ||
@@ -296,7 +367,8 @@ export function canAccessExcursionProviderId(
   providerId: string,
   scopes: AdminScope[]
 ): boolean {
-  if (!profile || isPlatformAdmin(profile)) return true;
+  if (!profile) return false;
+  if (isPlatformAdmin(profile)) return true;
   return scopes.some(
     (s) => s.kind === 'excursion_provider' && s.providerId === providerId
   );

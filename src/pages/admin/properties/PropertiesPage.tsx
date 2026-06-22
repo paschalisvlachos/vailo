@@ -12,7 +12,7 @@ import AdminPageHeader, {
 } from '../../../components/admin/AdminPageHeader';
 import type { ListingKind } from './PropertyFormPage';
 import { useAdminSession } from '../../../context/AdminSessionContext';
-import { canAccessPropertyId, pathForPropertyLanding } from '../../../lib/adminAccess';
+import { canAccessPropertyId, pathForPropertyLanding, formatOwnerRoleLabel } from '../../../lib/adminAccess';
 import { adminPath } from '../../../lib/adminRoutes';
 
 interface Property {
@@ -267,8 +267,8 @@ export default function PropertiesPage() {
                             <div className="flex items-center gap-2">
                               <User size={14} className="text-gray-400" />
                               <span>{allocatedUser.fullName}</span>
-                              <span className="text-xs text-gray-500 capitalize px-2 py-0.5 bg-gray-100 rounded-md">
-                                {allocatedUser.role}
+                              <span className="text-xs text-gray-500 px-2 py-0.5 bg-gray-100 rounded-md">
+                                {formatOwnerRoleLabel(allocatedUser.role)}
                               </span>
                             </div>
                           ) : (

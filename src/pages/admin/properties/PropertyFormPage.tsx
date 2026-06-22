@@ -6,6 +6,7 @@ import { loadCountryNames } from '../../../lib/countryNames';
 import { formatGuestSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
 import { GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT } from '../../../lib/guestAccess';
 import { adminPath } from '../../../lib/adminRoutes';
+import { PROPERTY_ASSIGNMENT_ROLES } from '../../../lib/adminAccess';
 import { useToast } from '../../../context/ToastContext';
 import {
   AdminBackHeader,
@@ -58,14 +59,10 @@ export default function PropertyFormPage() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'owners'), where('role', 'in', ['agent', 'owner']));
+    const q = query(collection(db, 'owners'), where('role', 'in', [...PROPERTY_ASSIGNMENT_ROLES]));
     return onSnapshot(q, (snapshot) => {
       const fetched = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Owner[];
-      fetched.sort((a, b) => {
-        if (a.role === 'agent' && b.role !== 'agent') return -1;
-        if (a.role !== 'agent' && b.role === 'agent') return 1;
-        return a.fullName.localeCompare(b.fullName);
-      });
+      fetched.sort((a, b) => a.fullName.localeCompare(b.fullName));
       setOwnersList(fetched);
     });
   }, []);
@@ -327,7 +324,7 @@ export default function PropertyFormPage() {
                     <option value="">Select a user…</option>
                     {ownersList.map((user) => (
                       <option key={user.id} value={user.id}>
-                        {user.role === 'agent' ? '[Agent]' : '[Owner]'} {user.fullName}
+                        [{user.role === 'agent' ? 'Agent' : 'Owner'}] {user.fullName}
                         {user.company ? ` (${user.company})` : ''}
                       </option>
                     ))}

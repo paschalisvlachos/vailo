@@ -17,19 +17,33 @@ import { useToast } from '../../../context/ToastContext';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
+import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
+import { useAdminSession } from '../../../context/AdminSessionContext';
+import {
+  isAllocatedOwnerIdAllowed,
+  ownersForAllocatedOwnerPicker,
+} from '../../../lib/agentOwners';
 
 export default function PropertyTypes() {
   const { property, propertyId, propertyAccess, lockedListingId } =
     useOutletContext<PropertyOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
+  const { isPlatformAdmin, isAgent, profile } = useAdminSession();
+  const isEndOwner = profile?.role === 'owner';
 
   const isListingOnly = propertyAccess.level === 'listing_only';
+  const canAssignAllocatedOwner = isPlatformAdmin || isAgent;
   const allowedTypeIds = isListingOnly ? propertyAccess.typeIds : null;
   const listingOnlyAutoOpened = useRef(false);
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
+
+  const allocatableOwners = useMemo(
+    () => ownersForAllocatedOwnerPicker(profile, owners),
+    [profile, owners]
+  );
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
@@ -88,7 +102,7 @@ export default function PropertyTypes() {
   }, [propertyId]);
 
   useEffect(() => {
-    const q = query(collection(db, 'owners'), where('role', 'in', ['agent', 'owner']));
+    const q = query(collection(db, 'owners'), where('role', 'in', [...LISTING_ALLOCATION_ROLES]));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const ownersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setOwners(ownersData);
@@ -374,7 +388,7 @@ export default function PropertyTypes() {
       const existingType = editingTypeId
         ? propertyTypes.find((t) => t.id === editingTypeId)
         : null;
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...typeFormData,
         urlSlug: newSlug,
         typeSlug: newSlug,
@@ -385,6 +399,22 @@ export default function PropertyTypes() {
           newSlug
         ),
       };
+
+      if (isEndOwner) {
+        if (editingTypeId && existingType) {
+          payload.ownerId = existingType.ownerId ?? '';
+        } else {
+          delete payload.ownerId;
+        }
+      } else if (
+        isAgent &&
+        payload.ownerId &&
+        !isAllocatedOwnerIdAllowed(profile, String(payload.ownerId), owners)
+      ) {
+        toast.error('You can only assign owners from your list.');
+        setIsSubmittingType(false);
+        return;
+      }
 
       if (editingTypeId) {
         const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', editingTypeId);
@@ -720,20 +750,51 @@ export default function PropertyTypes() {
               </div>
             </div>
             
-            {!isListingOnly && (
+            {canAssignAllocatedOwner ? (
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Allocated Owner</label>
-                <select 
-                  name="ownerId" 
-                  value={typeFormData.ownerId} 
-                  onChange={handleTypeChange} 
+                <select
+                  name="ownerId"
+                  value={typeFormData.ownerId}
+                  onChange={handleTypeChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
                 >
                   <option value="">Select an owner...</option>
-                  {owners.map(owner => (
-                    <option key={owner.id} value={owner.id}>{owner.fullName} {owner.company ? `(${owner.company})` : ''}</option>
-                  ))}
+                  {(isPlatformAdmin ? owners.filter((o) => o.role === 'owner') : allocatableOwners).map(
+                    (owner) => (
+                      <option key={owner.id} value={owner.id}>
+                        {owner.fullName} {owner.company ? `(${owner.company})` : ''}
+                      </option>
+                    )
+                  )}
                 </select>
+                {isAgent && allocatableOwners.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Add owners under <strong>Owners</strong> in the sidebar, then assign them here.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Allocated Owner</label>
+                {typeFormData.ownerId ? (
+                  <p className="text-sm text-gray-700 flex items-center bg-gray-50 p-2.5 rounded-lg border border-gray-100 w-max mb-2">
+                    <User size={14} className="mr-2 text-gray-400" />
+                    {owners.find((o) => o.id === typeFormData.ownerId)?.fullName || 'Assigned owner'}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic mb-2">No owner assigned</p>
+                )}
+                <p className="text-xs text-gray-500">
+                  To change allocated owner, contact Vailo at{' '}
+                  <a
+                    href="mailto:contact@vailo.app"
+                    className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
+                  >
+                    contact@vailo.app
+                  </a>
+                  .
+                </p>
               </div>
             )}
 

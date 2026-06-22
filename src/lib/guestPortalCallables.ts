@@ -2,6 +2,7 @@ import { httpsCallable } from 'firebase/functions';
 import { cloudFunctions } from './firebase';
 import type { GuestApplianceGuideRequest, GuestApplianceGuideResponse } from './guestApplianceGuide';
 import type { GuestAnalyticsEventInput } from './guestAnalytics';
+import type { GuestClientDevice } from './guestDeviceInfo';
 import type { GuestPortalSession } from './guestAccess';
 
 type SessionPayload = { session: GuestPortalSession };
@@ -106,17 +107,14 @@ export async function getGuestApplianceGuideCallable(
   return res.data;
 }
 
-export async function logGuestPortalAnalyticsCallable(
-  propertyId: string,
-  typeId: string,
-  sessionId: string,
-  events: GuestAnalyticsEventInput[]
-): Promise<{ ok: boolean; logged?: number }> {
-  const res = await call<{ ok: boolean; logged?: number }>('logGuestPortalAnalytics')({
-    propertyId,
-    typeId,
-    sessionId,
-    events,
-  });
+export async function logGuestPortalAnalyticsCallable(params: {
+  propertyId: string;
+  typeId: string;
+  sessionId?: string;
+  visitorId?: string;
+  clientDevice?: GuestClientDevice;
+  events: GuestAnalyticsEventInput[];
+}): Promise<{ ok: boolean; logged?: number }> {
+  const res = await call<{ ok: boolean; logged?: number }>('logGuestPortalAnalytics')(params);
   return res.data;
 }

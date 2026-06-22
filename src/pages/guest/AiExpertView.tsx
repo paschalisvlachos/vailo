@@ -78,7 +78,7 @@ import { guestUiTFormat, type GuestLocaleUiKey } from '../../lib/guestLocaleUi';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import AiExpertCuratingLoader from '../../components/guest/AiExpertCuratingLoader';
 import VailoMark from '../../components/guest/VailoMark';
-import { truncateAnalyticsText } from '../../lib/guestAnalytics';
+import { serializePlanForAnalytics } from '../../lib/guestAnalytics';
 import { logPickEvent, logPlanStage } from '../../lib/aiExpertPlanDebug';
 import {
   sendConciergeChatMessage,
@@ -457,6 +457,56 @@ export default function AiExpertView({
 }: AiExpertViewProps) {
   const { track } = useGuestAnalytics();
   const { t } = useGuestLocale();
+
+  const logWizardMessage = useCallback(
+    (
+      message: Pick<Message, 'role' | 'type' | 'text' | 'data'>,
+      wizardStep: Step
+    ) => {
+      const planCategories =
+        message.type === 'plan' && message.data && typeof message.data === 'object'
+          ? (
+              (message.data as { categories?: { categoryName?: string }[] }).categories || []
+            )
+              .map((c) => c.categoryName)
+              .filter((name): name is string => Boolean(name))
+          : undefined;
+      track('ai_expert_wizard_message', {
+        wizardStep,
+        messageRole: message.role,
+        messageType: message.type,
+        text: message.text,
+        planData: message.type === 'plan' ? serializePlanForAnalytics(message.data) : undefined,
+        planStopCount: message.type === 'plan' ? countPlanStops(message.data) : undefined,
+        planCategories,
+      });
+      if (message.type === 'plan') {
+        track('ai_expert_plan', {
+          planStopCount: countPlanStops(message.data),
+          planCategories,
+          planData: serializePlanForAnalytics(message.data),
+        });
+      }
+    },
+    [track]
+  );
+
+  const logConciergeChatMessage = useCallback(
+    (
+      role: 'user' | 'model',
+      text: string,
+      extras?: { picksSummary?: string }
+    ) => {
+      track('ai_expert_chat_message', {
+        messageRole: role,
+        messageType: 'text',
+        text,
+        picksSummary: extras?.picksSummary,
+      });
+    },
+    [track]
+  );
+
   const contentSettings = usePropertyContentLocaleSettings(
     property as Record<string, unknown> | undefined
   );
@@ -1307,7 +1357,7 @@ export default function AiExpertView({
 
   const advanceStep = async (currentStep: Step, value: any, displayText: string) => {
     engageWizard();
-    track('ai_expert_selection', { text: truncateAnalyticsText(displayText) });
+    logWizardMessage({ role: 'user', type: 'selection', text: displayText }, currentStep);
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', type: 'selection', text: displayText }]);
 
     if (currentStep === 'LOCATION') {
@@ -1324,18 +1374,22 @@ export default function AiExpertView({
           const resolved = await resolveCustomLocation(value, { propCoords, country, cityArea }, locale);
 
           if (resolved.type === 'not_found') {
+            const aiText = resolved.message;
+            logWizardMessage({ role: 'ai', type: 'text', text: aiText }, currentStep);
             setMessages((prev) => [
               ...prev,
-              { id: Date.now().toString(), role: 'ai', type: 'text', text: resolved.message },
+              { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText },
             ]);
             return;
           }
 
           if (resolved.type === 'choose') {
             setLocationCandidates(resolved.candidates);
+            const aiText = resolved.message;
+            logWizardMessage({ role: 'ai', type: 'text', text: aiText }, currentStep);
             setMessages((prev) => [
               ...prev,
-              { id: Date.now().toString(), role: 'ai', type: 'text', text: resolved.message },
+              { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText },
             ]);
             return;
           }
@@ -1357,17 +1411,20 @@ export default function AiExpertView({
                   ? nearby.candidates
                   : [nearby.place];
               setLocationCandidates(candidates);
+              const aiText = `${check.message}\n\n${t('aiExpertDidYouMeanSuffix')}`;
+              logWizardMessage({ role: 'ai', type: 'text', text: aiText }, currentStep);
               setMessages((prev) => [
                 ...prev,
                 {
                   id: Date.now().toString(),
                   role: 'ai',
                   type: 'text',
-                  text: `${check.message}\n\n${t('aiExpertDidYouMeanSuffix')}`,
+                  text: aiText,
                 },
               ]);
               return;
             }
+            logWizardMessage({ role: 'ai', type: 'text', text: check.message }, currentStep);
             setMessages((prev) => [
               ...prev,
               { id: Date.now().toString(), role: 'ai', type: 'text', text: check.message },
@@ -1379,9 +1436,11 @@ export default function AiExpertView({
           locFullName = resolved.place.displayName;
         } catch (error) {
           console.error('Free Geocoding failed:', error);
+          const aiText = t('aiExpertErrorVerifyFailed');
+          logWizardMessage({ role: 'ai', type: 'text', text: aiText }, currentStep);
           setMessages((prev) => [
             ...prev,
-            { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorVerifyFailed') },
+            { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText },
           ]);
           return;
         } finally {
@@ -1521,9 +1580,11 @@ export default function AiExpertView({
       if (trailsOnlySelection) {
         const categories = trailCategoryBlocks.filter((c) => c.items.length > 0);
         if (categories.length === 0) {
+          const aiText = t('aiExpertNoTrailsInRange');
+          logWizardMessage({ role: 'ai', type: 'text', text: aiText }, 'TIME');
           setMessages((prev) => [
             ...prev,
-            { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertNoTrailsInRange') },
+            { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText },
           ]);
           setIsThinking(false);
           return;
@@ -1531,22 +1592,24 @@ export default function AiExpertView({
 
         const initialPlan = { type: 'picks', categories };
         const planMessageId = `${Date.now()}-plan`;
-        track('ai_expert_plan', {
-          planStopCount: categories.reduce((n, c) => n + c.items.length, 0),
-          planCategories: categories.map((c) => c.categoryName),
-        });
-        setMessages((prev) => [
-          ...prev,
-          { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan },
-        ]);
+        const planMessage: Message = {
+          id: planMessageId,
+          role: 'ai',
+          type: 'plan',
+          data: initialPlan,
+        };
+        logWizardMessage(planMessage, 'TIME');
+        setMessages((prev) => [...prev, planMessage]);
         setIsThinking(false);
         return;
       }
 
       if (liveLikeLocalCategories.length === 0) {
+        const aiText = t('aiExpertErrorPlan');
+        logWizardMessage({ role: 'ai', type: 'text', text: aiText }, 'TIME');
         setMessages((prev) => [
           ...prev,
-          { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorPlan') },
+          { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText },
         ]);
         setIsThinking(false);
         return;
@@ -1580,9 +1643,11 @@ export default function AiExpertView({
         );
 
         if (categoriesWithContent.length === 0) {
+          const aiText = t('aiExpertErrorPlan');
+          logWizardMessage({ role: 'ai', type: 'text', text: aiText }, 'TIME');
           setMessages((prev) => [
             ...prev,
-            { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorPlan') },
+            { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText },
           ]);
           setIsThinking(false);
           return;
@@ -1591,16 +1656,14 @@ export default function AiExpertView({
         initialPlan = { ...initialPlan, categories: categoriesWithContent };
 
         const planMessageId = `${Date.now()}-plan`;
-        track('ai_expert_plan', {
-          planStopCount: countPlanStops(initialPlan),
-          planCategories: categoriesWithContent
-            .map((c: { categoryName?: string }) => c.categoryName)
-            .filter(Boolean),
-        });
-        setMessages((prev) => [
-          ...prev,
-          { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan },
-        ]);
+        const planMessage: Message = {
+          id: planMessageId,
+          role: 'ai',
+          type: 'plan',
+          data: initialPlan,
+        };
+        logWizardMessage(planMessage, 'TIME');
+        setMessages((prev) => [...prev, planMessage]);
         setIsThinking(false);
         markItemsShown(collectDbItemsFromPlan(initialPlan));
 
@@ -1838,15 +1901,14 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
 
       // Render the plan immediately — feels instant. Photos fill in next.
       const planMessageId = `${Date.now()}-plan`;
-      track('ai_expert_plan', {
-        planStopCount: countPlanStops(initialPlan),
-        planCategories: Array.isArray(initialPlan?.categories)
-          ? initialPlan.categories
-              .map((c: { categoryName?: string }) => c.categoryName)
-              .filter(Boolean)
-          : undefined,
-      });
-      setMessages(prev => [...prev, { id: planMessageId, role: 'ai', type: 'plan', data: initialPlan }]);
+      const planMessage: Message = {
+        id: planMessageId,
+        role: 'ai',
+        type: 'plan',
+        data: initialPlan,
+      };
+      logWizardMessage(planMessage, 'TIME');
+      setMessages((prev) => [...prev, planMessage]);
       setIsThinking(false);
 
       let lastPaintedPlan: unknown = initialPlan;
@@ -1970,7 +2032,9 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
 
     } catch (error: any) {
       console.error('Critical AI Itinerary Error:', error);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: t('aiExpertErrorPlan') }]);
+      const aiText = t('aiExpertErrorPlan');
+      logWizardMessage({ role: 'ai', type: 'text', text: aiText }, 'TIME');
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', type: 'text', text: aiText }]);
       setIsThinking(false);
     } finally {
       setThinkingLabel('aiExpertThinking');
@@ -1987,6 +2051,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     const selectionLabel = timeFrameStr
       ? formatTripWindow(startTime, tripDurationHours ?? 6)
       : t('aiExpertBrowseOwnPace');
+    logWizardMessage({ role: 'user', type: 'selection', text: selectionLabel }, 'TIME');
     setMessages((prev) => [
       ...prev,
       { id: Date.now().toString(), role: 'user', type: 'selection', text: selectionLabel },
@@ -2028,7 +2093,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     };
     const priorHistory = conciergeMessages;
     setConciergeMessages((prev) => [...prev, userMessage]);
-    track('ai_expert_user_message', { text: truncateAnalyticsText(userText) });
+    logConciergeChatMessage('user', userText);
     setConciergeSending(true);
 
     try {
@@ -2083,7 +2148,15 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       ]
         .filter(Boolean)
         .join('\n\n');
-      track('ai_expert_reply', { text: truncateAnalyticsText(replyForAnalytics, 1000) });
+      const picksSummary =
+        curatedItems.length > 0
+          ? curatedItems
+              .map((item) => item.title)
+              .filter(Boolean)
+              .slice(0, 12)
+              .join(', ')
+          : undefined;
+      logConciergeChatMessage('model', replyForAnalytics, { picksSummary });
 
       setConciergeMessages((prev) => [
         ...prev,

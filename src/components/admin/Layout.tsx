@@ -4,6 +4,7 @@ import {
   Building2,
   Users,
   LogOut,
+  KeyRound,
   CreditCard,
   FileText,
   Globe,
@@ -22,7 +23,7 @@ import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
 import { useAdminInboxUnreadCount } from '../../hooks/useAdminInboxUnreadCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
-import { scopeFromRoute, scopeKey, isExcursionProvider } from '../../lib/adminAccess';
+import { scopeFromRoute, scopeKey, isExcursionProvider, isAgent, isOwner, formatOwnerRoleLabel } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
 import VailoMark from '../guest/VailoMark';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
@@ -64,7 +65,7 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
-  const { isScopedUser, profile, scopes, activeScope, setActiveScope, isPlatformAdmin } = useAdminSession();
+  const { isScopedUser, profile, scopes, activeScope, setActiveScope, isPlatformAdmin, authUser } = useAdminSession();
   const mailboxUnreadCount = useAdminInboxUnreadCount(isPlatformAdmin);
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -77,7 +78,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [location.pathname, location.search, scopes, activeScope, isScopedUser, setActiveScope]);
 
-  const navSections = isExcursionProvider(profile)
+  const navSections = authUser && !profile
+    ? []
+    : isExcursionProvider(profile)
     ? (() => {
         const providerScope = scopes.find((s) => s.kind === 'excursion_provider');
         const providerId =
@@ -103,7 +106,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           },
         ];
       })()
-    : isScopedUser
+    : isAgent(profile)
+    ? [
+        {
+          id: 'portfolio',
+          label: 'Your portfolio',
+          items: [{ icon: Building2, label: 'Properties', to: adminPath('/properties') }],
+        },
+        {
+          id: 'owners',
+          label: 'Your owners',
+          items: [{ icon: Users, label: 'Owners', to: adminPath('/owners') }],
+        },
+      ]
+    : isOwner(profile)
     ? [
         {
           id: 'portfolio',
@@ -142,10 +158,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white font-luxury">Vailo</h1>
             <p className="text-[11px] text-white/45 font-medium tracking-wide">
-              {isExcursionProvider(profile)
+              {authUser && !profile
+                ? 'Account setup'
+                : isExcursionProvider(profile)
                 ? 'Excursion portal'
                 : isScopedUser
-                  ? profile?.role || 'Portal'
+                  ? formatOwnerRoleLabel(profile?.role)
                   : 'Admin Panel'}
             </p>
           </div>
@@ -180,7 +198,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         ))}
       </nav>
 
-      <div className="p-4 border-t border-white/10">
+      <div className="p-4 border-t border-white/10 space-y-1">
+        {authUser && profile && (
+          <Link
+            to={adminPath('/account/password')}
+            onClick={() => setMobileOpen(false)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white/65 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <KeyRound size={17} />
+            Change password
+          </Link>
+        )}
         <button
           onClick={handleLogout}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white/65 hover:text-white hover:bg-white/10 transition-colors"
@@ -246,13 +274,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="hidden sm:flex items-center text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors ml-auto"
-          >
-            <LogOut size={17} className="mr-2 opacity-70" />
-            Logout
-          </button>
+          <div className="flex items-center gap-3 sm:gap-4 ml-auto min-w-0 shrink">
+            {authUser?.email && (
+              <p className="text-xs sm:text-sm text-gray-600 truncate max-w-[9rem] sm:max-w-xs lg:max-w-md">
+                Hello,{' '}
+                <span className="font-medium text-vailo-dark">{authUser.email}</span>
+              </p>
+            )}
+            <button
+              onClick={handleLogout}
+              className="hidden sm:flex items-center shrink-0 text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors"
+            >
+              <LogOut size={17} className="mr-2 opacity-70" />
+              Logout
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">

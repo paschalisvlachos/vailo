@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { useAdminSession, useAdminSessionNavigate } from '../../context/AdminSessionContext';
-import { scopeKey, type AdminScope } from '../../lib/adminAccess';
+import { scopeKey, type AdminScope, formatOwnerRoleLabel } from '../../lib/adminAccess';
 
 export default function AdminScopeBar() {
   const { scopes, activeScope, profile, isScopedUser } = useAdminSession();
@@ -40,7 +40,7 @@ export default function AdminScopeBar() {
         <p className="text-sm text-gray-600">
           Signed in as <span className="font-semibold text-vailo-dark">{profile?.fullName}</span>
           {profile?.role && (
-            <span className="capitalize text-gray-400"> ({profile.role})</span>
+            <span className="text-gray-400"> ({formatOwnerRoleLabel(profile.role)})</span>
           )}
         </p>
       </div>

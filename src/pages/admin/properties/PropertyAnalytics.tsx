@@ -1,18 +1,58 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { BarChart3, X, Clock, MessageCircle, Sparkles, MapPin, BookOpen } from 'lucide-react';
+import { BarChart3, X, Clock, MessageCircle, Sparkles, MapPin, BookOpen, MonitorSmartphone } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import { collectHouseGuests } from '../../../lib/houseGuests';
 import {
   eventTypeLabel,
+  fetchGuestAnonymousEvents,
+  fetchGuestAnonymousSummariesForType,
   fetchGuestStayEvents,
   fetchGuestStaySummariesForType,
+  formatAnalyticsSubjectLabel,
 } from '../../../lib/guestAnalyticsAdmin';
-import type { GuestStayAnalyticsEvent, GuestStayAnalyticsSummary } from '../../../lib/guestAnalytics';
+import type {
+  GuestAnalyticsDeviceFields,
+  GuestAnalyticsSubjectKind,
+  GuestStayAnalyticsEvent,
+} from '../../../lib/guestAnalytics';
 import { formatBookingDateRange } from '../../../lib/syncedBooking';
 
-type Row = GuestStayAnalyticsSummary & { unitName: string; hasActivity: boolean };
+function deviceDisplayLabel(row: GuestAnalyticsDeviceFields): string {
+  if (row.lastDeviceLabel) return row.lastDeviceLabel;
+  if (row.lastDeviceType && row.lastOsName) {
+    const type =
+      row.lastDeviceType.charAt(0).toUpperCase() + row.lastDeviceType.slice(1);
+    return `${type} · ${row.lastOsName}`;
+  }
+  return '';
+}
+
+type Row = {
+  rowKey: string;
+  subjectKind: GuestAnalyticsSubjectKind;
+  bookingId?: string;
+  visitorId?: string;
+  typeId: string;
+  propertyId: string;
+  guestName: string;
+  guestEmail: string;
+  stayStart: string;
+  stayEnd: string;
+  portalSessions: number;
+  liveLikeLocalOpens: number;
+  assistantTurns: number;
+  aiExpertTurns: number;
+  uniqueGemsSeen: number;
+  accordionOpens: Record<string, number>;
+  gemImpressions: Record<string, number>;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  updatedAt: string;
+  unitName: string;
+  hasActivity: boolean;
+} & GuestAnalyticsDeviceFields;
 
 export default function PropertyAnalytics() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
@@ -20,7 +60,8 @@ export default function PropertyAnalytics() {
     { id: string; propertyTypeName?: string }[]
   >([]);
   const [filterTypeId, setFilterTypeId] = useState('all');
-  const [summaries, setSummaries] = useState<GuestStayAnalyticsSummary[]>([]);
+  const [bookingSummaries, setBookingSummaries] = useState<Row[]>([]);
+  const [anonymousSummaries, setAnonymousSummaries] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Row | null>(null);
   const [events, setEvents] = useState<GuestStayAnalyticsEvent[]>([]);
@@ -42,27 +83,67 @@ export default function PropertyAnalytics() {
 
   useEffect(() => {
     if (!propertyId || typeIds.length === 0) {
-      setSummaries([]);
+      setBookingSummaries([]);
+      setAnonymousSummaries([]);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const all: GuestStayAnalyticsSummary[] = [];
+      const bookingRows: Row[] = [];
+      const anonRows: Row[] = [];
       for (const typeId of typeIds) {
-        const rows = await fetchGuestStaySummariesForType(propertyId, typeId);
-        all.push(...rows);
+        const unitName =
+          propertyTypes.find((t) => t.id === typeId)?.propertyTypeName || 'Unit';
+        const stays = await fetchGuestStaySummariesForType(propertyId, typeId);
+        bookingRows.push(
+          ...stays.map((s) => ({
+            ...s,
+            rowKey: `booking:${s.typeId}:${s.bookingId}`,
+            subjectKind: 'booking' as const,
+            unitName,
+            hasActivity: true,
+          }))
+        );
+        const anon = await fetchGuestAnonymousSummariesForType(propertyId, typeId);
+        anonRows.push(
+          ...anon.map((s) => ({
+            rowKey: `anonymous:${s.typeId}:${s.visitorId}`,
+            subjectKind: 'anonymous' as const,
+            bookingId: undefined,
+            visitorId: s.visitorId,
+            guestName: formatAnalyticsSubjectLabel(s),
+            guestEmail: '',
+            stayStart: '',
+            stayEnd: '',
+            typeId: s.typeId,
+            propertyId: s.propertyId,
+            portalSessions: s.portalSessions,
+            liveLikeLocalOpens: s.liveLikeLocalOpens,
+            assistantTurns: s.assistantTurns,
+            aiExpertTurns: s.aiExpertTurns,
+            uniqueGemsSeen: s.uniqueGemsSeen,
+            accordionOpens: s.accordionOpens,
+            gemImpressions: s.gemImpressions,
+            firstSeenAt: s.firstSeenAt,
+            lastSeenAt: s.lastSeenAt,
+            updatedAt: s.updatedAt,
+            unitName,
+            hasActivity: s.portalSessions > 0 || s.lastSeenAt !== '',
+          }))
+        );
       }
       if (!cancelled) {
-        setSummaries(all);
+        setBookingSummaries(bookingRows);
+        setAnonymousSummaries(anonRows);
         setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [propertyId, typeIds]);
+  }, [propertyId, typeIds, propertyTypes]);
 
   const houseGuests = useMemo(
     () => collectHouseGuests(propertyTypes as Parameters<typeof collectHouseGuests>[0]),
@@ -70,7 +151,9 @@ export default function PropertyAnalytics() {
   );
 
   const rows: Row[] = useMemo(() => {
-    const byBooking = new Map(summaries.map((s) => [`${s.typeId}:${s.bookingId}`, s]));
+    const byBooking = new Map(
+      bookingSummaries.map((s) => [`${s.typeId}:${s.bookingId}`, s])
+    );
     const merged: Row[] = [];
 
     for (const guest of houseGuests) {
@@ -80,13 +163,11 @@ export default function PropertyAnalytics() {
       if (filterTypeId !== 'all' && guest.typeId !== filterTypeId) continue;
 
       if (summary) {
-        merged.push({
-          ...summary,
-          unitName,
-          hasActivity: true,
-        });
+        merged.push(summary);
       } else {
         merged.push({
+          rowKey: `booking:${guest.typeId}:${guest.id}`,
+          subjectKind: 'booking',
           bookingId: guest.id,
           typeId: guest.typeId,
           propertyId,
@@ -110,15 +191,17 @@ export default function PropertyAnalytics() {
       }
     }
 
-    for (const summary of summaries) {
-      if (!houseGuests.some((g) => g.typeId === summary.typeId && g.id === summary.bookingId)) {
-        merged.push({
-          ...summary,
-          unitName:
-            propertyTypes.find((t) => t.id === summary.typeId)?.propertyTypeName || 'Unit',
-          hasActivity: true,
-        });
+    for (const summary of bookingSummaries) {
+      if (
+        !houseGuests.some((g) => g.typeId === summary.typeId && g.id === summary.bookingId)
+      ) {
+        merged.push(summary);
       }
+    }
+
+    for (const anon of anonymousSummaries) {
+      if (filterTypeId !== 'all' && anon.typeId !== filterTypeId) continue;
+      merged.push(anon);
     }
 
     return merged.sort((a, b) => {
@@ -126,7 +209,7 @@ export default function PropertyAnalytics() {
       const bT = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
       return bT - aT;
     });
-  }, [summaries, houseGuests, filterTypeId, propertyId, propertyTypes]);
+  }, [bookingSummaries, anonymousSummaries, houseGuests, filterTypeId, propertyId]);
 
   const totals = useMemo(() => {
     const active = rows.filter((r) => r.hasActivity);
@@ -143,7 +226,12 @@ export default function PropertyAnalytics() {
     setSelected(row);
     setEventsLoading(true);
     try {
-      const ev = await fetchGuestStayEvents(propertyId, row.typeId, row.bookingId);
+      const ev =
+        row.subjectKind === 'anonymous' && row.visitorId
+          ? await fetchGuestAnonymousEvents(propertyId, row.typeId, row.visitorId, 250)
+          : row.bookingId
+            ? await fetchGuestStayEvents(propertyId, row.typeId, row.bookingId, 250)
+            : [];
       setEvents(ev);
     } catch (err) {
       console.error(err);
@@ -171,8 +259,9 @@ export default function PropertyAnalytics() {
           Analytics
         </h2>
         <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-          Usage from house guests with an assigned booking session (invite or on-stay access). Admin
-          preview and visitor codes are not tracked.
+          Usage from house guests with a booking session and from anonymous public browsing when the
+          access gate is off. Includes full 24/7 assistant and Live like a local (wizard + chat)
+          message logs. Admin preview and visitor tester codes are not tracked.
         </p>
       </div>
 
@@ -193,7 +282,7 @@ export default function PropertyAnalytics() {
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {[
-          { label: 'Guests active', value: totals.guestsWithActivity },
+          { label: 'Sessions active', value: totals.guestsWithActivity },
           { label: 'Portal visits', value: totals.sessions },
           { label: 'Live like a local', value: totals.liveLikeLocal },
           { label: 'Assistant turns', value: totals.assistantTurns },
@@ -213,9 +302,9 @@ export default function PropertyAnalytics() {
         <p className="text-sm text-gray-500">Loading analytics…</p>
       ) : rows.length === 0 ? (
         <div className="text-center py-12 rounded-xl border border-dashed border-gray-200 bg-gray-50">
-          <p className="text-gray-600 font-medium">No house guests to show yet</p>
+          <p className="text-gray-600 font-medium">No guest activity to show yet</p>
           <p className="text-sm text-gray-500 mt-1">
-            Add guest details on reservations, then have guests open the portal during their stay.
+            Activity appears when guests open the portal during a stay or browse a public unit page.
           </p>
         </div>
       ) : (
@@ -227,7 +316,10 @@ export default function PropertyAnalytics() {
                   Guest
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
-                  Stay
+                  Stay / type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
+                  Device
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">
                   Visits
@@ -251,13 +343,30 @@ export default function PropertyAnalytics() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map((row) => (
-                <tr key={`${row.typeId}-${row.bookingId}`} className="hover:bg-gray-50/80">
+                <tr key={row.rowKey} className="hover:bg-gray-50/80">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-gray-900">{row.guestName}</p>
                     <p className="text-xs text-gray-500">{row.unitName}</p>
+                    {row.subjectKind === 'anonymous' && (
+                      <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">
+                        Anonymous
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                    {formatBookingDateRange(row.stayStart, row.stayEnd)}
+                    {row.subjectKind === 'anonymous'
+                      ? 'Public browsing'
+                      : formatBookingDateRange(row.stayStart, row.stayEnd)}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {deviceDisplayLabel(row) ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                        <MonitorSmartphone size={14} className="text-gray-400 shrink-0" />
+                        {deviceDisplayLabel(row)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center font-medium">{row.portalSessions}</td>
                   <td className="px-4 py-3 text-center font-medium">{row.liveLikeLocalOpens}</td>
@@ -268,7 +377,12 @@ export default function PropertyAnalytics() {
                     <button
                       type="button"
                       onClick={() => void openDetail(row)}
-                      className="text-vailo-teal text-xs font-bold hover:underline"
+                      disabled={!row.hasActivity}
+                      className={`text-xs font-bold ${
+                        row.hasActivity
+                          ? 'text-vailo-teal hover:underline'
+                          : 'text-gray-300 cursor-not-allowed'
+                      }`}
                     >
                       View
                     </button>
@@ -295,7 +409,10 @@ export default function PropertyAnalytics() {
               <div>
                 <h3 className="text-lg font-bold text-gray-900">{selected.guestName}</h3>
                 <p className="text-sm text-gray-500">
-                  {selected.unitName} · {formatBookingDateRange(selected.stayStart, selected.stayEnd)}
+                  {selected.unitName}
+                  {selected.subjectKind === 'booking'
+                    ? ` · ${formatBookingDateRange(selected.stayStart, selected.stayEnd)}`
+                    : ' · Public browsing'}
                 </p>
                 {selected.lastSeenAt && (
                   <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -303,6 +420,18 @@ export default function PropertyAnalytics() {
                     Last active {new Date(selected.lastSeenAt).toLocaleString()}
                   </p>
                 )}
+                {deviceDisplayLabel(selected) && (
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <MonitorSmartphone size={12} />
+                    Last device: {deviceDisplayLabel(selected)}
+                  </p>
+                )}
+                {selected.firstDeviceLabel &&
+                  selected.firstDeviceLabel !== selected.lastDeviceLabel && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      First device: {selected.firstDeviceLabel}
+                    </p>
+                  )}
               </div>
               <button
                 type="button"
@@ -376,7 +505,7 @@ export default function PropertyAnalytics() {
                 ) : events.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">No events recorded yet.</p>
                 ) : (
-                  <ul className="space-y-2 max-h-64 overflow-y-auto">
+                  <ul className="space-y-2 max-h-96 overflow-y-auto">
                     {events.map((ev) => (
                       <li
                         key={ev.id}
@@ -390,9 +519,20 @@ export default function PropertyAnalytics() {
                             {new Date(ev.at).toLocaleString()}
                           </span>
                         </div>
+                        {ev.payload?.wizardStep && (
+                          <p className="text-gray-500 mt-0.5 text-xs">
+                            Wizard step: {ev.payload.wizardStep}
+                            {ev.payload.messageType ? ` · ${ev.payload.messageType}` : ''}
+                          </p>
+                        )}
                         {ev.payload?.text && (
-                          <p className="text-gray-600 mt-1 text-xs leading-relaxed">
+                          <p className="text-gray-600 mt-1 text-xs leading-relaxed whitespace-pre-wrap">
                             {ev.payload.text}
+                          </p>
+                        )}
+                        {ev.payload?.picksSummary && (
+                          <p className="text-gray-500 mt-1 text-xs">
+                            Picks: {ev.payload.picksSummary}
                           </p>
                         )}
                         {ev.payload?.sectionKey && (
@@ -403,10 +543,21 @@ export default function PropertyAnalytics() {
                         {ev.payload?.gemName && (
                           <p className="text-gray-500 mt-0.5 text-xs">Gem: {ev.payload.gemName}</p>
                         )}
-                        {ev.type === 'ai_expert_plan' && ev.payload?.planStopCount != null && (
-                          <p className="text-gray-500 mt-0.5 text-xs">
-                            Plan with {ev.payload.planStopCount} stops
-                          </p>
+                        {(ev.type === 'ai_expert_plan' || ev.payload?.planData) &&
+                          ev.payload?.planStopCount != null && (
+                            <p className="text-gray-500 mt-0.5 text-xs">
+                              Plan with {ev.payload.planStopCount} stops
+                            </p>
+                          )}
+                        {ev.payload?.planData && (
+                          <details className="mt-2">
+                            <summary className="text-xs text-vailo-teal cursor-pointer font-semibold">
+                              View plan JSON
+                            </summary>
+                            <pre className="mt-1 text-[10px] leading-snug text-gray-600 overflow-x-auto max-h-40 whitespace-pre-wrap">
+                              {ev.payload.planData}
+                            </pre>
+                          </details>
                         )}
                       </li>
                     ))}

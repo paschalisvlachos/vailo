@@ -1839,6 +1839,14 @@ exports.getAppCodeKnowledgeExport = onCall(
   async (request) => getAppCodeKnowledgeExportHandler(request, firestore)
 );
 
+const { provisionOwnerAuthHandler } = require("./provisionOwnerAuth");
+
+/** Platform admin: create or update Firebase Auth login for an owners CRM user. */
+exports.provisionOwnerAuth = onCall(
+  { enforceAppCheck: false },
+  async (request) => provisionOwnerAuthHandler(request, firestore, admin.auth())
+);
+
 const { registerGuestPortalAccess } = require("./guestPortalAccess");
 registerGuestPortalAccess({ firestore, logger, firebaseExports: exports });
 

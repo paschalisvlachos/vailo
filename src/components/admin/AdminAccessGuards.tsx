@@ -20,7 +20,18 @@ export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (profile && profile.role !== 'admin') {
+  if (!profile) {
+    return (
+      <div className="admin-page py-16 text-center max-w-md mx-auto">
+        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <p className="text-gray-500 text-sm">
+          Your login is not linked to a Vailo profile. Ask your administrator to add your email in
+          Owners CRM.
+        </p>
+      </div>
+    );
+  }
+  if (profile.role !== 'admin') {
     if (profile.role === 'excursion_provider') {
       return <Navigate to={adminPath('/excursion-portal')} replace />;
     }
@@ -36,6 +47,17 @@ export function ExcursionPortalGuard({ children }: { children: React.ReactNode }
       <div className="py-16 flex items-center justify-center text-gray-500 text-sm">
         <Loader2 className="animate-spin mr-2 text-vailo-teal" />
         Loading…
+      </div>
+    );
+  }
+  if (!profile) {
+    return (
+      <div className="admin-page py-16 text-center max-w-md mx-auto">
+        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <p className="text-gray-500 text-sm">
+          Your login is not linked to a Vailo profile. Ask your administrator to add your email in
+          Owners CRM.
+        </p>
       </div>
     );
   }
@@ -70,7 +92,7 @@ export function ExcursionProviderAccessGuard({ children }: { children: React.Rea
 }
 
 export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
-  const { loading, scopes, activeScope, isScopedUser, profile } = useAdminSession();
+  const { loading, scopes, activeScope, isScopedUser, profile, authUser } = useAdminSession();
   const location = useLocation();
 
   if (loading) {
@@ -78,6 +100,18 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
       <div className="py-16 flex items-center justify-center text-gray-500 text-sm">
         <Loader2 className="animate-spin mr-2 text-vailo-teal" />
         Loading…
+      </div>
+    );
+  }
+
+  if (authUser && !profile) {
+    return (
+      <div className="admin-page py-16 text-center max-w-md mx-auto">
+        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <p className="text-gray-500 text-sm">
+          Your login is not linked to a Vailo profile. Ask your administrator to add your email in
+          Owners CRM.
+        </p>
       </div>
     );
   }
@@ -106,10 +140,42 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
         <p className="text-gray-500 text-sm">
           {isProvider
             ? 'Your account is not linked to an excursion business yet. Contact your Vailo administrator.'
-            : 'Your account is not linked to any property or listing yet. Contact your Vailo administrator.'}
+            : 'Your account is not assigned to any property or listing yet. Contact your Vailo administrator.'}
         </p>
       </div>
     );
+  }
+
+  return <>{children}</>;
+}
+
+/** Platform admin full CRM, or agent managing their own owner list. */
+export function AgentOwnersGuard({ children }: { children: React.ReactNode }) {
+  const { profile, loading, isPlatformAdmin, isAgent } = useAdminSession();
+
+  if (loading) {
+    return (
+      <div className="py-16 flex items-center justify-center text-gray-500 text-sm">
+        <Loader2 className="animate-spin mr-2 text-vailo-teal" />
+        Loading…
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="admin-page py-16 text-center max-w-md mx-auto">
+        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <p className="text-gray-500 text-sm">
+          Your login is not linked to a Vailo profile. Ask your administrator to add your email in
+          Owners CRM.
+        </p>
+      </div>
+    );
+  }
+
+  if (!isPlatformAdmin && !isAgent) {
+    return <Navigate to={adminPath('/properties')} replace />;
   }
 
   return <>{children}</>;

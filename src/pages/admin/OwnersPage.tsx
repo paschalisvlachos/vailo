@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Users, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, collectionGroup, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { adminPath } from '../../lib/adminRoutes';
+import { formatOwnerRoleLabel, ownerRoleBadgeClass } from '../../lib/adminAccess';
+import { useAdminSession } from '../../context/AdminSessionContext';
+import { ownersVisibleInCrm } from '../../lib/agentOwners';
 import AdminPageHeader, {
   AdminButtonLink,
   AdminCard,
@@ -18,6 +21,7 @@ interface Owner {
   company: string;
   role: string;
   status: string;
+  agentId?: string;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -45,8 +49,19 @@ function CountBadge({ count, title }: { count: number; title?: string }) {
   );
 }
 
+function RoleBadge({ role }: { role: string }) {
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-lg border ${ownerRoleBadgeClass(role)}`}
+    >
+      {formatOwnerRoleLabel(role)}
+    </span>
+  );
+}
+
 export default function OwnersPage() {
   const toast = useToast();
+  const { profile, isPlatformAdmin, isAgent } = useAdminSession();
   const [owners, setOwners] = useState<Owner[]>([]);
   const [managedPropertyCounts, setManagedPropertyCounts] = useState<Record<string, number>>({});
   const [allocatedTypeCounts, setAllocatedTypeCounts] = useState<Record<string, number>>({});
@@ -83,6 +98,11 @@ export default function OwnersPage() {
     };
   }, []);
 
+  const visibleOwners = useMemo(
+    () => ownersVisibleInCrm(profile, owners) as Owner[],
+    [profile, owners]
+  );
+
   const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`Delete ${name}?`)) {
       try {
@@ -101,31 +121,39 @@ export default function OwnersPage() {
   return (
     <div className="admin-page">
       <AdminPageHeader
-        title="Owners CRM"
-        description="Manage property owners and agents"
+        title={isAgent ? 'My owners' : 'Owners CRM'}
+        description={
+          isAgent
+            ? 'Add and manage property owners you allocate to listings on your properties.'
+            : 'Manage admins, agents, owners, and excursion providers'
+        }
         icon={<Users size={26} />}
         action={
           <AdminButtonLink to={adminPath('/add-owner')} className="w-full sm:w-auto">
-            <Plus size={18} /> Add Owner
+            <Plus size={18} /> {isAgent ? 'Add owner' : 'Add user'}
           </AdminButtonLink>
         }
       />
 
-      {owners.length === 0 ? (
+      {visibleOwners.length === 0 ? (
         <AdminEmptyState
           icon={<Users size={32} />}
-          title="No users yet"
-          description="Add property owners or agents to assign to your portfolio."
+          title={isAgent ? 'No owners yet' : 'No users yet'}
+          description={
+            isAgent
+              ? 'Add property owners here, then assign them to listings on your properties.'
+              : 'Add agents, owners, or excursion providers to assign across your portfolio.'
+          }
           action={
             <AdminButtonLink to={adminPath('/add-owner')}>
-              <Plus size={18} /> Add Owner
+              <Plus size={18} /> {isAgent ? 'Add owner' : 'Add user'}
             </AdminButtonLink>
           }
         />
       ) : (
         <>
           <div className="grid gap-3 lg:hidden">
-            {owners.map((owner) => (
+            {visibleOwners.map((owner) => (
               <AdminCard key={owner.id} className="p-4">
                 <div className="flex justify-between gap-3">
                   <div className="min-w-0">
@@ -133,16 +161,18 @@ export default function OwnersPage() {
                     <p className="text-sm text-gray-500 truncate">{owner.email}</p>
                     <div className="flex flex-wrap gap-2 mt-2">
                       <StatusBadge status={owner.status} />
-                      <span className="text-xs text-gray-500 capitalize px-2 py-1 bg-gray-100 rounded-lg">
-                        {owner.role}
-                      </span>
+                      {isPlatformAdmin && <RoleBadge role={owner.role} />}
                     </div>
                     <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-600">
-                      <span>
-                        <strong className="text-vailo-teal">{managedPropertyCounts[owner.id] || 0}</strong>{' '}
-                        properties managed
-                      </span>
-                      <span className="text-gray-300">·</span>
+                      {!isAgent && (
+                        <>
+                          <span>
+                            <strong className="text-vailo-teal">{managedPropertyCounts[owner.id] || 0}</strong>{' '}
+                            properties managed
+                          </span>
+                          <span className="text-gray-300">·</span>
+                        </>
+                      )}
                       <span>
                         <strong className="text-vailo-gold-muted">{allocatedTypeCounts[owner.id] || 0}</strong>{' '}
                         listings allocated
@@ -177,38 +207,46 @@ export default function OwnersPage() {
                   <tr>
                     <th>Name</th>
                     <th>Company</th>
-                    <th className="text-center" title="Assigned on property (owner / manager)">
-                      Properties managed
-                    </th>
+                    {!isAgent && (
+                      <th className="text-center" title="Assigned on property (agent / owner)">
+                        Properties managed
+                      </th>
+                    )}
                     <th className="text-center" title="Allocated owner on individual property listings">
                       Listings allocated
                     </th>
-                    <th>Role</th>
+                    {isPlatformAdmin && <th>Role</th>}
                     <th>Status</th>
                     <th className="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {owners.map((owner) => (
+                  {visibleOwners.map((owner) => (
                     <tr key={owner.id}>
                       <td>
                         <div className="font-semibold text-vailo-dark">{owner.fullName}</div>
                         <div className="text-sm text-gray-500">{owner.email}</div>
                       </td>
                       <td>{owner.company || '—'}</td>
-                      <td className="text-center">
-                        <CountBadge
-                          count={managedPropertyCounts[owner.id] || 0}
-                          title="Properties where this user is assigned agent/owner"
-                        />
-                      </td>
+                      {!isAgent && (
+                        <td className="text-center">
+                          <CountBadge
+                            count={managedPropertyCounts[owner.id] || 0}
+                            title="Properties where this user is assigned agent or owner"
+                          />
+                        </td>
+                      )}
                       <td className="text-center">
                         <CountBadge
                           count={allocatedTypeCounts[owner.id] || 0}
                           title="Property listings where this user is the allocated owner"
                         />
                       </td>
-                      <td className="capitalize text-gray-600">{owner.role}</td>
+                      {isPlatformAdmin && (
+                        <td>
+                          <RoleBadge role={owner.role} />
+                        </td>
+                      )}
                       <td>
                         <StatusBadge status={owner.status} />
                       </td>

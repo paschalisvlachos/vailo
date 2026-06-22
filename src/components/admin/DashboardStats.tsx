@@ -2,12 +2,14 @@ import type { ReactNode } from 'react';
 import {
   Building2,
   Users,
-  Layers,
   UserCheck,
   AlertTriangle,
   MapPin,
   Sparkles,
-  TrendingUp,
+  Compass,
+  Mail,
+  Smartphone,
+  BarChart3,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AdminCard } from './AdminPageHeader';
@@ -28,26 +30,37 @@ function KpiCard({
   value,
   sub,
   icon: Icon,
+  to,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: typeof Building2;
+  to?: string;
 }) {
-  return (
-    <AdminCard className="p-4 sm:p-5">
+  const inner = (
+    <AdminCard className={`p-4 sm:p-5 h-full ${to ? 'hover:shadow-[0_8px_30px_-12px_rgba(11,79,92,0.18)] hover:border-vailo-teal/15 transition-all group' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{label}</p>
           <p className="text-2xl sm:text-3xl font-bold text-vailo-dark mt-1 tabular-nums">{value}</p>
-          {sub && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
+          {sub && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{sub}</p>}
         </div>
-        <div className="admin-icon-box shrink-0">
+        <div className={`admin-icon-box shrink-0 ${to ? 'group-hover:bg-vailo-gold/15 group-hover:text-vailo-gold transition-colors' : ''}`}>
           <Icon size={18} />
         </div>
       </div>
     </AdminCard>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="block h-full">
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
 }
 
 function ChartCard({
@@ -68,6 +81,15 @@ function ChartCard({
       {!description && <div className="mb-4" />}
       {children}
     </AdminCard>
+  );
+}
+
+function SectionHeading({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="pt-2">
+      <h4 className="text-sm font-bold text-vailo-dark">{title}</h4>
+      {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+    </div>
   );
 }
 
@@ -125,7 +147,7 @@ function VerticalBarChart({
   const chartHeight = 160;
 
   return (
-    <div className="flex items-end justify-center gap-6 sm:gap-10 pt-2" style={{ height: chartHeight + 48 }}>
+    <div className="flex items-end justify-center gap-4 sm:gap-8 pt-2" style={{ height: chartHeight + 48 }}>
       {data.map((item, i) => {
         const value = Number(item[valueKey]);
         const barHeight = value === 0 ? 0 : Math.max((value / max) * chartHeight, 8);
@@ -140,7 +162,9 @@ function VerticalBarChart({
                 title={`${item[labelKey]}: ${value}`}
               />
             </div>
-            <span className="text-[11px] text-gray-500 text-center leading-tight">{item[labelKey]}</span>
+            <span className="text-[10px] sm:text-[11px] text-gray-500 text-center leading-tight px-0.5">
+              {item[labelKey]}
+            </span>
           </div>
         );
       })}
@@ -155,11 +179,14 @@ function DonutChart({
   data: { name: string; value: number }[];
   colors?: string[];
 }) {
-  const total = data.reduce((sum, d) => sum + d.value, 0);
-  if (total === 0) return null;
+  const filtered = data.filter((d) => d.value > 0);
+  const total = filtered.reduce((sum, d) => sum + d.value, 0);
+  if (total === 0) {
+    return <p className="text-sm text-gray-500 py-8 text-center">No data yet.</p>;
+  }
 
   let cumulative = 0;
-  const segments = data.map((d, i) => {
+  const segments = filtered.map((d, i) => {
     const start = (cumulative / total) * 360;
     cumulative += d.value;
     const end = (cumulative / total) * 360;
@@ -201,7 +228,7 @@ function DonutChart({
           total
         </text>
       </svg>
-      <ul className="space-y-2">
+      <ul className="space-y-2 w-full sm:w-auto">
         {segments.map((seg) => (
           <li key={seg.name} className="flex items-center gap-2 text-sm">
             <span
@@ -303,75 +330,206 @@ export default function DashboardStats() {
     { status: 'Reviewed', count: stats.discoveredReviewed },
   ];
 
-  const guestActivity = [
+  const guestBookings = [
     { label: 'In stay now', count: stats.guestsInStay },
     { label: 'Next 30 days', count: stats.upcomingGuests },
-    { label: 'Configured total', count: stats.totalHouseGuests },
+    { label: 'Configured', count: stats.totalHouseGuests },
   ];
 
+  const invitePipeline = [
+    { label: 'Ready to invite', count: stats.invitesReady },
+    { label: 'Invite sent', count: stats.invitesWaiting },
+    { label: 'Portal opened', count: stats.invitesOpened },
+  ];
+
+  const portalEngagement = [
+    { label: 'Portal visits', count: stats.portalSessionsTotal },
+    { label: '24/7 Assistant', count: stats.assistantTurnsTotal },
+    { label: 'Live like a local', count: stats.liveLikeLocalOpensTotal },
+    { label: 'AI expert', count: stats.aiExpertTurnsTotal },
+  ].filter((d) => d.count > 0);
+
+  const portalActiveTotal = stats.portalActiveGuests7d + stats.portalActiveAnonymous7d;
   const hasAreaData = stats.areaBreakdown.length > 0;
   const hasUsageHistory = stats.usageHistory.some((m) => m.magicFill > 0);
+  const hasPortalEngagement = portalEngagement.length > 0;
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-8">
       <div>
         <h3 className="text-base sm:text-lg font-bold text-vailo-dark font-luxury">Platform statistics</h3>
         <p className="text-sm text-gray-500 mt-1">
-          Live snapshot across properties, guests, area data, and API usage.
+          Live snapshot — portfolio, guest portal usage, excursions, and operations.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <KpiCard label="Properties" value={stats.propertyCount} icon={Building2} />
-        <KpiCard label="Listings" value={stats.listingCount} sub="Units across portfolio" icon={Layers} />
-        <KpiCard
-          label="Owners"
-          value={stats.ownerCount}
-          sub={`${stats.activeOwnerCount} active`}
-          icon={Users}
-        />
-        <KpiCard
-          label="Guests in stay"
-          value={stats.guestsInStay}
-          sub={`${stats.upcomingGuests} arriving soon`}
-          icon={UserCheck}
-        />
-        <KpiCard
-          label="Open issues"
-          value={stats.openGuestIssues}
-          sub={
-            stats.unseenGuestIssues > 0
-              ? `${stats.unseenGuestIssues} unseen`
-              : 'All seen by host'
-          }
-          icon={AlertTriangle}
-        />
-        <KpiCard
-          label="Places to review"
-          value={stats.discoveredNew}
-          sub={`${stats.discoveredReviewed} already reviewed`}
-          icon={MapPin}
-        />
-        <KpiCard
-          label="Magic Fill calls"
-          value={stats.magicFill}
-          sub={`${formatUsd(stats.magicFillEstimatedCost)} est. this month`}
-          icon={Sparkles}
-        />
-        <KpiCard
-          label="House guests"
-          value={stats.totalHouseGuests}
-          sub="With complete booking details"
-          icon={TrendingUp}
-        />
+      <div className="space-y-4">
+        <SectionHeading title="Portfolio & guests" description="Properties, bookings, and portal activity" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <KpiCard
+            label="Properties"
+            value={stats.propertyCount}
+            sub={`${stats.listingCount} listings · ${stats.hotelCount} hotels`}
+            icon={Building2}
+            to={adminPath('/properties')}
+          />
+          <KpiCard
+            label="Guests in stay"
+            value={stats.guestsInStay}
+            sub={`${stats.upcomingGuests} arriving in 30 days`}
+            icon={UserCheck}
+          />
+          <KpiCard
+            label="Portal active (7d)"
+            value={portalActiveTotal}
+            sub={`${stats.portalEngagedGuests} guests ever engaged · ${stats.portalActiveAnonymous7d} anonymous`}
+            icon={Smartphone}
+          />
+          <KpiCard
+            label="Open guest issues"
+            value={stats.openGuestIssues}
+            sub={
+              stats.unseenGuestIssues > 0
+                ? `${stats.unseenGuestIssues} unseen by host`
+                : 'All seen by hosts'
+            }
+            icon={AlertTriangle}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <SectionHeading title="Operations" description="Invites, excursions, area data, and API usage" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <KpiCard
+            label="Invites pending"
+            value={stats.invitesWaiting}
+            sub={`${stats.invitesReady} ready · ${stats.invitesOpened} opened portal`}
+            icon={Mail}
+          />
+          <KpiCard
+            label="Excursion providers"
+            value={stats.excursionProviderCount}
+            sub={`${stats.excursionProvidersActive} active · ${stats.excursionCount} excursions`}
+            icon={Compass}
+            to={adminPath('/excursions/providers')}
+          />
+          <KpiCard
+            label="Places to review"
+            value={stats.discoveredNew}
+            sub={`${stats.discoveredReviewed} reviewed in area pipeline`}
+            icon={MapPin}
+            to={adminPath('/area')}
+          />
+          <KpiCard
+            label="Places API (month)"
+            value={stats.magicFill}
+            sub={`${formatUsd(stats.magicFillEstimatedCost)} estimated`}
+            icon={Sparkles}
+            to={adminPath('/billing')}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <SectionHeading title="Accounts" description="Owners CRM users by role" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <KpiCard
+            label="CRM users"
+            value={stats.ownerCount}
+            sub={`${stats.activeOwnerCount} active`}
+            icon={Users}
+            to={adminPath('/owners')}
+          />
+          <KpiCard
+            label="Agents"
+            value={stats.agentCount}
+            icon={Users}
+          />
+          <KpiCard
+            label="Property owners"
+            value={stats.propertyOwnerCount}
+            icon={Building2}
+          />
+          <KpiCard
+            label="Excursion operators"
+            value={stats.excursionProviderUserCount}
+            sub="CRM logins for excursion portal"
+            icon={Compass}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
-        {hasAreaData && (
+        {hasPortalEngagement && (
           <ChartCard
-            title="Portfolio by area"
-            description="Properties grouped by location"
+            title="Guest portal engagement"
+            description="Cumulative interactions across all stays and anonymous browsing"
           >
+            <HorizontalBarChart
+              data={portalEngagement.map((d) => ({ feature: d.label, count: d.count }))}
+              labelKey="feature"
+              valueKey="count"
+              color={TEAL_LIGHT}
+            />
+          </ChartCard>
+        )}
+
+        <ChartCard
+          title="Guest invite pipeline"
+          description="Bookings with complete guest details"
+        >
+          <VerticalBarChart
+            data={invitePipeline.map((d) => ({ stage: d.label, count: d.count }))}
+            labelKey="stage"
+            valueKey="count"
+            colors={[GOLD, TEAL_LIGHT, TEAL]}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Guest bookings"
+          description="House guests with complete reservation details"
+        >
+          <VerticalBarChart
+            data={guestBookings.map((d) => ({ label: d.label, count: d.count }))}
+            labelKey="label"
+            valueKey="count"
+            colors={[TEAL_LIGHT, TEAL, GOLD]}
+          />
+        </ChartCard>
+
+        {stats.ownersByRole.length > 0 && (
+          <ChartCard title="CRM users by role" description="Owners CRM account types">
+            <DonutChart
+              data={stats.ownersByRole.map((d) => ({ name: d.role, value: d.count }))}
+            />
+          </ChartCard>
+        )}
+
+        {stats.excursionProvidersByStatus.length > 0 && (
+          <ChartCard
+            title="Excursion providers"
+            description={
+              <Link to={adminPath('/excursions/providers')} className="text-vailo-teal hover:underline font-medium">
+                Manage providers →
+              </Link>
+            }
+          >
+            <VerticalBarChart
+              data={stats.excursionProvidersByStatus.map((d) => ({
+                status: d.status,
+                count: d.count,
+              }))}
+              labelKey="status"
+              valueKey="count"
+              colors={[TEAL, GOLD, '#94a3b8']}
+            />
+          </ChartCard>
+        )}
+
+        {hasAreaData && (
+          <ChartCard title="Portfolio by area" description="Properties grouped by location">
             <HorizontalBarChart
               data={stats.areaBreakdown.map((d) => ({ area: d.area, count: d.count }))}
               labelKey="area"
@@ -381,10 +539,7 @@ export default function DashboardStats() {
         )}
 
         {portfolioMix.length > 0 && (
-          <ChartCard
-            title="Portfolio mix"
-            description="Hotels vs standalone properties"
-          >
+          <ChartCard title="Portfolio mix" description="Hotels vs standalone properties">
             <DonutChart data={portfolioMix} />
           </ChartCard>
         )}
@@ -410,21 +565,9 @@ export default function DashboardStats() {
         </ChartCard>
 
         <ChartCard
-          title="Guest activity"
-          description="House guests with complete details on active bookings"
-        >
-          <VerticalBarChart
-            data={guestActivity.map((d) => ({ label: d.label, count: d.count }))}
-            labelKey="label"
-            valueKey="count"
-            colors={[TEAL_LIGHT, TEAL, GOLD]}
-          />
-        </ChartCard>
-
-        <ChartCard
           title="Magic Fill API usage"
           description="Google Places lookups — last 6 months"
-          className="lg:col-span-2"
+          className={hasUsageHistory ? 'lg:col-span-2' : ''}
         >
           {hasUsageHistory ? (
             <LineChart
@@ -439,6 +582,13 @@ export default function DashboardStats() {
           )}
         </ChartCard>
       </div>
+
+      {!hasPortalEngagement && stats.guestsInStay === 0 && stats.propertyCount === 0 && (
+        <AdminCard className="p-6 text-center">
+          <BarChart3 className="mx-auto text-gray-300 mb-3" size={32} />
+          <p className="text-gray-600 font-medium">Statistics will populate as you add properties and guests use the portal.</p>
+        </AdminCard>
+      )}
     </section>
   );
 }

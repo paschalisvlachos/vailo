@@ -183,6 +183,83 @@ function initSummaryCounters(summaryUpdate, summarySnap) {
   }
 }
 
+async function resolveAnalyticsContext(firestore, propertyId, typeId, sessionId, visitorId) {
+  if (sessionId) {
+    const session = await getSession(firestore, propertyId, sessionId);
+    if (!session || session.typeId !== typeId) {
+      throw new HttpsError("permission-denied", "Invalid session.");
+    }
+    if (Date.now() > new Date(session.accessUntil).getTime()) {
+      throw new HttpsError("permission-denied", "Session expired.");
+    }
+    if (!session.bookingId) {
+      return { skipped: "no_booking" };
+    }
+    if (session.source === "admin_preview" || session.source === "tester") {
+      return { skipped: session.source };
+    }
+
+    const booking = await getBookingById(
+      firestore,
+      propertyId,
+      typeId,
+      session.bookingId
+    );
+    if (!isBookingPortalAccessAllowed(booking)) {
+      throw new HttpsError(
+        "permission-denied",
+        "This reservation was cancelled. Guest portal access is no longer available."
+      );
+    }
+
+    const bookingId = session.bookingId;
+    const meta =
+      (await loadBookingMeta(firestore, propertyId, typeId, bookingId)) || {
+        guestName: session.guestName || "Guest",
+        guestEmail: "",
+        stayStart: "",
+        stayEnd: "",
+      };
+
+    return {
+      summaryRef: analyticsBasePath(firestore, propertyId, typeId)
+        .collection("guestStayAnalytics")
+        .doc(bookingId),
+      eventsCollection: analyticsBasePath(firestore, propertyId, typeId).collection(
+        "guestStayEvents"
+      ),
+      summaryIdentity: {
+        bookingId,
+        subjectKind: "booking",
+        guestName: meta.guestName,
+        guestEmail: meta.guestEmail,
+        stayStart: meta.stayStart,
+        stayEnd: meta.stayEnd,
+      },
+      guestName: meta.guestName,
+    };
+  }
+
+  const trimmedVisitorId = String(visitorId || "").trim();
+  if (!isValidVisitorId(trimmedVisitorId)) {
+    throw new HttpsError("invalid-argument", "Invalid visitor id.");
+  }
+
+  return {
+    summaryRef: analyticsBasePath(firestore, propertyId, typeId)
+      .collection("guestAnonymousAnalytics")
+      .doc(trimmedVisitorId),
+    eventsCollection: analyticsBasePath(firestore, propertyId, typeId).collection(
+      "guestAnonymousEvents"
+    ),
+    summaryIdentity: {
+      visitorId: trimmedVisitorId,
+      subjectKind: "anonymous",
+    },
+    guestName: "Anonymous visitor",
+  };
+}
+
 function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
   if (!firebaseExports) {
     throw new Error("registerGuestPortalAnalytics requires firebaseExports");
@@ -203,9 +280,6 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
         "Provide sessionId (booking guest) or visitorId (anonymous)."
       );
     }
-    if (events.length === 0) {
-      return { ok: true, logged: 0 };
-    }
     if (events.length > MAX_EVENTS_PER_CALL) {
       throw new HttpsError(
         "invalid-argument",
@@ -213,98 +287,40 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
       );
     }
 
-    await assertPropertyTypeExists(firestore, propertyId, typeId);
-
-    const nowIso = new Date().toISOString();
-    let summaryRef;
-    let eventsCollection;
-    let summaryIdentity = {};
-    let guestName = "Anonymous visitor";
-
-    if (sessionId) {
-      const session = await getSession(firestore, propertyId, sessionId);
-      if (!session || session.typeId !== typeId) {
-        throw new HttpsError("permission-denied", "Invalid session.");
-      }
-      if (Date.now() > new Date(session.accessUntil).getTime()) {
-        throw new HttpsError("permission-denied", "Session expired.");
-      }
-      if (!session.bookingId) {
-        return { ok: true, logged: 0, skipped: "no_booking" };
-      }
-      if (session.source === "admin_preview" || session.source === "tester") {
-        return { ok: true, logged: 0, skipped: session.source };
-      }
-
-      const booking = await getBookingById(
-        firestore,
-        propertyId,
-        typeId,
-        session.bookingId
-      );
-      if (!isBookingPortalAccessAllowed(booking)) {
-        throw new HttpsError(
-          "permission-denied",
-          "This reservation was cancelled. Guest portal access is no longer available."
-        );
-      }
-
-      const bookingId = session.bookingId;
-      const meta =
-        (await loadBookingMeta(firestore, propertyId, typeId, bookingId)) || {
-          guestName: session.guestName || "Guest",
-          guestEmail: "",
-          stayStart: "",
-          stayEnd: "",
-        };
-
-      guestName = meta.guestName;
-      summaryRef = analyticsBasePath(firestore, propertyId, typeId)
-        .collection("guestStayAnalytics")
-        .doc(bookingId);
-      eventsCollection = analyticsBasePath(firestore, propertyId, typeId).collection(
-        "guestStayEvents"
-      );
-      summaryIdentity = {
-        bookingId,
-        subjectKind: "booking",
-        guestName: meta.guestName,
-        guestEmail: meta.guestEmail,
-        stayStart: meta.stayStart,
-        stayEnd: meta.stayEnd,
-      };
-    } else {
-      const trimmedVisitorId = String(visitorId).trim();
-      if (!isValidVisitorId(trimmedVisitorId)) {
-        throw new HttpsError("invalid-argument", "Invalid visitor id.");
-      }
-
-      summaryRef = analyticsBasePath(firestore, propertyId, typeId)
-        .collection("guestAnonymousAnalytics")
-        .doc(trimmedVisitorId);
-      eventsCollection = analyticsBasePath(firestore, propertyId, typeId).collection(
-        "guestAnonymousEvents"
-      );
-      summaryIdentity = {
-        visitorId: trimmedVisitorId,
-        subjectKind: "anonymous",
-      };
+    const clientDevice = sanitizeClientDevice(rawClientDevice);
+    if (events.length === 0 && !clientDevice) {
+      return { ok: true, logged: 0 };
     }
 
-    const summarySnap = await summaryRef.get();
+    await assertPropertyTypeExists(firestore, propertyId, typeId);
+
+    const ctx = await resolveAnalyticsContext(
+      firestore,
+      propertyId,
+      typeId,
+      sessionId,
+      visitorId
+    );
+    if (ctx.skipped) {
+      return { ok: true, logged: 0, skipped: ctx.skipped };
+    }
+
+    const nowIso = new Date().toISOString();
+    const summarySnap = await ctx.summaryRef.get();
     const summaryUpdate = {
-      ...summaryIdentity,
+      ...ctx.summaryIdentity,
       typeId,
       propertyId,
       lastSeenAt: nowIso,
       updatedAt: serverTs,
     };
     initSummaryCounters(summaryUpdate, summarySnap);
-    applyClientDeviceToSummary(
-      summaryUpdate,
-      summarySnap,
-      sanitizeClientDevice(rawClientDevice)
-    );
+    applyClientDeviceToSummary(summaryUpdate, summarySnap, clientDevice);
+
+    if (events.length === 0) {
+      await ctx.summaryRef.set(summaryUpdate, { merge: true });
+      return { ok: true, logged: 0, deviceUpdated: true };
+    }
 
     const accordionOpens = {
       ...(summarySnap.exists ? summarySnap.data().accordionOpens || {} : {}),
@@ -321,15 +337,22 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
       if (!type) continue;
       const payload = sanitizePayload(type, raw.payload || {});
 
-      const eventRef = eventsCollection.doc();
+      const eventRef = ctx.eventsCollection.doc();
       batch.set(eventRef, {
-        ...summaryIdentity,
+        ...ctx.summaryIdentity,
         typeId,
         propertyId,
-        guestName,
+        guestName: ctx.guestName,
         at: nowIso,
         type,
         payload,
+        ...(clientDevice
+          ? {
+              deviceType: clientDevice.deviceType,
+              osName: clientDevice.osName,
+              deviceLabel: clientDevice.deviceLabel,
+            }
+          : {}),
       });
       logged += 1;
 
@@ -338,7 +361,7 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
 
     summaryUpdate.accordionOpens = accordionOpens;
     summaryUpdate.gemImpressions = gemImpressions;
-    batch.set(summaryRef, summaryUpdate, { merge: true });
+    batch.set(ctx.summaryRef, summaryUpdate, { merge: true });
     await batch.commit();
 
     return { ok: true, logged };

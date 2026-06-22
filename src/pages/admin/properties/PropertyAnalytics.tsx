@@ -109,26 +109,14 @@ export default function PropertyAnalytics() {
         const anon = await fetchGuestAnonymousSummariesForType(propertyId, typeId);
         anonRows.push(
           ...anon.map((s) => ({
+            ...s,
             rowKey: `anonymous:${s.typeId}:${s.visitorId}`,
             subjectKind: 'anonymous' as const,
             bookingId: undefined,
-            visitorId: s.visitorId,
             guestName: formatAnalyticsSubjectLabel(s),
             guestEmail: '',
             stayStart: '',
             stayEnd: '',
-            typeId: s.typeId,
-            propertyId: s.propertyId,
-            portalSessions: s.portalSessions,
-            liveLikeLocalOpens: s.liveLikeLocalOpens,
-            assistantTurns: s.assistantTurns,
-            aiExpertTurns: s.aiExpertTurns,
-            uniqueGemsSeen: s.uniqueGemsSeen,
-            accordionOpens: s.accordionOpens,
-            gemImpressions: s.gemImpressions,
-            firstSeenAt: s.firstSeenAt,
-            lastSeenAt: s.lastSeenAt,
-            updatedAt: s.updatedAt,
             unitName,
             hasActivity: s.portalSessions > 0 || s.lastSeenAt !== '',
           }))

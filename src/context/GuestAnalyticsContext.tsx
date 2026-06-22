@@ -119,6 +119,22 @@ export function GuestAnalyticsProvider({
     }
   }, [enabled, subject, propertyId, typeId, clientDevice]);
 
+  const syncClientDevice = useCallback(async () => {
+    if (!enabled || !subject || !propertyId || !typeId) return;
+    try {
+      await logGuestPortalAnalyticsCallable({
+        propertyId,
+        typeId,
+        sessionId: subject.kind === 'booking' ? subject.session.sessionId : undefined,
+        visitorId: subject.kind === 'anonymous' ? subject.visitorId : undefined,
+        clientDevice,
+        events: [],
+      });
+    } catch (err) {
+      console.warn('guest analytics device sync failed', err);
+    }
+  }, [enabled, subject, propertyId, typeId, clientDevice]);
+
   const scheduleFlush = useCallback(() => {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     flushTimerRef.current = setTimeout(() => {
@@ -162,8 +178,10 @@ export function GuestAnalyticsProvider({
   }, [enabled, subject, track]);
 
   useEffect(() => {
-    if (enabled) trackPortalSession();
-  }, [enabled, trackPortalSession]);
+    if (!enabled) return;
+    void syncClientDevice();
+    trackPortalSession();
+  }, [enabled, syncClientDevice, trackPortalSession]);
 
   useEffect(() => {
     const onUnload = () => {

@@ -10,7 +10,9 @@ import {
   fetchGuestAnonymousSummariesForType,
   fetchGuestStayEvents,
   fetchGuestStaySummariesForType,
+  formatAnalyticsDateTime,
   formatAnalyticsSubjectLabel,
+  analyticsTimestampMs,
 } from '../../../lib/guestAnalyticsAdmin';
 import type {
   GuestAnalyticsDeviceFields,
@@ -98,12 +100,22 @@ type Row = {
   hasActivity: boolean;
 } & GuestAnalyticsDeviceFields;
 
+type AnalyticsSort = 'stay_desc' | 'last_used_desc';
+
+function analyticsStaySortKey(row: Row): number {
+  if (row.subjectKind === 'booking' && row.stayStart) {
+    return analyticsTimestampMs(row.stayStart);
+  }
+  return analyticsTimestampMs(row.lastSeenAt);
+}
+
 export default function PropertyAnalytics() {
   const { propertyId } = useOutletContext<{ propertyId: string }>();
   const [propertyTypes, setPropertyTypes] = useState<
     { id: string; propertyTypeName?: string }[]
   >([]);
   const [filterTypeId, setFilterTypeId] = useState('all');
+  const [sortBy, setSortBy] = useState<AnalyticsSort>('stay_desc');
   const [bookingSummaries, setBookingSummaries] = useState<Row[]>([]);
   const [anonymousSummaries, setAnonymousSummaries] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,15 +249,23 @@ export default function PropertyAnalytics() {
       merged.push(anon);
     }
 
-    return merged.sort((a, b) => {
-      const aT = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
-      const bT = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
-      return bT - aT;
-    });
+    return merged;
   }, [bookingSummaries, anonymousSummaries, houseGuests, filterTypeId, propertyId]);
 
+  const sortedRows = useMemo(() => {
+    const list = [...rows];
+    if (sortBy === 'last_used_desc') {
+      list.sort(
+        (a, b) => analyticsTimestampMs(b.lastSeenAt) - analyticsTimestampMs(a.lastSeenAt)
+      );
+      return list;
+    }
+    list.sort((a, b) => analyticsStaySortKey(b) - analyticsStaySortKey(a));
+    return list;
+  }, [rows, sortBy]);
+
   const totals = useMemo(() => {
-    const active = rows.filter((r) => r.hasActivity);
+    const active = sortedRows.filter((r) => r.hasActivity);
     return {
       guestsWithActivity: active.length,
       sessions: active.reduce((n, r) => n + r.portalSessions, 0),
@@ -255,7 +275,7 @@ export default function PropertyAnalytics() {
       excursionsOpens: active.reduce((n, r) => n + r.excursionsOpens, 0),
       excursionBookings: active.reduce((n, r) => n + r.excursionBookingsComplete, 0),
     };
-  }, [rows]);
+  }, [sortedRows]);
 
   const openDetail = async (row: Row) => {
     setSelected(row);
@@ -305,7 +325,7 @@ export default function PropertyAnalytics() {
         </p>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <select
           value={filterTypeId}
           onChange={(e) => setFilterTypeId(e.target.value)}
@@ -317,6 +337,14 @@ export default function PropertyAnalytics() {
               {t.propertyTypeName}
             </option>
           ))}
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as AnalyticsSort)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium"
+        >
+          <option value="stay_desc">Stay date (newest first)</option>
+          <option value="last_used_desc">Last used (newest first)</option>
         </select>
       </div>
 
@@ -341,7 +369,7 @@ export default function PropertyAnalytics() {
 
       {loading ? (
         <p className="text-sm text-gray-500">Loading analytics…</p>
-      ) : rows.length === 0 ? (
+      ) : sortedRows.length === 0 ? (
         <div className="text-center py-12 rounded-xl border border-dashed border-gray-200 bg-gray-50">
           <p className="text-gray-600 font-medium">No guest activity to show yet</p>
           <p className="text-sm text-gray-500 mt-1">
@@ -358,6 +386,12 @@ export default function PropertyAnalytics() {
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
                   Stay / type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
+                  First use
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
+                  Last used
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">
                   Device
@@ -386,7 +420,7 @@ export default function PropertyAnalytics() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.map((row) => (
+              {sortedRows.map((row) => (
                 <tr key={row.rowKey} className="hover:bg-gray-50/80">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-gray-900">{row.guestName}</p>
@@ -401,6 +435,12 @@ export default function PropertyAnalytics() {
                     {row.subjectKind === 'anonymous'
                       ? 'Public browsing'
                       : formatBookingDateRange(row.stayStart, row.stayEnd)}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                    {formatAnalyticsDateTime(row.firstSeenAt)}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                    {formatAnalyticsDateTime(row.lastSeenAt)}
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {deviceDisplayLabel(row) ? (
@@ -471,10 +511,16 @@ export default function PropertyAnalytics() {
                     ? ` · ${formatBookingDateRange(selected.stayStart, selected.stayEnd)}`
                     : ' · Public browsing'}
                 </p>
+                {selected.firstSeenAt && (
+                  <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                    <Clock size={12} />
+                    First use {formatAnalyticsDateTime(selected.firstSeenAt)}
+                  </p>
+                )}
                 {selected.lastSeenAt && (
                   <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                     <Clock size={12} />
-                    Last active {new Date(selected.lastSeenAt).toLocaleString()}
+                    Last used {formatAnalyticsDateTime(selected.lastSeenAt)}
                   </p>
                 )}
                 {deviceDisplayLabel(selected) && (

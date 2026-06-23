@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Building2, Plus, Pencil, Trash2, User, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, collectionGroup, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
@@ -15,6 +15,13 @@ import { useAdminSession } from '../../../context/AdminSessionContext';
 import { canAccessPropertyId, pathForPropertyLanding, formatOwnerRoleLabel } from '../../../lib/adminAccess';
 import { adminPath } from '../../../lib/adminRoutes';
 import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
+import {
+  aggregateLatestAnalyticsByProperty,
+  analyticsSummaryRowFromDoc,
+  formatAnalyticsDate,
+} from '../../../lib/guestAnalyticsAdmin';
+
+type PropertySort = 'title_asc' | 'analytics_desc';
 
 interface Property {
   id: string;
@@ -97,11 +104,17 @@ export default function PropertiesPage() {
   const [listingCounts, setListingCounts] = useState<Record<string, number>>({});
   const [owners, setOwners] = useState<Record<string, { fullName?: string; role?: string }>>({});
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<PropertySort>('title_asc');
+  const [stayAnalyticsRows, setStayAnalyticsRows] = useState<
+    { propertyId: string; lastSeenAt: string }[]
+  >([]);
+  const [anonAnalyticsRows, setAnonAnalyticsRows] = useState<
+    { propertyId: string; lastSeenAt: string }[]
+  >([]);
 
   useEffect(() => {
     const unsubProps = onSnapshot(collection(db, 'properties'), (snapshot) => {
       const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Property[];
-      rows.sort((a, b) => a.propertyName.localeCompare(b.propertyName));
       setProperties(rows);
       setLoading(false);
     });
@@ -131,6 +144,29 @@ export default function PropertiesPage() {
     return () => unsubTypes();
   }, []);
 
+  useEffect(() => {
+    const collectRows = (snap: { docs: { data: () => Record<string, unknown> }[] }) =>
+      snap.docs
+        .map((d) => analyticsSummaryRowFromDoc(d.data()))
+        .filter((row): row is { propertyId: string; lastSeenAt: string } => row != null);
+
+    const unsubStay = onSnapshot(collectionGroup(db, 'guestStayAnalytics'), (snap) => {
+      setStayAnalyticsRows(collectRows(snap));
+    });
+    const unsubAnon = onSnapshot(collectionGroup(db, 'guestAnonymousAnalytics'), (snap) => {
+      setAnonAnalyticsRows(collectRows(snap));
+    });
+    return () => {
+      unsubStay();
+      unsubAnon();
+    };
+  }, []);
+
+  const latestAnalyticsByProperty = useMemo(
+    () => aggregateLatestAnalyticsByProperty([...stayAnalyticsRows, ...anonAnalyticsRows]),
+    [stayAnalyticsRows, anonAnalyticsRows]
+  );
+
   const handleDelete = async (id: string, propertyName: string) => {
     if (window.confirm(`Delete "${propertyName}"?`)) {
       try {
@@ -144,6 +180,23 @@ export default function PropertiesPage() {
   const visibleProperties = isPlatformAdmin
     ? properties
     : properties.filter((p) => canAccessPropertyId(profile, p.id, scopes));
+
+  const sortedProperties = useMemo(() => {
+    const list = [...visibleProperties];
+    if (sortBy === 'title_asc') {
+      list.sort((a, b) => a.propertyName.localeCompare(b.propertyName));
+      return list;
+    }
+    list.sort((a, b) => {
+      const aDate = latestAnalyticsByProperty[a.id] || '';
+      const bDate = latestAnalyticsByProperty[b.id] || '';
+      if (!aDate && !bDate) return a.propertyName.localeCompare(b.propertyName);
+      if (!aDate) return 1;
+      if (!bDate) return -1;
+      return bDate.localeCompare(aDate);
+    });
+    return list;
+  }, [visibleProperties, sortBy, latestAnalyticsByProperty]);
 
   const propertyHref = (propertyId: string) =>
     isPlatformAdmin ? adminPath(`/properties/${propertyId}`) : pathForPropertyLanding(propertyId, scopes);
@@ -171,6 +224,23 @@ export default function PropertiesPage() {
         }
       />
 
+      {visibleProperties.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <label htmlFor="properties-sort" className="text-sm font-medium text-gray-600">
+            Sort by
+          </label>
+          <select
+            id="properties-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as PropertySort)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium bg-white"
+          >
+            <option value="title_asc">Title A–Z</option>
+            <option value="analytics_desc">Last analytics</option>
+          </select>
+        </div>
+      )}
+
       {visibleProperties.length === 0 ? (
         <AdminEmptyState
           icon={<Building2 size={32} />}
@@ -191,8 +261,9 @@ export default function PropertiesPage() {
       ) : (
         <>
           <div className="grid gap-3 md:hidden">
-            {visibleProperties.map((property) => {
+            {sortedProperties.map((property) => {
               const allocatedUser = owners[property.ownerId];
+              const latestAnalytics = latestAnalyticsByProperty[property.id];
               return (
                 <AdminCard key={property.id} className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -212,6 +283,9 @@ export default function PropertiesPage() {
                       <div className="mt-2">
                         <GuestPortalAccessCell property={property} />
                       </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Last analytics: {formatAnalyticsDate(latestAnalytics)}
+                      </p>
                       {allocatedUser ? (
                         <p className="text-sm text-gray-700 mt-2 flex items-center gap-1.5">
                           <User size={14} className="text-gray-400 shrink-0" />
@@ -254,14 +328,16 @@ export default function PropertiesPage() {
                     <th>Type</th>
                     <th>Location</th>
                     <th>Guest portal access</th>
+                    <th>Last analytics</th>
                     <th>Owner / Agent</th>
                     <th>Ref</th>
                     <th className="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleProperties.map((property) => {
+                  {sortedProperties.map((property) => {
                     const allocatedUser = owners[property.ownerId];
+                    const latestAnalytics = latestAnalyticsByProperty[property.id];
                     return (
                       <tr key={property.id}>
                         <td>
@@ -279,6 +355,9 @@ export default function PropertiesPage() {
                         </td>
                         <td>
                           <GuestPortalAccessCell property={property} />
+                        </td>
+                        <td className="text-sm text-gray-600 whitespace-nowrap">
+                          {formatAnalyticsDate(latestAnalytics)}
                         </td>
                         <td>
                           {allocatedUser ? (

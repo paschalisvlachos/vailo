@@ -173,3 +173,55 @@ export function formatAnalyticsSubjectLabel(row: {
   }
   return row.guestName || 'Guest';
 }
+
+export function formatAnalyticsDate(iso: string | undefined): string {
+  if (!iso?.trim()) return '—';
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+export function formatAnalyticsDateTime(iso: string | undefined): string {
+  if (!iso?.trim()) return '—';
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function analyticsTimestampMs(iso: string | undefined): number {
+  if (!iso?.trim()) return 0;
+  const parsed = new Date(iso).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export function aggregateLatestAnalyticsByProperty(
+  rows: { propertyId: string; lastSeenAt: string }[]
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const row of rows) {
+    if (!row.propertyId || !row.lastSeenAt) continue;
+    if (!map[row.propertyId] || row.lastSeenAt > map[row.propertyId]) {
+      map[row.propertyId] = row.lastSeenAt;
+    }
+  }
+  return map;
+}
+
+export function analyticsSummaryRowFromDoc(
+  data: Record<string, unknown>
+): { propertyId: string; lastSeenAt: string } | null {
+  const propertyId = String(data.propertyId || '').trim();
+  const lastSeenAt = String(data.lastSeenAt || '').trim();
+  if (!propertyId || !lastSeenAt) return null;
+  return { propertyId, lastSeenAt };
+}

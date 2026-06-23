@@ -1,4 +1,5 @@
 import { EXCURSION_PROVIDER_COLLECTION, EXCURSION_SUBCOLLECTION } from './excursionProvider';
+import type { ExcursionItemCommissionType } from './excursionProvider';
 
 export type ExcursionStatus = 'draft' | 'published' | 'archived';
 
@@ -81,6 +82,10 @@ export type Excursion = {
   notes?: string;
   additionalInfo?: string;
   additionalServices?: string;
+  /** Admin-only — when provider commissionType is per_excursion. */
+  commissionType?: ExcursionItemCommissionType;
+  platformCommissionPercent?: number;
+  fixedCommissionAmount?: number;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -116,6 +121,9 @@ export type ExcursionFormData = {
   notes: string;
   additionalInfo: string;
   additionalServices: string;
+  commissionType: ExcursionItemCommissionType;
+  platformCommissionPercent: string;
+  fixedCommissionAmount: string;
 };
 
 export const EMPTY_EXCURSION_FORM: ExcursionFormData = {
@@ -149,6 +157,9 @@ export const EMPTY_EXCURSION_FORM: ExcursionFormData = {
   notes: '',
   additionalInfo: '',
   additionalServices: '',
+  commissionType: 'percent',
+  platformCommissionPercent: '15',
+  fixedCommissionAmount: '',
 };
 
 let seasonRowCounter = 0;
@@ -248,6 +259,26 @@ export function excursionDurationLabel(excursion: Pick<Excursion, 'durationType'
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  return '—';
+}
+
+function parseExcursionItemCommissionType(value: unknown): ExcursionItemCommissionType {
+  return value === 'fixed_per_booking' ? 'fixed_per_booking' : 'percent';
+}
+
+export function formatExcursionCommissionSummary(
+  excursion: Pick<
+    Excursion,
+    'commissionType' | 'platformCommissionPercent' | 'fixedCommissionAmount'
+  >
+): string {
+  if (excursion.commissionType === 'fixed_per_booking') {
+    const amount = excursion.fixedCommissionAmount ?? 0;
+    return `${amount.toFixed(2)} € / booking`;
+  }
+  if (excursion.platformCommissionPercent != null) {
+    return `${excursion.platformCommissionPercent}%`;
   }
   return '—';
 }
@@ -450,21 +481,30 @@ export function excursionFormFromDoc(data: Record<string, unknown>): ExcursionFo
     notes: String(data.notes || ''),
     additionalInfo: String(data.additionalInfo || ''),
     additionalServices: String(data.additionalServices || ''),
+    commissionType: parseExcursionItemCommissionType(data.commissionType),
+    platformCommissionPercent:
+      data.platformCommissionPercent != null ? String(data.platformCommissionPercent) : '15',
+    fixedCommissionAmount:
+      data.fixedCommissionAmount != null ? String(data.fixedCommissionAmount) : '',
   };
 }
 
 export function excursionPayloadFromForm(
   form: ExcursionFormData,
   providerId: string,
-  seasonPriceRows: ExcursionSeasonPriceFormRow[]
+  seasonPriceRows: ExcursionSeasonPriceFormRow[],
+  options: { includeCommission?: boolean } = {}
 ): Omit<Excursion, 'id'> {
+  const includeCommission = options.includeCommission === true;
   const durationMinutes = parseInt(form.durationMinutes, 10);
   const minParticipants = parseInt(form.minParticipants, 10);
   const maxParticipants = parseInt(form.maxParticipants, 10);
   const cutoffHoursBefore = parseInt(form.cutoffHoursBefore, 10);
   const advanceBookingDaysMax = parseInt(form.advanceBookingDaysMax, 10);
+  const commissionPercent = parseFloat(form.platformCommissionPercent);
+  const fixedCommission = parseFloat(form.fixedCommissionAmount);
 
-  return {
+  const payload: Omit<Excursion, 'id'> = {
     providerId,
     title: form.title.trim(),
     subtitle: form.subtitle.trim() || undefined,
@@ -508,6 +548,21 @@ export function excursionPayloadFromForm(
     additionalInfo: form.additionalInfo.trim() || undefined,
     additionalServices: form.additionalServices.trim() || undefined,
   };
+
+  if (includeCommission) {
+    payload.commissionType = form.commissionType;
+    if (form.commissionType === 'percent') {
+      payload.platformCommissionPercent = Number.isFinite(commissionPercent)
+        ? commissionPercent
+        : 0;
+    } else {
+      payload.fixedCommissionAmount = Number.isFinite(fixedCommission)
+        ? fixedCommission
+        : undefined;
+    }
+  }
+
+  return payload;
 }
 
 export type ExcursionFieldError = {
@@ -518,9 +573,11 @@ export type ExcursionFieldError = {
 
 export function validateExcursionForm(
   form: ExcursionFormData,
-  seasonPriceRows: ExcursionSeasonPriceFormRow[]
+  seasonPriceRows: ExcursionSeasonPriceFormRow[],
+  options: { includeCommission?: boolean } = {}
 ): ExcursionFieldError[] {
   const errors: ExcursionFieldError[] = [];
+  const includeCommission = options.includeCommission === true;
 
   if (!form.title.trim()) {
     errors.push({ field: 'title', label: 'Title', message: 'Title is required.' });
@@ -598,6 +655,40 @@ export function validateExcursionForm(
         field: 'maxParticipants',
         label: 'Max participants',
         message: 'Max participants must be at least the minimum.',
+      });
+    }
+  }
+
+  if (includeCommission && form.commissionType === 'percent') {
+    const pct = parseFloat(form.platformCommissionPercent);
+    if (!form.platformCommissionPercent.trim() || !Number.isFinite(pct)) {
+      errors.push({
+        field: 'platformCommissionPercent',
+        label: 'Platform commission %',
+        message: 'Enter a valid commission percentage.',
+      });
+    } else if (pct < 0 || pct > 100) {
+      errors.push({
+        field: 'platformCommissionPercent',
+        label: 'Platform commission %',
+        message: 'Commission must be between 0 and 100.',
+      });
+    }
+  }
+
+  if (includeCommission && form.commissionType === 'fixed_per_booking') {
+    const fixed = parseFloat(form.fixedCommissionAmount);
+    if (!form.fixedCommissionAmount.trim() || !Number.isFinite(fixed)) {
+      errors.push({
+        field: 'fixedCommissionAmount',
+        label: 'Fixed commission',
+        message: 'Enter the fixed commission amount in EUR.',
+      });
+    } else if (fixed < 0) {
+      errors.push({
+        field: 'fixedCommissionAmount',
+        label: 'Fixed commission',
+        message: 'Commission cannot be negative.',
       });
     }
   }

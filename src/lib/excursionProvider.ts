@@ -2,9 +2,41 @@
 
 export type ExcursionProviderStatus = 'draft' | 'active' | 'suspended';
 
-export type ExcursionProviderCommissionType = 'percent' | 'fixed_per_booking';
+export type ExcursionProviderCommissionType = 'percent' | 'fixed_per_booking' | 'per_excursion';
+
+/** Commission on a single excursion when the provider uses `per_excursion` mode. */
+export type ExcursionItemCommissionType = 'percent' | 'fixed_per_booking';
 
 export type ExcursionProviderPayoutTerms = 'weekly' | 'monthly' | 'on_completion';
+
+export function parseExcursionProviderCommissionType(
+  value: unknown
+): ExcursionProviderCommissionType {
+  if (value === 'fixed_per_booking' || value === 'per_excursion') return value;
+  return 'percent';
+}
+
+export function providerUsesPerExcursionCommission(
+  provider: Pick<ExcursionProvider, 'commissionType'>
+): boolean {
+  return provider.commissionType === 'per_excursion';
+}
+
+export function formatExcursionProviderCommissionSummary(
+  provider: Pick<
+    ExcursionProvider,
+    'commissionType' | 'platformCommissionPercent' | 'fixedCommissionAmount'
+  >
+): string {
+  if (provider.commissionType === 'per_excursion') {
+    return 'Per excursion';
+  }
+  if (provider.commissionType === 'fixed_per_booking') {
+    const amount = provider.fixedCommissionAmount ?? 0;
+    return `${amount.toFixed(2)} € / booking`;
+  }
+  return `${provider.platformCommissionPercent ?? 0}%`;
+}
 
 /** One operating region — matches `countries/{country}/areas/{areaId}`. */
 export type ExcursionProviderRegion = {
@@ -240,8 +272,7 @@ export function excursionProviderFormFromDoc(
     platformCommissionPercent: String(
       data.platformCommissionPercent != null ? data.platformCommissionPercent : '15'
     ),
-    commissionType:
-      data.commissionType === 'fixed_per_booking' ? 'fixed_per_booking' : 'percent',
+    commissionType: parseExcursionProviderCommissionType(data.commissionType),
     fixedCommissionAmount:
       data.fixedCommissionAmount != null ? String(data.fixedCommissionAmount) : '',
     contractStartDate: String(data.contractStartDate || ''),
@@ -290,7 +321,10 @@ export function excursionProviderPayloadFromForm(
     licenseNumber: form.licenseNumber.trim() || undefined,
     timezone: form.timezone.trim() || undefined,
     status: form.status,
-    platformCommissionPercent: Number.isFinite(commissionPercent) ? commissionPercent : 0,
+    platformCommissionPercent:
+      form.commissionType === 'percent' && Number.isFinite(commissionPercent)
+        ? commissionPercent
+        : 0,
     commissionType: form.commissionType,
     fixedCommissionAmount:
       form.commissionType === 'fixed_per_booking' && Number.isFinite(fixedAmount)

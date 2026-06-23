@@ -901,6 +901,7 @@ export default function ExcursionProviderFormPage() {
                       >
                         <option value="percent">Percentage of sell price</option>
                         <option value="fixed_per_booking">Fixed amount per booking</option>
+                        <option value="per_excursion">Per excursion (set on each excursion)</option>
                       </AdminSelect>
                     </div>
                     {formData.commissionType === 'percent' ? (
@@ -919,7 +920,7 @@ export default function ExcursionProviderFormPage() {
                         />
                         <FieldError message={fieldErrors.platformCommissionPercent} />
                       </div>
-                    ) : (
+                    ) : formData.commissionType === 'fixed_per_booking' ? (
                       <div>
                         <AdminLabel htmlFor="fixedCommissionAmount">Fixed commission (EUR)</AdminLabel>
                         <AdminInput
@@ -933,6 +934,14 @@ export default function ExcursionProviderFormPage() {
                           className={fieldErrorClass(Boolean(fieldErrors.fixedCommissionAmount))}
                         />
                         <FieldError message={fieldErrors.fixedCommissionAmount} />
+                      </div>
+                    ) : (
+                      <div className="md:col-span-2">
+                        <p className="text-sm text-gray-600 bg-vailo-surface-elevated/80 border border-gray-100 rounded-lg px-4 py-3">
+                          Global commission is disabled for this provider. Set commission on each
+                          excursion individually — percentage of sell price or a fixed amount per
+                          booking.
+                        </p>
                       </div>
                     )}
                     <div>

@@ -4,8 +4,13 @@ import { collection, deleteDoc, doc, getDoc, onSnapshot } from 'firebase/firesto
 import { Compass, MapPin, Plus, Pencil, Trash2, CalendarDays, Percent, ClipboardList } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
+import { useAdminSession } from '../../../context/AdminSessionContext';
 import { adminPath } from '../../../lib/adminRoutes';
-import { EXCURSION_PROVIDER_COLLECTION, EXCURSION_SUBCOLLECTION } from '../../../lib/excursionProvider';
+import {
+  EXCURSION_PROVIDER_COLLECTION,
+  EXCURSION_SUBCOLLECTION,
+  parseExcursionProviderCommissionType,
+} from '../../../lib/excursionProvider';
 import {
   adminExcursionAddPath,
   adminExcursionEditPath,
@@ -15,6 +20,7 @@ import {
   excursionSeasonsSummary,
   excursionStatusLabel,
   excursionTravelStyleLabel,
+  formatExcursionCommissionSummary,
   formatExcursionPrice,
   portalExcursionAddPath,
   portalExcursionEditPath,
@@ -59,8 +65,10 @@ export default function ExcursionsListPage() {
   const portalMode = location.pathname.includes('/excursion-portal/');
   const navigate = useNavigate();
   const toast = useToast();
+  const { isPlatformAdmin } = useAdminSession();
 
   const [providerName, setProviderName] = useState('');
+  const [showCommissionColumn, setShowCommissionColumn] = useState(false);
   const [excursions, setExcursions] = useState<Excursion[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -77,7 +85,13 @@ export default function ExcursionsListPage() {
 
     getDoc(doc(db, EXCURSION_PROVIDER_COLLECTION, providerId)).then((snap) => {
       if (snap.exists()) {
-        setProviderName(String(snap.data().businessName || 'Provider'));
+        const data = snap.data();
+        setProviderName(String(data.businessName || 'Provider'));
+        setShowCommissionColumn(
+          isPlatformAdmin &&
+            !portalMode &&
+            parseExcursionProviderCommissionType(data.commissionType) === 'per_excursion'
+        );
       }
     });
 
@@ -98,7 +112,7 @@ export default function ExcursionsListPage() {
     );
 
     return () => unsub();
-  }, [providerId, toast]);
+  }, [providerId, toast, isPlatformAdmin, portalMode]);
 
   const editPath = (excursionId: string) =>
     providerId
@@ -212,6 +226,9 @@ export default function ExcursionsListPage() {
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Travel style</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Duration</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">From price</th>
+                  {showCommissionColumn && (
+                    <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Commission</th>
+                  )}
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Status</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600 text-right">
                     Actions
@@ -264,6 +281,11 @@ export default function ExcursionsListPage() {
                         { from: excursion.showPriceFrom !== false }
                       )}
                     </td>
+                    {showCommissionColumn && (
+                      <td className="px-4 sm:px-6 py-4 font-medium tabular-nums text-vailo-dark">
+                        {formatExcursionCommissionSummary(excursion)}
+                      </td>
+                    )}
                     <td className="px-4 sm:px-6 py-4">
                       <StatusBadge status={excursion.status} />
                     </td>

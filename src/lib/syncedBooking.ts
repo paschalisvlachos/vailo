@@ -101,6 +101,7 @@ export function mergeSyncedBookingFromExisting(
     inviteToken: existing.inviteToken,
     invitePasswordHash: existing.invitePasswordHash,
     inviteStatus: existing.inviteStatus,
+    lastInvitedAt: existing.lastInvitedAt,
     portalActivatedAt: existing.portalActivatedAt,
     portalAccessUntil: existing.portalAccessUntil,
     accessSource: existing.accessSource,

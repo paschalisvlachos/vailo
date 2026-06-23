@@ -1853,6 +1853,9 @@ registerGuestPortalAccess({ firestore, logger, firebaseExports: exports });
 const { registerGuestPortalAnalytics } = require("./guestPortalAnalytics");
 registerGuestPortalAnalytics({ firestore, firebaseExports: exports });
 
+const { registerICalSync } = require("./icalSync");
+registerICalSync({ firestore, firebaseExports: exports });
+
 const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
 registerGuestApplianceGuide({ firestore, firebaseExports: exports });
 

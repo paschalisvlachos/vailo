@@ -19,6 +19,7 @@ import {
   EXCURSION_PROVIDER_COLLECTION,
   EXCURSION_SUBCOLLECTION,
   excursionProviderStatusLabel,
+  formatExcursionProviderCommissionSummary,
   formatOperatingRegionsSummary,
   normalizeOperatingRegions,
   providerOperatesInCountry,
@@ -26,7 +27,6 @@ import {
   type ExcursionProvider,
   type ExcursionProviderStatus,
 } from '../../../lib/excursionProvider';
-import { formatCurrencyAmount } from '../../../lib/excursion';
 import { adminExcursionsListPath } from '../../../lib/excursion';
 import AdminPageHeader, {
   AdminButtonLink,
@@ -322,15 +322,9 @@ export default function ExcursionProvidersPage() {
                       )}
                     </td>
                     <td className="px-4 sm:px-6 py-4">
-                      {provider.commissionType === 'fixed_per_booking' ? (
-                        <span className="font-medium text-vailo-dark tabular-nums">
-                          {formatCurrencyAmount(provider.fixedCommissionAmount ?? 0, 'EUR')} / booking
-                        </span>
-                      ) : (
-                        <span className="font-medium text-vailo-dark tabular-nums">
-                          {provider.platformCommissionPercent ?? 0}%
-                        </span>
-                      )}
+                      <span className="font-medium text-vailo-dark tabular-nums">
+                        {formatExcursionProviderCommissionSummary(provider)}
+                      </span>
                     </td>
                     <td className="px-4 sm:px-6 py-4">
                       <Link

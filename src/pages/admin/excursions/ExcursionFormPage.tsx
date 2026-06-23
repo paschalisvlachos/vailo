@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { addDoc, collection, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Image as ImageIcon, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Lock, Plus, Trash2 } from 'lucide-react';
 import { db, storage } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { adminPath } from '../../../lib/adminRoutes';
-import { EXCURSION_PROVIDER_COLLECTION, EXCURSION_SUBCOLLECTION } from '../../../lib/excursionProvider';
+import { EXCURSION_PROVIDER_COLLECTION, EXCURSION_SUBCOLLECTION, parseExcursionProviderCommissionType } from '../../../lib/excursionProvider';
 import {
   EMPTY_EXCURSION_FORM,
   adminExcursionsListPath,
@@ -65,6 +65,7 @@ export default function ExcursionFormPage() {
   const toast = useToast();
   const { isPlatformAdmin } = useAdminSession();
   const showArchivedStatus = isPlatformAdmin && !portalMode;
+  const showExcursionCommission = isPlatformAdmin && !portalMode;
 
   const [formData, setFormData] = useState<ExcursionFormData>(EMPTY_EXCURSION_FORM);
   const [seasonPrices, setSeasonPrices] = useState<ExcursionSeasonPriceFormRow[]>([
@@ -72,6 +73,7 @@ export default function ExcursionFormPage() {
   ]);
   const [slugManual, setSlugManual] = useState(false);
   const [providerName, setProviderName] = useState('');
+  const [providerUsesPerExcursionCommission, setProviderUsesPerExcursionCommission] = useState(false);
   const [loading, setLoading] = useState(isEdit);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [heroFile, setHeroFile] = useState<File | null>(null);
@@ -116,7 +118,11 @@ export default function ExcursionFormPage() {
     if (!providerId) return;
     getDoc(doc(db, EXCURSION_PROVIDER_COLLECTION, providerId)).then((snap) => {
       if (snap.exists()) {
-        setProviderName(String(snap.data().businessName || ''));
+        const data = snap.data();
+        setProviderName(String(data.businessName || ''));
+        setProviderUsesPerExcursionCommission(
+          parseExcursionProviderCommissionType(data.commissionType) === 'per_excursion'
+        );
       }
     });
   }, [providerId]);
@@ -161,6 +167,10 @@ export default function ExcursionFormPage() {
       setFieldErrors((prev) => {
         const next = { ...prev };
         delete next[name];
+        if (name === 'commissionType') {
+          delete next.platformCommissionPercent;
+          delete next.fixedCommissionAmount;
+        }
         return next;
       });
     }
@@ -218,7 +228,8 @@ export default function ExcursionFormPage() {
     e.preventDefault();
     if (!providerId) return;
 
-    const errors = validateExcursionForm(formData, seasonPrices);
+    const includeCommission = showExcursionCommission && providerUsesPerExcursionCommission;
+    const errors = validateExcursionForm(formData, seasonPrices, { includeCommission });
     if (errors.length > 0) {
       const map: Record<string, string> = {};
       errors.forEach((err) => {
@@ -234,7 +245,7 @@ export default function ExcursionFormPage() {
     try {
       const heroPhotoUrl = await uploadHero();
       const payload = sanitizeExcursionPayload({
-        ...excursionPayloadFromForm(formData, providerId, seasonPrices),
+        ...excursionPayloadFromForm(formData, providerId, seasonPrices, { includeCommission }),
         heroPhotoUrl,
         updatedAt: new Date().toISOString(),
       });
@@ -693,6 +704,72 @@ export default function ExcursionFormPage() {
                 ))}
               </div>
             </section>
+
+            {showExcursionCommission && providerUsesPerExcursionCommission && (
+              <>
+                <hr className="border-gray-100" />
+
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lock size={16} className="text-vailo-gold" />
+                    <h3 className="admin-section-title border-0 pb-0 mb-0">Commission</h3>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-vailo-gold/15 text-vailo-dark border border-vailo-gold/25">
+                      Admin only
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">
+                    This provider uses per-excursion commission. Set the platform margin for this
+                    product.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                    <div>
+                      <AdminLabel htmlFor="commissionType">Commission type</AdminLabel>
+                      <AdminSelect
+                        id="commissionType"
+                        name="commissionType"
+                        value={formData.commissionType}
+                        onChange={handleChange}
+                      >
+                        <option value="percent">Percentage of sell price</option>
+                        <option value="fixed_per_booking">Fixed amount per booking</option>
+                      </AdminSelect>
+                    </div>
+                    {formData.commissionType === 'percent' ? (
+                      <div>
+                        <AdminLabel htmlFor="platformCommissionPercent">Platform commission %</AdminLabel>
+                        <AdminInput
+                          id="platformCommissionPercent"
+                          name="platformCommissionPercent"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={formData.platformCommissionPercent}
+                          onChange={handleChange}
+                          className={fieldErrorClass(Boolean(fieldErrors.platformCommissionPercent))}
+                        />
+                        <FieldError message={fieldErrors.platformCommissionPercent} />
+                      </div>
+                    ) : (
+                      <div>
+                        <AdminLabel htmlFor="fixedCommissionAmount">Fixed commission (EUR)</AdminLabel>
+                        <AdminInput
+                          id="fixedCommissionAmount"
+                          name="fixedCommissionAmount"
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={formData.fixedCommissionAmount}
+                          onChange={handleChange}
+                          className={fieldErrorClass(Boolean(fieldErrors.fixedCommissionAmount))}
+                        />
+                        <FieldError message={fieldErrors.fixedCommissionAmount} />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </>
+            )}
 
             <hr className="border-gray-100" />
 

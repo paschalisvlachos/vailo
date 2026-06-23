@@ -120,5 +120,6 @@ async function requirePlatformAdminOrManagingAgent(request, firestore, targetOwn
 module.exports = {
   requirePlatformAdmin,
   requirePlatformAdminOrManagingAgent,
+  resolveCallerOwnerProfile,
   normalizeAdminEmail,
 };

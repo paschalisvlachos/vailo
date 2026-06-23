@@ -9,11 +9,11 @@ import {
   formatBookingDateRange,
   getBookingInvitationStatus,
   guestDetailsPatch,
-  mergeSyncedBookingFromExisting,
   patchSyncedBookingList,
   type SyncedBooking,
 } from '../../../lib/syncedBooking';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
+import { formatICalSyncError, formatICalSyncSuccessMessage, syncPropertyTypeICalCallable } from '../../../lib/icalSync';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw } from 'lucide-react';
 
 function bookingStatusLabel(status: ReturnType<typeof getBookingInvitationStatus>): string {
@@ -79,109 +79,19 @@ export default function Calendar() {
   const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
 
   const handleSync = async () => {
-    if (!selectedType?.iCalUrl) return;
+    if (!selectedType?.iCalUrl || !selectedTypeId) return;
     setIsSyncing(true);
 
     try {
-      const separator = selectedType.iCalUrl.includes('?') ? '&' : '?';
-      const noCacheUrl = `${selectedType.iCalUrl}${separator}nocache=${Date.now()}`;
-
-      const proxies = [
-        `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(noCacheUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(noCacheUrl)}`,
-        `https://corsproxy.io/?${encodeURIComponent(noCacheUrl)}`,
-      ];
-
-      let text: string | null = null;
-      let success = false;
-
-      for (const proxyUrl of proxies) {
-        try {
-          const response = await fetch(proxyUrl);
-          if (response.ok) {
-            const fetchedText = await response.text();
-            if (fetchedText.includes('BEGIN:VCALENDAR')) {
-              text = fetchedText;
-              success = true;
-              break;
-            }
-          }
-        } catch {
-          /* try next proxy */
-        }
-      }
-
-      if (!success || !text) {
-        throw new Error(
-          "All proxy networks were blocked by the booking channel's firewall. Try again in a few minutes."
-        );
-      }
-
-      const events: SyncedBooking[] = [];
-      const lines = text.split(/\r?\n/);
-      let currentEvent: SyncedBooking | null = null;
-
-      const extractDateFromICal = (line: string) => {
-        const match = line.match(/:(\d{8})/);
-        if (match) {
-          const dateStr = match[1];
-          const y = dateStr.substring(0, 4);
-          const m = dateStr.substring(4, 6);
-          const d = dateStr.substring(6, 8);
-          return `${y}-${m}-${d}`;
-        }
-        return null;
-      };
-
-      for (const line of lines) {
-        if (line.startsWith('BEGIN:VEVENT')) {
-          currentEvent = {};
-        } else if (line.startsWith('END:VEVENT')) {
-          if (currentEvent && currentEvent.start && currentEvent.end) {
-            currentEvent.id = Math.random().toString(36).substr(2, 9);
-            currentEvent.provider = extractBookingProvider(
-              currentEvent.summary || '',
-              selectedType.iCalUrl
-            );
-            currentEvent.isInvited = false;
-            events.push(currentEvent);
-          }
-          currentEvent = null;
-        } else if (currentEvent) {
-          if (line.startsWith('DTSTART')) {
-            currentEvent.start = extractDateFromICal(line) || undefined;
-          } else if (line.startsWith('DTEND')) {
-            currentEvent.end = extractDateFromICal(line) || undefined;
-          } else if (line.startsWith('SUMMARY')) {
-            currentEvent.summary = line.substring(line.indexOf(':') + 1);
-          }
-        }
-      }
-
-      const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId);
-      const existingBookings: SyncedBooking[] = selectedType.syncedBookings || [];
-
-      const mergedEvents = events.map((newEvent) => {
-        const matchedOld = existingBookings.find(
-          (b) => b.start === newEvent.start && b.end === newEvent.end
-        );
-        return mergeSyncedBookingFromExisting(newEvent, matchedOld);
-      });
-
-      await setDoc(
-        typeRef,
-        {
-          syncedBookings: mergedEvents,
-          lastSyncedAt: new Date().toISOString(),
-        },
-        { merge: true }
+      const result = await syncPropertyTypeICalCallable(
+        propertyId,
+        selectedTypeId,
+        selectedType.iCalUrl
       );
-
-      toast.success(`Calendar synced! Found ${events.length} reservations.`);
+      toast.success(formatICalSyncSuccessMessage(result));
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Sync failed';
       console.error('Sync error:', error);
-      toast.error(`Failed to sync calendar. Error: ${message}`);
+      toast.error(formatICalSyncError(error));
     } finally {
       setIsSyncing(false);
     }

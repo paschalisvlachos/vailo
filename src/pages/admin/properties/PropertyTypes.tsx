@@ -18,11 +18,16 @@ import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
-import { useAdminSession } from '../../../context/AdminSessionContext';
 import {
   isAllocatedOwnerIdAllowed,
   ownersForAllocatedOwnerPicker,
 } from '../../../lib/agentOwners';
+import { useAdminSession } from '../../../context/AdminSessionContext';
+import {
+  formatICalSyncError,
+  formatICalSyncSuccessMessage,
+  syncPropertyTypeICalCallable,
+} from '../../../lib/icalSync';
 
 export default function PropertyTypes() {
   const { property, propertyId, propertyAccess, lockedListingId } =
@@ -57,6 +62,7 @@ export default function PropertyTypes() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [qrDownloadingId, setQrDownloadingId] = useState<string | null>(null);
+  const [isICalSyncing, setIsICalSyncing] = useState(false);
 
   // Master Area Database States
   const [countries, setCountries] = useState<string[]>([]);
@@ -444,12 +450,30 @@ export default function PropertyTypes() {
     setIsSlugManuallyEdited(false);
   };
 
-  const handleICalSync = () => {
-    if (!typeFormData.iCalUrl) {
-      toast.warning("Please enter a valid iCal URL first.");
+  const handleICalSync = async () => {
+    if (!typeFormData.iCalUrl?.trim()) {
+      toast.warning('Please enter a valid iCal URL first.');
       return;
     }
-    toast.info("iCal Sync Initiated! (Backend cloud function required to parse .ics file and map bookings to the database).");
+    if (!editingTypeId) {
+      toast.warning('Save the listing first, then sync the calendar.');
+      return;
+    }
+
+    setIsICalSyncing(true);
+    try {
+      const result = await syncPropertyTypeICalCallable(
+        propertyId,
+        editingTypeId,
+        typeFormData.iCalUrl.trim()
+      );
+      toast.success(formatICalSyncSuccessMessage(result));
+    } catch (error) {
+      console.error('iCal sync error:', error);
+      toast.error(formatICalSyncError(error));
+    } finally {
+      setIsICalSyncing(false);
+    }
   };
 
   const handleDownloadQr = async (type: (typeof propertyTypes)[0]) => {
@@ -519,7 +543,7 @@ export default function PropertyTypes() {
                     
                     {type.iCalUrl && (
                       <div className="mb-3 flex items-center text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded w-max border border-green-100">
-                        <CalendarSync size={12} className="mr-1.5" /> iCal Synced
+                        <CalendarSync size={12} className="mr-1.5" /> iCal linked
                       </div>
                     )}
                     
@@ -713,13 +737,20 @@ export default function PropertyTypes() {
             />
             <button 
               type="button" 
-              onClick={handleICalSync} 
-              className="px-6 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover text-sm font-medium transition-colors shadow-sm"
+              onClick={() => void handleICalSync()}
+              disabled={isICalSyncing || !typeFormData.iCalUrl?.trim()}
+              className="px-6 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover text-sm font-medium transition-colors shadow-sm disabled:opacity-50 disabled:bg-gray-400 inline-flex items-center gap-2"
             >
-              Sync Now
+              {isICalSyncing ? <Loader2 size={16} className="animate-spin" /> : <CalendarSync size={16} />}
+              {isICalSyncing ? 'Syncing…' : 'Sync Now'}
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">Paste the iCal export link from Airbnb, Booking.com, or your Channel Manager to sync reservations automatically.</p>
+          <p className="text-xs text-gray-500 mt-2">
+            Paste the iCal export link from Airbnb, Booking.com, or your channel manager.
+            {editingTypeId
+              ? ' Click Sync Now to import reservations into this listing.'
+              : ' Save the listing first, then sync.'}
+          </p>
         </div>
 
         {/* General Details & Coordinates */}

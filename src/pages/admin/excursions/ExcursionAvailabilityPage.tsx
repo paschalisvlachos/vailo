@@ -5,16 +5,20 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   setDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   Calendar as CalendarIcon,
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Square,
   X,
 } from 'lucide-react';
 import { db } from '../../../lib/firebase';
@@ -35,11 +39,15 @@ import {
 } from '../../../lib/excursionDiscount';
 import {
   EMPTY_AVAILABILITY_FORM,
+  AVAILABILITY_WEEKDAY_LABELS,
   availabilityFormFromDoc,
   availabilityFromDoc,
   availabilityPayloadFromForm,
   availabilityStatusLabel,
   availabilityValidationSummary,
+  defaultAvailabilityWeekdayFilter,
+  enumerateAvailabilityDates,
+  filterBookableAvailabilityDates,
   findSeasonPriceForDate,
   formatAvailabilityCapacitySummary,
   formatAvailabilityPriceSummary,
@@ -92,6 +100,139 @@ function FieldError({ message }: { message?: string }) {
   return <p className="text-xs text-red-600 mt-1">{message}</p>;
 }
 
+function AvailabilitySettingsFields({
+  formData,
+  fieldErrors,
+  onChange,
+  showCapacity = true,
+}: {
+  formData: ExcursionAvailabilityFormData;
+  fieldErrors: Record<string, string>;
+  onChange: (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => void;
+  showCapacity?: boolean;
+}) {
+  return (
+    <>
+      <div>
+        <AdminLabel htmlFor="bulk-status">Status</AdminLabel>
+        <AdminSelect id="bulk-status" name="status" value={formData.status} onChange={onChange}>
+          <option value="open">Open — bookable</option>
+          <option value="closed">Closed — not bookable</option>
+          <option value="sold_out">Sold out</option>
+        </AdminSelect>
+      </div>
+
+      {formData.status === 'open' && showCapacity && (
+        <>
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              name="capacityUnlimited"
+              checked={formData.capacityUnlimited}
+              onChange={onChange}
+              className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+            />
+            Unlimited spaces (no capacity cap)
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <AdminLabel htmlFor="bulk-capacityTotal">Capacity (spots) *</AdminLabel>
+              <AdminInput
+                id="bulk-capacityTotal"
+                name="capacityTotal"
+                type="number"
+                min={1}
+                value={formData.capacityTotal}
+                onChange={onChange}
+                disabled={formData.capacityUnlimited}
+              />
+              <FieldError message={fieldErrors.capacityTotal} />
+            </div>
+            <div>
+              <AdminLabel htmlFor="bulk-departureTime">Departure time</AdminLabel>
+              <AdminInput
+                id="bulk-departureTime"
+                name="departureTime"
+                type="time"
+                value={formData.departureTime}
+                onChange={onChange}
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input
+              type="checkbox"
+              name="overridePrices"
+              checked={formData.overridePrices}
+              onChange={onChange}
+              className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+            />
+            Override prices for these dates
+          </label>
+
+          {formData.overridePrices && (
+            <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 bg-vailo-surface-elevated/50 p-4">
+              <div>
+                <AdminLabel htmlFor="bulk-priceAdult">Adult *</AdminLabel>
+                <AdminInput
+                  id="bulk-priceAdult"
+                  name="priceAdult"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={formData.priceAdult}
+                  onChange={onChange}
+                />
+                <FieldError message={fieldErrors.priceAdult} />
+              </div>
+              <div>
+                <AdminLabel htmlFor="bulk-priceChild">Child</AdminLabel>
+                <AdminInput
+                  id="bulk-priceChild"
+                  name="priceChild"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={formData.priceChild}
+                  onChange={onChange}
+                />
+              </div>
+              <div>
+                <AdminLabel htmlFor="bulk-priceInfant">Infant</AdminLabel>
+                <AdminInput
+                  id="bulk-priceInfant"
+                  name="priceInfant"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={formData.priceInfant}
+                  onChange={onChange}
+                />
+              </div>
+              <div>
+                <AdminLabel htmlFor="bulk-priceSenior">Senior</AdminLabel>
+                <AdminInput
+                  id="bulk-priceSenior"
+                  name="priceSenior"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={formData.priceSenior}
+                  onChange={onChange}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 export default function ExcursionAvailabilityPage() {
   const { providerId, excursionId } = useParams<{ providerId: string; excursionId: string }>();
   const location = useLocation();
@@ -110,6 +251,15 @@ export default function ExcursionAvailabilityPage() {
   const [formData, setFormData] = useState<ExcursionAvailabilityFormData>(EMPTY_AVAILABILITY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+  const [lastAnchorDateId, setLastAnchorDateId] = useState<string | null>(null);
+  const [bulkForm, setBulkForm] = useState<ExcursionAvailabilityFormData>(EMPTY_AVAILABILITY_FORM);
+  const [bulkFieldErrors, setBulkFieldErrors] = useState<Record<string, string>>({});
+  const [bulkRangeStart, setBulkRangeStart] = useState('');
+  const [bulkRangeEnd, setBulkRangeEnd] = useState('');
+  const [bulkWeekdays, setBulkWeekdays] = useState<boolean[]>(defaultAvailabilityWeekdayFilter());
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -161,6 +311,11 @@ export default function ExcursionAvailabilityPage() {
           return;
         }
         setExcursion(excursionFromDoc(snap.id, snap.data()));
+        const cap = Number(snap.data().maxParticipants) || 20;
+        setBulkForm({
+          ...EMPTY_AVAILABILITY_FORM,
+          capacityTotal: String(cap),
+        });
       })
       .catch(() => {
         toast.error('Failed to load excursion.');
@@ -202,7 +357,199 @@ export default function ExcursionAvailabilityPage() {
     return () => unsub();
   }, [providerId, excursionId, year, month, toast]);
 
+  useEffect(() => {
+    const { start, end } = monthDateRange(year, month);
+    setBulkRangeStart((prev) => prev || start);
+    setBulkRangeEnd((prev) => prev || end);
+  }, [year, month]);
+
   const selectedAvailability = selectedDateId ? availabilityByDate[selectedDateId] : null;
+
+  const availabilityCollectionRef = () =>
+    collection(
+      db,
+      EXCURSION_PROVIDER_COLLECTION,
+      providerId!,
+      EXCURSION_SUBCOLLECTION,
+      excursionId!,
+      'availability'
+    );
+
+  const fetchExistingInRange = async (dateIds: string[]) => {
+    if (dateIds.length === 0) return {} as Record<string, ExcursionAvailability>;
+    const sorted = [...dateIds].sort();
+    const start = sorted[0];
+    const end = sorted[sorted.length - 1];
+    const snap = await getDocs(
+      query(availabilityCollectionRef(), where('date', '>=', start), where('date', '<=', end))
+    );
+    const map: Record<string, ExcursionAvailability> = {};
+    snap.docs.forEach((d) => {
+      const item = availabilityFromDoc(d.id, d.data());
+      map[item.date] = item;
+    });
+    return map;
+  };
+
+  const applyAvailabilityToDates = async (
+    dateIds: string[],
+    form: ExcursionAvailabilityFormData,
+    options: { clearSelection?: boolean } = {}
+  ) => {
+    if (!providerId || !excursionId || !excursion || dateIds.length === 0) return;
+
+    const { eligible, skippedOffSeason, skippedPast } = filterBookableAvailabilityDates(
+      excursion,
+      dateIds
+    );
+
+    if (eligible.length === 0) {
+      toast.warning(
+        `No bookable dates to update${skippedOffSeason ? ` (${skippedOffSeason} off-season` : ''}${
+          skippedPast ? `${skippedOffSeason ? ', ' : ' ('}${skippedPast} in the past` : ''
+        }${skippedOffSeason || skippedPast ? ')' : ''}.`
+      );
+      return;
+    }
+
+    const existingMap = await fetchExistingInRange(eligible);
+
+    for (const dateId of eligible) {
+      const existing = existingMap[dateId] ?? availabilityByDate[dateId] ?? null;
+      const errors = validateAvailabilityForm(form, existing);
+      if (errors.length > 0) {
+        toast.error(`${dateId}: ${availabilityValidationSummary(errors)}`);
+        return;
+      }
+    }
+
+    setBulkSaving(true);
+    try {
+      const now = new Date().toISOString();
+      const chunks: string[][] = [];
+      for (let i = 0; i < eligible.length; i += 400) {
+        chunks.push(eligible.slice(i, i + 400));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        for (const dateId of chunk) {
+          const existing = existingMap[dateId] ?? availabilityByDate[dateId];
+          const payload = sanitizeAvailabilityPayload({
+            ...availabilityPayloadFromForm(form, dateId),
+            capacityBooked: existing?.capacityBooked || 0,
+            updatedAt: now,
+            createdAt: existing?.createdAt || now,
+          });
+          batch.set(
+            doc(availabilityCollectionRef(), dateId),
+            payload,
+            { merge: true }
+          );
+        }
+        await batch.commit();
+      }
+
+      const skipped = skippedOffSeason + skippedPast;
+      toast.success(
+        `Updated ${eligible.length} date${eligible.length === 1 ? '' : 's'}${
+          skipped > 0 ? ` (${skipped} skipped)` : ''
+        }.`
+      );
+      if (options.clearSelection) {
+        setSelectedDates(new Set());
+        setSelectMode(false);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save bulk availability.');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkFormChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value, type } = e.target;
+    const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
+    if (bulkFieldErrors[name]) {
+      setBulkFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+    setBulkForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
+
+  const handleApplyBulkRange = async () => {
+    if (!bulkRangeStart || !bulkRangeEnd) {
+      toast.warning('Choose a start and end date.');
+      return;
+    }
+    const dates = enumerateAvailabilityDates(bulkRangeStart, bulkRangeEnd, bulkWeekdays);
+    await applyAvailabilityToDates(dates, bulkForm);
+  };
+
+  const handleApplySelected = async () => {
+    await applyAvailabilityToDates([...selectedDates], bulkForm, { clearSelection: true });
+  };
+
+  const toggleWeekday = (index: number) => {
+    setBulkWeekdays((prev) => prev.map((on, i) => (i === index ? !on : on)));
+  };
+
+  const selectAllInSeasonThisMonth = () => {
+    if (!excursion) return;
+    const ids: string[] = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const cellDate = new Date(year, month, day);
+      if (cellDate < todayStart) continue;
+      const dateId = toAvailabilityDateId(cellDate);
+      if (findSeasonPriceForDate(excursion, dateId)) ids.push(dateId);
+    }
+    setSelectedDates(new Set(ids));
+    setSelectMode(true);
+  };
+
+  const handleDayClick = (dateId: string, shiftKey: boolean) => {
+    if (!excursion) return;
+
+    if (selectMode) {
+      if (shiftKey && lastAnchorDateId) {
+        const anchor = parseAvailabilityDateId(lastAnchorDateId);
+        const target = parseAvailabilityDateId(dateId);
+        const start = anchor <= target ? anchor : target;
+        const end = anchor <= target ? target : anchor;
+        const rangeIds = enumerateAvailabilityDates(
+          toAvailabilityDateId(start),
+          toAvailabilityDateId(end),
+          defaultAvailabilityWeekdayFilter()
+        ).filter((id) => findSeasonPriceForDate(excursion, id) && id >= toAvailabilityDateId(todayStart));
+
+        setSelectedDates((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((id) => next.add(id));
+          return next;
+        });
+      } else {
+        setSelectedDates((prev) => {
+          const next = new Set(prev);
+          if (next.has(dateId)) next.delete(dateId);
+          else next.add(dateId);
+          return next;
+        });
+        setLastAnchorDateId(dateId);
+      }
+      return;
+    }
+
+    openDayModal(dateId);
+  };
 
   const openDayModal = (dateId: string) => {
     if (!excursion) return;
@@ -328,6 +675,18 @@ export default function ExcursionAvailabilityPage() {
     };
   }, [availabilityByDate]);
 
+  const bulkRangePreview = useMemo(() => {
+    if (!excursion || !bulkRangeStart || !bulkRangeEnd) {
+      return { eligible: 0, skipped: 0 };
+    }
+    const dates = enumerateAvailabilityDates(bulkRangeStart, bulkRangeEnd, bulkWeekdays);
+    const { eligible, skippedOffSeason, skippedPast } = filterBookableAvailabilityDates(
+      excursion,
+      dates
+    );
+    return { eligible: eligible.length, skipped: skippedOffSeason + skippedPast };
+  }, [excursion, bulkRangeStart, bulkRangeEnd, bulkWeekdays]);
+
   if (!providerId || !excursionId) {
     navigate(listPath);
     return null;
@@ -370,10 +729,98 @@ export default function ExcursionAvailabilityPage() {
       />
 
       <AdminAlert variant="info" title="How it works" className="mb-6">
-        Click a date to open or close departures. Only dates marked <strong>Open</strong> are
-        bookable. Prices come from the matching season unless you set a date override. Bookings
-        will reduce remaining capacity in a later step.
+        Use <strong>Bulk add bookable days</strong> to open a date range in one go, or turn on{' '}
+        <strong>Select on calendar</strong> to pick multiple days (Shift+click for a range). Click a
+        single date to edit it individually. Only <strong>Open</strong> in-season dates are
+        bookable.
       </AdminAlert>
+
+      <AdminCard className="p-5 sm:p-6 mb-6">
+        <h3 className="text-base font-bold text-vailo-dark mb-1">Bulk add bookable days</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Set capacity and status once, then apply to every matching day in the range.
+        </p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <AdminLabel htmlFor="bulk-range-start">From date</AdminLabel>
+                <AdminInput
+                  id="bulk-range-start"
+                  type="date"
+                  value={bulkRangeStart}
+                  onChange={(e) => setBulkRangeStart(e.target.value)}
+                />
+              </div>
+              <div>
+                <AdminLabel htmlFor="bulk-range-end">To date</AdminLabel>
+                <AdminInput
+                  id="bulk-range-end"
+                  type="date"
+                  value={bulkRangeEnd}
+                  onChange={(e) => setBulkRangeEnd(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <AdminLabel>Days of week</AdminLabel>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {AVAILABILITY_WEEKDAY_LABELS.map((label, index) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => toggleWeekday(index)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                      bulkWeekdays[index]
+                        ? 'bg-vailo-teal text-white border-vailo-teal'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-vailo-teal/40'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <AvailabilitySettingsFields
+              formData={bulkForm}
+              fieldErrors={bulkFieldErrors}
+              onChange={handleBulkFormChange}
+            />
+          </div>
+
+          <div className="flex flex-col justify-between gap-4 rounded-xl border border-gray-100 bg-vailo-surface-elevated/40 p-4">
+            <div className="text-sm text-gray-600 space-y-2">
+              <p>
+                <span className="font-semibold text-vailo-dark">{bulkRangePreview.eligible}</span>{' '}
+                in-season day{bulkRangePreview.eligible === 1 ? '' : 's'} will be updated
+                {bulkRangePreview.skipped > 0 && (
+                  <span className="text-gray-500"> ({bulkRangePreview.skipped} skipped)</span>
+                )}
+                .
+              </p>
+              <p className="text-xs text-gray-500">
+                Off-season and past dates are skipped automatically.
+              </p>
+            </div>
+            <AdminButton
+              type="button"
+              onClick={() => void handleApplyBulkRange()}
+              disabled={bulkSaving || bulkRangePreview.eligible === 0}
+            >
+              {bulkSaving ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Saving…
+                </>
+              ) : (
+                `Apply to ${bulkRangePreview.eligible} day${bulkRangePreview.eligible === 1 ? '' : 's'}`
+              )}
+            </AdminButton>
+          </div>
+        </div>
+      </AdminCard>
 
       <div className="flex flex-wrap items-center gap-3 mb-6 text-xs">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100">
@@ -400,7 +847,40 @@ export default function ExcursionAvailabilityPage() {
               {MONTH_NAMES[month]} {year}
             </h3>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminButton
+              type="button"
+              variant={selectMode ? 'primary' : 'secondary'}
+              onClick={() => {
+                setSelectMode((v) => !v);
+                if (selectMode) setSelectedDates(new Set());
+              }}
+            >
+              {selectMode ? <CheckSquare size={16} /> : <Square size={16} />}
+              {selectMode ? 'Selecting…' : 'Select on calendar'}
+            </AdminButton>
+            {selectMode && (
+              <>
+                <AdminButton type="button" variant="secondary" onClick={selectAllInSeasonThisMonth}>
+                  All in-season this month
+                </AdminButton>
+                <AdminButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSelectedDates(new Set())}
+                  disabled={selectedDates.size === 0}
+                >
+                  Clear ({selectedDates.size})
+                </AdminButton>
+                <AdminButton
+                  type="button"
+                  onClick={() => void handleApplySelected()}
+                  disabled={bulkSaving || selectedDates.size === 0}
+                >
+                  Apply to {selectedDates.size} selected
+                </AdminButton>
+              </>
+            )}
             <button
               type="button"
               onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
@@ -452,18 +932,19 @@ export default function ExcursionAvailabilityPage() {
             const isPast = cellDate < todayStart;
             const availability = availabilityByDate[dateId];
             const inSeason = Boolean(findSeasonPriceForDate(excursion, dateId));
+            const isSelected = selectedDates.has(dateId);
             const priceLabel = formatAvailabilityPriceSummary(excursion, dateId, availability);
 
             return (
               <button
                 key={dateId}
                 type="button"
-                onClick={() => openDayModal(dateId)}
-                className={`min-h-[88px] p-2 text-left transition-colors flex flex-col ${cellStatusClass(
+                onClick={(e) => handleDayClick(dateId, e.shiftKey)}
+                className={`min-h-[88px] p-2 text-left transition-colors flex flex-col relative ${cellStatusClass(
                   availability,
                   inSeason,
                   isPast
-                )}`}
+                )} ${isSelected ? 'ring-2 ring-inset ring-vailo-teal z-[1]' : ''}`}
               >
                 <span
                   className={`inline-flex items-center justify-center w-7 h-7 text-sm font-semibold rounded-full mb-1 ${

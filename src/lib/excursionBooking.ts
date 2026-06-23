@@ -11,6 +11,14 @@ export type ExcursionBookingStatus = 'pending' | 'confirmed' | 'cancelled' | 'de
 
 export type ExcursionBookingSource = 'admin' | 'provider' | 'guest';
 
+/** When booked via guest portal — links back to property / stay. */
+export type GuestPortalBookingAttribution = {
+  guestPortalPropertyId?: string;
+  guestPortalTypeId?: string;
+  guestPortalHouseBookingId?: string;
+  guestPortalVisitorId?: string;
+};
+
 export type ExcursionBookingParticipants = {
   adult: number;
   child: number;
@@ -56,7 +64,7 @@ export type ExcursionBooking = {
   cancelledAt?: string;
   createdAt?: string;
   updatedAt?: string;
-};
+} & GuestPortalBookingAttribution;
 
 export type ExcursionBookingFormData = {
   date: string;
@@ -229,7 +237,7 @@ export function findPromoDiscount(
 }
 
 export function calculateBookingPricing(input: {
-  excursion: Pick<Excursion, 'currency' | 'seasonPrices'>;
+  excursion: Pick<Excursion, 'currency' | 'seasonPrices' | 'pricingModel'>;
   dateIso: string;
   availability?: Pick<ExcursionAvailability, 'priceOverrides'> | null;
   participants: ExcursionBookingParticipants;
@@ -240,21 +248,32 @@ export function calculateBookingPricing(input: {
   if (!prices) return null;
 
   const lineItems: ExcursionBookingLineItem[] = [];
-  const types: ExcursionDiscountParticipant[] = ['adult', 'child', 'infant', 'senior'];
-  for (const type of types) {
-    const quantity = input.participants[type];
-    if (quantity <= 0) continue;
-    const unitPrice = unitPriceForType(prices, type);
+  const participantCount = totalParticipants(input.participants);
+
+  if (input.excursion.pricingModel === 'flat_rate') {
+    const flatPrice = prices.adult;
     lineItems.push({
-      type,
-      quantity,
-      unitPrice,
-      lineTotal: unitPrice * quantity,
+      type: 'adult',
+      quantity: 1,
+      unitPrice: flatPrice,
+      lineTotal: flatPrice,
     });
+  } else {
+    const types: ExcursionDiscountParticipant[] = ['adult', 'child', 'infant', 'senior'];
+    for (const type of types) {
+      const quantity = input.participants[type];
+      if (quantity <= 0) continue;
+      const unitPrice = unitPriceForType(prices, type);
+      lineItems.push({
+        type,
+        quantity,
+        unitPrice,
+        lineTotal: unitPrice * quantity,
+      });
+    }
   }
 
   const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
-  const participantCount = totalParticipants(input.participants);
   const appliedDiscountIds: string[] = [];
   let discountTotal = 0;
 
@@ -360,6 +379,16 @@ export function bookingFromDoc(id: string, data: Record<string, unknown>): Excur
     cancelledAt: data.cancelledAt ? String(data.cancelledAt) : undefined,
     createdAt: data.createdAt ? String(data.createdAt) : undefined,
     updatedAt: data.updatedAt ? String(data.updatedAt) : undefined,
+    guestPortalPropertyId: data.guestPortalPropertyId
+      ? String(data.guestPortalPropertyId)
+      : undefined,
+    guestPortalTypeId: data.guestPortalTypeId ? String(data.guestPortalTypeId) : undefined,
+    guestPortalHouseBookingId: data.guestPortalHouseBookingId
+      ? String(data.guestPortalHouseBookingId)
+      : undefined,
+    guestPortalVisitorId: data.guestPortalVisitorId
+      ? String(data.guestPortalVisitorId)
+      : undefined,
   };
 }
 
@@ -373,6 +402,7 @@ export function bookingPayloadFromForm(
     availability: ExcursionAvailability | null;
     discounts: ExcursionDiscount[];
     source: ExcursionBookingSource;
+    attribution?: GuestPortalBookingAttribution;
   }
 ): Omit<ExcursionBooking, 'id'> | null {
   const participants = participantCountFromForm(form);
@@ -406,6 +436,7 @@ export function bookingPayloadFromForm(
     pricing,
     internalNotes: form.internalNotes.trim() || undefined,
     confirmedAt: initialStatus === 'confirmed' ? new Date().toISOString() : undefined,
+    ...(ctx.attribution || {}),
   };
 }
 

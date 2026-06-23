@@ -13,7 +13,12 @@ export type GuestAnalyticsEventType =
   | 'ai_expert_user_message'
   | 'ai_expert_reply'
   | 'ai_expert_wizard_message'
-  | 'ai_expert_chat_message';
+  | 'ai_expert_chat_message'
+  | 'excursions_open'
+  | 'excursion_impression'
+  | 'excursion_detail_open'
+  | 'excursion_booking_start'
+  | 'excursion_booking_complete';
 
 export type GuestAnalyticsPayload = {
   text?: string;
@@ -32,7 +37,19 @@ export type GuestAnalyticsPayload = {
   planData?: string;
   /** Short summary of curated picks in concierge chat. */
   picksSummary?: string;
+  excursionId?: string;
+  excursionTitle?: string;
+  providerId?: string;
+  providerName?: string;
+  bookingStatus?: 'confirmed' | 'pending';
+  bookingDate?: string;
+  bookingTotal?: number;
+  bookingCurrency?: string;
 };
+
+export function buildExcursionImpressionKey(providerId: string, excursionId: string): string {
+  return `${providerId}:${excursionId}`.slice(0, 128);
+}
 
 export type GuestAnalyticsEventInput = {
   type: GuestAnalyticsEventType;
@@ -63,8 +80,14 @@ export type GuestStayAnalyticsSummary = {
   assistantTurns: number;
   aiExpertTurns: number;
   uniqueGemsSeen: number;
+  excursionsOpens: number;
+  uniqueExcursionsSeen: number;
+  excursionDetailOpens: number;
+  excursionBookingStarts: number;
+  excursionBookingsComplete: number;
   accordionOpens: Record<string, number>;
   gemImpressions: Record<string, number>;
+  excursionImpressions: Record<string, number>;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;
@@ -80,8 +103,14 @@ export type GuestAnonymousAnalyticsSummary = {
   assistantTurns: number;
   aiExpertTurns: number;
   uniqueGemsSeen: number;
+  excursionsOpens: number;
+  uniqueExcursionsSeen: number;
+  excursionDetailOpens: number;
+  excursionBookingStarts: number;
+  excursionBookingsComplete: number;
   accordionOpens: Record<string, number>;
   gemImpressions: Record<string, number>;
+  excursionImpressions: Record<string, number>;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;
@@ -145,6 +174,24 @@ export function sanitizeAnalyticsPayload(
   }
   if (out.picksSummary) {
     out.picksSummary = truncateAnalyticsText(out.picksSummary, 2000);
+  }
+  if (out.excursionTitle) {
+    out.excursionTitle = truncateAnalyticsText(out.excursionTitle, 200);
+  }
+  if (out.providerName) {
+    out.providerName = truncateAnalyticsText(out.providerName, 120);
+  }
+  if (out.excursionId) {
+    out.excursionId = String(out.excursionId).slice(0, 128);
+  }
+  if (out.providerId) {
+    out.providerId = String(out.providerId).slice(0, 128);
+  }
+  if (out.bookingDate) {
+    out.bookingDate = String(out.bookingDate).slice(0, 32);
+  }
+  if (out.bookingCurrency) {
+    out.bookingCurrency = String(out.bookingCurrency).slice(0, 8);
   }
   return out;
 }

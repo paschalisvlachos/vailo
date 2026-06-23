@@ -17,6 +17,7 @@ import {
   excursionDurationLabel,
   excursionFromDoc,
   excursionLowestAdultPrice,
+  excursionPricingModelLabel,
   excursionSeasonsSummary,
   excursionStatusLabel,
   excursionTravelStyleLabel,
@@ -27,6 +28,7 @@ import {
   type Excursion,
   type ExcursionStatus,
 } from '../../../lib/excursion';
+import { formatExcursionCategoriesSummary } from '../../../lib/excursionCategories';
 import {
   adminExcursionAvailabilityPath,
   portalExcursionAvailabilityPath,
@@ -222,6 +224,7 @@ export default function ExcursionsListPage() {
               <thead>
                 <tr className="border-b border-gray-100 bg-vailo-surface-elevated/80 text-left">
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Excursion</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Categories</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Seasons</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Travel style</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Duration</th>
@@ -266,6 +269,9 @@ export default function ExcursionsListPage() {
                       </div>
                     </td>
                     <td className="px-4 sm:px-6 py-4 text-gray-600 text-xs max-w-[10rem]">
+                      {formatExcursionCategoriesSummary(excursion.categories)}
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 text-gray-600 text-xs max-w-[10rem]">
                       {excursionSeasonsSummary(excursion)}
                     </td>
                     <td className="px-4 sm:px-6 py-4 text-gray-600">
@@ -275,11 +281,16 @@ export default function ExcursionsListPage() {
                       {excursionDurationLabel(excursion)}
                     </td>
                     <td className="px-4 sm:px-6 py-4 font-medium tabular-nums text-vailo-dark">
-                      {formatExcursionPrice(
-                        excursionLowestAdultPrice(excursion),
-                        excursion.currency,
-                        { from: excursion.showPriceFrom !== false }
-                      )}
+                      <p>
+                        {formatExcursionPrice(
+                          excursionLowestAdultPrice(excursion),
+                          excursion.currency,
+                          { from: excursion.showPriceFrom !== false }
+                        )}
+                      </p>
+                      <p className="text-[11px] font-normal text-gray-500 mt-0.5">
+                        {excursionPricingModelLabel(excursion.pricingModel)}
+                      </p>
                     </td>
                     {showCommissionColumn && (
                       <td className="px-4 sm:px-6 py-4 font-medium tabular-nums text-vailo-dark">

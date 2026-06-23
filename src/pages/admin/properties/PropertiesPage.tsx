@@ -14,6 +14,7 @@ import type { ListingKind } from './PropertyFormPage';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { canAccessPropertyId, pathForPropertyLanding, formatOwnerRoleLabel } from '../../../lib/adminAccess';
 import { adminPath } from '../../../lib/adminRoutes';
+import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
 
 interface Property {
   id: string;
@@ -24,6 +25,7 @@ interface Property {
   country?: string;
   area?: string;
   city?: string;
+  guestPortalAccessRequired?: boolean;
 }
 
 function KindBadge({ kind }: { kind?: ListingKind }) {
@@ -76,6 +78,15 @@ function LocationCell({ property }: { property: Property }) {
       <MapPin size={13} className="text-vailo-teal/50 shrink-0" />
       {[area, property.country].filter(Boolean).join(', ')}
     </span>
+  );
+}
+
+function GuestPortalAccessCell({ property }: { property: Property }) {
+  const required = isGuestPortalAccessRequired(property);
+  return required ? (
+    <AdminBadge variant="teal">Access control</AdminBadge>
+  ) : (
+    <AdminBadge variant="neutral">Open portal</AdminBadge>
   );
 }
 
@@ -198,6 +209,9 @@ export default function PropertiesPage() {
                       <div className="mt-2">
                         <LocationCell property={property} />
                       </div>
+                      <div className="mt-2">
+                        <GuestPortalAccessCell property={property} />
+                      </div>
                       {allocatedUser ? (
                         <p className="text-sm text-gray-700 mt-2 flex items-center gap-1.5">
                           <User size={14} className="text-gray-400 shrink-0" />
@@ -239,6 +253,7 @@ export default function PropertiesPage() {
                     <th>Property</th>
                     <th>Type</th>
                     <th>Location</th>
+                    <th>Guest portal access</th>
                     <th>Owner / Agent</th>
                     <th>Ref</th>
                     <th className="text-right">Actions</th>
@@ -261,6 +276,9 @@ export default function PropertiesPage() {
                         </td>
                         <td>
                           <LocationCell property={property} />
+                        </td>
+                        <td>
+                          <GuestPortalAccessCell property={property} />
                         </td>
                         <td>
                           {allocatedUser ? (

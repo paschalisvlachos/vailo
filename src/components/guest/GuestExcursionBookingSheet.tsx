@@ -42,9 +42,14 @@ import {
 } from '../../lib/excursionBooking';
 import { createExcursionBookingRecord } from '../../lib/excursionBookingService';
 import type { GuestExcursionListing } from '../../lib/guestExcursions';
+import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { getOrCreateAnonymousVisitorId } from '../../lib/guestAnonymousVisitor';
+import type { GuestPortalBookingAttribution } from '../../lib/excursionBooking';
 
 type Props = {
   listing: GuestExcursionListing;
+  propertyId?: string | null;
+  typeId?: string | null;
   onClose: () => void;
 };
 
@@ -144,9 +149,30 @@ function ParticipantStepper({
   );
 }
 
-export default function GuestExcursionBookingSheet({ listing, onClose }: Props) {
+export default function GuestExcursionBookingSheet({
+  listing,
+  propertyId,
+  typeId,
+  onClose,
+}: Props) {
+  const { track, subjectKind, session } = useGuestAnalytics();
   const { providerId, excursion, providerName } = listing;
   const excursionId = excursion.id!;
+
+  const portalAttribution = useMemo((): GuestPortalBookingAttribution | undefined => {
+    if (!propertyId || !typeId) return undefined;
+    const base: GuestPortalBookingAttribution = {
+      guestPortalPropertyId: propertyId,
+      guestPortalTypeId: typeId,
+    };
+    if (subjectKind === 'booking' && session?.bookingId) {
+      return { ...base, guestPortalHouseBookingId: session.bookingId };
+    }
+    if (subjectKind === 'anonymous') {
+      return { ...base, guestPortalVisitorId: getOrCreateAnonymousVisitorId() };
+    }
+    return base;
+  }, [propertyId, typeId, subjectKind, session?.bookingId]);
 
   const [formData, setFormData] = useState<ExcursionBookingFormData>(() => ({
     ...EMPTY_BOOKING_FORM,
@@ -294,6 +320,7 @@ export default function GuestExcursionBookingSheet({ listing, onClose }: Props) 
         availability: selectedAvailability,
         discounts,
         source: 'guest',
+        attribution: portalAttribution,
       });
       if (!payload) {
         setSubmitError('Could not calculate pricing for this booking.');
@@ -301,6 +328,19 @@ export default function GuestExcursionBookingSheet({ listing, onClose }: Props) 
       }
 
       await createExcursionBookingRecord(db, payload);
+      track('excursion_booking_complete', {
+        excursionId,
+        excursionTitle: excursion.title,
+        providerId,
+        providerName,
+        bookingStatus:
+          payload.status === 'confirmed' || payload.status === 'pending'
+            ? payload.status
+            : undefined,
+        bookingDate: payload.date,
+        bookingTotal: payload.pricing.total,
+        bookingCurrency: payload.pricing.currency,
+      });
       setSuccessStatus(payload.status === 'confirmed' ? 'confirmed' : 'pending');
     } catch (error) {
       console.error(error);

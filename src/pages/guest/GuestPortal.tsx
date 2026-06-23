@@ -373,7 +373,11 @@ function GuestPortalPage({
 
   const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
-  const openExcursions = useCallback(() => setActiveView('excursions'), []);
+  const { track } = useGuestAnalytics();
+  const openExcursions = useCallback(() => {
+    track('excursions_open');
+    setActiveView('excursions');
+  }, [track]);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -988,6 +992,8 @@ function GuestPortalPage({
           />
         ) : activeView === 'excursions' ? (
           <GuestExcursions
+            propertyId={propertyId}
+            typeId={typeId}
             propertyType={typeData}
             onClose={() => setActiveView('portal')}
             onOverlayOpenChange={setExcursionOverlayOpen}

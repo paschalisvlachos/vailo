@@ -1,5 +1,6 @@
 import { EXCURSION_PROVIDER_COLLECTION, EXCURSION_SUBCOLLECTION } from './excursionProvider';
 import type { ExcursionItemCommissionType } from './excursionProvider';
+import { richTextFieldPayload } from './legalHtml';
 
 export type ExcursionStatus = 'draft' | 'published' | 'archived';
 
@@ -19,6 +20,9 @@ export type ExcursionTravelStyle =
   | 'overnight'
   | 'custom';
 
+/** Per-person tiers vs one total price for the booking (any group size). */
+export type ExcursionPricingModel = 'per_person' | 'flat_rate';
+
 export type ExcursionParticipantPrices = {
   adult: number;
   child?: number;
@@ -33,13 +37,19 @@ export type ExcursionSeasonPrice = ExcursionParticipantPrices & {
   label?: string;
   fromDate: string;
   toDate: string;
+  /** When true, applies every day — dates optional. */
+  yearRound?: boolean;
+  /** Total booking price when excursion pricingModel is flat_rate. */
+  flatPrice?: number;
 };
 
 export type ExcursionSeasonPriceFormRow = {
   localId: string;
   label: string;
+  yearRound: boolean;
   fromDate: string;
   toDate: string;
+  flatPrice: string;
   priceAdult: string;
   priceChild: string;
   priceInfant: string;
@@ -63,6 +73,7 @@ export type Excursion = {
   durationMinutes?: number;
   durationLabel?: string;
   currency: string;
+  pricingModel: ExcursionPricingModel;
   seasonPrices: ExcursionSeasonPrice[];
   showPriceFrom?: boolean;
   minParticipants?: number;
@@ -96,7 +107,6 @@ export type ExcursionFormData = {
   slug: string;
   description: string;
   status: ExcursionStatus;
-  categories: string;
   heroPhotoUrl: string;
   travelStyle: ExcursionTravelStyle;
   travelStyleLabel: string;
@@ -104,6 +114,7 @@ export type ExcursionFormData = {
   durationMinutes: string;
   durationLabel: string;
   currency: string;
+  pricingModel: ExcursionPricingModel;
   showPriceFrom: boolean;
   minParticipants: string;
   maxParticipants: string;
@@ -132,7 +143,6 @@ export const EMPTY_EXCURSION_FORM: ExcursionFormData = {
   slug: '',
   description: '',
   status: 'draft',
-  categories: '',
   heroPhotoUrl: '',
   travelStyle: 'day_trip',
   travelStyleLabel: '',
@@ -140,6 +150,7 @@ export const EMPTY_EXCURSION_FORM: ExcursionFormData = {
   durationMinutes: '3',
   durationLabel: '',
   currency: 'EUR',
+  pricingModel: 'per_person',
   showPriceFrom: true,
   minParticipants: '1',
   maxParticipants: '20',
@@ -171,8 +182,10 @@ export function createSeasonPriceRow(
   return {
     localId: `season-${seasonRowCounter}-${Date.now()}`,
     label: partial?.label ?? '',
+    yearRound: partial?.yearRound ?? false,
     fromDate: partial?.fromDate ?? '',
     toDate: partial?.toDate ?? '',
+    flatPrice: partial?.flatPrice ?? '',
     priceAdult: partial?.priceAdult ?? '',
     priceChild: partial?.priceChild ?? '',
     priceInfant: partial?.priceInfant ?? '',
@@ -318,15 +331,38 @@ function parseParticipantPrices(raw: Record<string, unknown>): ExcursionParticip
   return prices;
 }
 
-function seasonPriceRowFromRaw(raw: unknown): ExcursionSeasonPriceFormRow | null {
+function parsePricingModel(value: unknown): ExcursionPricingModel {
+  return value === 'flat_rate' ? 'flat_rate' : 'per_person';
+}
+
+function seasonPriceRowFromRaw(
+  raw: unknown,
+  pricingModel: ExcursionPricingModel = 'per_person'
+): ExcursionSeasonPriceFormRow | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
+  const yearRound = row.yearRound === true;
+
+  if (pricingModel === 'flat_rate') {
+    const flatRaw = row.flatPrice ?? row.adult;
+    const flatPrice = parseFloat(String(flatRaw ?? ''));
+    if (!Number.isFinite(flatPrice) || flatPrice < 0) return null;
+    return createSeasonPriceRow({
+      label: String(row.label || ''),
+      yearRound,
+      fromDate: yearRound ? '' : String(row.fromDate || ''),
+      toDate: yearRound ? '' : String(row.toDate || ''),
+      flatPrice: String(flatPrice),
+    });
+  }
+
   const prices = parseParticipantPrices(row);
   if (!prices) return null;
   return createSeasonPriceRow({
     label: String(row.label || ''),
-    fromDate: String(row.fromDate || ''),
-    toDate: String(row.toDate || ''),
+    yearRound,
+    fromDate: yearRound ? '' : String(row.fromDate || ''),
+    toDate: yearRound ? '' : String(row.toDate || ''),
     priceAdult: String(prices.adult),
     priceChild: prices.child != null ? String(prices.child) : '',
     priceInfant: prices.infant != null ? String(prices.infant) : '',
@@ -335,9 +371,11 @@ function seasonPriceRowFromRaw(raw: unknown): ExcursionSeasonPriceFormRow | null
 }
 
 export function seasonPricesFormFromDoc(data: Record<string, unknown>): ExcursionSeasonPriceFormRow[] {
+  const pricingModel = parsePricingModel(data.pricingModel);
+
   if (Array.isArray(data.seasonPrices) && data.seasonPrices.length > 0) {
     const rows = data.seasonPrices
-      .map((item) => seasonPriceRowFromRaw(item))
+      .map((item) => seasonPriceRowFromRaw(item, pricingModel))
       .filter((row): row is ExcursionSeasonPriceFormRow => row != null);
     if (rows.length > 0) return rows;
   }
@@ -347,6 +385,7 @@ export function seasonPricesFormFromDoc(data: Record<string, unknown>): Excursio
     return [
       createSeasonPriceRow({
         label: String(data.seasonPeriod || ''),
+        yearRound: true,
         fromDate: '',
         toDate: '',
         priceAdult: String(legacyPrices.adult),
@@ -357,40 +396,57 @@ export function seasonPricesFormFromDoc(data: Record<string, unknown>): Excursio
     ];
   }
 
-  return [createSeasonPriceRow()];
+  return [createSeasonPriceRow({ yearRound: true })];
 }
 
 export function seasonPricesPayloadFromForm(
-  rows: ExcursionSeasonPriceFormRow[]
+  rows: ExcursionSeasonPriceFormRow[],
+  pricingModel: ExcursionPricingModel
 ): ExcursionSeasonPrice[] {
   return rows
     .map((row) => {
+      const season: ExcursionSeasonPrice = {
+        fromDate: row.yearRound ? '' : row.fromDate.trim(),
+        toDate: row.yearRound ? '' : row.toDate.trim(),
+        adult: 0,
+      };
+      if (row.label.trim()) season.label = row.label.trim();
+      if (row.yearRound) season.yearRound = true;
+
+      if (pricingModel === 'flat_rate') {
+        const flatPrice = parseFloat(row.flatPrice);
+        if (!Number.isFinite(flatPrice) || flatPrice < 0) return null;
+        season.flatPrice = flatPrice;
+        season.adult = flatPrice;
+        return season;
+      }
+
       const adult = parseFloat(row.priceAdult);
       if (!Number.isFinite(adult) || adult < 0) return null;
+      season.adult = adult;
       const child = parseFloat(row.priceChild);
       const infant = parseFloat(row.priceInfant);
       const senior = parseFloat(row.priceSenior);
-      const season: ExcursionSeasonPrice = {
-        fromDate: row.fromDate.trim(),
-        toDate: row.toDate.trim(),
-        adult,
-      };
-      if (row.label.trim()) season.label = row.label.trim();
       if (Number.isFinite(child)) season.child = child;
       if (Number.isFinite(infant)) season.infant = infant;
       if (Number.isFinite(senior)) season.senior = senior;
       return season;
     })
     .filter((season): season is ExcursionSeasonPrice => season != null)
-    .sort((a, b) => a.fromDate.localeCompare(b.fromDate));
+    .sort((a, b) => {
+      if (a.yearRound && !b.yearRound) return -1;
+      if (!a.yearRound && b.yearRound) return 1;
+      return a.fromDate.localeCompare(b.fromDate);
+    });
 }
 
 export function formatExcursionSeasonRange(
-  season: Pick<ExcursionSeasonPrice, 'fromDate' | 'toDate' | 'label'>
+  season: Pick<ExcursionSeasonPrice, 'fromDate' | 'toDate' | 'label' | 'yearRound'>
 ): string {
   if (season.label?.trim()) return season.label.trim();
+  if (season.yearRound || (!season.fromDate && !season.toDate)) return 'Year-round';
   const { fromDate, toDate } = season;
-  if (!fromDate && !toDate) return '—';
+  if (!fromDate && !toDate) return 'Year-round';
   if (fromDate && !toDate) return `from ${formatIsoDate(fromDate)}`;
   if (!fromDate && toDate) return `until ${formatIsoDate(toDate)}`;
   return `${formatIsoDate(fromDate)} – ${formatIsoDate(toDate)}`;
@@ -406,14 +462,30 @@ function formatIsoDate(isoDate: string): string {
   });
 }
 
-export function excursionLowestAdultPrice(
-  excursion: Pick<Excursion, 'seasonPrices'>
+export function seasonPriceAmount(
+  season: ExcursionSeasonPrice,
+  pricingModel: ExcursionPricingModel = 'per_person'
 ): number | undefined {
-  const adults = (excursion.seasonPrices || [])
-    .map((s) => s.adult)
-    .filter((n) => Number.isFinite(n));
-  if (adults.length === 0) return undefined;
-  return Math.min(...adults);
+  if (pricingModel === 'flat_rate') {
+    const flat = season.flatPrice ?? season.adult;
+    return Number.isFinite(flat) ? flat : undefined;
+  }
+  return Number.isFinite(season.adult) ? season.adult : undefined;
+}
+
+export function excursionLowestAdultPrice(
+  excursion: Pick<Excursion, 'seasonPrices' | 'pricingModel'>
+): number | undefined {
+  const pricingModel = excursion.pricingModel ?? 'per_person';
+  const amounts = (excursion.seasonPrices || [])
+    .map((s) => seasonPriceAmount(s, pricingModel))
+    .filter((n): n is number => n != null && Number.isFinite(n));
+  if (amounts.length === 0) return undefined;
+  return Math.min(...amounts);
+}
+
+export function excursionPricingModelLabel(model: ExcursionPricingModel | undefined): string {
+  return model === 'flat_rate' ? 'Flat rate' : 'Per person';
 }
 
 export function excursionSeasonsSummary(excursion: Pick<Excursion, 'seasonPrices'>): string {
@@ -446,7 +518,6 @@ export function excursionFormFromDoc(data: Record<string, unknown>): ExcursionFo
     description: String(data.description || ''),
     status:
       data.status === 'published' || data.status === 'archived' ? data.status : 'draft',
-    categories: Array.isArray(data.categories) ? data.categories.join(', ') : '',
     heroPhotoUrl: String(data.heroPhotoUrl || ''),
     travelStyle: parseTravelStyle(data.travelStyle),
     travelStyleLabel: String(data.travelStyleLabel || ''),
@@ -459,6 +530,7 @@ export function excursionFormFromDoc(data: Record<string, unknown>): ExcursionFo
     durationMinutes: data.durationMinutes != null ? String(data.durationMinutes) : '',
     durationLabel: String(data.durationLabel || ''),
     currency: String(data.currency || 'EUR'),
+    pricingModel: parsePricingModel(data.pricingModel),
     showPriceFrom: data.showPriceFrom !== false,
     minParticipants: data.minParticipants != null ? String(data.minParticipants) : '1',
     maxParticipantsUnlimited: maxUnlimited,
@@ -493,7 +565,7 @@ export function excursionPayloadFromForm(
   form: ExcursionFormData,
   providerId: string,
   seasonPriceRows: ExcursionSeasonPriceFormRow[],
-  options: { includeCommission?: boolean } = {}
+  options: { includeCommission?: boolean; categories?: string[] } = {}
 ): Omit<Excursion, 'id'> {
   const includeCommission = options.includeCommission === true;
   const durationMinutes = parseInt(form.durationMinutes, 10);
@@ -511,7 +583,7 @@ export function excursionPayloadFromForm(
     slug: formatExcursionSlug(form.slug.trim() || form.title),
     description: form.description.trim() || undefined,
     status: form.status,
-    categories: splitList(form.categories),
+    categories: options.categories,
     heroPhotoUrl: form.heroPhotoUrl.trim() || undefined,
     travelStyle: form.travelStyle,
     travelStyleLabel:
@@ -523,7 +595,8 @@ export function excursionPayloadFromForm(
         : undefined,
     durationLabel: form.durationLabel.trim() || undefined,
     currency: form.currency.trim() || 'EUR',
-    seasonPrices: seasonPricesPayloadFromForm(seasonPriceRows),
+    pricingModel: form.pricingModel,
+    seasonPrices: seasonPricesPayloadFromForm(seasonPriceRows, form.pricingModel),
     showPriceFrom: form.showPriceFrom,
     minParticipants: Number.isFinite(minParticipants) ? minParticipants : undefined,
     maxParticipantsUnlimited: form.maxParticipantsUnlimited || undefined,
@@ -539,13 +612,13 @@ export function excursionPayloadFromForm(
       : undefined,
     meetingPoint: form.meetingPoint.trim() || undefined,
     programBreakdown: form.programBreakdown.trim() || undefined,
-    programDetails: form.programDetails.trim() || undefined,
+    programDetails: richTextFieldPayload(form.programDetails),
     participationRequirements: form.participationRequirements.trim() || undefined,
     included: splitList(form.included),
     notIncluded: splitList(form.notIncluded),
     whatToBring: splitList(form.whatToBring),
     notes: form.notes.trim() || undefined,
-    additionalInfo: form.additionalInfo.trim() || undefined,
+    additionalInfo: richTextFieldPayload(form.additionalInfo),
     additionalServices: form.additionalServices.trim() || undefined,
   };
 
@@ -594,39 +667,52 @@ export function validateExcursionForm(
   seasonPriceRows.forEach((row, index) => {
     const seasonLabel = row.label.trim() || `Season ${index + 1}`;
 
-    if (!row.fromDate.trim()) {
-      errors.push({
-        field: `season-${index}-fromDate`,
-        label: seasonLabel,
-        message: `${seasonLabel}: start date is required.`,
-      });
-    }
-    if (!row.toDate.trim()) {
-      errors.push({
-        field: `season-${index}-toDate`,
-        label: seasonLabel,
-        message: `${seasonLabel}: end date is required.`,
-      });
-    }
-    if (
-      row.fromDate.trim() &&
-      row.toDate.trim() &&
-      row.fromDate.trim() > row.toDate.trim()
-    ) {
-      errors.push({
-        field: `season-${index}-toDate`,
-        label: seasonLabel,
-        message: `${seasonLabel}: end date must be on or after the start date.`,
-      });
+    if (!row.yearRound) {
+      if (!row.fromDate.trim()) {
+        errors.push({
+          field: `season-${index}-fromDate`,
+          label: seasonLabel,
+          message: `${seasonLabel}: start date is required (or enable year-round).`,
+        });
+      }
+      if (!row.toDate.trim()) {
+        errors.push({
+          field: `season-${index}-toDate`,
+          label: seasonLabel,
+          message: `${seasonLabel}: end date is required (or enable year-round).`,
+        });
+      }
+      if (
+        row.fromDate.trim() &&
+        row.toDate.trim() &&
+        row.fromDate.trim() > row.toDate.trim()
+      ) {
+        errors.push({
+          field: `season-${index}-toDate`,
+          label: seasonLabel,
+          message: `${seasonLabel}: end date must be on or after the start date.`,
+        });
+      }
     }
 
-    const adult = parseFloat(row.priceAdult);
-    if (!row.priceAdult.trim() || !Number.isFinite(adult) || adult < 0) {
-      errors.push({
-        field: `season-${index}-priceAdult`,
-        label: seasonLabel,
-        message: `${seasonLabel}: enter a valid adult price.`,
-      });
+    if (form.pricingModel === 'flat_rate') {
+      const flat = parseFloat(row.flatPrice);
+      if (!row.flatPrice.trim() || !Number.isFinite(flat) || flat < 0) {
+        errors.push({
+          field: `season-${index}-flatPrice`,
+          label: seasonLabel,
+          message: `${seasonLabel}: enter a valid total price.`,
+        });
+      }
+    } else {
+      const adult = parseFloat(row.priceAdult);
+      if (!row.priceAdult.trim() || !Number.isFinite(adult) || adult < 0) {
+        errors.push({
+          field: `season-${index}-priceAdult`,
+          label: seasonLabel,
+          message: `${seasonLabel}: enter a valid adult price.`,
+        });
+      }
     }
   });
 
@@ -733,7 +819,30 @@ export function excursionFromDoc(id: string, data: Record<string, unknown>): Exc
     excursion.travelStyle = parseTravelStyle(data.travelStyle);
   }
 
+  if (!excursion.pricingModel) {
+    excursion.pricingModel = parsePricingModel(data.pricingModel);
+  }
+
+  excursion.photoUrls = Array.isArray(data.photoUrls)
+    ? data.photoUrls.map(String).map((url) => url.trim()).filter(Boolean)
+    : undefined;
+
   return excursion;
+}
+
+export function excursionGalleryPhotoUrls(
+  excursion: Pick<Excursion, 'heroPhotoUrl' | 'photoUrls'>
+): string[] {
+  const hero = excursion.heroPhotoUrl?.trim();
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const raw of excursion.photoUrls || []) {
+    const url = String(raw || '').trim();
+    if (!url || seen.has(url) || (hero && url === hero)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
 }
 
 export function formatCurrencyAmountParts(

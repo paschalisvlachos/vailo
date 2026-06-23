@@ -69,3 +69,14 @@ export function legalPlainTextLength(html: string): number {
     .replace(/&nbsp;/gi, ' ')
     .trim().length;
 }
+
+/** Normalize plain text or HTML for storage from admin rich-text fields. */
+export function richTextFieldPayload(value: string): string | undefined {
+  const html = sanitizeLegalHtml(normalizeLegalContentForEditor(value));
+  return legalContentIsEmpty(html) ? undefined : html;
+}
+
+/** Safe HTML for guest-facing rich text blocks. */
+export function richTextFieldHtml(value: string): string {
+  return sanitizeLegalHtml(normalizeLegalContentForEditor(value));
+}

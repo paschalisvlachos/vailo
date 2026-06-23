@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { BarChart3, X, Clock, MessageCircle, Sparkles, MapPin, BookOpen, MonitorSmartphone } from 'lucide-react';
+import { BarChart3, X, Clock, MessageCircle, Sparkles, MapPin, BookOpen, MonitorSmartphone, Compass } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import { collectHouseGuests } from '../../../lib/houseGuests';
 import {
@@ -29,6 +29,44 @@ function deviceDisplayLabel(row: GuestAnalyticsDeviceFields): string {
   return '';
 }
 
+const EMPTY_EXCURSION_COUNTERS = {
+  excursionsOpens: 0,
+  uniqueExcursionsSeen: 0,
+  excursionDetailOpens: 0,
+  excursionBookingStarts: 0,
+  excursionBookingsComplete: 0,
+  excursionImpressions: {} as Record<string, number>,
+};
+
+function summaryHasActivity(row: {
+  portalSessions: number;
+  liveLikeLocalOpens: number;
+  assistantTurns: number;
+  aiExpertTurns: number;
+  uniqueGemsSeen: number;
+  excursionsOpens: number;
+  uniqueExcursionsSeen: number;
+  excursionDetailOpens: number;
+  excursionBookingStarts: number;
+  excursionBookingsComplete: number;
+  accordionOpens: Record<string, number>;
+  lastSeenAt?: string;
+}): boolean {
+  return (
+    row.portalSessions > 0 ||
+    row.liveLikeLocalOpens > 0 ||
+    row.assistantTurns > 0 ||
+    row.aiExpertTurns > 0 ||
+    row.uniqueGemsSeen > 0 ||
+    row.excursionsOpens > 0 ||
+    row.uniqueExcursionsSeen > 0 ||
+    row.excursionDetailOpens > 0 ||
+    row.excursionBookingStarts > 0 ||
+    row.excursionBookingsComplete > 0 ||
+    Object.keys(row.accordionOpens || {}).length > 0
+  );
+}
+
 type Row = {
   rowKey: string;
   subjectKind: GuestAnalyticsSubjectKind;
@@ -47,6 +85,12 @@ type Row = {
   uniqueGemsSeen: number;
   accordionOpens: Record<string, number>;
   gemImpressions: Record<string, number>;
+  excursionsOpens: number;
+  uniqueExcursionsSeen: number;
+  excursionDetailOpens: number;
+  excursionBookingStarts: number;
+  excursionBookingsComplete: number;
+  excursionImpressions: Record<string, number>;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;
@@ -103,7 +147,7 @@ export default function PropertyAnalytics() {
             rowKey: `booking:${s.typeId}:${s.bookingId}`,
             subjectKind: 'booking' as const,
             unitName,
-            hasActivity: true,
+            hasActivity: summaryHasActivity(s),
           }))
         );
         const anon = await fetchGuestAnonymousSummariesForType(propertyId, typeId);
@@ -118,7 +162,7 @@ export default function PropertyAnalytics() {
             stayStart: '',
             stayEnd: '',
             unitName,
-            hasActivity: s.portalSessions > 0 || s.lastSeenAt !== '',
+            hasActivity: summaryHasActivity(s),
           }))
         );
       }
@@ -170,6 +214,7 @@ export default function PropertyAnalytics() {
           uniqueGemsSeen: 0,
           accordionOpens: {},
           gemImpressions: {},
+          ...EMPTY_EXCURSION_COUNTERS,
           firstSeenAt: '',
           lastSeenAt: '',
           updatedAt: '',
@@ -207,6 +252,8 @@ export default function PropertyAnalytics() {
       liveLikeLocal: active.reduce((n, r) => n + r.liveLikeLocalOpens, 0),
       assistantTurns: active.reduce((n, r) => n + r.assistantTurns, 0),
       aiTurns: active.reduce((n, r) => n + r.aiExpertTurns, 0),
+      excursionsOpens: active.reduce((n, r) => n + r.excursionsOpens, 0),
+      excursionBookings: active.reduce((n, r) => n + r.excursionBookingsComplete, 0),
     };
   }, [rows]);
 
@@ -239,6 +286,11 @@ export default function PropertyAnalytics() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
+  const topExcursions = (row: Row) =>
+    Object.entries(row.excursionImpressions || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
   return (
     <div>
       <div className="mb-6">
@@ -248,8 +300,8 @@ export default function PropertyAnalytics() {
         </h2>
         <p className="text-sm text-gray-500 mt-1 max-w-2xl">
           Usage from house guests with a booking session and from anonymous public browsing when the
-          access gate is off. Includes full 24/7 assistant and Live like a local (wizard + chat)
-          message logs. Admin preview and visitor tester codes are not tracked.
+          access gate is off. Includes assistant, Live like a local, local gems, and excursions
+          (views and bookings). Admin preview and visitor tester codes are not tracked.
         </p>
       </div>
 
@@ -268,13 +320,14 @@ export default function PropertyAnalytics() {
         </select>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
         {[
           { label: 'Sessions active', value: totals.guestsWithActivity },
           { label: 'Portal visits', value: totals.sessions },
           { label: 'Live like a local', value: totals.liveLikeLocal },
           { label: 'Assistant turns', value: totals.assistantTurns },
-          { label: 'AI expert turns', value: totals.aiTurns },
+          { label: 'Excursions opened', value: totals.excursionsOpens },
+          { label: 'Excursion bookings', value: totals.excursionBookings },
         ].map((kpi) => (
           <div
             key={kpi.label}
@@ -322,6 +375,9 @@ export default function PropertyAnalytics() {
                   AI expert
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">
+                  Excursions
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">
                   Gems
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">
@@ -360,6 +416,19 @@ export default function PropertyAnalytics() {
                   <td className="px-4 py-3 text-center font-medium">{row.liveLikeLocalOpens}</td>
                   <td className="px-4 py-3 text-center font-medium">{row.assistantTurns}</td>
                   <td className="px-4 py-3 text-center font-medium">{row.aiExpertTurns}</td>
+                  <td className="px-4 py-3 text-center font-medium">
+                    {row.excursionBookingsComplete > 0 ? (
+                      <span title={`${row.excursionDetailOpens} detail views · ${row.excursionBookingStarts} booking starts`}>
+                        {row.excursionBookingsComplete} booked
+                      </span>
+                    ) : row.excursionDetailOpens > 0 ? (
+                      <span className="text-gray-500">{row.excursionDetailOpens} viewed</span>
+                    ) : row.excursionsOpens > 0 ? (
+                      <span className="text-gray-400">{row.excursionsOpens} opened</span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-center font-medium">{row.uniqueGemsSeen}</td>
                   <td className="px-4 py-3 text-right">
                     <button
@@ -431,7 +500,7 @@ export default function PropertyAnalytics() {
             </div>
 
             <div className="p-5 overflow-y-auto space-y-5">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div className="rounded-lg bg-gray-50 p-3 text-center">
                   <p className="text-xs text-gray-500">Visits</p>
                   <p className="text-lg font-bold">{selected.portalSessions}</p>
@@ -453,6 +522,21 @@ export default function PropertyAnalytics() {
                     <Sparkles size={12} /> AI expert
                   </p>
                   <p className="text-lg font-bold">{selected.aiExpertTurns}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 text-center">
+                  <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
+                    <Compass size={12} /> Excursions
+                  </p>
+                  <p className="text-lg font-bold">{selected.excursionsOpens}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {selected.excursionDetailOpens} views · {selected.excursionBookingStarts} starts
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 text-center">
+                  <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
+                    <Compass size={12} /> Booked
+                  </p>
+                  <p className="text-lg font-bold">{selected.excursionBookingsComplete}</p>
                 </div>
               </div>
 
@@ -480,6 +564,21 @@ export default function PropertyAnalytics() {
                     {topGems(selected).map(([gemId, count]) => (
                       <li key={gemId} className="font-mono text-xs">
                         {gemId.slice(0, 12)}… — {count}×
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {topExcursions(selected).length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-2">
+                    <Compass size={14} /> Excursions seen in list
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    {topExcursions(selected).map(([key, count]) => (
+                      <li key={key} className="text-xs">
+                        {key.replace(':', ' · ')} — {count}×
                       </li>
                     ))}
                   </ul>
@@ -530,6 +629,21 @@ export default function PropertyAnalytics() {
                         )}
                         {ev.payload?.gemName && (
                           <p className="text-gray-500 mt-0.5 text-xs">Gem: {ev.payload.gemName}</p>
+                        )}
+                        {ev.payload?.excursionTitle && (
+                          <p className="text-gray-500 mt-0.5 text-xs">
+                            Excursion: {ev.payload.excursionTitle}
+                            {ev.payload.providerName ? ` · ${ev.payload.providerName}` : ''}
+                          </p>
+                        )}
+                        {ev.payload?.bookingDate && (
+                          <p className="text-gray-500 mt-0.5 text-xs">
+                            Date: {ev.payload.bookingDate}
+                            {ev.payload.bookingStatus ? ` · ${ev.payload.bookingStatus}` : ''}
+                            {ev.payload.bookingTotal != null && ev.payload.bookingCurrency
+                              ? ` · ${ev.payload.bookingTotal} ${ev.payload.bookingCurrency}`
+                              : ''}
+                          </p>
                         )}
                         {(ev.type === 'ai_expert_plan' || ev.payload?.planData) &&
                           ev.payload?.planStopCount != null && (

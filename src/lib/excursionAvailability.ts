@@ -86,17 +86,21 @@ export function findSeasonPriceForDate(
   excursion: Pick<Excursion, 'seasonPrices'>,
   dateIso: string
 ): ExcursionSeasonPrice | undefined {
-  return (excursion.seasonPrices || []).find(
-    (season) =>
+  return (excursion.seasonPrices || []).find((season) => {
+    if (season.yearRound || (!season.fromDate && !season.toDate)) return true;
+    return Boolean(
       season.fromDate &&
-      season.toDate &&
-      dateIso >= season.fromDate &&
-      dateIso <= season.toDate
-  );
+        season.toDate &&
+        dateIso >= season.fromDate &&
+        dateIso <= season.toDate
+    );
+  });
 }
 
 export function resolvePricesForDate(
-  excursion: Pick<Excursion, 'seasonPrices' | 'currency'>,
+  excursion: Pick<Excursion, 'seasonPrices' | 'currency'> & {
+    pricingModel?: Excursion['pricingModel'];
+  },
   dateIso: string,
   availability?: Pick<ExcursionAvailability, 'priceOverrides'> | null
 ): ExcursionParticipantPrices | undefined {
@@ -105,6 +109,13 @@ export function resolvePricesForDate(
   }
   const season = findSeasonPriceForDate(excursion, dateIso);
   if (!season) return undefined;
+
+  if (excursion.pricingModel === 'flat_rate') {
+    const flatPrice = season.flatPrice ?? season.adult;
+    if (!Number.isFinite(flatPrice)) return undefined;
+    return { adult: flatPrice };
+  }
+
   return {
     adult: season.adult,
     child: season.child,
@@ -337,4 +348,67 @@ export function formatAvailabilityCapacitySummary(availability: ExcursionAvailab
     return booked > 0 ? `${booked} booked · Unlimited` : 'Unlimited';
   }
   return `${availabilityRemaining(availability)} / ${availability.capacityTotal} spots`;
+}
+
+/** Weekday index 0 = Monday … 6 = Sunday (matches calendar headers). */
+export function availabilityWeekdayIndex(date: Date): number {
+  const dow = date.getDay();
+  return dow === 0 ? 6 : dow - 1;
+}
+
+export const AVAILABILITY_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+export function defaultAvailabilityWeekdayFilter(): boolean[] {
+  return [true, true, true, true, true, true, true];
+}
+
+/** List YYYY-MM-DD dates in [startIso, endIso] matching weekday filter. */
+export function enumerateAvailabilityDates(
+  startIso: string,
+  endIso: string,
+  weekdayFilter: boolean[]
+): string[] {
+  if (!startIso || !endIso || startIso > endIso) return [];
+
+  const dates: string[] = [];
+  const cursor = parseAvailabilityDateId(startIso);
+  const end = parseAvailabilityDateId(endIso);
+  cursor.setHours(12, 0, 0, 0);
+  end.setHours(12, 0, 0, 0);
+
+  while (cursor.getTime() <= end.getTime()) {
+    const idx = availabilityWeekdayIndex(cursor);
+    if (weekdayFilter[idx] !== false) {
+      dates.push(toAvailabilityDateId(cursor));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+export function filterBookableAvailabilityDates(
+  excursion: Pick<Excursion, 'seasonPrices'>,
+  dateIds: string[],
+  options: { skipPast?: boolean; todayIso?: string } = {}
+): { eligible: string[]; skippedOffSeason: number; skippedPast: number } {
+  const today = options.todayIso || toAvailabilityDateId(new Date());
+  const skipPast = options.skipPast !== false;
+  let skippedOffSeason = 0;
+  let skippedPast = 0;
+  const eligible: string[] = [];
+
+  for (const dateId of dateIds) {
+    if (skipPast && dateId < today) {
+      skippedPast += 1;
+      continue;
+    }
+    if (!findSeasonPriceForDate(excursion, dateId)) {
+      skippedOffSeason += 1;
+      continue;
+    }
+    eligible.push(dateId);
+  }
+
+  return { eligible, skippedOffSeason, skippedPast };
 }

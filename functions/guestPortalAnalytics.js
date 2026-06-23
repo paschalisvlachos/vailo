@@ -42,6 +42,24 @@ function sanitizePayload(type, payload = {}) {
   if (out.picksSummary) {
     out.picksSummary = truncateText(out.picksSummary, 2000);
   }
+  if (out.excursionTitle) {
+    out.excursionTitle = truncateText(out.excursionTitle, 200);
+  }
+  if (out.providerName) {
+    out.providerName = truncateText(out.providerName, 120);
+  }
+  if (out.excursionId) {
+    out.excursionId = String(out.excursionId).slice(0, 128);
+  }
+  if (out.providerId) {
+    out.providerId = String(out.providerId).slice(0, 128);
+  }
+  if (out.bookingDate) {
+    out.bookingDate = String(out.bookingDate).slice(0, 32);
+  }
+  if (out.bookingCurrency) {
+    out.bookingCurrency = String(out.bookingCurrency).slice(0, 8);
+  }
   delete out.undefined;
   return out;
 }
@@ -127,13 +145,24 @@ async function assertPropertyTypeExists(firestore, propertyId, typeId) {
   }
 }
 
-function applyEventToSummary(type, payload, summaryUpdate, accordionOpens, gemImpressions, inc) {
+function applyEventToSummary(
+  type,
+  payload,
+  summaryUpdate,
+  accordionOpens,
+  gemImpressions,
+  excursionImpressions,
+  inc
+) {
   switch (type) {
     case "portal_session":
       summaryUpdate.portalSessions = inc(1);
       break;
     case "live_like_local_open":
       summaryUpdate.liveLikeLocalOpens = inc(1);
+      break;
+    case "excursions_open":
+      summaryUpdate.excursionsOpens = inc(1);
       break;
     case "guide_accordion_open": {
       const key = String(payload.sectionKey || "unknown").slice(0, 64);
@@ -151,6 +180,29 @@ function applyEventToSummary(type, payload, summaryUpdate, accordionOpens, gemIm
       }
       break;
     }
+    case "excursion_impression": {
+      const providerId = String(payload.providerId || "").slice(0, 128);
+      const excursionId = String(payload.excursionId || "").slice(0, 128);
+      const key =
+        providerId && excursionId ? `${providerId}:${excursionId}`.slice(0, 128) : "";
+      if (key) {
+        const prev = excursionImpressions[key] || 0;
+        excursionImpressions[key] = prev + 1;
+        if (prev === 0) {
+          summaryUpdate.uniqueExcursionsSeen = inc(1);
+        }
+      }
+      break;
+    }
+    case "excursion_detail_open":
+      summaryUpdate.excursionDetailOpens = inc(1);
+      break;
+    case "excursion_booking_start":
+      summaryUpdate.excursionBookingStarts = inc(1);
+      break;
+    case "excursion_booking_complete":
+      summaryUpdate.excursionBookingsComplete = inc(1);
+      break;
     case "gem_description_expand":
       break;
     case "assistant_user_message":
@@ -178,8 +230,14 @@ function initSummaryCounters(summaryUpdate, summarySnap) {
     summaryUpdate.assistantTurns = 0;
     summaryUpdate.aiExpertTurns = 0;
     summaryUpdate.uniqueGemsSeen = 0;
+    summaryUpdate.excursionsOpens = 0;
+    summaryUpdate.uniqueExcursionsSeen = 0;
+    summaryUpdate.excursionDetailOpens = 0;
+    summaryUpdate.excursionBookingStarts = 0;
+    summaryUpdate.excursionBookingsComplete = 0;
     summaryUpdate.accordionOpens = {};
     summaryUpdate.gemImpressions = {};
+    summaryUpdate.excursionImpressions = {};
   }
 }
 
@@ -328,6 +386,9 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
     const gemImpressions = {
       ...(summarySnap.exists ? summarySnap.data().gemImpressions || {} : {}),
     };
+    const excursionImpressions = {
+      ...(summarySnap.exists ? summarySnap.data().excursionImpressions || {} : {}),
+    };
 
     const batch = firestore.batch();
     let logged = 0;
@@ -356,11 +417,20 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
       });
       logged += 1;
 
-      applyEventToSummary(type, payload, summaryUpdate, accordionOpens, gemImpressions, inc);
+      applyEventToSummary(
+        type,
+        payload,
+        summaryUpdate,
+        accordionOpens,
+        gemImpressions,
+        excursionImpressions,
+        inc
+      );
     }
 
     summaryUpdate.accordionOpens = accordionOpens;
     summaryUpdate.gemImpressions = gemImpressions;
+    summaryUpdate.excursionImpressions = excursionImpressions;
     batch.set(ctx.summaryRef, summaryUpdate, { merge: true });
     await batch.commit();
 

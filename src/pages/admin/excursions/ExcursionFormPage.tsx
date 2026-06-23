@@ -14,7 +14,9 @@ import {
   createSeasonPriceRow,
   excursionFormFromDoc,
   excursionPayloadFromForm,
+  excursionPricingModelLabel,
   excursionValidationSummary,
+  formatExcursionPrice,
   formatExcursionSlug,
   portalExcursionsListPath,
   sanitizeExcursionPayload,
@@ -23,6 +25,13 @@ import {
   type ExcursionFormData,
   type ExcursionSeasonPriceFormRow,
 } from '../../../lib/excursion';
+import { normalizeLegalContentForEditor } from '../../../lib/legalHtml';
+import RichTextEditor from '../../../components/admin/RichTextEditor';
+import {
+  EXCURSION_CATEGORY_OPTIONS,
+  categoriesFormFromDoc,
+  categoriesPayloadFromForm,
+} from '../../../lib/excursionCategories';
 import {
   adminExcursionAvailabilityPath,
   portalExcursionAvailabilityPath,
@@ -69,8 +78,10 @@ export default function ExcursionFormPage() {
 
   const [formData, setFormData] = useState<ExcursionFormData>(EMPTY_EXCURSION_FORM);
   const [seasonPrices, setSeasonPrices] = useState<ExcursionSeasonPriceFormRow[]>([
-    createSeasonPriceRow(),
+    createSeasonPriceRow({ yearRound: true }),
   ]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [customCategories, setCustomCategories] = useState('');
   const [slugManual, setSlugManual] = useState(false);
   const [providerName, setProviderName] = useState('');
   const [providerUsesPerExcursionCommission, setProviderUsesPerExcursionCommission] = useState(false);
@@ -79,6 +90,11 @@ export default function ExcursionFormPage() {
   const [heroFile, setHeroFile] = useState<File | null>(null);
   const [heroPreview, setHeroPreview] = useState<string | null>(null);
   const [isUploadingHero, setIsUploadingHero] = useState(false);
+  const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
+  const [galleryPending, setGalleryPending] = useState<
+    { localId: string; file: File; preview: string }[]
+  >([]);
+  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const listPath = providerId
@@ -138,10 +154,23 @@ export default function ExcursionFormPage() {
           return;
         }
         const parsed = excursionFormFromDoc(snap.data());
-        setFormData(parsed);
+        setFormData({
+          ...parsed,
+          programDetails: normalizeLegalContentForEditor(parsed.programDetails),
+          additionalInfo: normalizeLegalContentForEditor(parsed.additionalInfo),
+        });
         setSeasonPrices(seasonPricesFormFromDoc(snap.data()));
+        const { selectedIds, custom } = categoriesFormFromDoc(
+          Array.isArray(snap.data().categories) ? snap.data().categories.map(String) : []
+        );
+        setSelectedCategoryIds(selectedIds);
+        setCustomCategories(custom);
         setSlugManual(true);
         if (parsed.heroPhotoUrl) setHeroPreview(parsed.heroPhotoUrl);
+        const storedGallery = Array.isArray(snap.data().photoUrls)
+          ? snap.data().photoUrls.map(String).map((url: string) => url.trim()).filter(Boolean)
+          : [];
+        setGalleryUrls(storedGallery);
       })
       .catch(() => {
         toast.error('Failed to load excursion.');
@@ -184,20 +213,40 @@ export default function ExcursionFormPage() {
   const updateSeasonPrice = (
     index: number,
     field: keyof Omit<ExcursionSeasonPriceFormRow, 'localId'>,
-    value: string
+    value: string | boolean
   ) => {
-    const errorKey = `season-${index}-${field === 'priceAdult' ? 'priceAdult' : field}`;
-    if (fieldErrors[errorKey]) {
-      setFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next[errorKey];
-        return next;
-      });
-    }
+    const errorKeys = [
+      `season-${index}-fromDate`,
+      `season-${index}-toDate`,
+      `season-${index}-priceAdult`,
+      `season-${index}-flatPrice`,
+    ];
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      for (const key of errorKeys) delete next[key];
+      return next;
+    });
     setSeasonPrices((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     );
   };
+
+  const toggleCategory = (categoryId: string) => {
+    setSelectedCategoryIds((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
+  const setRichTextField = (field: 'programDetails' | 'additionalInfo', html: string) => {
+    setFormData((prev) => ({ ...prev, [field]: html }));
+  };
+
+  const pricePreviewSample = 120;
+  const pricePreviewLabel = formatExcursionPrice(pricePreviewSample, formData.currency, {
+    from: formData.showPriceFrom,
+  });
 
   const addSeasonPrice = () => {
     setSeasonPrices((prev) => [...prev, createSeasonPriceRow()]);
@@ -224,11 +273,57 @@ export default function ExcursionFormPage() {
     }
   };
 
+  const uploadGallery = async (): Promise<string[]> => {
+    if (galleryPending.length === 0) return galleryUrls;
+    setIsUploadingGallery(true);
+    try {
+      const uploaded = await Promise.all(
+        galleryPending.map(async (item, index) => {
+          const ext = item.file.name.split('.').pop() || 'jpg';
+          const path = `excursions/${providerId}/${excursionId || 'new'}/gallery/${Date.now()}-${index}.${ext}`;
+          const storageRef = ref(storage, path);
+          await uploadBytes(storageRef, item.file);
+          return getDownloadURL(storageRef);
+        })
+      );
+      return [...galleryUrls, ...uploaded];
+    } finally {
+      setIsUploadingGallery(false);
+    }
+  };
+
+  const handleGalleryFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setGalleryPending((prev) => [
+      ...prev,
+      ...files.map((file) => ({
+        localId: `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      })),
+    ]);
+    e.target.value = '';
+  };
+
+  const removeGalleryUrl = (url: string) => {
+    setGalleryUrls((prev) => prev.filter((item) => item !== url));
+  };
+
+  const removeGalleryPending = (localId: string) => {
+    setGalleryPending((prev) => {
+      const item = prev.find((entry) => entry.localId === localId);
+      if (item?.preview.startsWith('blob:')) URL.revokeObjectURL(item.preview);
+      return prev.filter((entry) => entry.localId !== localId);
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!providerId) return;
 
     const includeCommission = showExcursionCommission && providerUsesPerExcursionCommission;
+    const categories = categoriesPayloadFromForm(selectedCategoryIds, customCategories);
     const errors = validateExcursionForm(formData, seasonPrices, { includeCommission });
     if (errors.length > 0) {
       const map: Record<string, string> = {};
@@ -244,9 +339,14 @@ export default function ExcursionFormPage() {
     setIsSubmitting(true);
     try {
       const heroPhotoUrl = await uploadHero();
+      const photoUrls = await uploadGallery();
       const payload = sanitizeExcursionPayload({
-        ...excursionPayloadFromForm(formData, providerId, seasonPrices, { includeCommission }),
+        ...excursionPayloadFromForm(formData, providerId, seasonPrices, {
+          includeCommission,
+          categories,
+        }),
         heroPhotoUrl,
+        photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
         updatedAt: new Date().toISOString(),
       });
 
@@ -384,16 +484,39 @@ export default function ExcursionFormPage() {
                     </p>
                   )}
                 </div>
-                <div>
-                  <AdminLabel htmlFor="categories">Categories</AdminLabel>
-                  <AdminInput
-                    id="categories"
-                    name="categories"
-                    value={formData.categories}
-                    onChange={handleChange}
-                    placeholder="Hiking, Nature"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Comma-separated</p>
+                <div className="md:col-span-2">
+                  <AdminLabel>Categories</AdminLabel>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {EXCURSION_CATEGORY_OPTIONS.map((option) => {
+                      const selected = selectedCategoryIds.includes(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => toggleCategory(option.id)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                            selected
+                              ? 'bg-vailo-teal text-white border-vailo-teal'
+                              : 'bg-white text-gray-700 border-gray-200 hover:border-vailo-teal/40'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3">
+                    <AdminLabel htmlFor="customCategories">Other categories (optional)</AdminLabel>
+                    <AdminInput
+                      id="customCategories"
+                      value={customCategories}
+                      onChange={(e) => setCustomCategories(e.target.value)}
+                      placeholder="e.g. Sunset cruise, Jeep safari"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Comma-separated — use the tags above when possible.
+                    </p>
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <AdminLabel htmlFor="description">Description</AdminLabel>
@@ -436,6 +559,65 @@ export default function ExcursionFormPage() {
                         </p>
                       )}
                     </div>
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <AdminLabel>More photos</AdminLabel>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Additional gallery images shown on the guest excursion page (hero photo is separate).
+                  </p>
+                  {(galleryUrls.length > 0 || galleryPending.length > 0) && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
+                      {galleryUrls.map((url) => (
+                        <div
+                          key={url}
+                          className="relative aspect-[4/3] rounded-xl border border-gray-200 overflow-hidden bg-vailo-surface-elevated"
+                        >
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => removeGalleryUrl(url)}
+                            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/55 text-white hover:bg-black/70 transition-colors"
+                            aria-label="Remove photo"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      {galleryPending.map((item) => (
+                        <div
+                          key={item.localId}
+                          className="relative aspect-[4/3] rounded-xl border border-dashed border-vailo-teal/40 overflow-hidden bg-vailo-surface-elevated"
+                        >
+                          <img src={item.preview} alt="" className="h-full w-full object-cover" />
+                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-vailo-teal text-white text-[10px] font-bold uppercase">
+                            New
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeGalleryPending(item.localId)}
+                            className="absolute top-2 right-2 p-1.5 rounded-full bg-black/55 text-white hover:bg-black/70 transition-colors"
+                            aria-label="Remove photo"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleGalleryFiles}
+                      className="text-sm text-gray-600"
+                    />
+                    {isUploadingGallery && (
+                      <p className="text-xs text-vailo-teal mt-1 flex items-center gap-1">
+                        <Loader2 size={12} className="animate-spin" /> Uploading gallery…
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -561,9 +743,9 @@ export default function ExcursionFormPage() {
             <section>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
-                  <h3 className="admin-section-title border-0 pb-0 mb-1">Season pricing</h3>
+                  <h3 className="admin-section-title border-0 pb-0 mb-1">Pricing</h3>
                   <p className="text-sm text-gray-500">
-                    Set per-person prices for each operating season (date from – date to).
+                    Choose per-person tiers or a flat total price, then define one or more seasons.
                   </p>
                 </div>
                 <AdminButton type="button" variant="secondary" onClick={addSeasonPrice}>
@@ -572,6 +754,23 @@ export default function ExcursionFormPage() {
               </div>
 
               <div className="mb-5 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                <div>
+                  <AdminLabel htmlFor="pricingModel">Pricing model</AdminLabel>
+                  <AdminSelect
+                    id="pricingModel"
+                    name="pricingModel"
+                    value={formData.pricingModel}
+                    onChange={handleChange}
+                  >
+                    <option value="per_person">Per person (adult / child / …)</option>
+                    <option value="flat_rate">Flat rate (same total for any group size)</option>
+                  </AdminSelect>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formData.pricingModel === 'flat_rate'
+                      ? 'Guests pay one total price whether they book alone or as a group.'
+                      : 'Price is calculated from the number of adults, children, etc.'}
+                  </p>
+                </div>
                 <div>
                   <AdminLabel htmlFor="currency">Currency</AdminLabel>
                   <AdminSelect
@@ -585,17 +784,32 @@ export default function ExcursionFormPage() {
                     <option value="GBP">GBP</option>
                   </AdminSelect>
                 </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer pb-2">
-                    <input
-                      type="checkbox"
-                      name="showPriceFrom"
-                      checked={formData.showPriceFrom}
-                      onChange={handleChange}
-                      className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
-                    />
-                    Show lowest price as &ldquo;from&rdquo; (e.g. from 110.00 €)
-                  </label>
+                <div className="md:col-span-2">
+                  <div className="rounded-xl border border-gray-200 bg-vailo-surface-elevated/40 p-4 sm:p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="min-w-[12rem]">
+                        <p className="text-sm font-semibold text-vailo-dark">Show “from” in price</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          When off, guests see an exact price (e.g.{' '}
+                          {formatExcursionPrice(pricePreviewSample, formData.currency, { from: false })}).
+                          When on, the lowest season price is prefixed with “from”.
+                        </p>
+                      </div>
+                      <label className="inline-flex items-center gap-2.5 cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          name="showPriceFrom"
+                          checked={formData.showPriceFrom}
+                          onChange={handleChange}
+                          className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                        />
+                        <span className="text-sm font-medium text-gray-700">Show “from” prefix</span>
+                      </label>
+                    </div>
+                    <p className="text-sm text-vailo-teal font-medium tabular-nums mt-4 pt-4 border-t border-gray-100">
+                      Guest preview: <span className="text-vailo-dark">{pricePreviewLabel}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -606,9 +820,15 @@ export default function ExcursionFormPage() {
                     className="rounded-xl border border-gray-200 bg-vailo-surface-elevated/40 p-4 sm:p-5"
                   >
                     <div className="flex items-start justify-between gap-3 mb-4">
-                      <p className="text-sm font-semibold text-vailo-dark">
-                        {season.label.trim() || `Season ${index + 1}`}
-                      </p>
+                      <div>
+                        <p className="text-sm font-semibold text-vailo-dark">
+                          {season.label.trim() || `Season ${index + 1}`}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {excursionPricingModelLabel(formData.pricingModel)}
+                          {season.yearRound ? ' · Year-round' : ''}
+                        </p>
+                      </div>
                       {seasonPrices.length > 1 && (
                         <button
                           type="button"
@@ -628,77 +848,115 @@ export default function ExcursionFormPage() {
                           id={`season-label-${index}`}
                           value={season.label}
                           onChange={(e) => updateSeasonPrice(index, 'label', e.target.value)}
-                          placeholder="e.g. Summer, June – November"
+                          placeholder={
+                            season.yearRound
+                              ? 'e.g. All year'
+                              : 'e.g. Summer, June – November'
+                          }
                         />
                       </div>
-                      <div>
-                        <AdminLabel htmlFor={`season-from-${index}`}>From date *</AdminLabel>
-                        <AdminInput
-                          id={`season-from-${index}`}
-                          type="date"
-                          value={season.fromDate}
-                          onChange={(e) => updateSeasonPrice(index, 'fromDate', e.target.value)}
-                          className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-fromDate`]))}
-                        />
-                        <FieldError message={fieldErrors[`season-${index}-fromDate`]} />
+                      <div className="md:col-span-2 flex items-end">
+                        <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer pb-2">
+                          <input
+                            type="checkbox"
+                            checked={season.yearRound}
+                            onChange={(e) => updateSeasonPrice(index, 'yearRound', e.target.checked)}
+                            className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                          />
+                          Year-round (365 days — no date range required)
+                        </label>
                       </div>
-                      <div>
-                        <AdminLabel htmlFor={`season-to-${index}`}>To date *</AdminLabel>
-                        <AdminInput
-                          id={`season-to-${index}`}
-                          type="date"
-                          value={season.toDate}
-                          onChange={(e) => updateSeasonPrice(index, 'toDate', e.target.value)}
-                          className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-toDate`]))}
-                        />
-                        <FieldError message={fieldErrors[`season-${index}-toDate`]} />
-                      </div>
-                      <div>
-                        <AdminLabel htmlFor={`season-adult-${index}`}>Adult price *</AdminLabel>
-                        <AdminInput
-                          id={`season-adult-${index}`}
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={season.priceAdult}
-                          onChange={(e) => updateSeasonPrice(index, 'priceAdult', e.target.value)}
-                          className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-priceAdult`]))}
-                        />
-                        <FieldError message={fieldErrors[`season-${index}-priceAdult`]} />
-                      </div>
-                      <div>
-                        <AdminLabel htmlFor={`season-child-${index}`}>Child price</AdminLabel>
-                        <AdminInput
-                          id={`season-child-${index}`}
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={season.priceChild}
-                          onChange={(e) => updateSeasonPrice(index, 'priceChild', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <AdminLabel htmlFor={`season-infant-${index}`}>Infant price</AdminLabel>
-                        <AdminInput
-                          id={`season-infant-${index}`}
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={season.priceInfant}
-                          onChange={(e) => updateSeasonPrice(index, 'priceInfant', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <AdminLabel htmlFor={`season-senior-${index}`}>Senior price</AdminLabel>
-                        <AdminInput
-                          id={`season-senior-${index}`}
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={season.priceSenior}
-                          onChange={(e) => updateSeasonPrice(index, 'priceSenior', e.target.value)}
-                        />
-                      </div>
+                      {!season.yearRound && (
+                        <>
+                          <div>
+                            <AdminLabel htmlFor={`season-from-${index}`}>From date *</AdminLabel>
+                            <AdminInput
+                              id={`season-from-${index}`}
+                              type="date"
+                              value={season.fromDate}
+                              onChange={(e) => updateSeasonPrice(index, 'fromDate', e.target.value)}
+                              className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-fromDate`]))}
+                            />
+                            <FieldError message={fieldErrors[`season-${index}-fromDate`]} />
+                          </div>
+                          <div>
+                            <AdminLabel htmlFor={`season-to-${index}`}>To date *</AdminLabel>
+                            <AdminInput
+                              id={`season-to-${index}`}
+                              type="date"
+                              value={season.toDate}
+                              onChange={(e) => updateSeasonPrice(index, 'toDate', e.target.value)}
+                              className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-toDate`]))}
+                            />
+                            <FieldError message={fieldErrors[`season-${index}-toDate`]} />
+                          </div>
+                        </>
+                      )}
+                      {formData.pricingModel === 'flat_rate' ? (
+                        <div className="md:col-span-2">
+                          <AdminLabel htmlFor={`season-flat-${index}`}>Total price *</AdminLabel>
+                          <AdminInput
+                            id={`season-flat-${index}`}
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={season.flatPrice}
+                            onChange={(e) => updateSeasonPrice(index, 'flatPrice', e.target.value)}
+                            className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-flatPrice`]))}
+                            placeholder="Same price for 1 guest or a group"
+                          />
+                          <FieldError message={fieldErrors[`season-${index}-flatPrice`]} />
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <AdminLabel htmlFor={`season-adult-${index}`}>Adult price *</AdminLabel>
+                            <AdminInput
+                              id={`season-adult-${index}`}
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={season.priceAdult}
+                              onChange={(e) => updateSeasonPrice(index, 'priceAdult', e.target.value)}
+                              className={fieldErrorClass(Boolean(fieldErrors[`season-${index}-priceAdult`]))}
+                            />
+                            <FieldError message={fieldErrors[`season-${index}-priceAdult`]} />
+                          </div>
+                          <div>
+                            <AdminLabel htmlFor={`season-child-${index}`}>Child price</AdminLabel>
+                            <AdminInput
+                              id={`season-child-${index}`}
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={season.priceChild}
+                              onChange={(e) => updateSeasonPrice(index, 'priceChild', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <AdminLabel htmlFor={`season-infant-${index}`}>Infant price</AdminLabel>
+                            <AdminInput
+                              id={`season-infant-${index}`}
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={season.priceInfant}
+                              onChange={(e) => updateSeasonPrice(index, 'priceInfant', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <AdminLabel htmlFor={`season-senior-${index}`}>Senior price</AdminLabel>
+                            <AdminInput
+                              id={`season-senior-${index}`}
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={season.priceSenior}
+                              onChange={(e) => updateSeasonPrice(index, 'priceSenior', e.target.value)}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -788,17 +1046,15 @@ export default function ExcursionFormPage() {
                   />
                 </div>
                 <div>
-                  <AdminLabel htmlFor="programDetails">Full program</AdminLabel>
-                  <AdminTextarea
-                    id="programDetails"
-                    name="programDetails"
-                    rows={8}
+                  <AdminLabel>Details</AdminLabel>
+                  <RichTextEditor
                     value={formData.programDetails}
-                    onChange={handleChange}
-                    placeholder="Detailed step-by-step itinerary shown when guests view the program…"
+                    onChange={(html) => setRichTextField('programDetails', html)}
+                    placeholder="Detailed step-by-step itinerary shown when guests open Details…"
+                    minHeight={220}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Detailed itinerary — equivalent to &ldquo;View the program&rdquo; content
+                    Shown in the guest portal under &ldquo;Details&rdquo; — use bold, lists, links, etc.
                   </p>
                 </div>
               </div>
@@ -890,16 +1146,17 @@ export default function ExcursionFormPage() {
                     placeholder="Optional add-ons available on request…"
                   />
                 </div>
-                <div>
-                  <AdminLabel htmlFor="additionalInfo">Additional information</AdminLabel>
-                  <AdminTextarea
-                    id="additionalInfo"
-                    name="additionalInfo"
-                    rows={4}
+                <div className="md:col-span-2">
+                  <AdminLabel>Additional information</AdminLabel>
+                  <RichTextEditor
                     value={formData.additionalInfo}
-                    onChange={handleChange}
+                    onChange={(html) => setRichTextField('additionalInfo', html)}
                     placeholder="Any other details guests should know…"
+                    minHeight={180}
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Shown in the guest portal under &ldquo;Additional info&rdquo;.
+                  </p>
                 </div>
               </div>
             </section>
@@ -961,7 +1218,7 @@ export default function ExcursionFormPage() {
             <AdminButton type="button" variant="secondary" onClick={() => navigate(listPath)}>
               Cancel
             </AdminButton>
-            <AdminButton type="submit" disabled={isSubmitting || isUploadingHero}>
+            <AdminButton type="submit" disabled={isSubmitting || isUploadingHero || isUploadingGallery}>
               {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create excursion'}
             </AdminButton>
           </div>

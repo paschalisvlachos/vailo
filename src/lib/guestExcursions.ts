@@ -13,6 +13,7 @@ import {
 export type GuestExcursionListing = {
   providerId: string;
   providerName: string;
+  providerLogoUrl?: string;
   excursion: Excursion;
 };
 
@@ -34,6 +35,7 @@ export async function loadGuestExcursionsForArea(
       }
 
       const providerName = String(data.businessName || 'Provider');
+      const providerLogoUrl = String(data.logoUrl || '').trim() || undefined;
       const excursionsSnap = await getDocs(
         collection(db, EXCURSION_PROVIDER_COLLECTION, providerDoc.id, EXCURSION_SUBCOLLECTION)
       );
@@ -44,6 +46,7 @@ export async function loadGuestExcursionsForArea(
         listings.push({
           providerId: providerDoc.id,
           providerName,
+          providerLogoUrl,
           excursion: { ...excursion, providerId: providerDoc.id },
         });
       }

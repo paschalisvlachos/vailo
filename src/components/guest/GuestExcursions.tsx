@@ -15,6 +15,7 @@ import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 import { resolvePropertyTypeAreaContext } from '../../lib/listingAreaContext';
 import {
   excursionDurationLabel,
+  excursionGalleryPhotoUrls,
   excursionLowestAdultPrice,
   excursionTravelStyleLabel,
   formatExcursionPrice,
@@ -24,8 +25,15 @@ import {
   type GuestExcursionListing,
 } from '../../lib/guestExcursions';
 import GuestExcursionBookingSheet from './GuestExcursionBookingSheet';
+import ExcursionImpressionTracker from './ExcursionImpressionTracker';
+import ExcursionPhotoGallery from './ExcursionPhotoGallery';
+import { richTextFieldHtml } from '../../lib/legalHtml';
+import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { buildExcursionImpressionKey } from '../../lib/guestAnalytics';
 
 type Props = {
+  propertyId?: string | null;
+  typeId?: string | null;
   propertyType?: { country?: string; city?: string };
   onClose: () => void;
   onOverlayOpenChange?: (open: boolean) => void;
@@ -41,7 +49,7 @@ function categoryIcon(name: string) {
 type DetailSection = {
   title: string;
   content: string | string[];
-  variant?: 'list' | 'prose' | 'check' | 'cross';
+  variant?: 'list' | 'prose' | 'html' | 'check' | 'cross';
 };
 
 function ExcursionDetailSheet({
@@ -53,8 +61,10 @@ function ExcursionDetailSheet({
   onClose: () => void;
   onBook: () => void;
 }) {
-  const { excursion, providerName } = listing;
+  const { track } = useGuestAnalytics();
+  const { excursion, providerName, providerLogoUrl, providerId } = listing;
   const lowestPrice = excursionLowestAdultPrice(excursion);
+  const galleryPhotos = useMemo(() => excursionGalleryPhotoUrls(excursion), [excursion]);
   const priceLabel =
     lowestPrice != null
       ? formatExcursionPrice(lowestPrice, excursion.currency, {
@@ -70,6 +80,16 @@ function ExcursionDetailSheet({
     };
   }, []);
 
+  useEffect(() => {
+    if (!excursion.id) return;
+    track('excursion_detail_open', {
+      excursionId: excursion.id,
+      excursionTitle: excursion.title,
+      providerId,
+      providerName,
+    });
+  }, [excursion.id, excursion.title, providerId, providerName, track]);
+
   const infoSections: DetailSection[] = [];
   if (excursion.description?.trim()) {
     infoSections.push({ title: 'Overview', content: excursion.description.trim(), variant: 'prose' });
@@ -78,7 +98,11 @@ function ExcursionDetailSheet({
     infoSections.push({ title: 'Program', content: excursion.programBreakdown.trim(), variant: 'prose' });
   }
   if (excursion.programDetails?.trim()) {
-    infoSections.push({ title: 'Details', content: excursion.programDetails.trim(), variant: 'prose' });
+    infoSections.push({
+      title: 'Details',
+      content: excursion.programDetails.trim(),
+      variant: 'html',
+    });
   }
   if (excursion.participationRequirements?.trim()) {
     infoSections.push({
@@ -103,7 +127,7 @@ function ExcursionDetailSheet({
     infoSections.push({
       title: 'Additional info',
       content: excursion.additionalInfo.trim(),
-      variant: 'prose',
+      variant: 'html',
     });
   }
 
@@ -146,10 +170,17 @@ function ExcursionDetailSheet({
               >
                 <X size={18} />
               </button>
-              {excursion.categories?.[0] && (
-                <span className="absolute top-4 left-4 guest-badge bg-white/15 backdrop-blur-md border border-white/20 text-white">
-                  {excursion.categories[0]}
-                </span>
+              {(excursion.categories?.length ?? 0) > 0 && (
+                <div className="absolute top-4 left-4 right-16 flex flex-wrap gap-1.5">
+                  {excursion.categories!.map((cat) => (
+                    <span
+                      key={cat}
+                      className="guest-badge bg-white/15 backdrop-blur-md border border-white/20 text-white"
+                    >
+                      {cat}
+                    </span>
+                  ))}
+                </div>
               )}
               <div className="absolute bottom-0 inset-x-0 px-6 pb-6 pt-16">
                 {excursion.subtitle && (
@@ -199,6 +230,10 @@ function ExcursionDetailSheet({
               </div>
             )}
 
+            {galleryPhotos.length > 0 && (
+              <ExcursionPhotoGallery photos={galleryPhotos} title={excursion.title} />
+            )}
+
             {infoSections.map((section) => (
               <div
                 key={section.title}
@@ -234,6 +269,13 @@ function ExcursionDetailSheet({
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
+                ) : section.variant === 'html' ? (
+                  <div
+                    className="legal-document-content text-[15px] text-gray-700 leading-[1.7]"
+                    dangerouslySetInnerHTML={{
+                      __html: richTextFieldHtml(section.content as string),
+                    }}
+                  />
                 ) : (
                   <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
                     {section.content}
@@ -241,6 +283,16 @@ function ExcursionDetailSheet({
                 )}
               </div>
             ))}
+
+            {providerLogoUrl && (
+              <div className="flex justify-center pt-2">
+                <img
+                  src={providerLogoUrl}
+                  alt={providerName}
+                  className="h-14 max-w-[200px] w-auto object-contain"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -248,7 +300,9 @@ function ExcursionDetailSheet({
           <div className="flex items-center gap-4">
             {priceLabel && (
               <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">From</p>
+                {excursion.showPriceFrom !== false && (
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">From</p>
+                )}
                 <p className="font-luxury text-xl text-[#051F26] font-medium truncate">{priceLabel}</p>
               </div>
             )}
@@ -267,10 +321,13 @@ function ExcursionDetailSheet({
 }
 
 export default function GuestExcursions({
+  propertyId,
+  typeId,
   propertyType,
   onClose,
   onOverlayOpenChange,
 }: Props) {
+  const { track } = useGuestAnalytics();
   const [listings, setListings] = useState<GuestExcursionListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -328,6 +385,29 @@ export default function GuestExcursions({
         : listings.filter((l) => l.excursion.categories?.includes(categoryFilter)),
     [listings, categoryFilter]
   );
+
+  const impressionExcursions = useMemo(
+    () =>
+      filtered
+        .filter((l) => l.excursion.id)
+        .map((l) => ({
+          id: buildExcursionImpressionKey(l.providerId, l.excursion.id!),
+          excursionId: l.excursion.id!,
+          excursionTitle: l.excursion.title,
+          providerId: l.providerId,
+          providerName: l.providerName,
+        })),
+    [filtered]
+  );
+
+  const trackBookingStart = (listing: GuestExcursionListing) => {
+    track('excursion_booking_start', {
+      excursionId: listing.excursion.id,
+      excursionTitle: listing.excursion.title,
+      providerId: listing.providerId,
+      providerName: listing.providerName,
+    });
+  };
 
   return (
     <>
@@ -403,9 +483,13 @@ export default function GuestExcursions({
                 </div>
               )}
 
+              <ExcursionImpressionTracker excursions={impressionExcursions}>
               <div className="space-y-2">
                 {filtered.map((listing) => {
-            const { excursion, providerName } = listing;
+            const { excursion, providerName, providerId } = listing;
+            const impressionId = excursion.id
+              ? buildExcursionImpressionKey(providerId, excursion.id)
+              : '';
             const category = excursion.categories?.[0] || 'Excursion';
             const CatIcon = categoryIcon(category);
             const lowestPrice = excursionLowestAdultPrice(excursion);
@@ -425,6 +509,11 @@ export default function GuestExcursions({
                 <button
                   type="button"
                   onClick={() => setSelected(listing)}
+                  data-excursion-impression-id={impressionId || undefined}
+                  data-excursion-id={excursion.id}
+                  data-excursion-title={excursion.title}
+                  data-provider-id={providerId}
+                  data-provider-name={providerName}
                   className="w-full text-left bg-white rounded-xl border border-gray-200/90 shadow-[0_2px_12px_rgba(11,79,92,0.06)] p-3 flex gap-3 hover:border-[#0B4F5C]/25 hover:shadow-md transition-all active:scale-[0.99]"
                 >
                   <div className="h-[72px] w-[72px] rounded-lg overflow-hidden bg-gray-100 shrink-0">
@@ -461,6 +550,7 @@ export default function GuestExcursions({
             );
                 })}
               </div>
+              </ExcursionImpressionTracker>
             </>
           )}
         </div>
@@ -473,6 +563,7 @@ export default function GuestExcursions({
             listing={selected}
             onClose={() => setSelected(null)}
             onBook={() => {
+              trackBookingStart(selected);
               setBookingListing(selected);
               setSelected(null);
             }}
@@ -483,6 +574,8 @@ export default function GuestExcursions({
       {bookingListing && (
         <GuestExcursionBookingSheet
           listing={bookingListing}
+          propertyId={propertyId}
+          typeId={typeId}
           onClose={() => setBookingListing(null)}
         />
       )}

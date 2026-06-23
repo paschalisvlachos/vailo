@@ -213,6 +213,18 @@ export default function ExcursionBookingDetailPage() {
               <dt className="text-gray-500">Source</dt>
               <dd className="text-gray-900 capitalize">{booking.source}</dd>
             </div>
+            {booking.guestPortalPropertyId && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Guest portal</dt>
+                <dd className="text-gray-900 text-right text-xs">
+                  Property {booking.guestPortalPropertyId}
+                  {booking.guestPortalTypeId ? ` · Unit ${booking.guestPortalTypeId}` : ''}
+                  {booking.guestPortalHouseBookingId
+                    ? ` · Stay ${booking.guestPortalHouseBookingId}`
+                    : ''}
+                </dd>
+              </div>
+            )}
           </dl>
         </AdminCard>
 

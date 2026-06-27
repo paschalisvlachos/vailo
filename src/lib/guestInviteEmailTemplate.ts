@@ -4,6 +4,8 @@ import { getGuestPortalPublicOrigin, buildInvitePortalUrl } from './guestAccess'
 import { formatGuestSlug, getTypePublicSlug } from './guestPortalSlug';
 import { formatBookingDateRange } from './syncedBooking';
 
+const PREVIEW_PASSWORD_PLACEHOLDER = '••••-••••';
+
 export type GuestInviteEmailPayload = {
   guestName: string;
   guestEmail: string;
@@ -77,6 +79,47 @@ export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): str
   ].filter(Boolean);
 
   return lines.join('\n');
+}
+
+/** Short WhatsApp invitation — link, password, and Vailo portal benefits (admin → guest). */
+export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload): string {
+  const greeting = payload.guestName.trim() || 'there';
+  const property = payload.propertyName.trim() || 'your stay';
+  const unit = payload.unitName.trim();
+  const stay = payload.stayRangeLabel.trim();
+  const url = payload.inviteUrl.trim();
+  const password = payload.accessPassword.trim();
+  const passwordIsPlaceholder =
+    !password || password === PREVIEW_PASSWORD_PLACEHOLDER || password.includes('•');
+
+  const intro = payload.reinvite
+    ? `Your guest portal access for ${property} has been updated.`
+    : `Your private Vailo guest portal for ${property} is ready.`;
+
+  const lines = [
+    `Hello ${greeting},`,
+    '',
+    intro,
+    'Local tips, your house guide, Live Like a Local & more — all in one place.',
+    '',
+    unit && stay ? `${unit} · ${stay}` : unit || stay ? unit || stay : '',
+    '',
+    'Open your portal:',
+    url || '(link will be available after you send the invite)',
+    '',
+  ];
+
+  if (!passwordIsPlaceholder) {
+    lines.push('Access password:', password, '', 'Enter it when prompted. Keep it private.');
+  } else if (payload.reinvite) {
+    lines.push('Your host will share your new access password separately.');
+  } else {
+    lines.push('Your host will share your access password when you open the link.');
+  }
+
+  lines.push('', '— Vailo Guest Portal');
+
+  return lines.filter(Boolean).join('\n');
 }
 
 export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): string {
@@ -183,8 +226,6 @@ export const GUEST_INVITE_EMAIL_SAMPLE: GuestInviteEmailPayload = {
   accessPassword: 'K7M2-PQ9',
   hostLabel: 'Villa Serenity',
 };
-
-const PREVIEW_PASSWORD_PLACEHOLDER = '••••-••••';
 
 export type GuestInviteEmailBookingContext = {
   guestName?: string;

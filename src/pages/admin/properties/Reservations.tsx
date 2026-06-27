@@ -14,6 +14,10 @@ import {
   getTypePublicSlug,
 } from '../../../lib/guestPortalSlug';
 import { bookingWhatsAppPhone } from '../../../lib/guestWhatsApp';
+import {
+  buildGuestInviteEmailPayloadFromBooking,
+  buildGuestInviteWhatsAppMessage,
+} from '../../../lib/guestInviteEmailTemplate';
 import { buildInvitePortalUrl, getGuestPortalPublicOrigin } from '../../../lib/guestAccess';
 import { sendGuestInviteCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
@@ -350,6 +354,25 @@ export default function Reservations() {
     );
   };
 
+  const buildWhatsAppInviteMessage = (booking: ReservationRow) => {
+    const type = propertyTypes.find((t) => t.id === booking.typeId);
+    const secrets = booking.id ? invitePreviewSecrets[booking.id] : undefined;
+    const payload = buildGuestInviteEmailPayloadFromBooking({
+      booking,
+      propertyName: property.propertyName || 'Your property',
+      unitName: booking.typeName,
+      propertySlug: property.urlSlug,
+      unitType: type,
+      typeId: booking.typeId,
+      origin: window.location.origin,
+      reinvite: false,
+      accessPassword: secrets?.password,
+      inviteToken: secrets?.token || booking.inviteToken,
+      logoUrl: `${window.location.origin}/vailoLogo.png`,
+    });
+    return buildGuestInviteWhatsAppMessage(payload);
+  };
+
   const handleDelete = async (booking: any) => {
     if (
       !window.confirm(
@@ -537,9 +560,8 @@ export default function Reservations() {
                           {booking.guestEmail ? booking.guestEmail : <span className="italic">OTA Guest Email Hidden</span>}
                         </div>
                         {(booking.guestWhatsapp || booking.guestPhone) && (
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                            <span>{booking.guestWhatsapp || booking.guestPhone}</span>
-                            {whatsappPhone && <GuestWhatsAppLink phone={whatsappPhone} />}
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {booking.guestWhatsapp || booking.guestPhone}
                           </div>
                         )}
                         {booking.guestLocale && (
@@ -665,6 +687,19 @@ export default function Reservations() {
                               <Mail size={14} className="mr-1.5" />
                               Send Invite
                             </button>
+                          )}
+
+                          {whatsappPhone && detailsComplete && (
+                            <GuestWhatsAppLink
+                              phone={whatsappPhone}
+                              message={buildWhatsAppInviteMessage(booking)}
+                              label="WhatsApp"
+                              title={
+                                booking.isInvited || invitePreviewSecrets[booking.id!]
+                                  ? 'Open WhatsApp with guest portal invitation'
+                                  : 'Send invite first to include link and password in the WhatsApp message'
+                              }
+                            />
                           )}
 
                           {/* Delete */}

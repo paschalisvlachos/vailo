@@ -1,10 +1,15 @@
 import { buildWhatsAppChatUrl } from '../../lib/guestWhatsApp';
+import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 
 type Props = {
   phone: string;
+  /** Pre-filled message (e.g. portal invitation). Omit for a blank chat. */
+  message?: string;
   className?: string;
   size?: number;
   title?: string;
+  /** When set, renders a labeled pill button instead of icon-only. */
+  label?: string;
 };
 
 function WhatsAppIcon({ size }: { size: number }) {
@@ -23,20 +28,45 @@ function WhatsAppIcon({ size }: { size: number }) {
 
 export default function GuestWhatsAppLink({
   phone,
+  message,
   className = '',
   size = 18,
   title = 'Open WhatsApp chat',
+  label,
 }: Props) {
-  const url = buildWhatsAppChatUrl(phone);
+  const digits = normalizeWhatsAppPhone(phone);
+  if (!digits) return null;
+
+  const url = message?.trim()
+    ? buildWhatsAppUrl(digits, message)
+    : buildWhatsAppChatUrl(phone);
+
   if (!url) return null;
+
+  const resolvedTitle = title || (label ? `WhatsApp: ${label}` : 'Open WhatsApp chat');
+
+  if (label) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={resolvedTitle}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#25D366]/35 bg-white text-xs font-bold text-[#128C7E] hover:bg-emerald-50 hover:border-[#25D366]/50 transition-colors ${className}`}
+      >
+        <WhatsAppIcon size={14} />
+        {label}
+      </a>
+    );
+  }
 
   return (
     <a
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      title={title}
-      aria-label={title}
+      title={resolvedTitle}
+      aria-label={resolvedTitle}
       className={`inline-flex shrink-0 items-center justify-center rounded-full text-[#25D366] hover:text-[#1da851] hover:bg-emerald-50 transition-colors ${className}`}
     >
       <WhatsAppIcon size={size} />

@@ -376,4 +376,7 @@ module.exports = {
   recordContactFormInbox,
   INBOX_COLLECTION,
   CONTACT_FROM,
+  resendApiKey,
+  resendFetch,
+  INBOX_FROM,
 };

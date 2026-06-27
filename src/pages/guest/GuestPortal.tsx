@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import AiExpertView from './AiExpertView';
 import LegalDocumentModal from '../../components/guest/LegalDocumentModal';
@@ -20,6 +20,7 @@ import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingS
 import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
 import GuestFeaturedPreviewSheet from '../../components/guest/GuestFeaturedPreviewSheet';
 import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
+import MirroredPhotoImg from '../../components/shared/MirroredPhotoImg';
 import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import {
   getFeaturedConfig,
@@ -112,10 +113,14 @@ function GuestGemsGrid({
   gems,
   listKey,
   mapAreaHint,
+  propertyId,
+  typeId,
 }: {
   gems: GuestGem[];
   listKey: string;
   mapAreaHint: string;
+  propertyId: string;
+  typeId: string;
 }) {
   const { locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
   const [visibleCount, setVisibleCount] = useState(GEMS_PAGE_SIZE);
@@ -177,10 +182,29 @@ function GuestGemsGrid({
           >
             <div className="relative bg-gray-100 overflow-hidden shrink-0 h-36 sm:h-40">
               {gem.photoUrl ? (
-                <img
+                <MirroredPhotoImg
                   src={gem.photoUrl}
                   alt={gemName}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  mirrorContext={{
+                    docId: gem.id,
+                    googlePlaceId:
+                      typeof gem.googlePlaceId === 'string' ? gem.googlePlaceId : null,
+                    propertyId,
+                    propertyTypeId: typeId,
+                    propertyGemId: gem.id,
+                  }}
+                  onMirrored={(firebaseUrl) => {
+                    void updateDoc(
+                      doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'localGems', gem.id),
+                      { photoUrl: firebaseUrl, updatedAt: new Date().toISOString() }
+                    ).catch(() => {});
+                  }}
+                  fallback={
+                    <div className="w-full h-full flex items-center justify-center text-[#C5A059]">
+                      <MapPin size={32} />
+                    </div>
+                  }
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[#C5A059]">
@@ -695,10 +719,22 @@ function GuestPortalPage({
                 {/* Photo height = full block minus half of Live like a local (min-h 72px → 2.25rem) */}
                 <div className="absolute inset-x-0 top-0 z-0 h-[calc(100%-2.25rem)] overflow-hidden">
                   {heroPhoto ? (
-                    <img
+                    <MirroredPhotoImg
                       src={heroPhoto}
                       alt={typeData?.propertyTypeName || property?.propertyName || 'Your stay'}
-                      className="w-full h-full object-cover object-[center_30%] scale-105"
+                      className="w-full h-full object-cover object-[center_30%]"
+                      mirrorContext={
+                        propertyId && typeId
+                          ? {
+                              propertyId,
+                              propertyTypeId: typeId,
+                              googlePlaceId: typeData?.googlePlaceId,
+                            }
+                          : undefined
+                      }
+                      fallback={
+                        <div className="w-full h-full bg-gradient-to-br from-vailo-teal via-[#083A43] to-[#051F26]" />
+                      }
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-vailo-teal via-[#083A43] to-[#051F26]" />
@@ -961,13 +997,15 @@ function GuestPortalPage({
                     <p className="text-sm text-gray-500 text-center py-8 rounded-xl bg-white/80 border border-gray-100">
                       No spots match these filters.
                     </p>
-                  ) : (
+                  ) : propertyId && typeId ? (
                     <GuestGemsGrid
                       gems={filteredGems}
                       listKey={gemFilterKey}
                       mapAreaHint={mapAreaHint}
+                      propertyId={propertyId}
+                      typeId={typeId}
                     />
-                  )}
+                  ) : null}
                 </section>
               )}
 

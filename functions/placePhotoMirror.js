@@ -59,8 +59,19 @@ function sanitizePathSegment(value) {
     .slice(0, 80);
 }
 
-/** Stable Storage object path for a discovered place or Google place id. */
-function placePhotoStoragePath({ country, areaId, docId, googlePlaceId }) {
+/** Stable Storage object path for a discovered place, property gem, or Google place id. */
+function placePhotoStoragePath({
+  country,
+  areaId,
+  docId,
+  googlePlaceId,
+  propertyId,
+  propertyTypeId,
+  propertyGemId,
+}) {
+  if (propertyId && propertyTypeId && propertyGemId) {
+    return `properties/${sanitizePathSegment(propertyId)}/types/${sanitizePathSegment(propertyTypeId)}/gemPhotos/${sanitizePathSegment(propertyGemId)}.jpg`;
+  }
   if (country && areaId && docId) {
     return `areas/${sanitizePathSegment(country)}/${sanitizePathSegment(areaId)}/placePhotos/${docId}.jpg`;
   }
@@ -68,6 +79,61 @@ function placePhotoStoragePath({ country, areaId, docId, googlePlaceId }) {
     const safe = sanitizePathSegment(String(googlePlaceId).replace(/^places\//, ""));
     return `placePhotos/byGoogleId/${safe}.jpg`;
   }
+  return null;
+}
+
+/** Resource name from a Places API (New) photo media URL, e.g. places/ChIJ…/photos/Ab43… */
+function parsePlacesPhotoResourceName(url) {
+  try {
+    const parsed = new URL(String(url || "").trim());
+    if (parsed.hostname.toLowerCase() !== "places.googleapis.com") return null;
+    const match = parsed.pathname.match(/\/v1\/(places\/[^/]+\/photos\/[^/]+)\/media/i);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchGooglePlacePhotoBytes(photoUrl, apiKey) {
+  const trimmed = String(photoUrl || "").trim();
+  if (!trimmed) return null;
+
+  const attempts = [];
+
+  const resourceName = parsePlacesPhotoResourceName(trimmed);
+  if (resourceName && apiKey) {
+    attempts.push({
+      url: `https://places.googleapis.com/v1/${resourceName}/media?maxHeightPx=800&maxWidthPx=800`,
+      headers: { "X-Goog-Api-Key": apiKey },
+    });
+  }
+
+  attempts.push({
+    url: trimmed,
+    headers: apiKey ? { "X-Goog-Api-Key": apiKey } : {},
+  });
+
+  for (const attempt of attempts) {
+    try {
+      const response = await axios.get(attempt.url, {
+        responseType: "arraybuffer",
+        timeout: 20000,
+        maxRedirects: 5,
+        headers: attempt.headers,
+        validateStatus: (status) => status >= 200 && status < 400,
+      });
+      if (response.data && response.data.byteLength > 0) {
+        return response;
+      }
+    } catch (error) {
+      logger.warn(
+        "Google place photo fetch attempt failed:",
+        attempt.url.split("?")[0],
+        error.response?.status || error.message
+      );
+    }
+  }
+
   return null;
 }
 
@@ -95,7 +161,7 @@ async function firebaseDownloadUrlForFile(file) {
  * Ensure a place photo is served from Firebase Storage.
  * Google Places media URLs are downloaded once, then reused from Storage.
  */
-async function ensureStoredPlacePhoto(googlePhotoUrl, storagePathArg) {
+async function ensureStoredPlacePhoto(googlePhotoUrl, storagePathArg, apiKeyArg) {
   const trimmed = typeof googlePhotoUrl === "string" ? googlePhotoUrl.trim() : "";
   if (!trimmed) return null;
   if (isFirebaseStoragePhotoUrl(trimmed)) return trimmed;
@@ -110,18 +176,18 @@ async function ensureStoredPlacePhoto(googlePhotoUrl, storagePathArg) {
   const bucket = admin.storage().bucket();
   const file = bucket.file(storagePath);
 
+  const apiKey = apiKeyArg || process.env.GOOGLE_MAPS_API_KEY;
+
   try {
     const [exists] = await file.exists();
     if (exists) {
       return await firebaseDownloadUrlForFile(file);
     }
 
-    const response = await axios.get(trimmed, {
-      responseType: "arraybuffer",
-      timeout: 20000,
-      maxRedirects: 5,
-      validateStatus: (status) => status >= 200 && status < 400,
-    });
+    const response = await fetchGooglePlacePhotoBytes(trimmed, apiKey);
+    if (!response) {
+      return null;
+    }
 
     await recordPlacesApiCall(admin.firestore(), {
       endpoint: "place_photo",
@@ -150,7 +216,7 @@ async function ensureStoredPlacePhoto(googlePhotoUrl, storagePathArg) {
       `place photo mirror failed (${storagePath}):`,
       error.response?.status || error.message
     );
-    return trimmed;
+    return null;
   }
 }
 
@@ -159,4 +225,5 @@ module.exports = {
   isFirebaseStoragePhotoUrl,
   placePhotoStoragePath,
   ensureStoredPlacePhoto,
+  parsePlacesPhotoResourceName,
 };

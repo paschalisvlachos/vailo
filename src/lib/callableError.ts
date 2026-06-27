@@ -27,7 +27,7 @@ export function httpsCallableMessage(error: unknown, fallback: string): string {
     }
 
     if (code === 'functions/not-found') {
-      return 'Mailbox sync is not deployed yet. Run firebase deploy for syncResendInbox.';
+      return fallback;
     }
 
     if (code === 'functions/permission-denied') {

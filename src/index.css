@@ -15,8 +15,23 @@
 }
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: clip;
+  }
+
   body {
     @apply antialiased;
+    overflow-x: clip;
+  }
+
+  /* iOS Safari zooms focused inputs below 16px; zoom persists across SPA navigation. */
+  @media (max-width: 767px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
   }
 }
 

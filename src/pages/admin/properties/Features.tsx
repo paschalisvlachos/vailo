@@ -20,6 +20,8 @@ import {
   categorySelectionIncludes,
 } from '../../../lib/categoryLocale';
 import { normalizeLocaleCode } from '../../../lib/propertyContentLocales';
+import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
+import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
 
 export default function Features() {
   const { property, propertyId } = useOutletContext<{ property: any, propertyId: string }>();
@@ -313,6 +315,19 @@ export default function Features() {
         usageCaller: PLACES_USAGE_CALLER.propertyFeatures,
       });
       const googleData: any = result.data;
+      if (googleData.photoUrl) {
+        try {
+          googleData.photoUrl = await ensurePersistablePhotoUrl(googleData.photoUrl, {
+            country: propertyAreaContext?.country,
+            areaId: propertyAreaContext?.areaId,
+            googlePlaceId: googleData.googlePlaceId,
+          });
+        } catch (mirrorErr) {
+          console.warn('Magic Fill photo mirror failed:', mirrorErr);
+          toast.warning('Place loaded, but the Google photo could not be stored. Upload a custom image.');
+          googleData.photoUrl = '';
+        }
+      }
 
       let matchedCategory = "";
       let finalDescription = googleData.description;
@@ -427,6 +442,12 @@ export default function Features() {
         const storageRef = ref(storage, `properties/${propertyId}/features/${Date.now()}_${customFile.name}`);
         await uploadBytes(storageRef, customFile);
         finalPhotoUrl = await getDownloadURL(storageRef);
+      } else if (finalPhotoUrl) {
+        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+          country: propertyAreaContext?.country,
+          areaId: propertyAreaContext?.areaId,
+          docId: editingFeatureId || undefined,
+        });
       }
 
       const featureData = {
@@ -905,7 +926,21 @@ export default function Features() {
             <div key={feat.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
               <div className="h-48 bg-gray-200 relative">
                 {feat.photoUrl ? (
-                  <img src={feat.photoUrl} className="w-full h-full object-cover block" />
+                  <MirroredPhotoImg
+                    src={feat.photoUrl}
+                    className="w-full h-full object-cover block"
+                    alt=""
+                    mirrorContext={{
+                      country: propertyAreaContext?.country,
+                      areaId: propertyAreaContext?.areaId,
+                      docId: feat.id,
+                    }}
+                    fallback={
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <ImageIcon size={32} />
+                      </div>
+                    }
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon size={32} /></div>
                 )}

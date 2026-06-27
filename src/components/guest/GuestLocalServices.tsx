@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   Anchor,
   Briefcase,
@@ -22,6 +23,7 @@ import { normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
+import MirroredPhotoImg from '../shared/MirroredPhotoImg';
 export type GuestPortalFeature = {
   id: string;
   name?: string;
@@ -114,13 +116,7 @@ function ServiceDetailSheet({
   const emailHref = buildServiceEmailLink(feature.email, inquiryMessage, emailSubject);
   const hasContact = !!(whatsappHref || emailHref);
 
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  useBodyScrollLock(true);
 
   return (
     <div
@@ -159,7 +155,17 @@ function ServiceDetailSheet({
 
           <div className="relative rounded-2xl overflow-hidden bg-gray-100 mb-4 aspect-[16/10]">
             {feature.photoUrl ? (
-              <img src={feature.photoUrl} alt="" className="w-full h-full object-cover" />
+              <MirroredPhotoImg
+                src={feature.photoUrl}
+                alt=""
+                className="w-full h-full object-cover"
+                mirrorContext={{ docId: feature.id }}
+                fallback={
+                  <div className="w-full h-full flex items-center justify-center text-[#C5A059] min-h-[140px]">
+                    <Sparkles size={36} />
+                  </div>
+                }
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-[#C5A059] min-h-[140px]">
                 <Sparkles size={36} />
@@ -310,10 +316,16 @@ export default function GuestLocalServices({
                 >
                   <div className="h-[72px] w-[72px] rounded-lg overflow-hidden bg-gray-100 shrink-0">
                     {feature.photoUrl ? (
-                      <img
+                      <MirroredPhotoImg
                         src={feature.photoUrl}
                         alt=""
                         className="h-full w-full object-cover"
+                        mirrorContext={{ docId: feature.id }}
+                        fallback={
+                          <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
+                            <Sparkles size={22} />
+                          </div>
+                        }
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-[#C5A059]">

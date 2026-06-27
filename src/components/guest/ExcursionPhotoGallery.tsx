@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 
 type Props = {
@@ -10,14 +11,7 @@ type Props = {
 export default function ExcursionPhotoGallery({ photos, title }: Props) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (activeIndex == null) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [activeIndex]);
+  useBodyScrollLock(activeIndex != null);
 
   if (photos.length === 0) return null;
 

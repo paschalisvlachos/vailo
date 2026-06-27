@@ -1,5 +1,6 @@
-import { useEffect, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   BookOpen,
   Bot,
@@ -97,14 +98,7 @@ export default function GuestPortalNavMenu({
 }: Props) {
   const close = () => onOpenChange(false);
 
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   const featured = (featuredOnPortal || [])
     .filter((id) => getFeaturedConfig(id))

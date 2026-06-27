@@ -1,5 +1,7 @@
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { cloudFunctions } from './firebase';
 import { normalizePlaceName } from './placeNameUtils';
+import { getCachedMirrorResult, setCachedMirrorResult } from './photoMirrorCache';
 
 /** True when the URL is a metered Google Place Photo endpoint. */
 export function isGooglePlacesPhotoUrl(url: unknown): boolean {
@@ -31,27 +33,64 @@ export function isGooglePlacesPhotoUrl(url: unknown): boolean {
   }
 }
 
-export async function mirrorPlacePhotoUrl(params: {
+export type MirrorPlacePhotoParams = {
   photoUrl: string;
   country?: string;
   areaId?: string;
   docId?: string;
   googlePlaceId?: string | null;
-}): Promise<string> {
+  propertyId?: string;
+  propertyTypeId?: string;
+  propertyGemId?: string;
+};
+
+const inFlightMirrors = new Map<string, Promise<string>>();
+
+/** Mirror once to Firebase Storage; returns empty string on failure (never a Google URL). */
+export async function mirrorPlacePhotoUrl(params: MirrorPlacePhotoParams): Promise<string> {
   const trimmed = params.photoUrl.trim();
   if (!trimmed || !isGooglePlacesPhotoUrl(trimmed)) return trimmed;
 
-  const functions = getFunctions();
-  const callable = httpsCallable(functions, 'mirrorPlacePhoto');
-  const result = await callable({
-    photoUrl: trimmed,
-    country: params.country,
-    areaId: params.areaId,
-    docId: params.docId,
-    googlePlaceId: params.googlePlaceId || undefined,
-  });
-  const data = result.data as { photoUrl?: string | null };
-  return typeof data.photoUrl === 'string' && data.photoUrl.trim() ? data.photoUrl.trim() : trimmed;
+  const cached = getCachedMirrorResult(trimmed);
+  if (cached !== undefined) {
+    return cached || '';
+  }
+
+  const existing = inFlightMirrors.get(trimmed);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const callable = httpsCallable(cloudFunctions, 'mirrorPlacePhoto');
+      const result = await callable({
+        photoUrl: trimmed,
+        country: params.country,
+        areaId: params.areaId,
+        docId: params.docId,
+        googlePlaceId: params.googlePlaceId || undefined,
+        propertyId: params.propertyId,
+        propertyTypeId: params.propertyTypeId,
+        propertyGemId: params.propertyGemId,
+      });
+      const data = result.data as { photoUrl?: string | null };
+      const mirrored =
+        typeof data.photoUrl === 'string' &&
+        data.photoUrl.trim() &&
+        !isGooglePlacesPhotoUrl(data.photoUrl.trim())
+          ? data.photoUrl.trim()
+          : '';
+      setCachedMirrorResult(trimmed, mirrored || null);
+      return mirrored;
+    } catch {
+      setCachedMirrorResult(trimmed, null);
+      return '';
+    } finally {
+      inFlightMirrors.delete(trimmed);
+    }
+  })();
+
+  inFlightMirrors.set(trimmed, promise);
+  return promise;
 }
 
 export type ResolvedPlacePhoto = {
@@ -95,8 +134,7 @@ export async function resolvePlacePhoto(params: {
   const exactHit = sessionPhotoCache.get(key);
   if (exactHit && !isGooglePlacesPhotoUrl(exactHit.photoUrl)) return exactHit;
 
-  const functions = getFunctions();
-  const callable = httpsCallable(functions, 'resolvePlacePhoto');
+  const callable = httpsCallable(cloudFunctions, 'resolvePlacePhoto');
   const result = await callable({
     title: params.title,
     area: params.area,

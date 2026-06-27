@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, ai } from '../../../lib/firebase';
+import { db, storage, ai, cloudFunctions } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { getGenerativeModel } from "firebase/ai";
-import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, ExternalLink } from 'lucide-react';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, ExternalLink, Copy, ClipboardPaste, X } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { formatGuestSlug, getTypePublicSlug } from '../../../lib/guestPortalSlug';
@@ -27,6 +27,15 @@ import {
 } from '../../../lib/categoryLocale';
 import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
 import { syncPropertyGemToArea } from '../../../lib/propertyGemAreaSync';
+import CopyGemsModal from '../../../components/admin/CopyGemsModal';
+import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
+import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
+import {
+  clearCopiedGems,
+  readCopiedGems,
+  writeCopiedGems,
+  type CopiedPropertyGems,
+} from '../../../lib/propertyGemCopy';
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -79,12 +88,16 @@ export default function LocalGems() {
     name: '', category: '', categories: [] as string[], description: '', rating: '',
     googleMapsUrl: '', distanceKm: '', distanceTime: '',
     latitude: '', longitude: '',
+    googlePlaceId: '',
     isLegitPick: false, isDailyTrip: false, photoUrl: ''
   };
   
   const [formData, setFormData] = useState(initialFormState);
   const [editingSourceDoc, setEditingSourceDoc] = useState<Record<string, unknown> | null>(null);
   const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+  const [selectedGemIds, setSelectedGemIds] = useState<Set<string>>(new Set());
+  const [copiedClip, setCopiedClip] = useState<CopiedPropertyGems | null>(() => readCopiedGems());
+  const [pasteModalOpen, setPasteModalOpen] = useState(false);
 
   const localeSettings = usePropertyContentLocaleSettings(property);
   const { languages } = usePlatformLanguages();
@@ -216,6 +229,72 @@ export default function LocalGems() {
     return () => unsubTypes();
   }, [propertyId, selectedTypeId]);
 
+  useEffect(() => {
+    setSelectedGemIds(new Set());
+  }, [selectedTypeId]);
+
+  const selectedGems = useMemo(
+    () => gems.filter((g) => selectedGemIds.has(g.id)),
+    [gems, selectedGemIds]
+  );
+  const allGemsSelected = gems.length > 0 && selectedGemIds.size === gems.length;
+
+  const toggleGemSelection = (gemId: string) => {
+    setSelectedGemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(gemId)) next.delete(gemId);
+      else next.add(gemId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllGems = () => {
+    if (allGemsSelected) {
+      setSelectedGemIds(new Set());
+    } else {
+      setSelectedGemIds(new Set(gems.map((g) => g.id)));
+    }
+  };
+
+  const handleCopySelectedGems = () => {
+    if (!propertyId || !selectedTypeId || selectedGems.length === 0) return;
+    const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
+    const clip: CopiedPropertyGems = {
+      gems: selectedGems.map((g) => ({ ...g })),
+      sourcePropertyId: propertyId,
+      sourceTypeId: selectedTypeId,
+      sourcePropertyName: property?.propertyName,
+      sourceListingName: selectedType?.propertyTypeName,
+      copiedAt: new Date().toISOString(),
+    };
+    writeCopiedGems(clip);
+    setCopiedClip(clip);
+    setSelectedGemIds(new Set());
+    toast.success(
+      `Copied ${clip.gems.length} gem${clip.gems.length === 1 ? '' : 's'}. Choose listings to paste into.`
+    );
+  };
+
+  const handleClearCopiedGems = () => {
+    clearCopiedGems();
+    setCopiedClip(null);
+    toast.success('Copied gems cleared.');
+  };
+
+  const handlePasteComplete = (result: { pasted: number; skipped: number; targets: number }) => {
+    if (result.pasted === 0 && result.skipped > 0) {
+      toast.warning(
+        `No gems pasted — all ${result.skipped} already exist on the selected listing${result.targets === 1 ? '' : 's'}.`
+      );
+      return;
+    }
+    const skippedPart =
+      result.skipped > 0 ? ` ${result.skipped} skipped (already on listing).` : '';
+    toast.success(
+      `Pasted ${result.pasted} gem${result.pasted === 1 ? '' : 's'} across ${result.targets} listing${result.targets === 1 ? '' : 's'}.${skippedPart}`
+    );
+  };
+
   // 3. Fetch Local Gems for selected Type
   useEffect(() => {
     if (!propertyId || !selectedTypeId) {
@@ -274,14 +353,26 @@ export default function LocalGems() {
         searchQuery = url;
       }
 
-      const functions = getFunctions();
-      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
+      const getGooglePlaceDetails = httpsCallable(cloudFunctions, 'getGooglePlaceDetails');
       const result = await getGooglePlaceDetails({
         searchQuery,
         area: propertyAreaContext.areaName,
         usageCaller: PLACES_USAGE_CALLER.propertyLocalGems,
       });
       const googleData: any = result.data;
+      if (googleData.photoUrl) {
+        try {
+          googleData.photoUrl = await ensurePersistablePhotoUrl(googleData.photoUrl, {
+            country: propertyAreaContext?.country,
+            areaId: propertyAreaContext?.areaId,
+            googlePlaceId: googleData.googlePlaceId,
+          });
+        } catch (mirrorErr) {
+          console.warn('Magic Fill photo mirror failed:', mirrorErr);
+          toast.warning('Place loaded, but the Google photo could not be stored. Upload a custom image.');
+          googleData.photoUrl = '';
+        }
+      }
 
       // 1. Calculate Driving Distance
       let distanceKm = "";
@@ -362,6 +453,7 @@ export default function LocalGems() {
         longitude: googleData.longitude?.toString() || prev.longitude,
         distanceKm: distanceKm,
         distanceTime: distanceTime,
+        googlePlaceId: googleData.googlePlaceId || '',
         photoUrl: googleData.photoUrl || '',
       }));
       localeEditor.applyPrimaryFields({
@@ -381,7 +473,7 @@ export default function LocalGems() {
       toast.error(
         httpsCallableMessage(
           error,
-          "Could not load this place. Use a full Google Maps place link, or try again in a moment."
+          'Could not load this place. Deploy Cloud Functions (getGooglePlaceDetails), use a full Google Maps place link, or try again.'
         )
       );
     } finally {
@@ -407,6 +499,16 @@ export default function LocalGems() {
         const fileRef = ref(storage, `properties/${propertyId}/types/${selectedTypeId}/gems/${Date.now()}_${imageFile.name}`);
         await uploadBytes(fileRef, imageFile);
         finalPhotoUrl = await getDownloadURL(fileRef);
+      } else if (finalPhotoUrl) {
+        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+          country: propertyAreaContext?.country,
+          areaId: propertyAreaContext?.areaId,
+          docId: editingGemId || undefined,
+          googlePlaceId: formData.googlePlaceId || undefined,
+          propertyId,
+          propertyTypeId: selectedTypeId,
+          propertyGemId: editingGemId || undefined,
+        });
       }
 
       const localized = localeEditor.buildPayload();
@@ -604,7 +706,7 @@ export default function LocalGems() {
           </div>
         </div>
 
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Local Gems</h3>
             <p className="text-sm text-gray-500">
@@ -612,10 +714,70 @@ export default function LocalGems() {
               {propertyAreaContext && <span className="ml-1 font-medium text-vailo-teal">(Area: {propertyAreaContext.areaName})</span>}
             </p>
           </div>
-          <button onClick={openAddForm} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-            <Plus size={18} className="mr-2" /> Add Custom Gem
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {copiedClip && (
+              <button
+                type="button"
+                onClick={() => setPasteModalOpen(true)}
+                className="flex items-center px-4 py-2 bg-white text-vailo-teal border border-vailo-teal/25 rounded-xl hover:bg-vailo-teal/5 transition-colors shadow-sm"
+              >
+                <ClipboardPaste size={18} className="mr-2" />
+                Paste {copiedClip.gems.length} copied
+              </button>
+            )}
+            <button onClick={openAddForm} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+              <Plus size={18} className="mr-2" /> Add Custom Gem
+            </button>
+          </div>
         </div>
+
+        {copiedClip && (
+          <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5">
+            <span className="text-xs font-semibold text-vailo-teal">
+              {copiedClip.gems.length} gem{copiedClip.gems.length === 1 ? '' : 's'} ready to paste
+              {copiedClip.sourceListingName ? ` from ${copiedClip.sourceListingName}` : ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPasteModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
+            >
+              <ClipboardPaste size={14} />
+              Paste to listings
+            </button>
+            <button
+              type="button"
+              onClick={handleClearCopiedGems}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+            >
+              <X size={14} />
+              Clear
+            </button>
+          </div>
+        )}
+
+        {selectedGemIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5">
+            <span className="text-xs font-semibold text-vailo-teal">
+              {selectedGemIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={handleCopySelectedGems}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
+            >
+              <Copy size={14} />
+              Copy selected
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedGemIds(new Set())}
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
 
         {gems.length === 0 ? (
           <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
@@ -628,6 +790,15 @@ export default function LocalGems() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left w-10">
+                    <input
+                      type="checkbox"
+                      checked={allGemsSelected}
+                      onChange={toggleSelectAllGems}
+                      aria-label={allGemsSelected ? 'Deselect all gems' : 'Select all gems'}
+                      className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20"
+                    />
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gem</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Rating</th>
@@ -638,10 +809,32 @@ export default function LocalGems() {
               <tbody className="divide-y divide-gray-200">
                 {gems.map(gem => (
                   <tr key={gem.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedGemIds.has(gem.id)}
+                        onChange={() => toggleGemSelection(gem.id)}
+                        aria-label={`Select ${gem.name}`}
+                        className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center">
                         {gem.photoUrl ? (
-                          <img src={gem.photoUrl} alt={gem.name} className="h-10 w-10 rounded-lg object-cover mr-3 border border-gray-200" />
+                          <MirroredPhotoImg
+                            src={gem.photoUrl}
+                            alt={gem.name}
+                            className="h-10 w-10 rounded-lg object-cover mr-3 border border-gray-200"
+                            mirrorContext={{
+                              country: propertyAreaContext?.country,
+                              areaId: propertyAreaContext?.areaId,
+                              docId: gem.id,
+                              googlePlaceId: gem.googlePlaceId,
+                              propertyId,
+                              propertyTypeId: selectedTypeId,
+                              propertyGemId: gem.id,
+                            }}
+                          />
                         ) : (
                           <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center mr-3 border border-gray-200">
                             <ImageIcon size={16} className="text-gray-400" />
@@ -686,6 +879,18 @@ export default function LocalGems() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {pasteModalOpen && copiedClip && (
+          <CopyGemsModal
+            clip={copiedClip}
+            excludeSource={{
+              propertyId: copiedClip.sourcePropertyId,
+              typeId: copiedClip.sourceTypeId,
+            }}
+            onClose={() => setPasteModalOpen(false)}
+            onPasted={handlePasteComplete}
+          />
         )}
       </div>
     );
@@ -873,7 +1078,15 @@ export default function LocalGems() {
                 {/* Active Photo Display */}
                 <div className="w-40 h-28 rounded-lg bg-white border-2 border-gray-300 overflow-hidden flex items-center justify-center shrink-0">
                   {formData.photoUrl ? (
-                    <img src={formData.photoUrl} className="w-full h-full object-cover block" />
+                    <MirroredPhotoImg
+                      src={formData.photoUrl}
+                      className="w-full h-full object-cover block"
+                      mirrorContext={{
+                        country: propertyAreaContext?.country,
+                        areaId: propertyAreaContext?.areaId,
+                        docId: editingGemId || undefined,
+                      }}
+                    />
                   ) : (
                     <ImageIcon className="text-gray-400" />
                   )}

@@ -33,8 +33,20 @@ export async function sendGuestInviteCallable(
   typeId: string,
   bookingId: string,
   reinvite?: boolean
-): Promise<{ inviteToken: string; invitePassword: string }> {
-  const res = await call<{ inviteToken: string; invitePassword: string }>('sendGuestInvite')({
+): Promise<{
+  inviteToken: string;
+  invitePassword: string;
+  emailSent?: boolean;
+  resendSentId?: string | null;
+  inviteUrl?: string;
+}> {
+  const res = await call<{
+    inviteToken: string;
+    invitePassword: string;
+    emailSent?: boolean;
+    resendSentId?: string | null;
+    inviteUrl?: string;
+  }>('sendGuestInvite')({
     propertyId,
     typeId,
     bookingId,

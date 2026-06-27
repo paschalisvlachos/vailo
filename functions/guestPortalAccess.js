@@ -1,5 +1,16 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
+const { resolveCallerOwnerProfile } = require("./platformAdmin");
+const { resendApiKey } = require("./resendInbox");
+const {
+  getGuestPortalPublicOrigin,
+  formatGuestSlug,
+  getTypePublicSlug,
+  buildInvitePortalUrl,
+  formatBookingDateRange,
+  buildGuestInviteEmailFromContext,
+  deliverGuestInviteEmail,
+} = require("./guestInviteEmail");
 const {
   getBookingById,
   isBookingPortalAccessAllowed,
@@ -172,6 +183,45 @@ function assertAccessEnabled(propertyData) {
   }
 }
 
+async function requirePropertyGuestInviteAccess(request, firestore, propertyId) {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in to send guest invites.");
+  }
+
+  const caller = await resolveCallerOwnerProfile(request, firestore);
+  if (!caller) {
+    throw new HttpsError("permission-denied", "Admin account required.");
+  }
+  if (caller.role === "excursion_provider") {
+    throw new HttpsError("permission-denied", "Excursion providers cannot send guest invites.");
+  }
+  if (caller.role === "admin") return caller;
+
+  const propertySnap = await firestore.collection("properties").doc(propertyId).get();
+  if (!propertySnap.exists) {
+    throw new HttpsError("not-found", "Property not found.");
+  }
+  const property = propertySnap.data();
+
+  if (caller.role === "agent" && property.ownerId === caller.id) {
+    return caller;
+  }
+
+  if (caller.role === "owner") {
+    if (property.ownerId === caller.id) return caller;
+    const typesSnap = await firestore
+      .collection("properties")
+      .doc(propertyId)
+      .collection("propertyTypes")
+      .where("ownerId", "==", caller.id)
+      .limit(1)
+      .get();
+    if (!typesSnap.empty) return caller;
+  }
+
+  throw new HttpsError("permission-denied", "You do not have access to this property.");
+}
+
 function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
   if (!firebaseExports) {
     throw new Error("registerGuestPortalAccess requires firebaseExports (index.js exports)");
@@ -240,54 +290,119 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
     return { session };
   });
 
-  exp.sendGuestInvite = onCall(async (request) => {
-    const { propertyId, typeId, bookingId, reinvite } = request.data || {};
-    if (!propertyId || !typeId || !bookingId) {
-      throw new HttpsError("invalid-argument", "Missing booking reference.");
+  exp.sendGuestInvite = onCall(
+    { region: "us-central1", secrets: [resendApiKey] },
+    async (request) => {
+      const { propertyId, typeId, bookingId, reinvite } = request.data || {};
+      if (!propertyId || !typeId || !bookingId) {
+        throw new HttpsError("invalid-argument", "Missing booking reference.");
+      }
+
+      await requirePropertyGuestInviteAccess(request, firestore, propertyId);
+
+      const propSnap = await firestore.collection("properties").doc(propertyId).get();
+      if (!propSnap.exists) throw new HttpsError("not-found", "Property not found.");
+      const property = propSnap.data();
+
+      const { typeRef, bookings, typeData } = await findBookingByInviteToken(
+        firestore,
+        propertyId,
+        typeId,
+        null
+      );
+      const target = bookings.find((b) => b.id === bookingId);
+      if (!target) throw new HttpsError("not-found", "Booking not found.");
+      if (!bookingGuestComplete(target)) {
+        throw new HttpsError("failed-precondition", "Complete guest details first.");
+      }
+
+      const guestEmail = String(target.guestEmail || "").trim();
+      if (!guestEmail.includes("@")) {
+        throw new HttpsError("failed-precondition", "Guest email is required.");
+      }
+
+      const propSlug = formatGuestSlug(property.urlSlug);
+      const unitSlug = getTypePublicSlug(typeData || {});
+      if (!propSlug || !unitSlug) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Property and listing need public URL slugs before sending invites."
+        );
+      }
+
+      const token = target.inviteToken || generateToken();
+      const password = generatePassword();
+      const passwordHash = hashPassword(password);
+      const now = new Date().toISOString();
+      const accessUntil =
+        target.portalAccessUntil || portalAccessUntilFromEnd(target.end);
+      const origin = getGuestPortalPublicOrigin();
+      const inviteUrl = buildInvitePortalUrl(
+        origin,
+        propSlug,
+        unitSlug,
+        token,
+        typeId,
+        target.guestLocale
+      );
+
+      const propertyName =
+        String(property.propertyName || property.title || "").trim() || "Your stay";
+      const unitName = String(typeData?.propertyTypeName || "").trim();
+      const emailPayload = buildGuestInviteEmailFromContext({
+        guestName: target.guestName,
+        guestEmail,
+        propertyName,
+        unitName,
+        stayRangeLabel: formatBookingDateRange(target.start, target.end),
+        inviteUrl,
+        accessPassword: password,
+        reinvite: Boolean(reinvite),
+        hostLabel: propertyName,
+      });
+
+      let sent;
+      try {
+        sent = await deliverGuestInviteEmail(resendApiKey.value(), guestEmail, emailPayload);
+      } catch (err) {
+        logger.error("Guest invite email failed", {
+          propertyId,
+          typeId,
+          bookingId,
+          guestEmail,
+          error: err?.message || String(err),
+        });
+        throw new HttpsError(
+          "internal",
+          "Could not send invitation email. Try again or share the link manually."
+        );
+      }
+
+      const updated = patchBookingInList(bookings, bookingId, {
+        inviteToken: token,
+        invitePasswordHash: passwordHash,
+        inviteStatus: reinvite && target.inviteStatus === "opened" ? "opened" : "waiting",
+        isInvited: true,
+        lastInvitedAt: now,
+        lastInviteEmailSentAt: now,
+        lastInviteEmailResendId: sent?.id || null,
+        portalAccessUntil: accessUntil,
+        portalAccessRevokedAt: null,
+        portalActivatedAt: target.portalAccessRevokedAt ? null : target.portalActivatedAt,
+        accessSource: target.portalAccessRevokedAt ? null : target.accessSource,
+      });
+      await persistBookings(typeRef, updated);
+
+      return {
+        inviteToken: token,
+        invitePassword: password,
+        inviteStatus: updated.find((b) => b.id === bookingId)?.inviteStatus,
+        emailSent: true,
+        resendSentId: sent?.id || null,
+        inviteUrl,
+      };
     }
-
-    const propSnap = await firestore.collection("properties").doc(propertyId).get();
-    if (!propSnap.exists) throw new HttpsError("not-found", "Property not found.");
-    assertAccessEnabled(propSnap.data());
-
-    const { typeRef, booking, bookings } = await findBookingByInviteToken(
-      firestore,
-      propertyId,
-      typeId,
-      null
-    );
-    const target = bookings.find((b) => b.id === bookingId);
-    if (!target) throw new HttpsError("not-found", "Booking not found.");
-    if (!bookingGuestComplete(target)) {
-      throw new HttpsError("failed-precondition", "Complete guest details first.");
-    }
-
-    const token = target.inviteToken || generateToken();
-    const password = generatePassword();
-    const passwordHash = hashPassword(password);
-    const now = new Date().toISOString();
-    const accessUntil =
-      target.portalAccessUntil || portalAccessUntilFromEnd(target.end);
-
-    const updated = patchBookingInList(bookings, bookingId, {
-      inviteToken: token,
-      invitePasswordHash: passwordHash,
-      inviteStatus: reinvite && target.inviteStatus === "opened" ? "opened" : "waiting",
-      isInvited: true,
-      lastInvitedAt: now,
-      portalAccessUntil: accessUntil,
-      portalAccessRevokedAt: null,
-      portalActivatedAt: target.portalAccessRevokedAt ? null : target.portalActivatedAt,
-      accessSource: target.portalAccessRevokedAt ? null : target.accessSource,
-    });
-    await persistBookings(typeRef, updated);
-
-    return {
-      inviteToken: token,
-      invitePassword: password,
-      inviteStatus: updated.find((b) => b.id === bookingId)?.inviteStatus,
-    };
-  });
+  );
 
   exp.verifyGuestInvite = onCall(async (request) => {
     const { propertyId, typeId, inviteToken, password, existingSessionId } =

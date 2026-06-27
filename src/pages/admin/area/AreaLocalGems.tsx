@@ -44,6 +44,8 @@ import {
 } from '../../../lib/categoryLocale';
 import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
 import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
+import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
+import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
 import { dedupeAlternateTitles } from '../../../lib/alternateTitles';
 
 function areaGemRowClass(index: number): string {
@@ -274,6 +276,19 @@ export default function AreaLocalGems() {
         usageCaller: PLACES_USAGE_CALLER.areaLocalGems,
       });
       const googleData: any = result.data;
+      if (googleData.photoUrl) {
+        try {
+          googleData.photoUrl = await ensurePersistablePhotoUrl(googleData.photoUrl, {
+            country: decodedCountry,
+            areaId,
+            googlePlaceId: googleData.googlePlaceId,
+          });
+        } catch (mirrorErr) {
+          console.warn('Magic Fill photo mirror failed:', mirrorErr);
+          toast.warning('Place loaded, but the Google photo could not be stored. Upload a custom image.');
+          googleData.photoUrl = '';
+        }
+      }
 
       // Try to intelligently map Google's category to one of our dynamic categories
       let matchedCategory = ""; // Default to unselected
@@ -362,6 +377,12 @@ export default function AreaLocalGems() {
         await uploadBytes(storageRef, imageFile);
         finalPhotoUrl = await getDownloadURL(storageRef);
         setIsUploadingImage(false);
+      } else if (finalPhotoUrl) {
+        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+          country: decodedCountry,
+          areaId,
+          docId: editingGemId || undefined,
+        });
       }
 
       const { alternateTitlesText, ...formRest } = formData;
@@ -853,11 +874,22 @@ export default function AreaLocalGems() {
                   <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 min-h-[52px]">
                     <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-lg bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
                       {gem.photoUrl ? (
-                        <img
+                        <MirroredPhotoImg
                           src={gem.photoUrl}
                           alt=""
                           className="h-full w-full object-cover"
                           loading="lazy"
+                          mirrorContext={{
+                            country: decodedCountry,
+                            areaId,
+                            docId: gem.id,
+                            googlePlaceId: gem.googlePlaceId,
+                          }}
+                          fallback={
+                            <div className="h-full w-full flex items-center justify-center text-gray-300">
+                              <ImageIcon size={16} />
+                            </div>
+                          }
                         />
                       ) : (
                         <div className="h-full w-full flex items-center justify-center text-gray-300">

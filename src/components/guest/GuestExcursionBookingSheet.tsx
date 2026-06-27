@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   Calendar,
   CheckCircle2,
@@ -187,13 +188,7 @@ export default function GuestExcursionBookingSheet({
   const [successStatus, setSuccessStatus] = useState<'confirmed' | 'pending' | null>(null);
   const [promoOpen, setPromoOpen] = useState(false);
 
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  useBodyScrollLock(true);
 
   useEffect(() => {
     const unsubAvail = onSnapshot(

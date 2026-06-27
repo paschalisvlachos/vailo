@@ -15,6 +15,7 @@ import {
 } from '../../../lib/guestPortalQrCode';
 import { useToast } from '../../../context/ToastContext';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
+import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
@@ -258,6 +259,19 @@ export default function PropertyTypes() {
         country?: string;
       };
 
+      let mirroredPhotoUrl = googleData.photoUrl;
+      if (mirroredPhotoUrl) {
+        try {
+          mirroredPhotoUrl = await ensurePersistablePhotoUrl(mirroredPhotoUrl, {
+            googlePlaceId: googleData.googlePlaceId,
+          });
+        } catch (mirrorErr) {
+          console.warn('Magic Fill photo mirror failed:', mirrorErr);
+          toast.warning('Listing loaded, but the Google photo could not be stored. Upload a custom image.');
+          mirroredPhotoUrl = undefined;
+        }
+      }
+
       const listingName = googleData.name || placeNameFallback;
       const slugFromName = listingName
         ? listingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
@@ -285,12 +299,12 @@ export default function PropertyTypes() {
         city: matchedMasterArea || prev.city,
         postCode: googleData.postCode || prev.postCode,
         country: googleData.country || prev.country,
-        photoUrl: googleData.photoUrl || prev.photoUrl,
+        photoUrl: mirroredPhotoUrl || prev.photoUrl,
       }));
 
-      if (googleData.photoUrl) {
+      if (mirroredPhotoUrl) {
         setPhotoFile(null);
-        setPhotoPreview(googleData.photoUrl);
+        setPhotoPreview(mirroredPhotoUrl);
       }
 
       const resolvedPlaceId = resolveGooglePlaceIdFromDetails(
@@ -388,6 +402,11 @@ export default function PropertyTypes() {
         const fileRef = ref(storage, `propertyTypes/${propertyId}/${Date.now()}_${photoFile.name}`);
         await uploadBytes(fileRef, photoFile);
         finalPhotoUrl = await getDownloadURL(fileRef);
+      } else if (finalPhotoUrl) {
+        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+          googlePlaceId: typeFormData.googlePlaceId,
+          docId: editingTypeId || undefined,
+        });
       }
 
       const newSlug = formatGuestSlug(typeFormData.urlSlug);

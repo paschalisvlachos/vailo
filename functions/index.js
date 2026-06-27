@@ -1060,7 +1060,8 @@ async function finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto) {
   if (photoUrl && !skipPhoto) {
     photoUrl = await ensureStoredPlacePhoto(
       photoUrl,
-      placePhotoStoragePath({ googlePlaceId: place.googlePlaceId })
+      placePhotoStoragePath({ googlePlaceId: place.googlePlaceId }),
+      apiKey
     );
   }
 
@@ -1414,10 +1415,19 @@ exports.mirrorPlacePhoto = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "photoUrl is required.");
   }
 
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    logger.error("Missing GOOGLE_MAPS_API_KEY environment variable.");
+    throw new HttpsError("failed-precondition", "Photo mirroring is not configured.");
+  }
+
   const country = String(payload.country || "").trim();
   const areaId = String(payload.areaId || "").trim();
   const docId = String(payload.docId || "").trim();
   const googlePlaceId = String(payload.googlePlaceId || "").trim() || null;
+  const propertyId = String(payload.propertyId || "").trim();
+  const propertyTypeId = String(payload.propertyTypeId || "").trim();
+  const propertyGemId = String(payload.propertyGemId || "").trim();
 
   const storagePath =
     placePhotoStoragePath({
@@ -1425,9 +1435,12 @@ exports.mirrorPlacePhoto = onCall(async (request) => {
       areaId: areaId || undefined,
       docId: docId || undefined,
       googlePlaceId,
+      propertyId: propertyId || undefined,
+      propertyTypeId: propertyTypeId || undefined,
+      propertyGemId: propertyGemId || undefined,
     }) || undefined;
 
-  const mirrored = await ensureStoredPlacePhoto(photoUrl, storagePath);
+  const mirrored = await ensureStoredPlacePhoto(photoUrl, storagePath, apiKey);
   return { photoUrl: mirrored || null };
 });
 

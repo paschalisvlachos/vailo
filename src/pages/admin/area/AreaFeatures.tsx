@@ -14,6 +14,8 @@ import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocal
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
+import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
+import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
 import { categoryPrimaryName, resolveCategoryLabel, normalizeCategorySelectionList, categorySelectionIncludes } from '../../../lib/categoryLocale';
 import { normalizeLocaleCode } from '../../../lib/propertyContentLocales';
 
@@ -298,6 +300,19 @@ export default function AreaFeatures() {
         usageCaller: PLACES_USAGE_CALLER.areaFeatures,
       });
       const googleData: any = result.data;
+      if (googleData.photoUrl) {
+        try {
+          googleData.photoUrl = await ensurePersistablePhotoUrl(googleData.photoUrl, {
+            country: decodedCountry,
+            areaId,
+            googlePlaceId: googleData.googlePlaceId,
+          });
+        } catch (mirrorErr) {
+          console.warn('Magic Fill photo mirror failed:', mirrorErr);
+          toast.warning('Place loaded, but the Google photo could not be stored. Upload a custom image.');
+          googleData.photoUrl = '';
+        }
+      }
 
       // 🔥 THE FIX: AI-POWERED CATEGORY MAPPING 🔥
       let matchedCategory = "";
@@ -453,6 +468,12 @@ export default function AreaFeatures() {
         const storageRef = ref(storage, `areas/${decodedCountry}/${areaId}/features/${Date.now()}_${imageFile.name}`);
         await uploadBytes(storageRef, imageFile);
         finalPhotoUrl = await getDownloadURL(storageRef);
+      } else if (finalPhotoUrl) {
+        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+          country: decodedCountry,
+          areaId,
+          docId: editingFeatureId || undefined,
+        });
       }
 
       const featureData = {
@@ -824,7 +845,21 @@ export default function AreaFeatures() {
             <div key={feat.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
               <div className="h-48 bg-gray-200 relative">
                 {feat.photoUrl ? (
-                  <img src={feat.photoUrl} className="w-full h-full object-cover" />
+                  <MirroredPhotoImg
+                    src={feat.photoUrl}
+                    className="w-full h-full object-cover"
+                    alt=""
+                    mirrorContext={{
+                      country: decodedCountry,
+                      areaId,
+                      docId: feat.id,
+                    }}
+                    fallback={
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        <ImageIcon size={32} />
+                      </div>
+                    }
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon size={32} /></div>
                 )}

@@ -6,6 +6,7 @@ import { useToast } from '../../../context/ToastContext';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import CalendarBookingDetailsModal from '../../../components/admin/CalendarBookingDetailsModal';
 import GuestWhatsAppLink from '../../../components/admin/GuestWhatsAppLink';
+import GuestInviteEmailPreviewModal from '../../../components/admin/GuestInviteEmailPreviewModal';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
 import {
   buildGuestPortalUrl,
@@ -13,7 +14,7 @@ import {
   getTypePublicSlug,
 } from '../../../lib/guestPortalSlug';
 import { bookingWhatsAppPhone } from '../../../lib/guestWhatsApp';
-import { buildInvitePortalUrl, isGuestPortalAccessRequired } from '../../../lib/guestAccess';
+import { buildInvitePortalUrl, getGuestPortalPublicOrigin } from '../../../lib/guestAccess';
 import { sendGuestInviteCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
@@ -38,13 +39,18 @@ import {
   Pencil,
   Undo2,
   RefreshCw,
+  Eye,
 } from 'lucide-react';
 
 type ReservationRow = SyncedBooking & { typeId: string; typeName: string };
 
 export default function Reservations() {
   const { property, propertyId } = useOutletContext<{
-    property: { urlSlug?: string; guestPortalAccessRequired?: boolean };
+    property: {
+      propertyName?: string;
+      urlSlug?: string;
+      guestPortalAccessRequired?: boolean;
+    };
     propertyId: string;
   }>();
   const toast = useToast();
@@ -64,6 +70,10 @@ export default function Reservations() {
     password: string;
   } | null>(null);
   const [sendingInvite, setSendingInvite] = useState(false);
+  const [emailPreviewBooking, setEmailPreviewBooking] = useState<ReservationRow | null>(null);
+  const [invitePreviewSecrets, setInvitePreviewSecrets] = useState<
+    Record<string, { password: string; token: string }>
+  >({});
 
   const initialFormState = {
     typeId: '',
@@ -237,66 +247,51 @@ export default function Reservations() {
 
     const guestLabel = booking.guestName || booking.summary || 'guest';
 
-    if (isGuestPortalAccessRequired(property)) {
-      setSendingInvite(true);
-      try {
-        const { inviteToken, invitePassword } = await sendGuestInviteCallable(
+    setSendingInvite(true);
+    try {
+      const { inviteToken, invitePassword, inviteUrl: emailedInviteUrl } =
+        await sendGuestInviteCallable(
           propertyId,
           booking.typeId,
           booking.id,
           options?.reinvite
         );
-        const type = propertyTypes.find((t) => t.id === booking.typeId);
-        const propSlug = formatGuestSlug(property.urlSlug);
-        const unitSlug = type ? getTypePublicSlug(type) : '';
-        const inviteUrl =
-          propSlug && unitSlug
-            ? buildInvitePortalUrl(
-                window.location.origin,
-                propSlug,
-                unitSlug,
-                inviteToken,
-                booking.typeId,
-                booking.guestLocale
-              )
-            : '';
-        setInviteCredentials({
-          guestName: guestLabel,
-          inviteUrl,
-          password: invitePassword,
-        });
-        toast.success(
-          options?.reinvite
-            ? `Re-invite prepared for ${guestLabel}. Share the link and password (email/WhatsApp delivery next).`
-            : `Invite prepared for ${guestLabel}. Share the link and password.`
-        );
-      } catch (err) {
-        toast.error(httpsCallableMessage(err, 'Failed to send invite.'));
-      } finally {
-        setSendingInvite(false);
+      const type = propertyTypes.find((t) => t.id === booking.typeId);
+      const propSlug = formatGuestSlug(property.urlSlug);
+      const unitSlug = type ? getTypePublicSlug(type) : '';
+      const inviteUrl =
+        emailedInviteUrl ||
+        (propSlug && unitSlug
+          ? buildInvitePortalUrl(
+              getGuestPortalPublicOrigin(),
+              propSlug,
+              unitSlug,
+              inviteToken,
+              booking.typeId,
+              booking.guestLocale
+            )
+          : '');
+      setInviteCredentials({
+        guestName: guestLabel,
+        inviteUrl,
+        password: invitePassword,
+      });
+      if (booking.id) {
+        setInvitePreviewSecrets((prev) => ({
+          ...prev,
+          [booking.id!]: { password: invitePassword, token: inviteToken },
+        }));
       }
-      return;
+      toast.success(
+        options?.reinvite
+          ? `Re-invite emailed to ${booking.guestEmail?.trim() || guestLabel}.`
+          : `Invitation emailed to ${booking.guestEmail?.trim() || guestLabel}.`
+      );
+    } catch (err) {
+      toast.error(httpsCallableMessage(err, 'Failed to send invite.'));
+    } finally {
+      setSendingInvite(false);
     }
-
-    const targetType = propertyTypes.find((t) => t.id === booking.typeId);
-    if (!targetType) return;
-
-    const updatedBookings = patchSyncedBookingList(targetType.syncedBookings, booking, {
-      isInvited: true,
-      lastInvitedAt: new Date().toISOString(),
-    });
-
-    await setDoc(
-      doc(db, 'properties', propertyId, 'propertyTypes', booking.typeId),
-      { syncedBookings: updatedBookings },
-      { merge: true }
-    );
-
-    toast.success(
-      options?.reinvite
-        ? `Re-invite recorded for ${guestLabel}.`
-        : `Invitation recorded for ${guestLabel}.`
-    );
   };
 
   const handleUninvite = async (booking: ReservationRow) => {
@@ -513,6 +508,9 @@ export default function Reservations() {
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Unit</th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Dates</th>
                   <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    Invite email
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -584,9 +582,25 @@ export default function Reservations() {
                         )}
                       </td>
 
+                      <td className="px-4 py-4 whitespace-nowrap text-center">
+                        {detailsComplete ? (
+                          <button
+                            type="button"
+                            onClick={() => setEmailPreviewBooking(booking)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 hover:border-vailo-teal/20 transition-colors"
+                            title="Preview invitation email with this guest's details"
+                          >
+                            <Eye size={14} />
+                            Preview
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+
                       {/* Actions */}
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-6 py-4 text-right text-sm font-medium">
+                        <div className="flex flex-wrap items-center justify-end gap-2 max-w-[420px] ml-auto">
                           {detailsComplete && (
                             <button
                               type="button"
@@ -643,7 +657,9 @@ export default function Reservations() {
                               className="flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-white border-vailo-teal/15 text-vailo-teal hover:bg-vailo-teal/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200"
                               disabled={!detailsComplete || sendingInvite}
                               title={
-                                !detailsComplete ? 'Add guest details first' : 'Mark invitation as sent'
+                                !detailsComplete
+                                  ? 'Add guest details first'
+                                  : 'Email invitation link and access password to guest'
                               }
                             >
                               <Mail size={14} className="mr-1.5" />
@@ -670,6 +686,31 @@ export default function Reservations() {
             </table>
           </div>
         </div>
+      )}
+
+      {emailPreviewBooking && (
+        <GuestInviteEmailPreviewModal
+          booking={emailPreviewBooking}
+          typeId={emailPreviewBooking.typeId}
+          unitName={emailPreviewBooking.typeName}
+          propertyName={property.propertyName || 'Your property'}
+          propertySlug={property.urlSlug}
+          unitType={propertyTypes.find((t) => t.id === emailPreviewBooking.typeId)}
+          defaultReinvite={Boolean(emailPreviewBooking.isInvited)}
+          accessPassword={
+            emailPreviewBooking.id
+              ? invitePreviewSecrets[emailPreviewBooking.id]?.password
+              : undefined
+          }
+          inviteToken={
+            emailPreviewBooking.id
+              ? invitePreviewSecrets[emailPreviewBooking.id]?.token ||
+                emailPreviewBooking.inviteToken
+              : emailPreviewBooking.inviteToken
+          }
+          detailsComplete={isBookingGuestDetailsComplete(emailPreviewBooking)}
+          onClose={() => setEmailPreviewBooking(null)}
+        />
       )}
 
       {inviteCredentials && (

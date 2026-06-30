@@ -16,6 +16,7 @@ import {
   MapPin,
   ClipboardList,
   Mail,
+  Receipt,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -46,6 +47,7 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
       { icon: Users, label: 'Owners CRM', to: adminPath('/owners') },
       { icon: Globe, label: 'Area Functionality', to: adminPath('/area'), badgeOnArea: true },
       { icon: CreditCard, label: 'Billing & Usage', to: adminPath('/billing') },
+      { icon: Receipt, label: 'Expenses', to: adminPath('/expenses') },
       { icon: FileText, label: 'Legal Documents', to: adminPath('/legal') },
       { icon: Mail, label: 'Mailbox', to: adminPath('/mailbox'), badgeOnMailbox: true },
       { icon: Settings, label: 'Settings', to: adminPath('/settings') },

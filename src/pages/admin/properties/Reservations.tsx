@@ -8,18 +8,15 @@ import CalendarBookingDetailsModal from '../../../components/admin/CalendarBooki
 import GuestWhatsAppLink from '../../../components/admin/GuestWhatsAppLink';
 import GuestInviteEmailPreviewModal from '../../../components/admin/GuestInviteEmailPreviewModal';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
-import {
-  buildGuestPortalUrl,
-  formatGuestSlug,
-  getTypePublicSlug,
-} from '../../../lib/guestPortalSlug';
+import { formatGuestSlug, getTypePublicSlug } from '../../../lib/guestPortalSlug';
 import { bookingWhatsAppPhone } from '../../../lib/guestWhatsApp';
 import {
+  buildGuestInviteClipboardText,
   buildGuestInviteEmailPayloadFromBooking,
   buildGuestInviteWhatsAppMessage,
 } from '../../../lib/guestInviteEmailTemplate';
 import { buildInvitePortalUrl, getGuestPortalPublicOrigin } from '../../../lib/guestAccess';
-import { sendGuestInviteCallable } from '../../../lib/guestPortalCallables';
+import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
   getBookingInvitationStatus,
@@ -33,7 +30,7 @@ import {
   Calendar as CalendarIcon,
   Plus,
   Mail,
-  Link2,
+  Copy,
   Check,
   ArrowLeft,
   Building,
@@ -78,6 +75,7 @@ export default function Reservations() {
   const [invitePreviewSecrets, setInvitePreviewSecrets] = useState<
     Record<string, { password: string; token: string }>
   >({});
+  const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null);
 
   const initialFormState = {
     typeId: '',
@@ -323,27 +321,88 @@ export default function Reservations() {
     toast.success('Invitation withdrawn and guest portal access revoked.');
   };
 
-  const handleCopyLink = (booking: ReservationRow) => {
+  const buildInvitePayloadForBooking = (
+    booking: ReservationRow,
+    options?: { reinvite?: boolean }
+  ) => {
     const type = propertyTypes.find((t) => t.id === booking.typeId);
-    const link = type
-      ? buildGuestPortalUrl(window.location.origin, property, {
-          id: type.id,
-          urlSlug: type.urlSlug,
-          typeSlug: type.typeSlug,
-          propertyTypeName: type.propertyTypeName,
-        })
-      : null;
+    const secrets = booking.id ? invitePreviewSecrets[booking.id] : undefined;
+    return buildGuestInviteEmailPayloadFromBooking({
+      booking,
+      propertyName: property.propertyName || 'Your property',
+      unitName: booking.typeName,
+      propertySlug: property.urlSlug,
+      unitType: type,
+      typeId: booking.typeId,
+      origin: getGuestPortalPublicOrigin(),
+      reinvite: options?.reinvite ?? false,
+      accessPassword: secrets?.password,
+      inviteToken: secrets?.token || booking.inviteToken,
+      logoUrl: `${window.location.origin}/vailoLogo.png`,
+    });
+  };
 
-    if (!link) {
-      toast.warning('Set property and unit URL slugs before copying the guest portal link.');
+  const handleCopyInvitation = async (booking: ReservationRow) => {
+    if (!isBookingGuestDetailsComplete(booking)) {
+      toast.warning('Add guest details before copying an invitation.');
       return;
     }
 
-    navigator.clipboard.writeText(link);
+    if (!booking.id) {
+      toast.warning('Save guest details first so this reservation has an id.');
+      return;
+    }
+
+    const type = propertyTypes.find((t) => t.id === booking.typeId);
+    const propSlug = formatGuestSlug(property.urlSlug);
+    const unitSlug = type ? getTypePublicSlug(type) : '';
+    if (!propSlug || !unitSlug) {
+      toast.warning('Set property and unit URL slugs before copying an invitation.');
+      return;
+    }
+
     const copyKey = booking.id || `${booking.start}-${booking.end}`;
-    setCopiedId(copyKey);
-    setTimeout(() => setCopiedId(null), 2000);
-    toast.success('Guest portal link copied.');
+    let secrets = invitePreviewSecrets[booking.id];
+
+    setCopyingInviteId(copyKey);
+    try {
+      if (!secrets?.password && !(booking.isInvited && booking.inviteToken)) {
+        const prepared = await prepareGuestInviteCopyCallable(
+          propertyId,
+          booking.typeId,
+          booking.id
+        );
+        secrets = { password: prepared.invitePassword, token: prepared.inviteToken };
+        setInvitePreviewSecrets((prev) => ({
+          ...prev,
+          [booking.id!]: secrets!,
+        }));
+      }
+
+      const payload = buildGuestInviteEmailPayloadFromBooking({
+        booking,
+        propertyName: property.propertyName || 'Your property',
+        unitName: booking.typeName,
+        propertySlug: property.urlSlug,
+        unitType: type,
+        typeId: booking.typeId,
+        origin: getGuestPortalPublicOrigin(),
+        reinvite: false,
+        accessPassword: secrets?.password,
+        inviteToken: secrets?.token || booking.inviteToken,
+        logoUrl: `${window.location.origin}/vailoLogo.png`,
+      });
+      const text = buildGuestInviteClipboardText(payload);
+
+      await navigator.clipboard.writeText(text);
+      setCopiedId(copyKey);
+      setTimeout(() => setCopiedId(null), 2500);
+      toast.success('Invitation copied — paste it into email, Airbnb, or chat.');
+    } catch (err) {
+      toast.error(httpsCallableMessage(err, 'Could not prepare invitation to copy.'));
+    } finally {
+      setCopyingInviteId(null);
+    }
   };
 
   const bookingProviderLabel = (booking: ReservationRow) => {
@@ -355,21 +414,7 @@ export default function Reservations() {
   };
 
   const buildWhatsAppInviteMessage = (booking: ReservationRow) => {
-    const type = propertyTypes.find((t) => t.id === booking.typeId);
-    const secrets = booking.id ? invitePreviewSecrets[booking.id] : undefined;
-    const payload = buildGuestInviteEmailPayloadFromBooking({
-      booking,
-      propertyName: property.propertyName || 'Your property',
-      unitName: booking.typeName,
-      propertySlug: property.urlSlug,
-      unitType: type,
-      typeId: booking.typeId,
-      origin: window.location.origin,
-      reinvite: false,
-      accessPassword: secrets?.password,
-      inviteToken: secrets?.token || booking.inviteToken,
-      logoUrl: `${window.location.origin}/vailoLogo.png`,
-    });
+    const payload = buildInvitePayloadForBooking(booking, { reinvite: false });
     return buildGuestInviteWhatsAppMessage(payload);
   };
 
@@ -634,18 +679,28 @@ export default function Reservations() {
                             </button>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={() => handleCopyLink(booking)}
-                            className="p-1.5 text-gray-400 hover:text-vailo-teal transition-colors"
-                            title="Copy guest portal link for this unit"
-                          >
-                            {copiedId === copyKey ? (
-                              <Check size={18} className="text-green-500" />
-                            ) : (
-                              <Link2 size={18} />
-                            )}
-                          </button>
+                          {detailsComplete && (
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyInvitation(booking)}
+                              disabled={copyingInviteId === copyKey}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 hover:border-vailo-teal/20 transition-colors disabled:opacity-50"
+                              title="Copy full invitation text for email, Airbnb, or chat"
+                            >
+                              {copyingInviteId === copyKey ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : copiedId === copyKey ? (
+                                <Check size={14} className="text-green-600" />
+                              ) : (
+                                <Copy size={14} />
+                              )}
+                              {copyingInviteId === copyKey
+                                ? 'Copying…'
+                                : copiedId === copyKey
+                                  ? 'Copied'
+                                  : 'Copy invitation'}
+                            </button>
+                          )}
 
                           {booking.isInvited ? (
                             <>

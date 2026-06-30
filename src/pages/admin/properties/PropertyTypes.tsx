@@ -16,7 +16,7 @@ import {
 import { useToast } from '../../../context/ToastContext';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone } from 'lucide-react';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone, Copy } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
 import {
@@ -29,6 +29,7 @@ import {
   formatICalSyncSuccessMessage,
   syncPropertyTypeICalCallable,
 } from '../../../lib/icalSync';
+import { clonePropertyListing } from '../../../lib/clonePropertyListing';
 
 export default function PropertyTypes() {
   const { property, propertyId, propertyAccess, lockedListingId } =
@@ -63,6 +64,7 @@ export default function PropertyTypes() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [qrDownloadingId, setQrDownloadingId] = useState<string | null>(null);
+  const [cloningTypeId, setCloningTypeId] = useState<string | null>(null);
   const [isICalSyncing, setIsICalSyncing] = useState(false);
 
   // Master Area Database States
@@ -372,6 +374,46 @@ export default function PropertyTypes() {
     }
   };
 
+  const handleCloneClick = async (type: (typeof propertyTypes)[0]) => {
+    if (isListingOnly) {
+      toast.error('You cannot create new property listings.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Clone "${type.propertyTypeName}"? A new listing will be created in this property with the same settings, local gems, and house guide. Reservations and analytics are not copied.`
+      )
+    ) {
+      return;
+    }
+
+    setCloningTypeId(type.id);
+    try {
+      const result = await clonePropertyListing({
+        propertyId,
+        sourceTypeId: type.id,
+        sourceData: type,
+        existingTypes: propertyTypes,
+        propertyName: property?.propertyName,
+      });
+
+      const parts = [
+        'Listing cloned.',
+        result.gemsCopied > 0 ? `${result.gemsCopied} local gem${result.gemsCopied === 1 ? '' : 's'}` : null,
+        result.houseGuideCopied ? 'house guide' : null,
+        result.greenScoreCopied ? 'green score' : null,
+      ].filter(Boolean);
+
+      toast.success(parts.length > 1 ? parts.join(' · ') : 'Listing cloned.');
+      openTypeEditor({ id: result.newTypeId, ...result.listingData });
+    } catch (error) {
+      console.error('Clone listing failed:', error);
+      toast.error('Failed to clone property listing.');
+    } finally {
+      setCloningTypeId(null);
+    }
+  };
+
   const submitPropertyType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!propertyId) return;
@@ -581,6 +623,21 @@ export default function PropertyTypes() {
                       <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors">
                         <Pencil size={14} className="mr-1.5" /> Edit
                       </button>
+                      {!isListingOnly && (
+                        <button
+                          type="button"
+                          onClick={() => void handleCloneClick(type)}
+                          disabled={cloningTypeId === type.id}
+                          className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors disabled:opacity-50"
+                        >
+                          {cloningTypeId === type.id ? (
+                            <Loader2 size={14} className="mr-1.5 animate-spin" />
+                          ) : (
+                            <Copy size={14} className="mr-1.5" />
+                          )}
+                          Clone
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleDownloadQr(type)}

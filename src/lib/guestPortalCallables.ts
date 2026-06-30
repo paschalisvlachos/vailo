@@ -55,6 +55,27 @@ export async function sendGuestInviteCallable(
   return res.data;
 }
 
+export async function prepareGuestInviteCopyCallable(
+  propertyId: string,
+  typeId: string,
+  bookingId: string
+): Promise<{
+  inviteToken: string;
+  invitePassword: string;
+  inviteUrl?: string;
+}> {
+  const res = await call<{
+    inviteToken: string;
+    invitePassword: string;
+    inviteUrl?: string;
+  }>('prepareGuestInviteCopy')({
+    propertyId,
+    typeId,
+    bookingId,
+  });
+  return res.data;
+}
+
 export async function verifyGuestInviteCallable(
   propertyId: string,
   typeId: string,

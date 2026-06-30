@@ -72,6 +72,8 @@ export type GuestLocaleUiKey =
   | 'floatingAssistant'
   | 'floatingReport'
   | 'floatingWhatsapp'
+  | 'savedLocalGemsMenuSub'
+  | 'savedLocalGemsCount'
   | GuestLocaleAiExpertKey;
 
 export const GUEST_UI_KEY_SET = new Set<string>();
@@ -150,6 +152,8 @@ const UI_EN: Record<GuestLocaleUiKey, string> = {
   floatingAssistant: 'Ask assistant',
   floatingReport: 'Report issue',
   floatingWhatsapp: 'WhatsApp host',
+  savedLocalGemsMenuSub: '{count} saved from Live like a local · this device only',
+  savedLocalGemsCount: '{count} saved · this device only',
   ...AI_EXPERT_UI_EN,
 };
 

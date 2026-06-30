@@ -6,6 +6,10 @@ import { formatBookingDateRange } from './syncedBooking';
 
 const PREVIEW_PASSWORD_PLACEHOLDER = '••••-••••';
 
+/** Plain-text blurb — copy invitation, email text, WhatsApp. */
+export const GUEST_INVITE_PORTAL_BENEFITS =
+  "Inside you'll find your house guide, local tips, Live Like a Local recommendations, and curated restaurants and activities — everything for your stay in one place on your phone.";
+
 export type GuestInviteEmailPayload = {
   guestName: string;
   guestEmail: string;
@@ -60,6 +64,8 @@ export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): str
     '',
     intro,
     '',
+    GUEST_INVITE_PORTAL_BENEFITS,
+    '',
     unit ? `Accommodation: ${unit}` : '',
     payload.stayRangeLabel ? `Stay: ${payload.stayRangeLabel}` : '',
     '',
@@ -81,6 +87,57 @@ export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): str
   return lines.join('\n');
 }
 
+function invitePasswordIsPlaceholder(password: string): boolean {
+  const trimmed = password.trim();
+  return !trimmed || trimmed === PREVIEW_PASSWORD_PLACEHOLDER || trimmed.includes('•');
+}
+
+/** Plain-text invitation for clipboard (Airbnb chat, messaging apps, etc.). */
+export function buildGuestInviteClipboardText(payload: GuestInviteEmailPayload): string {
+  if (!invitePasswordIsPlaceholder(payload.accessPassword)) {
+    return buildGuestInviteEmailText(payload);
+  }
+
+  const greeting = payload.guestName.trim() || 'Guest';
+  const property = payload.propertyName.trim() || 'your property';
+  const unit = payload.unitName.trim();
+  const host = payload.hostLabel?.trim();
+
+  const intro = payload.reinvite
+    ? `We've refreshed your private guest portal access for ${property}.`
+    : `Your private guest portal for ${property} is ready.`;
+
+  const passwordNote = payload.reinvite
+    ? 'Use the access password from your latest invitation email, or ask your host for a new one.'
+    : 'Your host will provide your personal access password when you open the link above.';
+
+  const lines = [
+    `Hello ${greeting},`,
+    '',
+    intro,
+    '',
+    GUEST_INVITE_PORTAL_BENEFITS,
+    '',
+    unit ? `Accommodation: ${unit}` : '',
+    payload.stayRangeLabel ? `Stay: ${payload.stayRangeLabel}` : '',
+    '',
+    'Open your portal:',
+    payload.inviteUrl,
+    '',
+    passwordNote,
+    '',
+    'On the portal page, enter the password when prompted. Keep it private — it is personal to your reservation.',
+    '',
+    'Warm regards,',
+    host || 'Your host',
+    '',
+    '—',
+    'Powered by Vailo',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
 /** Short WhatsApp invitation — link, password, and Vailo portal benefits (admin → guest). */
 export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload): string {
   const greeting = payload.guestName.trim() || 'there';
@@ -88,9 +145,7 @@ export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload
   const unit = payload.unitName.trim();
   const stay = payload.stayRangeLabel.trim();
   const url = payload.inviteUrl.trim();
-  const password = payload.accessPassword.trim();
-  const passwordIsPlaceholder =
-    !password || password === PREVIEW_PASSWORD_PLACEHOLDER || password.includes('•');
+  const passwordIsPlaceholder = invitePasswordIsPlaceholder(payload.accessPassword);
 
   const intro = payload.reinvite
     ? `Your guest portal access for ${property} has been updated.`
@@ -100,7 +155,7 @@ export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload
     `Hello ${greeting},`,
     '',
     intro,
-    'Local tips, your house guide, Live Like a Local & more — all in one place.',
+    GUEST_INVITE_PORTAL_BENEFITS,
     '',
     unit && stay ? `${unit} · ${stay}` : unit || stay ? unit || stay : '',
     '',
@@ -110,7 +165,7 @@ export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload
   ];
 
   if (!passwordIsPlaceholder) {
-    lines.push('Access password:', password, '', 'Enter it when prompted. Keep it private.');
+    lines.push('Access password:', payload.accessPassword.trim(), '', 'Enter it when prompted. Keep it private.');
   } else if (payload.reinvite) {
     lines.push('Your host will share your new access password separately.');
   } else {

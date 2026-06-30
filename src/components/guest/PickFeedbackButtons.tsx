@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react';
+import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { buildPickAnalyticsPayload } from '../../lib/pickAnalytics';
 import {
   applyPickFeedback,
   getLocalVote,
@@ -14,6 +16,7 @@ type Props = {
 };
 
 export default function PickFeedbackButtons({ propertyId, item, size = 'sm' }: Props) {
+  const { track } = useGuestAnalytics();
   const [vote, setVote] = useState<FeedbackVote>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
@@ -33,10 +36,16 @@ export default function PickFeedbackButtons({ propertyId, item, size = 'sm' }: P
     setError(false);
     try {
       await applyPickFeedback(propertyId, item, next);
+      const payload = buildPickAnalyticsPayload(item);
+      if (payload.gemId && next === 'up') {
+        track('live_like_local_pick_like', payload);
+      } else if (payload.gemId && next === 'down') {
+        track('live_like_local_pick_dislike', payload);
+      }
     } catch (err) {
       console.error('applyPickFeedback:', err);
       setError(true);
-      setVote(vote); // revert
+      setVote(vote);
     } finally {
       setSaving(false);
     }

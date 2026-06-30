@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
+  Bookmark,
   BookOpen,
   Bot,
   Menu,
@@ -63,7 +64,7 @@ const FEATURED_ICONS: Record<string, ReactNode> = {
   ShoppingBag: <ShoppingBag size={20} />,
 };
 
-type IconVariant = 'gold' | 'bot' | 'featured' | 'excursions';
+type IconVariant = 'gold' | 'bot' | 'featured' | 'excursions' | 'saved';
 
 const ICON_STYLES: Record<IconVariant, string> = {
   gold: 'bg-gradient-to-br from-[#C5A059] to-[#8a6d2e] text-white shadow-[0_2px_12px_rgba(197,160,89,0.35)]',
@@ -71,6 +72,8 @@ const ICON_STYLES: Record<IconVariant, string> = {
   featured: 'bg-[#F8FAFA] border border-gray-100 text-[#0B4F5C]',
   excursions:
     'bg-gradient-to-br from-[#0B4F5C] to-[#083A43] text-[#E8D5A8] shadow-[0_2px_12px_rgba(11,79,92,0.32)]',
+  saved:
+    'bg-gradient-to-br from-[#E8D5A8] to-[#C5A059] text-[#051F26] shadow-[0_2px_12px_rgba(197,160,89,0.28)]',
 };
 
 type Props = {
@@ -83,6 +86,8 @@ type Props = {
   featuredOnPortal: FeaturedKey[];
   onExcursions?: () => void;
   showExcursions?: boolean;
+  onSavedLocalGems: () => void;
+  savedLocalGemsMenuSub: string;
 };
 
 export default function GuestPortalNavMenu({
@@ -95,6 +100,8 @@ export default function GuestPortalNavMenu({
   featuredOnPortal,
   onExcursions,
   showExcursions = false,
+  onSavedLocalGems,
+  savedLocalGemsMenuSub,
 }: Props) {
   const close = () => onOpenChange(false);
 
@@ -160,6 +167,19 @@ export default function GuestPortalNavMenu({
                     onClick={() => {
                       close();
                       onAssistant();
+                    }}
+                  />
+                </li>
+
+                <li>
+                  <MenuRow
+                    label={t('savedLocalGemsTitle')}
+                    sub={savedLocalGemsMenuSub}
+                    icon={<Bookmark size={20} strokeWidth={2} />}
+                    iconVariant="saved"
+                    onClick={() => {
+                      close();
+                      onSavedLocalGems();
                     }}
                   />
                 </li>

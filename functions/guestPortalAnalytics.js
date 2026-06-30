@@ -152,6 +152,10 @@ function applyEventToSummary(
   accordionOpens,
   gemImpressions,
   excursionImpressions,
+  liveLikeLocalPickSaves,
+  liveLikeLocalPickUnsaves,
+  liveLikeLocalPickLikes,
+  liveLikeLocalPickDislikes,
   inc
 ) {
   switch (type) {
@@ -205,6 +209,38 @@ function applyEventToSummary(
       break;
     case "gem_description_expand":
       break;
+    case "live_like_local_pick_save": {
+      const pickId = String(payload.gemId || "").slice(0, 128);
+      if (pickId) {
+        const prev = liveLikeLocalPickSaves[pickId] || 0;
+        liveLikeLocalPickSaves[pickId] = prev + 1;
+        if (prev === 0) {
+          summaryUpdate.uniqueLiveLikeLocalPicksSaved = inc(1);
+        }
+      }
+      break;
+    }
+    case "live_like_local_pick_unsave": {
+      const pickId = String(payload.gemId || "").slice(0, 128);
+      if (pickId) {
+        liveLikeLocalPickUnsaves[pickId] = (liveLikeLocalPickUnsaves[pickId] || 0) + 1;
+      }
+      break;
+    }
+    case "live_like_local_pick_like": {
+      const pickId = String(payload.gemId || "").slice(0, 128);
+      if (pickId) {
+        liveLikeLocalPickLikes[pickId] = (liveLikeLocalPickLikes[pickId] || 0) + 1;
+      }
+      break;
+    }
+    case "live_like_local_pick_dislike": {
+      const pickId = String(payload.gemId || "").slice(0, 128);
+      if (pickId) {
+        liveLikeLocalPickDislikes[pickId] = (liveLikeLocalPickDislikes[pickId] || 0) + 1;
+      }
+      break;
+    }
     case "assistant_user_message":
     case "assistant_reply":
       summaryUpdate.assistantTurns = inc(1);
@@ -230,6 +266,7 @@ function initSummaryCounters(summaryUpdate, summarySnap) {
     summaryUpdate.assistantTurns = 0;
     summaryUpdate.aiExpertTurns = 0;
     summaryUpdate.uniqueGemsSeen = 0;
+    summaryUpdate.uniqueLiveLikeLocalPicksSaved = 0;
     summaryUpdate.excursionsOpens = 0;
     summaryUpdate.uniqueExcursionsSeen = 0;
     summaryUpdate.excursionDetailOpens = 0;
@@ -238,6 +275,10 @@ function initSummaryCounters(summaryUpdate, summarySnap) {
     summaryUpdate.accordionOpens = {};
     summaryUpdate.gemImpressions = {};
     summaryUpdate.excursionImpressions = {};
+    summaryUpdate.liveLikeLocalPickSaves = {};
+    summaryUpdate.liveLikeLocalPickUnsaves = {};
+    summaryUpdate.liveLikeLocalPickLikes = {};
+    summaryUpdate.liveLikeLocalPickDislikes = {};
   }
 }
 
@@ -389,6 +430,18 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
     const excursionImpressions = {
       ...(summarySnap.exists ? summarySnap.data().excursionImpressions || {} : {}),
     };
+    const liveLikeLocalPickSaves = {
+      ...(summarySnap.exists ? summarySnap.data().liveLikeLocalPickSaves || {} : {}),
+    };
+    const liveLikeLocalPickUnsaves = {
+      ...(summarySnap.exists ? summarySnap.data().liveLikeLocalPickUnsaves || {} : {}),
+    };
+    const liveLikeLocalPickLikes = {
+      ...(summarySnap.exists ? summarySnap.data().liveLikeLocalPickLikes || {} : {}),
+    };
+    const liveLikeLocalPickDislikes = {
+      ...(summarySnap.exists ? summarySnap.data().liveLikeLocalPickDislikes || {} : {}),
+    };
 
     const batch = firestore.batch();
     let logged = 0;
@@ -424,6 +477,10 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
         accordionOpens,
         gemImpressions,
         excursionImpressions,
+        liveLikeLocalPickSaves,
+        liveLikeLocalPickUnsaves,
+        liveLikeLocalPickLikes,
+        liveLikeLocalPickDislikes,
         inc
       );
     }
@@ -431,6 +488,10 @@ function registerGuestPortalAnalytics({ firestore, firebaseExports }) {
     summaryUpdate.accordionOpens = accordionOpens;
     summaryUpdate.gemImpressions = gemImpressions;
     summaryUpdate.excursionImpressions = excursionImpressions;
+    summaryUpdate.liveLikeLocalPickSaves = liveLikeLocalPickSaves;
+    summaryUpdate.liveLikeLocalPickUnsaves = liveLikeLocalPickUnsaves;
+    summaryUpdate.liveLikeLocalPickLikes = liveLikeLocalPickLikes;
+    summaryUpdate.liveLikeLocalPickDislikes = liveLikeLocalPickDislikes;
     batch.set(ctx.summaryRef, summaryUpdate, { merge: true });
     await batch.commit();
 

@@ -11,6 +11,7 @@ import GuestPropertyAssistant from '../../components/guest/GuestPropertyAssistan
 import PropertyEssentials from '../../components/guest/PropertyEssentials';
 import GuestLocalServices from '../../components/guest/GuestLocalServices';
 import GuestExcursions from '../../components/guest/GuestExcursions';
+import GuestSavedLocalGems from '../../components/guest/GuestSavedLocalGems';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
@@ -46,8 +47,10 @@ import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import { isGuestPortalAccessRequired, type GuestPortalSession } from '../../lib/guestAccess';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
-import { resolvePropertyTypeAreaContext } from '../../lib/listingAreaContext';
-import { loadGuestExcursionsForArea } from '../../lib/guestExcursions';
+import {
+  GuestAreaPrefetcher,
+  useGuestAreaData,
+} from '../../lib/guestAreaDataStore';
 import {
   formatGuestSlug,
   getTypePublicSlug,
@@ -55,6 +58,7 @@ import {
 } from '../../lib/guestPortalSlug';
 import { adminPath } from '../../lib/adminRoutes';
 import { gemCategoryPrimaries } from '../../lib/categoryLocale';
+import { useSavedLocalGems } from '../../hooks/useSavedLocalGems';
 
 const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
@@ -368,7 +372,7 @@ function GuestPortalPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant' | 'excursions'>('portal');
+  const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant' | 'excursions' | 'savedGems'>('portal');
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [propertyMapOpen, setPropertyMapOpen] = useState(false);
   const { locale, setLocale, t, localeOptions, contentPrimaryLocale } = useGuestLocale();
@@ -382,7 +386,7 @@ function GuestPortalPage({
   const [featuredPreviewKey, setFeaturedPreviewKey] = useState<FeaturedKey | null>(null);
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
-  const [excursionsAvailable, setExcursionsAvailable] = useState(false);
+  const { excursionsAvailable, excursionListings, excursionsLoading } = useGuestAreaData();
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
@@ -402,6 +406,14 @@ function GuestPortalPage({
     track('excursions_open');
     setActiveView('excursions');
   }, [track]);
+  const openSavedLocalGems = useCallback(() => setActiveView('savedGems'), []);
+  const { count: savedLocalGemsCount } = useSavedLocalGems(propertyId ?? undefined, typeId ?? undefined);
+  const savedLocalGemsMenuSub = useMemo(() => {
+    if (savedLocalGemsCount > 0) {
+      return guestUiTFormat(locale, 'savedLocalGemsMenuSub', { count: String(savedLocalGemsCount) });
+    }
+    return t('savedLocalGemsMenuSubEmpty');
+  }, [savedLocalGemsCount, locale, t]);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -535,36 +547,6 @@ function GuestPortalPage({
     }
   }, [property, typeData]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkExcursions() {
-      if (!typeData) {
-        setExcursionsAvailable(false);
-        return;
-      }
-
-      try {
-        const { ctx } = await resolvePropertyTypeAreaContext(typeData);
-        if (!ctx) {
-          if (!cancelled) setExcursionsAvailable(false);
-          return;
-        }
-
-        const items = await loadGuestExcursionsForArea(ctx);
-        if (!cancelled) setExcursionsAvailable(items.length > 0);
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) setExcursionsAvailable(false);
-      }
-    }
-
-    checkExcursions();
-    return () => {
-      cancelled = true;
-    };
-  }, [typeData?.country, typeData?.city]);
-
   const wifiName = typeData?.wifiName || guide?.wifiName || property?.wifiName;
   const wifiPassword = typeData?.wifiPassword || guide?.wifiPassword || property?.wifiPassword;
 
@@ -695,6 +677,15 @@ function GuestPortalPage({
   );
 
   const portalMain = (
+    <>
+      {typeData ? (
+        <GuestAreaPrefetcher
+          property={property}
+          propertyType={typeData}
+          propertyGems={gems}
+          propertyFeatures={features}
+        />
+      ) : null}
     <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
       <style>
         {`
@@ -770,6 +761,8 @@ function GuestPortalPage({
                       onAssistant={openAssistant}
                       showExcursions={excursionsAvailable}
                       onExcursions={openExcursions}
+                      onSavedLocalGems={openSavedLocalGems}
+                      savedLocalGemsMenuSub={savedLocalGemsMenuSub}
                     />
                     <div className="flex items-center gap-2">
                       <GuestLanguageMenu
@@ -1033,8 +1026,20 @@ function GuestPortalPage({
             propertyId={propertyId}
             typeId={typeId}
             propertyType={typeData}
+            prefetchedListings={excursionListings}
+            prefetchedLoading={excursionsLoading}
             onClose={() => setActiveView('portal')}
             onOverlayOpenChange={setExcursionOverlayOpen}
+          />
+        ) : activeView === 'savedGems' && propertyId && typeId ? (
+          <GuestSavedLocalGems
+            propertyId={propertyId}
+            typeId={typeId}
+            mapAreaHint={mapAreaHint}
+            propertyCoords={
+              hasPropertyCoords ? { lat: propertyLat!, lng: propertyLng! } : null
+            }
+            onClose={() => setActiveView('portal')}
           />
         ) : (
           <GuestPropertyAssistant
@@ -1103,6 +1108,7 @@ function GuestPortalPage({
         />
       )}
     </div>
+    </>
   );
 
   const portalContent =

@@ -42,6 +42,9 @@ function formatBookingDateRange(start, end) {
   return `${fmt(start)} → ${fmt(end)}`;
 }
 
+const GUEST_INVITE_PORTAL_BENEFITS =
+  "Inside you'll find your house guide, local tips, Live Like a Local recommendations, and curated restaurants and activities — everything for your stay in one place on your phone.";
+
 function resolveGuestInviteLogoUrl(override) {
   const trimmed = String(override || "").trim();
   if (trimmed) return trimmed;
@@ -78,6 +81,8 @@ function buildGuestInviteEmailText(payload) {
     `Hello ${greeting},`,
     "",
     intro,
+    "",
+    GUEST_INVITE_PORTAL_BENEFITS,
     "",
     unit ? `Accommodation: ${unit}` : "",
     payload.stayRangeLabel ? `Stay: ${payload.stayRangeLabel}` : "",

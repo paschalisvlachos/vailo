@@ -1,9 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Car, Eye } from 'lucide-react';
-import MapLinkButtons from './MapLinkButtons';
-import ExpandableDescription from './ExpandableDescription';
-import PickFeedbackButtons from './PickFeedbackButtons';
-import PlanImage from './PlanImage';
+import LocalPickCard from './LocalPickCard';
 
 const CARD_WIDTH = 288;
 const CARD_GAP = 16;
@@ -35,6 +31,7 @@ type CategoryPickCarouselProps = {
   unverifiedMentions?: UnverifiedMention[];
   mapAreaHint: string;
   propertyId?: string;
+  typeId?: string;
   viewMapLabel?: string;
   goMapLabel?: string;
   emptyMessage?: string;
@@ -47,6 +44,7 @@ export default function CategoryPickCarousel({
   unverifiedMentions = [],
   mapAreaHint,
   propertyId,
+  typeId,
   viewMapLabel = 'View',
   goMapLabel = 'Go',
   emptyMessage,
@@ -112,81 +110,17 @@ export default function CategoryPickCarousel({
         className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-1 max-w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item, i) => (
-          <article
+          <LocalPickCard
             key={`${item.title}-${i}`}
-            className="w-[min(288px,calc(100vw-3rem))] shrink-0 snap-start snap-always bg-white/8 border border-white/10 rounded-2xl overflow-hidden flex flex-col"
-          >
-            <div className="relative">
-              <PlanImage
-                src={item.photoUrl}
-                alt={item.title}
-                className="w-full h-40 object-cover bg-vailo-teal-hover/50"
-                fallbackClassName="w-full h-40"
-              />
-              {item.beyondRadius && (
-                <span className="guest-badge absolute top-3 left-3 bg-amber-500/95 text-white shadow-sm">
-                  Extended range
-                </span>
-              )}
-              {item.previouslyShown && (
-                <span className="guest-badge absolute top-3 right-3 bg-vailo-teal/90 text-white shadow-sm border border-white/15 flex items-center gap-1">
-                  <Eye size={11} strokeWidth={2.2} /> Seen before
-                </span>
-              )}
-            </div>
-
-            <div className="p-4 flex flex-col flex-1">
-              <div className="flex flex-wrap gap-1.5 items-start mb-2">
-                <h5 className="font-semibold text-white flex-1 min-w-0 leading-snug">
-                  {item.title}
-                </h5>
-                {item.source === 'database' && (
-                  <span className="guest-badge bg-vailo-gold/20 text-vailo-gold border border-vailo-gold/25 shrink-0">
-                    Vailo pick
-                  </span>
-                )}
-              </div>
-
-              <ExpandableDescription
-                text={item.description}
-                lines={3}
-                className="mb-3 flex-1"
-                bodyClassName="text-sm text-white/70 leading-relaxed"
-                toggleClassName="mt-1.5 text-sm font-semibold normal-case tracking-wide text-vailo-gold hover:text-white transition-colors min-h-[44px]"
-              />
-
-              <p
-                className={`text-sm font-semibold flex items-center mb-3 ${
-                  item.beyondRadius ? 'text-amber-300' : 'text-white/65'
-                }`}
-              >
-                <Car size={12} className="mr-1.5 shrink-0" strokeWidth={2} />
-                {item.estimatedDistance}
-              </p>
-
-              <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-white/10">
-                <PickFeedbackButtons
-                  propertyId={propertyId}
-                  item={{
-                    title: item.title,
-                    source: item.source,
-                    googlePlaceId: item.googlePlaceId,
-                    googleMapsUrl: item.googleMapsUrl,
-                    latitude: item.latitude,
-                    longitude: item.longitude,
-                    description: item.description,
-                    category: categoryName,
-                  }}
-                />
-                <MapLinkButtons
-                  item={item}
-                  mapAreaHint={mapAreaHint}
-                  viewLabel={viewMapLabel}
-                  goLabel={goMapLabel}
-                />
-              </div>
-            </div>
-          </article>
+            item={{ ...item, itemType: 'pick' }}
+            categoryName={categoryName}
+            mapAreaHint={mapAreaHint}
+            propertyId={propertyId}
+            typeId={typeId}
+            viewMapLabel={viewMapLabel}
+            goMapLabel={goMapLabel}
+            mode="results"
+          />
         ))}
       </div>
 

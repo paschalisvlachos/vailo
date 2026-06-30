@@ -17,7 +17,13 @@ export type GuestExcursionListing = {
   excursion: Excursion;
 };
 
-export async function loadGuestExcursionsForArea(
+const excursionListingsCache = new Map<string, Promise<GuestExcursionListing[]>>();
+
+function excursionCacheKey(ctx: ListingAreaContext): string {
+  return `${ctx.country}::${ctx.areaId}`;
+}
+
+async function loadGuestExcursionsForAreaUncached(
   ctx: ListingAreaContext
 ): Promise<GuestExcursionListing[]> {
   const providersSnap = await getDocs(
@@ -54,4 +60,16 @@ export async function loadGuestExcursionsForArea(
   );
 
   return listings.sort((a, b) => a.excursion.title.localeCompare(b.excursion.title));
+}
+
+export async function loadGuestExcursionsForArea(
+  ctx: ListingAreaContext
+): Promise<GuestExcursionListing[]> {
+  const cacheKey = excursionCacheKey(ctx);
+  let pending = excursionListingsCache.get(cacheKey);
+  if (!pending) {
+    pending = loadGuestExcursionsForAreaUncached(ctx);
+    excursionListingsCache.set(cacheKey, pending);
+  }
+  return pending;
 }

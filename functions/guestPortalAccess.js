@@ -404,6 +404,70 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
     }
   );
 
+  /** Generate portal link + password for clipboard sharing (no email). */
+  exp.prepareGuestInviteCopy = onCall({ region: "us-central1" }, async (request) => {
+    const { propertyId, typeId, bookingId } = request.data || {};
+    if (!propertyId || !typeId || !bookingId) {
+      throw new HttpsError("invalid-argument", "Missing booking reference.");
+    }
+
+    await requirePropertyGuestInviteAccess(request, firestore, propertyId);
+
+    const propSnap = await firestore.collection("properties").doc(propertyId).get();
+    if (!propSnap.exists) throw new HttpsError("not-found", "Property not found.");
+    const property = propSnap.data();
+
+    const { typeRef, bookings, typeData } = await findBookingByInviteToken(
+      firestore,
+      propertyId,
+      typeId,
+      null
+    );
+    const target = bookings.find((b) => b.id === bookingId);
+    if (!target) throw new HttpsError("not-found", "Booking not found.");
+    if (!bookingGuestComplete(target)) {
+      throw new HttpsError("failed-precondition", "Complete guest details first.");
+    }
+
+    const propSlug = formatGuestSlug(property.urlSlug);
+    const unitSlug = getTypePublicSlug(typeData || {});
+    if (!propSlug || !unitSlug) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Property and listing need public URL slugs before copying an invitation."
+      );
+    }
+
+    const token = target.inviteToken || generateToken();
+    const password = generatePassword();
+    const passwordHash = hashPassword(password);
+    const accessUntil =
+      target.portalAccessUntil || portalAccessUntilFromEnd(target.end);
+    const origin = getGuestPortalPublicOrigin();
+    const inviteUrl = buildInvitePortalUrl(
+      origin,
+      propSlug,
+      unitSlug,
+      token,
+      typeId,
+      target.guestLocale
+    );
+
+    const updated = patchBookingInList(bookings, bookingId, {
+      inviteToken: token,
+      invitePasswordHash: passwordHash,
+      portalAccessUntil: accessUntil,
+      portalAccessRevokedAt: null,
+    });
+    await persistBookings(typeRef, updated);
+
+    return {
+      inviteToken: token,
+      invitePassword: password,
+      inviteUrl,
+    };
+  });
+
   exp.verifyGuestInvite = onCall(async (request) => {
     const { propertyId, typeId, inviteToken, password, existingSessionId } =
       request.data || {};

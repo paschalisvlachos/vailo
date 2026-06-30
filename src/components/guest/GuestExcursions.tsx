@@ -36,6 +36,8 @@ type Props = {
   propertyId?: string | null;
   typeId?: string | null;
   propertyType?: { country?: string; city?: string };
+  prefetchedListings?: GuestExcursionListing[];
+  prefetchedLoading?: boolean;
   onClose: () => void;
   onOverlayOpenChange?: (open: boolean) => void;
 };
@@ -319,12 +321,19 @@ export default function GuestExcursions({
   propertyId,
   typeId,
   propertyType,
+  prefetchedListings,
+  prefetchedLoading,
   onClose,
   onOverlayOpenChange,
 }: Props) {
   const { track } = useGuestAnalytics();
-  const [listings, setListings] = useState<GuestExcursionListing[]>([]);
-  const [loading, setLoading] = useState(true);
+  const usePrefetch = prefetchedListings !== undefined;
+  const [listings, setListings] = useState<GuestExcursionListing[]>(
+    () => prefetchedListings ?? []
+  );
+  const [loading, setLoading] = useState(() =>
+    usePrefetch ? Boolean(prefetchedLoading) : true
+  );
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [selected, setSelected] = useState<GuestExcursionListing | null>(null);
   const [bookingListing, setBookingListing] = useState<GuestExcursionListing | null>(null);
@@ -336,6 +345,12 @@ export default function GuestExcursions({
   }, [overlayOpen, onOverlayOpenChange]);
 
   useEffect(() => {
+    if (usePrefetch) {
+      setListings(prefetchedListings ?? []);
+      setLoading(Boolean(prefetchedLoading));
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
@@ -361,7 +376,13 @@ export default function GuestExcursions({
     return () => {
       cancelled = true;
     };
-  }, [propertyType?.country, propertyType?.city]);
+  }, [
+    propertyType?.country,
+    propertyType?.city,
+    usePrefetch,
+    prefetchedListings,
+    prefetchedLoading,
+  ]);
 
   const categories = useMemo(
     () => [

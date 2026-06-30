@@ -20,6 +20,8 @@ import Reservations from "./pages/admin/properties/Reservations";
 import HouseGuide from "./pages/admin/properties/HouseGuide";
 import Features from "./pages/admin/properties/Features";
 import Billing from "./pages/admin/Billing";
+import ExpensesPage from "./pages/admin/ExpensesPage";
+import ExpenseFormPage from "./pages/admin/ExpenseFormPage";
 import LegalDocuments from "./pages/admin/LegalDocuments";
 import Settings from "./pages/admin/Settings";
 import ChangePasswordPage from "./pages/admin/ChangePasswordPage";
@@ -195,6 +197,9 @@ export default function App() {
         <Route path={adminPath('/add-owner')} element={<AdminRoute><AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard></AdminRoute>} />
         <Route path={adminPath('/owners/:id/edit')} element={<AdminRoute><AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard></AdminRoute>} />
         <Route path={adminPath('/billing')} element={<AdminRoute><PlatformAdminOnly><Billing /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/expenses')} element={<AdminRoute><PlatformAdminOnly><ExpensesPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/expenses/add')} element={<AdminRoute><PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/expenses/:id/edit')} element={<AdminRoute><PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/legal')} element={<AdminRoute><PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/settings')} element={<AdminRoute><PlatformAdminOnly><Settings /></PlatformAdminOnly></AdminRoute>} />
         <Route

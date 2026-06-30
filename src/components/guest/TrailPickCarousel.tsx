@@ -3,6 +3,7 @@ import { Eye, Star } from 'lucide-react';
 import AllTrailsTrailEmbed from './AllTrailsTrailEmbed';
 import MapLinkButtons from './MapLinkButtons';
 import PickFeedbackButtons from './PickFeedbackButtons';
+import PickSaveButton from './PickSaveButton';
 import PlanImage from './PlanImage';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import {
@@ -20,6 +21,7 @@ type Props = {
   categoryName: string;
   items: TrailPickItem[];
   propertyId?: string;
+  typeId?: string;
   propertyCoords?: { lat: number; lng: number } | null;
   viewMapLabel?: string;
   goMapLabel?: string;
@@ -56,6 +58,7 @@ function TrailCard({
   embedMounted,
   onToggleExpand,
   propertyId,
+  typeId,
   categoryName,
   propertyCoords,
   viewMapLabel,
@@ -67,6 +70,7 @@ function TrailCard({
   embedMounted: boolean;
   onToggleExpand: () => void;
   propertyId?: string;
+  typeId?: string;
   categoryName: string;
   propertyCoords?: { lat: number; lng: number } | null;
   viewMapLabel: string;
@@ -183,13 +187,32 @@ function TrailCard({
           </button>
         )}
 
-        <p
-          className={`text-sm font-semibold flex items-center mb-3 ${
+        <div
+          className={`text-sm font-semibold flex items-center justify-between gap-2 mb-3 ${
             item.beyondRadius ? 'text-amber-300' : 'text-white/65'
           }`}
         >
-          {item.estimatedDistance}
-        </p>
+          <span className="min-w-0">{item.estimatedDistance}</span>
+          <PickSaveButton
+            variant="results"
+            propertyId={propertyId}
+            typeId={typeId}
+            item={{
+              title: item.title,
+              description: item.description,
+              category: categoryName,
+              source: item.source,
+              photoUrl: item.photoUrl,
+              latitude: item.latitude,
+              longitude: item.longitude,
+              estimatedDistance: item.estimatedDistance,
+              beyondRadius: item.beyondRadius,
+              itemType: 'trail',
+              allTrailsUrl: item.allTrailsUrl,
+              allTrailsId: item.allTrailsId,
+            }}
+          />
+        </div>
 
         <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-white/10">
           <PickFeedbackButtons
@@ -227,6 +250,7 @@ export default function TrailPickCarousel({
   categoryName,
   items,
   propertyId,
+  typeId,
   propertyCoords,
   viewMapLabel = 'View',
   goMapLabel = 'Go',
@@ -321,6 +345,7 @@ export default function TrailPickCarousel({
               }}
               item={item}
               propertyId={propertyId}
+              typeId={typeId}
               categoryName={categoryName}
               propertyCoords={propertyCoords}
               viewMapLabel={viewMapLabel}

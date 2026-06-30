@@ -46,6 +46,7 @@ function summaryHasActivity(row: {
   assistantTurns: number;
   aiExpertTurns: number;
   uniqueGemsSeen: number;
+  uniqueLiveLikeLocalPicksSaved?: number;
   excursionsOpens: number;
   uniqueExcursionsSeen: number;
   excursionDetailOpens: number;
@@ -60,6 +61,7 @@ function summaryHasActivity(row: {
     row.assistantTurns > 0 ||
     row.aiExpertTurns > 0 ||
     row.uniqueGemsSeen > 0 ||
+    (row.uniqueLiveLikeLocalPicksSaved ?? 0) > 0 ||
     row.excursionsOpens > 0 ||
     row.uniqueExcursionsSeen > 0 ||
     row.excursionDetailOpens > 0 ||
@@ -85,8 +87,10 @@ type Row = {
   assistantTurns: number;
   aiExpertTurns: number;
   uniqueGemsSeen: number;
+  uniqueLiveLikeLocalPicksSaved?: number;
   accordionOpens: Record<string, number>;
   gemImpressions: Record<string, number>;
+  liveLikeLocalPickSaves?: Record<string, number>;
   excursionsOpens: number;
   uniqueExcursionsSeen: number;
   excursionDetailOpens: number;
@@ -303,6 +307,11 @@ export default function PropertyAnalytics() {
 
   const topGems = (row: Row) =>
     Object.entries(row.gemImpressions || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+  const topSavedPicks = (row: Row) =>
+    Object.entries(row.liveLikeLocalPickSaves || {})
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
@@ -610,6 +619,21 @@ export default function PropertyAnalytics() {
                     {topGems(selected).map(([gemId, count]) => (
                       <li key={gemId} className="font-mono text-xs">
                         {gemId.slice(0, 12)}… — {count}×
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {topSavedPicks(selected).length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-2">
+                    <Sparkles size={14} /> Live like a local saves
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    {topSavedPicks(selected).map(([pickId, count]) => (
+                      <li key={pickId} className="font-mono text-xs">
+                        {pickId.slice(0, 12)}… — {count}×
                       </li>
                     ))}
                   </ul>

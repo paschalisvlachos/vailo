@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { areaNameToId } from '../../lib/areaUtils';
-import { resolvePropertyTypeAreaContext, type ListingAreaContext } from '../../lib/listingAreaContext';
+import { useGuestAreaData } from '../../lib/guestAreaDataStore';
 import { getGenerativeModel } from "firebase/ai";
-import { ai, db } from '../../lib/firebase';
+import { ai } from '../../lib/firebase';
 import {
   resolveCustomLocation,
   enrichPlanWithMapLinks,
@@ -23,12 +22,8 @@ import {
   normalizeFlexiblePicksPlan,
   trimFlexiblePicksToDisplayCap,
 } from '../../lib/flexiblePicks';
-import {
-  isGuestVerifiedDiscoveredPlace,
-  persistUnverifiedAiMentions,
-} from '../../lib/guestDiscoveredPlaces';
+import { persistUnverifiedAiMentions } from '../../lib/guestDiscoveredPlaces';
 import { buildWizardDistanceTiers } from '../../lib/categoryCoverageDistances';
-import { mergeCuratedFeatures, mergeCuratedGems } from '../../lib/mergeCuratedContent';
 import {
   getRecentlyShownKeys,
   markItemsShown,
@@ -44,14 +39,12 @@ import TrailPickCarousel from '../../components/guest/TrailPickCarousel';
 import MapLinkButtons from '../../components/guest/MapLinkButtons';
 import {
   buildHikingTrailCategories,
-  filterGuestEligibleTrails,
-  HIKING_TRAILS_CATEGORY_PRIMARY,
   isHikingTrailsCategory,
-  type LocalTrailRecord,
 } from '../../lib/localTrailsGuest';
 import ExpandableDescription from '../../components/guest/ExpandableDescription';
 import PlanImage from '../../components/guest/PlanImage';
 import PickFeedbackButtons from '../../components/guest/PickFeedbackButtons';
+import PickSaveButton from '../../components/guest/PickSaveButton';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestAiLanguageBlock } from '../../lib/guestAiLanguage';
@@ -59,16 +52,11 @@ import type { GuestLocale } from '../../lib/guestLocale';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { usePropertyContentLocaleSettings } from '../../hooks/usePropertyContentLocaleSettings';
 import {
-  categoryPrimaryName,
   gemBelongsToCategory,
   normalizeCategorySelectionList,
-  resolveCategoryLabel,
 } from '../../lib/categoryLocale';
 import {
   buildCategoryKnowledgePromptSection,
-  categoryEligibleForLiveLikeLocal,
-  collectCategoryKnowledgeByPrimary,
-  collectExcludedLiveLikeLocalPrimaries,
   filterPrimariesForLiveLikeLocal,
   getCategoryKnowledgeMode,
   stripExcludedCategoriesFromPlan,
@@ -94,7 +82,6 @@ import { runSilentAiPlaceDiscovery } from '../../lib/silentAiDiscovery';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Compass, Heart, Eye } from 'lucide-react';
 
 type GuestLocaleOption = { code: string; label: string; nativeLabel: string };
-type GemCategoryOption = { primary: string; label: string };
 
 const WIZARD_STEP_KEYS = ['LOCATION', 'CATEGORIES', 'DISTANCE', 'TIME'] as const;
 
@@ -142,9 +129,6 @@ interface Message {
 type Step = 'LOCATION' | 'CATEGORIES' | 'DISTANCE' | 'TIME' | 'DONE';
 type InteractionMode = 'wizard' | 'chat';
 
-type AreaConfigIssue = 'missing' | 'invalid-master' | null;
-
-/** Guest wizard + chat plan generation (swap to compare quality/latency). */
 const AI_EXPERT_GEMINI_MODEL = 'gemini-3.5-flash';
 
 /**
@@ -449,14 +433,30 @@ export default function AiExpertView({
   onClose,
   property,
   propertyType,
-  features,
-  gems,
+  features: _features,
+  gems: _gems,
   locale,
   setLocale,
   localeOptions,
 }: AiExpertViewProps) {
   const { track } = useGuestAnalytics();
   const { t } = useGuestLocale();
+  const typeId = propertyType?.id as string | undefined;
+  const {
+    listingAreaCtx,
+    areaConfigIssue,
+    invalidMasterAreaRaw,
+    categoriesLoading,
+    availableCategories,
+    excludedLiveLikeLocalPrimaries,
+    categoryKnowledgeByPrimary,
+    categoryCatalogDocs,
+    discoveredPlaces,
+    mergedGems,
+    mergedFeatures,
+    verifiedDiscoveredPlaces,
+    guestEligibleTrails,
+  } = useGuestAreaData();
 
   const logWizardMessage = useCallback(
     (
@@ -589,42 +589,13 @@ export default function AiExpertView({
   const prevConciergeLenRef = useRef(0);
   const [timeChoiceMode, setTimeChoiceMode] = useState<'choose' | 'timeline'>('choose');
 
-  const [availableCategories, setAvailableCategories] = useState<GemCategoryOption[]>([]);
-  const [excludedLiveLikeLocalPrimaries, setExcludedLiveLikeLocalPrimaries] = useState<Set<string>>(
-    () => new Set()
-  );
-  const [categoryKnowledgeByPrimary, setCategoryKnowledgeByPrimary] = useState<
-    Record<string, string>
-  >({});
-  const [categoryCatalogDocs, setCategoryCatalogDocs] = useState<Record<string, unknown>[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [listingAreaCtx, setListingAreaCtx] = useState<ListingAreaContext | null>(null);
-  const [areaConfigIssue, setAreaConfigIssue] = useState<AreaConfigIssue>(null);
-  const [invalidMasterAreaRaw, setInvalidMasterAreaRaw] = useState('');
   const [dynamicDistances, setDynamicDistances] = useState<string[]>([]);
   const [distanceNearestByCategory, setDistanceNearestByCategory] = useState<
     Record<string, number | null>
   >({});
   
-  // 🌟 NEW: State to hold the dynamically fetched Village/Municipality name
+  // State to hold the dynamically fetched Village/Municipality name
   const [richLocationName, setRichLocationName] = useState<string>('');
-  const [discoveredPlaces, setDiscoveredPlaces] = useState<any[]>([]);
-  const [areaGems, setAreaGems] = useState<any[]>([]);
-  const [areaFeatures, setAreaFeatures] = useState<any[]>([]);
-  const [localTrails, setLocalTrails] = useState<LocalTrailRecord[]>([]);
-  const mergedGems = useMemo(
-    () => mergeCuratedGems(gems, areaGems),
-    [gems, areaGems]
-  );
-  const mergedFeatures = useMemo(
-    () => mergeCuratedFeatures(features, areaFeatures),
-    [features, areaFeatures]
-  );
-  const verifiedDiscoveredPlaces = useMemo(
-    () => discoveredPlaces.filter(isGuestVerifiedDiscoveredPlace),
-    [discoveredPlaces]
-  );
-  const guestEligibleTrails = useMemo(() => filterGuestEligibleTrails(localTrails), [localTrails]);
   const propertyCoords = useMemo(
     () => extractCoords(property) || extractCoords(propertyType),
     [property, propertyType]
@@ -806,74 +777,6 @@ export default function AiExpertView({
       },
     ]);
 
-    const fetchCategories = async () => {
-      setCategoriesLoading(true);
-      setAreaConfigIssue(null);
-      setInvalidMasterAreaRaw('');
-
-      const { ctx: areaCtx, issue, cityRaw } = await resolvePropertyTypeAreaContext(propertyType);
-      setListingAreaCtx(areaCtx);
-      setAreaConfigIssue(issue);
-      setInvalidMasterAreaRaw(cityRaw);
-
-      if (!areaCtx?.areaId) {
-        setAvailableCategories([]);
-        setExcludedLiveLikeLocalPrimaries(new Set());
-        setCategoryKnowledgeByPrimary({});
-        setCategoryCatalogDocs([]);
-        setCategoriesLoading(false);
-        return;
-      }
-
-      try {
-        const gemsCatSnap = await getDocs(
-          collection(
-            db,
-            'countries',
-            areaCtx.country,
-            'areas',
-            areaCtx.areaId,
-            'localGemsCategories'
-          )
-        );
-        const categoryDocs = gemsCatSnap.docs.map((d) => ({
-          data: d.data() as Record<string, unknown>,
-        }));
-        setCategoryCatalogDocs(categoryDocs.map((d) => d.data));
-        setExcludedLiveLikeLocalPrimaries(
-          collectExcludedLiveLikeLocalPrimaries(categoryDocs, contentSettings.primaryLocale)
-        );
-        setCategoryKnowledgeByPrimary(
-          collectCategoryKnowledgeByPrimary(categoryDocs, contentSettings.primaryLocale)
-        );
-        const byPrimary = new Map<string, GemCategoryOption>();
-        for (const { data } of categoryDocs) {
-          if (!categoryEligibleForLiveLikeLocal(data, contentSettings.primaryLocale)) continue;
-          const primary = categoryPrimaryName(data, contentSettings.primaryLocale).trim();
-          const label =
-            resolveCategoryLabel(
-              data,
-              locale,
-              contentSettings.primaryLocale,
-              contentSettings.reviewedLocales
-            ).trim() || primary;
-          if (!byPrimary.has(primary)) byPrimary.set(primary, { primary, label });
-        }
-        setAvailableCategories(
-          Array.from(byPrimary.values()).sort((a, b) => a.label.localeCompare(b.label))
-        );
-      } catch (error) {
-        console.error('Failed to fetch local gem categories:', error);
-        setAvailableCategories([]);
-        setExcludedLiveLikeLocalPrimaries(new Set());
-        setCategoryKnowledgeByPrimary({});
-        setCategoryCatalogDocs([]);
-      } finally {
-        setCategoriesLoading(false);
-      }
-    };
-
-    // 🌟 NEW: Zero-Cost Reverse Geocoding via OpenStreetMap
     const fetchRichLocation = async () => {
       const coords = extractCoords(property) || extractCoords(propertyType);
       if (!coords) return;
@@ -885,7 +788,6 @@ export default function AiExpertView({
         const data = await res.json();
         
         if (data && data.address) {
-          // Extracts "Maza", "Apokoronas", etc.
           const village = data.address.village || data.address.town || data.address.city_district || '';
           const municipality = data.address.municipality || data.address.county || '';
           
@@ -897,72 +799,8 @@ export default function AiExpertView({
       }
     };
 
-    fetchCategories();
     fetchRichLocation();
-  }, [property, propertyType, locale, contentSettings.primaryLocale, contentSettings.reviewedLocales]);
-
-  useEffect(() => {
-    if (!listingAreaCtx?.areaId) return;
-
-    const areaBase = [
-      'countries',
-      listingAreaCtx.country,
-      'areas',
-      listingAreaCtx.areaId,
-    ] as const;
-
-    const unsubs = [
-      onSnapshot(collection(db, ...areaBase, 'discoveredPlaces'), (snapshot) => {
-        const places = snapshot.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((p: any) => p.status !== 'hidden');
-        setDiscoveredPlaces(places);
-      }),
-      onSnapshot(collection(db, ...areaBase, 'localGems'), (snapshot) => {
-        setAreaGems(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }),
-      onSnapshot(collection(db, ...areaBase, 'areaFeatures'), (snapshot) => {
-        setAreaFeatures(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      }),
-    ];
-
-    return () => unsubs.forEach((u) => u());
-  }, [listingAreaCtx]);
-
-  useEffect(() => {
-    if (!listingAreaCtx?.areaId) {
-      setLocalTrails([]);
-      return;
-    }
-
-    const trailsRef = collection(
-      db,
-      'countries',
-      listingAreaCtx.country,
-      'areas',
-      listingAreaCtx.areaId,
-      'localTrails'
-    );
-    const unsubscribe = onSnapshot(trailsRef, (snapshot) => {
-      const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
-      setLocalTrails(rows);
-    });
-    return () => unsubscribe();
-  }, [listingAreaCtx]);
-
-  useEffect(() => {
-    if (guestEligibleTrails.length === 0) return;
-    setAvailableCategories((prev) => {
-      const hasHiking = prev.some(
-        (c) => isHikingTrailsCategory(c.primary) || isHikingTrailsCategory(c.label)
-      );
-      if (hasHiking) return prev;
-      const label = t('aiExpertHikingTrailsCategory');
-      return [...prev, { primary: HIKING_TRAILS_CATEGORY_PRIMARY, label }].sort((a, b) =>
-        a.label.localeCompare(b.label)
-      );
-    });
-  }, [guestEligibleTrails.length, t]);
+  }, [property, propertyType]);
 
   const resolveCategoryDisplayLabel = useCallback(
     (primary: string) =>
@@ -2058,9 +1896,11 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     ]);
 
     setStep('DONE');
-    setIsThinking(true);
-    setCuratingStepIndex(0);
-    setThinkingLabel(CURATING_STEP_KEYS[0]);
+    if (timeFrameStr) {
+      setIsThinking(true);
+      setCuratingStepIndex(0);
+      setThinkingLabel(CURATING_STEP_KEYS[0]);
+    }
 
     try {
       await runPlanGeneration(timeFrameStr, updatedPrefs);
@@ -2318,6 +2158,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                     categoryName={cat.categoryName}
                     items={cat.items || []}
                     propertyId={property?.id}
+                    typeId={typeId}
                     propertyCoords={propertyCoords}
                     viewMapLabel={t('aiExpertView')}
                     goMapLabel={t('aiExpertGo')}
@@ -2368,6 +2209,35 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                           toggleClassName={AI_EXPERT_DESC_TOGGLE}
                         />
 
+                        {!(item.isProperty || item.source === 'property') && item.estimatedDistance && (
+                          <div
+                            className={`text-sm font-semibold flex items-center justify-between gap-2 mb-4 ${
+                              item.beyondRadius ? 'text-amber-300' : 'text-white/65'
+                            }`}
+                          >
+                            <span className="min-w-0">{item.estimatedDistance}</span>
+                            <PickSaveButton
+                              variant="results"
+                              propertyId={property?.id}
+                              typeId={typeId}
+                              item={{
+                                title: item.title,
+                                description: item.description,
+                                category: 'Timeline',
+                                source: item.source,
+                                photoUrl: item.photoUrl,
+                                googleMapsUrl: item.googleMapsUrl,
+                                googlePlaceId: item.googlePlaceId,
+                                latitude: item.latitude,
+                                longitude: item.longitude,
+                                estimatedDistance: item.estimatedDistance,
+                                beyondRadius: item.beyondRadius,
+                                itemType: 'pick',
+                              }}
+                            />
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between gap-2 pt-4 border-t border-white/10">
                           {!(item.isProperty || item.source === 'property') && (
                           <PickFeedbackButtons
@@ -2380,6 +2250,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                               latitude: item.latitude,
                               longitude: item.longitude,
                               description: item.description,
+                              category: 'Timeline',
                             }}
                           />
                           )}
@@ -2412,6 +2283,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                       categoryName={cat.categoryName}
                       items={cat.items || []}
                       propertyId={property?.id}
+                      typeId={typeId}
                       propertyCoords={propertyCoords}
                       viewMapLabel={t('aiExpertView')}
                       goMapLabel={t('aiExpertGo')}
@@ -2424,6 +2296,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                       unverifiedMentions={cat.unverifiedMentions}
                       mapAreaHint={mapAreaHint}
                       propertyId={property?.id}
+                      typeId={typeId}
                       viewMapLabel={t('aiExpertView')}
                       goMapLabel={t('aiExpertGo')}
                       rangeSuffix={
@@ -2626,6 +2499,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                       items={msg.curatedPicks.items}
                       mapAreaHint={mapAreaHint}
                       propertyId={property?.id}
+                      typeId={typeId}
                       viewMapLabel={t('aiExpertView')}
                       goMapLabel={t('aiExpertGo')}
                     />

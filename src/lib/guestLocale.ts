@@ -62,7 +62,20 @@ export type GuestLocaleKey =
   | 'houseGuideMenuSubEmpty'
   | 'houseGuideEmpty'
   | 'assistantProperty'
-  | 'assistantPropertySub';
+  | 'assistantPropertySub'
+  | 'savedLocalGemsTitle'
+  | 'savedLocalGemsMenuSubEmpty'
+  | 'savedLocalGemSavedToast'
+  | 'savedLocalGemRemoved'
+  | 'savedLocalGemSaveAria'
+  | 'savedLocalGemUnsaveAria'
+  | 'savedLocalGemsDeviceNote'
+  | 'savedLocalGemsEmptyTitle'
+  | 'savedLocalGemsEmptySub'
+  | 'savedLocalGemSaveLabel'
+  | 'savedLocalGemSavedLabel'
+  | 'savedLocalGemRemoveLabel'
+  | 'savedLocalGemsNoMatch';
 
 export { BUILTIN_PORTAL_MESSAGES } from './guestPortalBuiltin';
 

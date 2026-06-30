@@ -18,7 +18,11 @@ export type GuestAnalyticsEventType =
   | 'excursion_impression'
   | 'excursion_detail_open'
   | 'excursion_booking_start'
-  | 'excursion_booking_complete';
+  | 'excursion_booking_complete'
+  | 'live_like_local_pick_save'
+  | 'live_like_local_pick_unsave'
+  | 'live_like_local_pick_like'
+  | 'live_like_local_pick_dislike';
 
 export type GuestAnalyticsPayload = {
   text?: string;
@@ -80,6 +84,7 @@ export type GuestStayAnalyticsSummary = {
   assistantTurns: number;
   aiExpertTurns: number;
   uniqueGemsSeen: number;
+  uniqueLiveLikeLocalPicksSaved: number;
   excursionsOpens: number;
   uniqueExcursionsSeen: number;
   excursionDetailOpens: number;
@@ -88,6 +93,10 @@ export type GuestStayAnalyticsSummary = {
   accordionOpens: Record<string, number>;
   gemImpressions: Record<string, number>;
   excursionImpressions: Record<string, number>;
+  liveLikeLocalPickSaves: Record<string, number>;
+  liveLikeLocalPickUnsaves: Record<string, number>;
+  liveLikeLocalPickLikes: Record<string, number>;
+  liveLikeLocalPickDislikes: Record<string, number>;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;
@@ -103,6 +112,7 @@ export type GuestAnonymousAnalyticsSummary = {
   assistantTurns: number;
   aiExpertTurns: number;
   uniqueGemsSeen: number;
+  uniqueLiveLikeLocalPicksSaved: number;
   excursionsOpens: number;
   uniqueExcursionsSeen: number;
   excursionDetailOpens: number;
@@ -111,6 +121,10 @@ export type GuestAnonymousAnalyticsSummary = {
   accordionOpens: Record<string, number>;
   gemImpressions: Record<string, number>;
   excursionImpressions: Record<string, number>;
+  liveLikeLocalPickSaves: Record<string, number>;
+  liveLikeLocalPickUnsaves: Record<string, number>;
+  liveLikeLocalPickLikes: Record<string, number>;
+  liveLikeLocalPickDislikes: Record<string, number>;
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;

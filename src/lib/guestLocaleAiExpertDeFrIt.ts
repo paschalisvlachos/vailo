@@ -48,7 +48,9 @@ export const AI_EXPERT_UI_DE: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertNearYourProperty: 'In der Nähe Ihrer Unterkunft',
   aiExpertCategoriesTitle: 'Worauf haben Sie heute Lust?',
   aiExpertCategoriesSub:
-    'Wählen Sie bis zu drei Interessen — wir finden besondere Orte in der Nähe.',
+    'Wählen Sie bis zu drei Themen — tippen Sie ein Thema, um Unterkategorien zu verfeinern.',
+  aiExpertSubcategoriesAll: 'Alle',
+  aiExpertSubcategoriesPickAny: 'Beliebig viele wählen (optional)',
   aiExpertLoadingCategories: 'Lokale Kategorien werden geladen…',
   aiExpertContinueSelected: 'Weiter · {count} ausgewählt',
   aiExpertStartingFrom: 'Startpunkt',
@@ -173,7 +175,9 @@ export const AI_EXPERT_UI_FR: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertNearYourProperty: 'Près de votre logement',
   aiExpertCategoriesTitle: 'Qu’avez-vous envie de faire ?',
   aiExpertCategoriesSub:
-    'Choisissez jusqu’à trois centres d’intérêt — nous trouverons des lieux remarquables à proximité.',
+    'Choisissez jusqu’à trois thèmes — touchez un thème pour affiner avec des sous-catégories.',
+  aiExpertSubcategoriesAll: 'Toutes',
+  aiExpertSubcategoriesPickAny: 'Choisissez autant que vous voulez (optionnel)',
   aiExpertLoadingCategories: 'Chargement des catégories locales…',
   aiExpertContinueSelected: 'Continuer · {count} sélectionné(s)',
   aiExpertStartingFrom: 'Point de départ',
@@ -296,7 +300,9 @@ export const AI_EXPERT_UI_IT: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertNearYourProperty: 'Vicino al tuo alloggio',
   aiExpertCategoriesTitle: 'Di cosa hai voglia oggi?',
   aiExpertCategoriesSub:
-    'Seleziona fino a tre interessi — troveremo posti interessanti nelle vicinanze.',
+    'Seleziona fino a tre temi — tocca un tema per affinare con sottocategorie.',
+  aiExpertSubcategoriesAll: 'Tutte',
+  aiExpertSubcategoriesPickAny: 'Scegli quante ne vuoi (facoltativo)',
   aiExpertLoadingCategories: 'Caricamento categorie locali…',
   aiExpertContinueSelected: 'Continua · {count} selezionati',
   aiExpertStartingFrom: 'Punto di partenza',

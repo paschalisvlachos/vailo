@@ -56,6 +56,11 @@ import {
   normalizeCategorySelectionList,
 } from '../../lib/categoryLocale';
 import {
+  MAX_WIZARD_PARENT_CATEGORIES,
+  SUBCATEGORY_PREVIEW_COUNT,
+  resolveWizardCategorySelection,
+} from '../../lib/categoryHierarchy';
+import {
   buildCategoryKnowledgePromptSection,
   filterPrimariesForLiveLikeLocal,
   getCategoryKnowledgeMode,
@@ -458,6 +463,8 @@ export default function AiExpertView({
     areaConfigIssue,
     invalidMasterAreaRaw,
     categoriesLoading,
+    parentCategories,
+    subcategoriesByParentPrimary,
     availableCategories,
     excludedLiveLikeLocalPrimaries,
     categoryKnowledgeByPrimary,
@@ -627,7 +634,9 @@ export default function AiExpertView({
   });
 
   const [customLoc, setCustomLoc] = useState('');
-  const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  const [selectedParentCats, setSelectedParentCats] = useState<string[]>([]);
+  const [selectedSubcatsByParent, setSelectedSubcatsByParent] = useState<Record<string, string[]>>({});
+  const [expandedSubcatParents, setExpandedSubcatParents] = useState<Set<string>>(new Set());
   const [startTime, setStartTime] = useState('09:00');
   const [tripDurationHours, setTripDurationHours] = useState<number | null>(6);
 
@@ -769,11 +778,80 @@ export default function AiExpertView({
     fetchRichLocation();
   }, [property, propertyType]);
 
+  const allCategoryOptions = useMemo(() => {
+    const subs = Object.values(subcategoriesByParentPrimary).flat();
+    return [...parentCategories, ...subs];
+  }, [parentCategories, subcategoriesByParentPrimary]);
+
   const resolveCategoryDisplayLabel = useCallback(
     (primary: string) =>
-      availableCategories.find((c) => c.primary === primary)?.label ?? primary,
-    [availableCategories]
+      allCategoryOptions.find((c) => c.primary === primary)?.label ??
+      availableCategories.find((c) => c.primary === primary)?.label ??
+      primary,
+    [allCategoryOptions, availableCategories]
   );
+
+  const effectiveWizardCategories = useMemo(
+    () =>
+      resolveWizardCategorySelection(
+        selectedParentCats,
+        selectedSubcatsByParent,
+        subcategoriesByParentPrimary
+      ),
+    [selectedParentCats, selectedSubcatsByParent, subcategoriesByParentPrimary]
+  );
+
+  const wizardCategoriesDisplayText = useMemo(
+    () =>
+      selectedParentCats
+        .map((parentPrimary) => {
+          const parentLabel =
+            parentCategories.find((c) => c.primary === parentPrimary)?.label ?? parentPrimary;
+          const subs = selectedSubcatsByParent[parentPrimary] || [];
+          if (subs.length === 0) return parentLabel;
+          return subs.map((s) => resolveCategoryDisplayLabel(s)).join(', ');
+        })
+        .join(' · '),
+    [
+      selectedParentCats,
+      selectedSubcatsByParent,
+      parentCategories,
+      resolveCategoryDisplayLabel,
+    ]
+  );
+
+  const toggleWizardParentCategory = (primary: string) => {
+    setSelectedParentCats((prev) => {
+      if (prev.includes(primary)) {
+        setSelectedSubcatsByParent((subs) => {
+          const next = { ...subs };
+          delete next[primary];
+          return next;
+        });
+        setExpandedSubcatParents((expanded) => {
+          const next = new Set(expanded);
+          next.delete(primary);
+          return next;
+        });
+        return prev.filter((p) => p !== primary);
+      }
+      if (prev.length >= MAX_WIZARD_PARENT_CATEGORIES) return prev;
+      return [...prev, primary];
+    });
+  };
+
+  const toggleWizardSubcategory = (parentPrimary: string, subPrimary: string) => {
+    setSelectedSubcatsByParent((prev) => {
+      const current = prev[parentPrimary] || [];
+      const has = current.includes(subPrimary);
+      return {
+        ...prev,
+        [parentPrimary]: has
+          ? current.filter((s) => s !== subPrimary)
+          : [...current, subPrimary],
+      };
+    });
+  };
 
   useEffect(() => {
     if (step === 'TIME') setTimeChoiceMode('choose');
@@ -1601,7 +1679,9 @@ export default function AiExpertView({
   const distanceNearestHint = useMemo(() => {
     const parts = Object.entries(distanceNearestByCategory).map(([primary, km]) => {
       const label =
-        availableCategories.find((c) => c.primary === primary)?.label ?? primary;
+        allCategoryOptions.find((c) => c.primary === primary)?.label ??
+        availableCategories.find((c) => c.primary === primary)?.label ??
+        primary;
       const mode = getCategoryKnowledgeMode(categoryKnowledgeByPrimary[primary] || '');
       if (km == null || !isFinite(km)) {
         if (mode === 'business' || mode === 'any') {
@@ -1612,7 +1692,7 @@ export default function AiExpertView({
       return tf('aiExpertDistanceNearestKm', { category: label, km: String(Math.ceil(km)) });
     });
     return parts.filter(Boolean).join(' · ');
-  }, [distanceNearestByCategory, availableCategories, categoryKnowledgeByPrimary, tf]);
+  }, [distanceNearestByCategory, allCategoryOptions, availableCategories, categoryKnowledgeByPrimary, tf]);
 
   const runPlanGeneration = async (
     timeFrameStr: string,
@@ -2317,7 +2397,9 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       distance: '',
       timeFrame: '',
     });
-    setSelectedCats([]);
+    setSelectedParentCats([]);
+    setSelectedSubcatsByParent({});
+    setExpandedSubcatParents(new Set());
     setCustomLoc('');
     setStartTime('09:00');
     setTripDurationHours(6);
@@ -2914,27 +2996,21 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
               <div className={AI_EXPERT_PANEL}>
                 <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertCategoriesTitle')}</p>
                 <p className={AI_EXPERT_PANEL_SUB}>{t('aiExpertCategoriesSub')}</p>
-                <div className="flex flex-wrap gap-2 mb-5">
-                  {categoriesLoading && availableCategories.length === 0 ? (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {categoriesLoading && parentCategories.length === 0 ? (
                     <p className="text-sm text-white/50 flex items-center gap-2">
                       <Loader2 size={14} className="animate-spin text-vailo-gold" /> {t('aiExpertLoadingCategories')}
                     </p>
-                  ) : availableCategories.length > 0 ? (
-                    availableCategories.map((cat) => (
+                  ) : parentCategories.length > 0 ? (
+                    parentCategories.map((cat) => (
                       <button
                         key={cat.primary}
                         onClick={() => {
                           engageWizard();
-                          setSelectedCats((prev) =>
-                            prev.includes(cat.primary)
-                              ? prev.filter((c) => c !== cat.primary)
-                              : prev.length < 3
-                                ? [...prev, cat.primary]
-                                : prev
-                          );
+                          toggleWizardParentCategory(cat.primary);
                         }}
                         className={`guest-pill px-4 py-2.5 rounded-full text-sm font-semibold transition-all border ${
-                          selectedCats.includes(cat.primary)
+                          selectedParentCats.includes(cat.primary)
                             ? AI_EXPERT_BTN_PRIMARY_PILL
                             : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
                         }`}
@@ -2957,23 +3033,70 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                     </p>
                   )}
                 </div>
+
+                {selectedParentCats.map((parentPrimary) => {
+                  const allSubs = subcategoriesByParentPrimary[parentPrimary] || [];
+                  if (allSubs.length === 0) return null;
+
+                  const parentLabel =
+                    parentCategories.find((c) => c.primary === parentPrimary)?.label ?? parentPrimary;
+                  const expanded = expandedSubcatParents.has(parentPrimary);
+                  const visibleSubs = expanded
+                    ? allSubs
+                    : allSubs.slice(0, SUBCATEGORY_PREVIEW_COUNT);
+                  const hasMore = allSubs.length > SUBCATEGORY_PREVIEW_COUNT;
+                  const selectedSubs = selectedSubcatsByParent[parentPrimary] || [];
+
+                  return (
+                    <div
+                      key={parentPrimary}
+                      className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3"
+                    >
+                      <p className="text-xs font-semibold text-vailo-gold mb-1">{parentLabel}</p>
+                      <p className="text-[11px] text-white/50 mb-2">{t('aiExpertSubcategoriesPickAny')}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {visibleSubs.map((sub) => (
+                          <button
+                            key={sub.primary}
+                            type="button"
+                            onClick={() => toggleWizardSubcategory(parentPrimary, sub.primary)}
+                            className={`guest-pill px-3 py-2 rounded-full text-xs font-semibold transition-all border ${
+                              selectedSubs.includes(sub.primary)
+                                ? AI_EXPERT_BTN_PRIMARY_PILL
+                                : 'bg-white/8 text-white/75 border-white/15 hover:border-vailo-gold/35'
+                            }`}
+                          >
+                            {sub.label}
+                          </button>
+                        ))}
+                        {hasMore && !expanded && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedSubcatParents((prev) => new Set([...prev, parentPrimary]))
+                            }
+                            className="guest-pill px-3 py-2 rounded-full text-xs font-semibold border bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40"
+                          >
+                            {t('aiExpertSubcategoriesAll')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
                 <button
-                  disabled={selectedCats.length === 0}
+                  disabled={selectedParentCats.length === 0}
                   onClick={() =>
                     advanceStep(
                       'CATEGORIES',
-                      selectedCats,
-                      selectedCats
-                        .map(
-                          (p) =>
-                            availableCategories.find((c) => c.primary === p)?.label ?? p
-                        )
-                        .join(', ')
+                      effectiveWizardCategories,
+                      wizardCategoriesDisplayText
                     )
                   }
                   className={`w-full py-4 min-h-[48px] rounded-xl text-base disabled:opacity-40 ${AI_EXPERT_BTN_PRIMARY}`}
                 >
-                  {tf('aiExpertContinueSelected', { count: selectedCats.length })}
+                  {tf('aiExpertContinueSelected', { count: selectedParentCats.length })}
                 </button>
               </div>
             )}

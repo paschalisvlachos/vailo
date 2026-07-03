@@ -8,11 +8,13 @@ import {
   type ListingAreaContext,
 } from './listingAreaContext';
 import {
-  categoryEligibleForLiveLikeLocal,
   collectCategoryKnowledgeByPrimary,
   collectExcludedLiveLikeLocalPrimaries,
 } from './liveLikeLocalCategories';
-import { categoryPrimaryName, resolveCategoryLabel } from './categoryLocale';
+import {
+  buildGuestCategoryHierarchy,
+  type CategoryOption,
+} from './categoryHierarchy';
 import {
   filterGuestEligibleTrails,
   HIKING_TRAILS_CATEGORY_PRIMARY,
@@ -28,13 +30,18 @@ import {
 import { useGuestLocale } from '../context/GuestLocaleContext';
 import { usePropertyContentLocaleSettings } from '../hooks/usePropertyContentLocaleSettings';
 
-export type GemCategoryOption = { primary: string; label: string };
+export type GemCategoryOption = CategoryOption;
 
 export type GuestAreaDataSnapshot = {
   listingAreaCtx: ListingAreaContext | null;
   areaConfigIssue: AreaConfigIssue;
   invalidMasterAreaRaw: string;
   categoriesLoading: boolean;
+  /** Top-level categories for the Live like a local wizard (max 3 selectable). */
+  parentCategories: GemCategoryOption[];
+  /** Subcategories grouped by parent primary name. */
+  subcategoriesByParentPrimary: Record<string, GemCategoryOption[]>;
+  /** @deprecated Use parentCategories — kept for hiking-trails injection. */
   availableCategories: GemCategoryOption[];
   excludedLiveLikeLocalPrimaries: Set<string>;
   categoryKnowledgeByPrimary: Record<string, string>;
@@ -57,6 +64,8 @@ const emptySnapshot: GuestAreaDataSnapshot = {
   areaConfigIssue: null,
   invalidMasterAreaRaw: '',
   categoriesLoading: true,
+  parentCategories: [],
+  subcategoriesByParentPrimary: {},
   availableCategories: [],
   excludedLiveLikeLocalPrimaries: new Set(),
   categoryKnowledgeByPrimary: {},
@@ -156,6 +165,8 @@ export function GuestAreaPrefetcher({
 
       if (!areaCtx?.areaId) {
         patchSnapshot({
+          parentCategories: [],
+          subcategoriesByParentPrimary: {},
           availableCategories: [],
           excludedLiveLikeLocalPrimaries: new Set(),
           categoryKnowledgeByPrimary: {},
@@ -179,6 +190,7 @@ export function GuestAreaPrefetcher({
         if (cancelled) return;
 
         const categoryDocs = gemsCatSnap.docs.map((d) => ({
+          id: d.id,
           data: d.data() as Record<string, unknown>,
         }));
         const catalogDocs = categoryDocs.map((d) => d.data);
@@ -191,33 +203,28 @@ export function GuestAreaPrefetcher({
           contentSettings.primaryLocale
         );
 
-        const byPrimary = new Map<string, GemCategoryOption>();
-        for (const { data } of categoryDocs) {
-          if (!categoryEligibleForLiveLikeLocal(data, contentSettings.primaryLocale)) continue;
-          const primary = categoryPrimaryName(data, contentSettings.primaryLocale).trim();
-          const label =
-            resolveCategoryLabel(
-              data,
-              locale,
-              contentSettings.primaryLocale,
-              contentSettings.reviewedLocales
-            ).trim() || primary;
-          if (!byPrimary.has(primary)) byPrimary.set(primary, { primary, label });
-        }
+        const { parentCategories, subcategoriesByParentPrimary } = buildGuestCategoryHierarchy(
+          categoryDocs,
+          locale,
+          contentSettings.primaryLocale,
+          contentSettings.reviewedLocales
+        );
 
         patchSnapshot({
           categoryCatalogDocs: catalogDocs,
           excludedLiveLikeLocalPrimaries: excluded,
           categoryKnowledgeByPrimary: knowledge,
-          availableCategories: Array.from(byPrimary.values()).sort((a, b) =>
-            a.label.localeCompare(b.label)
-          ),
+          parentCategories,
+          subcategoriesByParentPrimary,
+          availableCategories: parentCategories,
           categoriesLoading: false,
         });
       } catch (error) {
         console.error('Failed to prefetch local gem categories:', error);
         if (!cancelled) {
           patchSnapshot({
+            parentCategories: [],
+            subcategoriesByParentPrimary: {},
             availableCategories: [],
             excludedLiveLikeLocalPrimaries: new Set(),
             categoryKnowledgeByPrimary: {},
@@ -369,16 +376,17 @@ export function GuestAreaPrefetcher({
 
   useEffect(() => {
     if (areaData.guestEligibleTrails.length === 0) return;
-    const prev = getGuestAreaDataSnapshot().availableCategories;
+    const prev = getGuestAreaDataSnapshot().parentCategories;
     const hasHiking = prev.some(
       (c) => isHikingTrailsCategory(c.primary) || isHikingTrailsCategory(c.label)
     );
     if (hasHiking) return;
     const label = t('aiExpertHikingTrailsCategory');
+    const hiking = { primary: HIKING_TRAILS_CATEGORY_PRIMARY, label };
+    const next = [...prev, hiking].sort((a, b) => a.label.localeCompare(b.label));
     patchSnapshot({
-      availableCategories: [...prev, { primary: HIKING_TRAILS_CATEGORY_PRIMARY, label }].sort(
-        (a, b) => a.label.localeCompare(b.label)
-      ),
+      parentCategories: next,
+      availableCategories: next,
     });
   }, [areaData.guestEligibleTrails.length, t]);
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, deleteField, doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { useAreaRouteParams } from '../../../hooks/useAreaRouteParams';
@@ -27,8 +27,11 @@ import {
 } from 'lucide-react';
 import {
   geoJsonFromRing,
+  polygonCentroid,
   ringFromGeoJson,
   ringFromGooglePath,
+  resolveSearchRegionRing,
+  ringToFirestore,
   type GeoJsonPolygon,
   type LatLng,
 } from '../../../lib/areaRadarGeo';
@@ -48,10 +51,13 @@ import {
   categoryEligibleForLiveLikeLocal,
   collectCategoryKnowledgeByPrimary,
 } from '../../../lib/liveLikeLocalCategories';
+import { isTopLevelCategory } from '../../../lib/categoryHierarchy';
 import { categoryPrimaryName } from '../../../lib/categoryLocale';
 
 type PlaceDiscoveryConfig = {
+  /** @deprecated GeoJSON nested arrays are invalid in Firestore — use searchRegionRing */
   searchRegion?: GeoJsonPolygon | null;
+  searchRegionRing?: Array<{ lat: number; lng: number }> | null;
   lastRunAt?: string;
   lastRunStats?: AreaRadarRunResult;
 };
@@ -67,6 +73,10 @@ export default function AreaRadar() {
   const activePolygonRef = useRef<google.maps.Polygon | null>(null);
   const previewLineRef = useRef<google.maps.Polyline | null>(null);
   const mapClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  /** Latest saved ring from Firestore — avoids stale closures during async map init. */
+  const savedRingRef = useRef<LatLng[]>([]);
+  const areaNameRef = useRef(areaName);
+  areaNameRef.current = areaName;
 
   const [mapLoading, setMapLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -85,7 +95,10 @@ export default function AreaRadar() {
   const [gems, setGems] = useState<Array<Record<string, unknown>>>([]);
   const [discoveredPlaces, setDiscoveredPlaces] = useState<Array<Record<string, unknown>>>([]);
 
-  const areaRef = country && areaId ? doc(db, 'countries', country, 'areas', areaId) : null;
+  const areaRef = useMemo(
+    () => (country && areaId ? doc(db, 'countries', country, 'areas', areaId) : null),
+    [country, areaId]
+  );
 
   useEffect(() => {
     if (!country || !areaId) return;
@@ -115,18 +128,23 @@ export default function AreaRadar() {
     if (!areaRef) return;
     return onSnapshot(areaRef, (snap) => {
       const cfg = (snap.data()?.placeDiscoveryConfig || {}) as PlaceDiscoveryConfig;
-      if (cfg.searchRegion) {
-        setSearchRegion(cfg.searchRegion);
-        setDraftRing(ringFromGeoJson(cfg.searchRegion));
+      const ring = resolveSearchRegionRing(cfg.searchRegionRing, cfg.searchRegion);
+      if (ring.length >= 3) {
+        savedRingRef.current = ring;
+        setSearchRegion(geoJsonFromRing(ring));
+        setDraftRing(ring);
+      } else {
+        savedRingRef.current = [];
       }
       if (cfg.lastRunStats) setLastRunStats(cfg.lastRunStats);
       if (cfg.lastRunAt) setLastRunAt(cfg.lastRunAt);
     });
   }, [areaRef]);
 
-  const radarCategories = useMemo(() => {
+  const radarParentCategories = useMemo(() => {
     return categoryDocs
       .filter(({ data }) => categoryEligibleForLiveLikeLocal(data, primaryLocale))
+      .filter(({ data }) => isTopLevelCategory(data))
       .map(({ data }) => categoryPrimaryName(data, primaryLocale))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
@@ -141,11 +159,11 @@ export default function AreaRadar() {
     () =>
       buildAreaRadarPreview({
         searchRegion: geoJsonFromRing(draftRing) || searchRegion,
-        categoryCount: radarCategories.length,
+        categoryCount: radarParentCategories.length,
         localGemsCount: gems.length,
         discoveredPlacesCount: discoveredPlaces.length,
       }),
-    [draftRing, searchRegion, radarCategories.length, gems.length, discoveredPlaces.length]
+    [draftRing, searchRegion, radarParentCategories.length, gems.length, discoveredPlaces.length]
   );
 
   const clearPreviewLine = useCallback(() => {
@@ -247,9 +265,29 @@ export default function AreaRadar() {
     setDraftRing([]);
   };
 
+  const restoreSavedPolygon = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const ring =
+      savedRingRef.current.length >= 3
+        ? savedRingRef.current
+        : ringFromGeoJson(searchRegion);
+    if (ring.length < 3) return;
+    const existing = activePolygonRef.current;
+    if (existing?.getMap() === map) return;
+    renderPolygonOnMap(ring);
+    setDraftRing(ring);
+  }, [searchRegion, renderPolygonOnMap]);
+
   useEffect(() => {
     if (!mapContainerRef.current || !country || !areaId) return;
     let cancelled = false;
+
+    activePolygonRef.current?.setMap(null);
+    activePolygonRef.current = null;
+    mapRef.current = null;
+    setMapLoading(true);
+    setMapError(null);
 
     (async () => {
       try {
@@ -262,14 +300,17 @@ export default function AreaRadar() {
         await loadGoogleMapsApi();
         if (cancelled || !mapContainerRef.current) return;
 
+        const savedRing = savedRingRef.current;
         let center: LatLng = { lat: 35.3387, lng: 25.1442 };
-        const savedRing = ringFromGeoJson(searchRegion);
-        if (preview.centroid) center = preview.centroid;
+        const centroid = savedRing.length >= 3 ? polygonCentroid(savedRing) : null;
+        if (centroid) center = centroid;
         else if (savedRing[0]) center = savedRing[0];
         else {
-          const geocoded = await geocodeAreaCenter(areaName, country);
+          const geocoded = await geocodeAreaCenter(areaNameRef.current, country);
           if (geocoded) center = geocoded;
         }
+
+        if (cancelled || !mapContainerRef.current) return;
 
         const map = new google.maps.Map(mapContainerRef.current, {
           center,
@@ -286,7 +327,7 @@ export default function AreaRadar() {
           setDraftRing(savedRing);
         }
 
-        setMapLoading(false);
+        if (!cancelled) setMapLoading(false);
       } catch (err) {
         console.error(err);
         if (!cancelled) {
@@ -299,16 +340,12 @@ export default function AreaRadar() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- init map once per area
-  }, [country, areaId, areaName]);
+  }, [country, areaId, renderPolygonOnMap]);
 
   useEffect(() => {
-    if (mapLoading || !searchRegion || !mapRef.current) return;
-    const ring = ringFromGeoJson(searchRegion);
-    if (ring.length < 3 || activePolygonRef.current) return;
-    renderPolygonOnMap(ring);
-    setDraftRing(ring);
-  }, [searchRegion, mapLoading, renderPolygonOnMap]);
+    if (mapLoading) return;
+    restoreSavedPolygon();
+  }, [mapLoading, searchRegion, restoreSavedPolygon]);
 
   useEffect(() => {
     if (!isDrawing || !mapRef.current || mapLoading) return;
@@ -333,6 +370,16 @@ export default function AreaRadar() {
     };
   }, [isDrawing, mapLoading, updatePreviewLine]);
 
+  useEffect(() => {
+    return () => {
+      stopDrawingMode();
+      clearPreviewLine();
+      activePolygonRef.current?.setMap(null);
+      activePolygonRef.current = null;
+      mapRef.current = null;
+    };
+  }, [stopDrawingMode, clearPreviewLine]);
+
   const saveRegion = async () => {
     if (!areaRef) return;
     const geo = geoJsonFromRing(draftRing);
@@ -342,21 +389,36 @@ export default function AreaRadar() {
     }
     setIsSavingRegion(true);
     try {
-      await setDoc(
-        areaRef,
-        {
-          placeDiscoveryConfig: {
-            searchRegion: geo,
-            updatedAt: new Date().toISOString(),
+      const ringPayload = ringToFirestore(draftRing);
+      const snap = await getDoc(areaRef);
+      if (snap.exists()) {
+        await updateDoc(areaRef, {
+          'placeDiscoveryConfig.searchRegionRing': ringPayload,
+          'placeDiscoveryConfig.updatedAt': new Date().toISOString(),
+          'placeDiscoveryConfig.searchRegion': deleteField(),
+        });
+      } else {
+        await setDoc(
+          areaRef,
+          {
+            name: areaName,
+            placeDiscoveryConfig: {
+              searchRegionRing: ringPayload,
+              updatedAt: new Date().toISOString(),
+            },
           },
-        },
-        { merge: true }
-      );
+          { merge: true }
+        );
+      }
       setSearchRegion(geo);
       toast.success('Search region saved.');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to save search region.');
+      const msg =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : 'Failed to save search region.';
+      toast.error(msg.startsWith('Failed') ? msg : `Failed to save search region: ${msg}`);
     } finally {
       setIsSavingRegion(false);
     }
@@ -393,13 +455,13 @@ export default function AreaRadar() {
       const knownGemNamesByCategory = buildKnownGemNamesByCategory(
         gems as Array<{ name?: string; category?: string; categories?: string[] }>,
         categoryDocs,
-        radarCategories,
+        radarParentCategories,
         primaryLocale
       );
 
       const stats = await runAreaRadarDiscovery({
         searchRegion: geo,
-        categories: radarCategories,
+        categories: radarParentCategories,
         categoryKnowledgeByPrimary,
         areaCtx: { country, areaId, areaName },
         knownGems: gems as Array<{ name?: string; alternateTitles?: string[]; googlePlaceId?: string }>,
@@ -415,23 +477,19 @@ export default function AreaRadar() {
 
       const runAt = new Date().toISOString();
       if (areaRef) {
-        await setDoc(
-          areaRef,
-          {
-            placeDiscoveryConfig: {
-              searchRegion: geo,
-              lastRunAt: runAt,
-              lastRunStats: stats,
-            },
-          },
-          { merge: true }
-        );
+        await updateDoc(areaRef, {
+          'placeDiscoveryConfig.searchRegionRing': ringToFirestore(draftRing),
+          'placeDiscoveryConfig.lastRunAt': runAt,
+          'placeDiscoveryConfig.lastRunStats': stats,
+          'placeDiscoveryConfig.updatedAt': runAt,
+          'placeDiscoveryConfig.searchRegion': deleteField(),
+        });
       }
       setLastRunStats(stats);
       setLastRunAt(runAt);
 
       toast.success(
-        `Radar complete: ${stats.created} new · ${stats.skippedDuplicate} duplicates · ${stats.skippedOutside} outside polygon · ${stats.failedVerification} failed verification`
+        `Radar complete: ${stats.created} new · ${stats.skippedDuplicate} duplicates · ${stats.candidatesFound} AI suggestions · ${stats.failedVerification} failed verification`
       );
     } catch (err) {
       console.error(err);
@@ -546,6 +604,12 @@ export default function AreaRadar() {
                 {preview.validationMessage}
               </p>
             ) : (
+              <>
+              {preview.areaWarning && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-4">
+                  {preview.areaWarning}
+                </p>
+              )}
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between gap-3">
                   <dt className="text-gray-500">Vertices</dt>
@@ -565,13 +629,29 @@ export default function AreaRadar() {
                   <dt className="text-gray-500">Grid anchors</dt>
                   <dd className="font-medium text-vailo-dark">{preview.anchorCount}</dd>
                 </div>
+                {preview.gridPassCount > 0 && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-gray-500">Grid scout passes</dt>
+                    <dd className="font-medium text-vailo-dark text-right">
+                      {preview.gridPassCount}
+                      {preview.anchorCount > preview.gridPassCount
+                        ? ` of ${preview.anchorCount} (~${preview.gridCoveragePct}%)`
+                        : ''}
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between gap-3">
                   <dt className="text-gray-500">Categories</dt>
                   <dd className="font-medium text-vailo-dark">{preview.categoryCount}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gray-500">Max AI candidates</dt>
-                  <dd className="font-medium text-vailo-dark">{preview.maxCandidates}</dd>
+                  <dt className="text-gray-500">Up to (AI cap)</dt>
+                  <dd className="font-medium text-vailo-dark text-right">
+                    {preview.maxCandidates}
+                    <span className="block text-[11px] font-normal text-gray-400">
+                      Actual runs are usually much lower
+                    </span>
+                  </dd>
                 </div>
                 <div className="border-t border-gray-100 pt-3 flex justify-between gap-3">
                   <dt className="text-gray-500">Existing local gems</dt>
@@ -596,13 +676,14 @@ export default function AreaRadar() {
                   </div>
                 </div>
               </dl>
+              </>
             )}
 
-            {radarCategories.length > 0 && (
+            {radarParentCategories.length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Categories included</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {radarCategories.map((cat) => (
+                  {radarParentCategories.map((cat) => (
                     <AdminBadge key={cat} variant="teal">
                       {cat}
                     </AdminBadge>
@@ -645,7 +726,10 @@ export default function AreaRadar() {
                 <li>{lastRunStats.skippedOutside} outside polygon</li>
                 <li>{lastRunStats.skippedFiltered} filtered by category rules</li>
                 <li>{lastRunStats.failedVerification} failed Google verification</li>
-                <li>{lastRunStats.candidatesFound} candidates from AI</li>
+                <li>{lastRunStats.candidatesFound} AI suggestions verified</li>
+                {'geminiPasses' in lastRunStats && lastRunStats.geminiPasses ? (
+                  <li>{lastRunStats.geminiPasses} Gemini scout passes</li>
+                ) : null}
               </ul>
               <Link
                 to={adminPath(`/area/${encodeURIComponent(country)}/${encodeURIComponent(areaId)}/discovered-places`)}

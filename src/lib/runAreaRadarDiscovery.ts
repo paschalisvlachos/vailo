@@ -9,9 +9,19 @@ import {
   polygonCentroid,
   maxRadiusKmFromCenter,
   pointInPolygon,
+  gridAnchorsInPolygon,
+  approxPolygonAreaKm2,
   type GeoJsonPolygon,
+  type LatLng,
 } from './areaRadarGeo';
-import { AREA_RADAR_CANDIDATES_PER_CATEGORY } from './areaRadarPreview';
+import {
+  AREA_RADAR_CANDIDATES_PER_CATEGORY,
+  AREA_RADAR_GRID_CANDIDATES_PER_CATEGORY,
+  AREA_RADAR_GRID_SPACING_KM,
+  AREA_RADAR_CATEGORY_BATCH_SIZE,
+  AREA_RADAR_LARGE_AREA_KM2,
+  AREA_RADAR_MAX_GRID_PASSES,
+} from './areaRadarPreview';
 import { resolvePlacePhoto } from './placePhotoResolver';
 import { PLACES_USAGE_CALLER } from './placesApiUsageCallers';
 import { guestAiLanguageBlock } from './guestAiLanguage';
@@ -22,6 +32,7 @@ import {
 import { shouldDropAreasCommercialAiPick } from './areasPickFilter';
 import { placeAlreadyInCatalog } from './silentAiDiscovery';
 import { categoryPrimaryName } from './categoryLocale';
+import { normalizePlaceName } from './placeNameUtils';
 
 const RADAR_MODEL = 'gemini-3.5-flash';
 
@@ -51,7 +62,17 @@ export type AreaRadarRunResult = {
   skippedFiltered: number;
   failedVerification: number;
   candidatesFound: number;
+  geminiPasses: number;
 };
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
 
 function parseRadarJson(raw: string): Record<string, unknown> | null {
   if (!raw?.trim()) return null;
@@ -94,6 +115,108 @@ function extractCandidates(parsed: Record<string, unknown>): RadarCandidate[] {
   return out;
 }
 
+function dedupeCandidates(candidates: RadarCandidate[]): RadarCandidate[] {
+  const seen = new Set<string>();
+  const out: RadarCandidate[] = [];
+  for (const candidate of candidates) {
+    const key = normalizePlaceName(candidate.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(candidate);
+  }
+  return out;
+}
+
+function buildKnownBlock(
+  categories: string[],
+  knownGemNamesByCategory: Record<string, string[]>
+): string {
+  return categories
+    .map((cat) => {
+      const names = knownGemNamesByCategory[cat] || [];
+      if (names.length === 0) return `- **${cat}**: (no curated gems yet)`;
+      return `- **${cat}**: ${names.slice(0, 40).join('; ')}`;
+    })
+    .join('\n');
+}
+
+async function scoutCandidatesWithGemini(params: {
+  categories: string[];
+  categoryKnowledgeByPrimary: Record<string, string>;
+  areaCtx: { country: string; areaId: string; areaName: string };
+  knownGemNamesByCategory: Record<string, string[]>;
+  primaryLocale: string;
+  gpsString: string;
+  maxKm: number;
+  candidatesPerCategory: number;
+  focusHint?: string;
+}): Promise<RadarCandidate[]> {
+  const {
+    categories,
+    categoryKnowledgeByPrimary,
+    areaCtx,
+    knownGemNamesByCategory,
+    primaryLocale,
+    gpsString,
+    maxKm,
+    candidatesPerCategory,
+    focusHint,
+  } = params;
+
+  if (categories.length === 0) return [];
+
+  const categoryKnowledgeBlock = buildCategoryKnowledgePromptSection(
+    categories,
+    categoryKnowledgeByPrimary
+  );
+  const knownBlock = buildKnownBlock(categories, knownGemNamesByCategory);
+
+  const systemInstruction = `You are Vailo's area radar scout. Reply ONLY with valid JSON (no markdown).
+
+${guestAiLanguageBlock(primaryLocale)}
+
+Suggest NEW real places inside the admin's search region — NOT duplicates of what we already list.
+- Use official Google Maps names only.
+- Never suggest permanently closed businesses.
+- For [AREAS ONLY] categories: geographic spots only — no restaurants, bars, operators, or shops.
+- For [BUSINESS ONLY] categories: named establishments with village when helpful.
+- Return up to ${candidatesPerCategory} candidates per category, best-first.`;
+
+  const prompt = `Search region center: "${areaCtx.areaName}" (${gpsString}). Region is a custom polygon (~${maxKm}km radius).
+${focusHint ? `${focusHint}\n` : ''}Categories: ${categories.join(', ')}
+${categoryKnowledgeBlock}
+
+ALREADY IN VAILO (do NOT repeat these names or the same place under another spelling):
+${knownBlock}
+
+Return JSON:
+{
+  "categories": [
+    {
+      "categoryName": "Category name",
+      "candidates": [
+        { "title": "Official Google Maps name", "description": "Two sentences for admin review." }
+      ]
+    }
+  ]
+}`;
+
+  const model = getGenerativeModel(ai, {
+    model: RADAR_MODEL,
+    systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.55,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+  const result = await model.generateContent(prompt);
+  const parsed = parseRadarJson(result.response.text());
+  if (!parsed) return [];
+  return extractCandidates(parsed);
+}
+
 export async function runAreaRadarDiscovery(params: {
   searchRegion: GeoJsonPolygon;
   categories: string[];
@@ -127,85 +250,76 @@ export async function runAreaRadarDiscovery(params: {
       skippedFiltered: 0,
       failedVerification: 0,
       candidatesFound: 0,
+      geminiPasses: 0,
     };
   }
 
   const boundaryRing = ring.map(({ lat, lng }) => ({ lat, lng }));
   const maxKm = Math.max(5, Math.ceil(maxRadiusKmFromCenter(ring, centroid)));
   const gpsString = `${centroid.lat.toFixed(5)}, ${centroid.lng.toFixed(5)}`;
+  const areaKm2 = approxPolygonAreaKm2(ring);
+  const anchors = gridAnchorsInPolygon(ring, AREA_RADAR_GRID_SPACING_KM);
+  const gridPassCount =
+    areaKm2 >= AREA_RADAR_LARGE_AREA_KM2
+      ? Math.min(anchors.length, AREA_RADAR_MAX_GRID_PASSES)
+      : 0;
+  const categoryBatches = chunkArray(categories, AREA_RADAR_CATEGORY_BATCH_SIZE);
+  const totalGeminiPasses = categoryBatches.length + gridPassCount;
 
-  onProgress?.({
-    phase: 'ai',
-    message: 'Asking Gemini for place candidates in your drawn region…',
-  });
+  const allCandidates: RadarCandidate[] = [];
+  let geminiPass = 0;
 
-  const categoryKnowledgeBlock = buildCategoryKnowledgePromptSection(
-    categories,
-    categoryKnowledgeByPrimary
-  );
-
-  const knownBlock = categories
-    .map((cat) => {
-      const names = knownGemNamesByCategory[cat] || [];
-      if (names.length === 0) return `- **${cat}**: (no curated gems yet)`;
-      return `- **${cat}**: ${names.slice(0, 40).join('; ')}`;
-    })
-    .join('\n');
-
-  const systemInstruction = `You are Vailo's area radar scout. Reply ONLY with valid JSON (no markdown).
-
-${guestAiLanguageBlock(primaryLocale)}
-
-Suggest NEW real places inside the admin's search region — NOT duplicates of what we already list.
-- Use official Google Maps names only.
-- Never suggest permanently closed businesses.
-- For [AREAS ONLY] categories: geographic spots only — no restaurants, bars, operators, or shops.
-- For [BUSINESS ONLY] categories: named establishments with village when helpful.
-- Return up to ${AREA_RADAR_CANDIDATES_PER_CATEGORY} candidates per category, best-first.`;
-
-  const prompt = `Search region center: "${areaCtx.areaName}" (${gpsString}). Region is a custom polygon (~${maxKm}km radius).
-Categories: ${categories.join(', ')}
-${categoryKnowledgeBlock}
-
-ALREADY IN VAILO (do NOT repeat these names or the same place under another spelling):
-${knownBlock}
-
-Return JSON:
-{
-  "categories": [
-    {
-      "categoryName": "Category name",
-      "candidates": [
-        { "title": "Official Google Maps name", "description": "Two sentences for admin review." }
-      ]
-    }
-  ]
-}`;
-
-  let parsed: Record<string, unknown> | null = null;
-  try {
-    const model = getGenerativeModel(ai, {
-      model: RADAR_MODEL,
-      systemInstruction: { role: 'system', parts: [{ text: systemInstruction }] },
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.55,
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 },
-      },
+  for (const batch of categoryBatches) {
+    geminiPass += 1;
+    onProgress?.({
+      phase: 'ai',
+      message: `Gemini pass ${geminiPass}/${totalGeminiPasses}: scouting ${batch.join(', ')}…`,
     });
-    const result = await model.generateContent(prompt);
-    parsed = parseRadarJson(result.response.text());
-  } catch (err) {
-    console.error('[Area Radar] Gemini failed', err);
-    throw new Error('Gemini scout failed. Check console and try again.');
+    try {
+      const batchCandidates = await scoutCandidatesWithGemini({
+        categories: batch,
+        categoryKnowledgeByPrimary,
+        areaCtx,
+        knownGemNamesByCategory,
+        primaryLocale,
+        gpsString,
+        maxKm,
+        candidatesPerCategory: AREA_RADAR_CANDIDATES_PER_CATEGORY,
+      });
+      allCandidates.push(...batchCandidates);
+    } catch (err) {
+      console.error('[Area Radar] Gemini batch failed', batch, err);
+      throw new Error('Gemini scout failed. Check console and try again.');
+    }
   }
 
-  if (!parsed) {
-    throw new Error('Could not parse Gemini response. Try running again.');
+  for (let i = 0; i < gridPassCount; i += 1) {
+    const anchor = anchors[i];
+    geminiPass += 1;
+    onProgress?.({
+      phase: 'ai',
+      message: `Gemini pass ${geminiPass}/${totalGeminiPasses}: grid sector ${i + 1}/${gridPassCount}…`,
+    });
+    const anchorGps = `${anchor.lat.toFixed(5)}, ${anchor.lng.toFixed(5)}`;
+    try {
+      const gridCandidates = await scoutCandidatesWithGemini({
+        categories,
+        categoryKnowledgeByPrimary,
+        areaCtx,
+        knownGemNamesByCategory,
+        primaryLocale,
+        gpsString: anchorGps,
+        maxKm: Math.max(3, AREA_RADAR_GRID_SPACING_KM * 2),
+        candidatesPerCategory: AREA_RADAR_GRID_CANDIDATES_PER_CATEGORY,
+        focusHint: `Focus on well-known places within ~${AREA_RADAR_GRID_SPACING_KM}km of ${anchorGps} that lie inside the "${areaCtx.areaName}" polygon.`,
+      });
+      allCandidates.push(...gridCandidates);
+    } catch (err) {
+      console.warn('[Area Radar] Grid pass failed', anchorGps, err);
+    }
   }
 
-  const candidates = extractCandidates(parsed);
+  const candidates = dedupeCandidates(allCandidates);
   const runResult: AreaRadarRunResult = {
     created: 0,
     skippedDuplicate: 0,
@@ -213,7 +327,12 @@ Return JSON:
     skippedFiltered: 0,
     failedVerification: 0,
     candidatesFound: candidates.length,
+    geminiPasses: totalGeminiPasses,
   };
+
+  if (candidates.length === 0) {
+    throw new Error('Gemini returned no candidates. Try running again or narrow your categories.');
+  }
 
   onProgress?.({
     phase: 'verify',

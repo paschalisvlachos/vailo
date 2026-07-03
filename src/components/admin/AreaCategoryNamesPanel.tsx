@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { EyeOff, Eye, Languages, Loader2, Plus, Sparkles, Tag, Trash2, Pencil, Check, X } from 'lucide-react';
-import { isExcludedFromLiveLikeLocal } from '../../lib/liveLikeLocalCategories';
+import { isExcludedFromLiveLikeLocal, readLiveLikeLocalCategoryKnowledge } from '../../lib/liveLikeLocalCategories';
+import {
+  inheritsKnowledgeFromParent,
+  isTopLevelCategory,
+  readParentCategoryId,
+  sortCategoriesHierarchical,
+} from '../../lib/categoryHierarchy';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
@@ -11,8 +17,7 @@ import { translateContentFields } from '../../lib/adminContentTranslate';
 import { categoryPrimaryName, resolveCategoryLabel } from '../../lib/categoryLocale';
 import { normalizeLocaleCode } from '../../lib/propertyContentLocales';
 import ContentLocaleTabs from './ContentLocaleTabs';
-import { AdminTextarea } from './AdminPageHeader';
-import { readLiveLikeLocalCategoryKnowledge } from '../../lib/liveLikeLocalCategories';
+import { AdminLabel, AdminSelect, AdminTextarea } from './AdminPageHeader';
 
 type Props = {
   country: string;
@@ -52,6 +57,8 @@ export default function AreaCategoryNamesPanel({
     [languages]
   );
 
+  const showSubcategories = collectionName === 'localGemsCategories';
+
   const [categories, setCategories] = useState<{ id: string; data: Record<string, unknown> }[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingSourceDoc, setEditingSourceDoc] = useState<Record<string, unknown> | null>(null);
@@ -60,6 +67,9 @@ export default function AreaCategoryNamesPanel({
   const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [togglingExcludeId, setTogglingExcludeId] = useState<string | null>(null);
+  const [togglingInheritId, setTogglingInheritId] = useState<string | null>(null);
+  const [newParentCategoryId, setNewParentCategoryId] = useState('');
+  const [newInheritKnowledge, setNewInheritKnowledge] = useState(true);
   const [newKnowledge, setNewKnowledge] = useState('');
   const [knowledgeEdits, setKnowledgeEdits] = useState<Record<string, string | undefined>>({});
   const [savingKnowledgeId, setSavingKnowledgeId] = useState<string | null>(null);
@@ -71,10 +81,7 @@ export default function AreaCategoryNamesPanel({
     const colRef = collection(db, 'countries', country, 'areas', areaId, collectionName);
     const unsub = onSnapshot(colRef, (snapshot) => {
       const fetched = snapshot.docs.map((d) => ({ id: d.id, data: d.data() as Record<string, unknown> }));
-      fetched.sort((a, b) =>
-        categoryPrimaryName(a.data, primary).localeCompare(categoryPrimaryName(b.data, primary))
-      );
-      setCategories(fetched);
+      setCategories(sortCategoriesHierarchical(fetched, primary));
       setIsLoading(false);
     });
     return () => unsub();
@@ -84,6 +91,33 @@ export default function AreaCategoryNamesPanel({
     () => categories.map((c) => categoryPrimaryName(c.data, primary).toLowerCase()),
     [categories, primary]
   );
+
+  const parentCategoryOptions = useMemo(
+    () =>
+      categories.filter((c) => isTopLevelCategory(c.data)).map((c) => ({
+        id: c.id,
+        label: categoryPrimaryName(c.data, primary) || c.id,
+      })),
+    [categories, primary]
+  );
+
+  const parentDocById = useMemo(() => {
+    const map = new Map<string, Record<string, unknown>>();
+    for (const c of categories) {
+      if (isTopLevelCategory(c.data)) map.set(c.id, c.data);
+    }
+    return map;
+  }, [categories]);
+
+  const childCountByParentId = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of categories) {
+      const parentId = readParentCategoryId(c.data);
+      if (!parentId) continue;
+      counts.set(parentId, (counts.get(parentId) || 0) + 1);
+    }
+    return counts;
+  }, [categories]);
 
   const activeLocale = localeEditor.contentLocale;
   const isPrimaryTab = normalizeLocaleCode(activeLocale) === normalizeLocaleCode(primary);
@@ -117,9 +151,18 @@ export default function AreaCategoryNamesPanel({
     setIsSubmitting(true);
     try {
       const payload = localeEditor.buildPayload();
+      const isSubcategory = showSubcategories && Boolean(newParentCategoryId);
       await addDoc(collection(db, 'countries', country, 'areas', areaId, collectionName), {
         ...payload,
-        ...(showLiveLikeLocalKnowledge && newKnowledge.trim()
+        ...(isSubcategory
+          ? {
+              parentCategoryId: newParentCategoryId,
+              inheritKnowledgeFromParent: newInheritKnowledge,
+            }
+          : {}),
+        ...(showLiveLikeLocalKnowledge &&
+        newKnowledge.trim() &&
+        (!isSubcategory || !newInheritKnowledge)
           ? { liveLikeLocalKnowledge: newKnowledge.trim() }
           : {}),
         createdAt: new Date().toISOString(),
@@ -127,6 +170,8 @@ export default function AreaCategoryNamesPanel({
       setEditingSourceDoc(null);
       localeEditor.resetMaps();
       setNewKnowledge('');
+      setNewParentCategoryId('');
+      setNewInheritKnowledge(true);
     } catch (error) {
       console.error(error);
       toast.error('Failed to add category.');
@@ -136,6 +181,11 @@ export default function AreaCategoryNamesPanel({
   };
 
   const handleDelete = async (id: string, label: string) => {
+    const childCount = childCountByParentId.get(id) || 0;
+    if (childCount > 0) {
+      toast.warning(`Remove ${childCount} subcategor${childCount === 1 ? 'y' : 'ies'} under "${label}" first.`);
+      return;
+    }
     if (!window.confirm(`Delete "${label}"?`)) return;
     try {
       await deleteDoc(doc(db, 'countries', country, 'areas', areaId, collectionName, id));
@@ -224,6 +274,38 @@ export default function AreaCategoryNamesPanel({
     }
   };
 
+  const toggleInheritKnowledge = async (
+    id: string,
+    data: Record<string, unknown>,
+    label: string
+  ) => {
+    const next = !inheritsKnowledgeFromParent(data);
+    setTogglingInheritId(id);
+    try {
+      await updateDoc(doc(db, 'countries', country, 'areas', areaId, collectionName, id), {
+        inheritKnowledgeFromParent: next,
+        updatedAt: new Date().toISOString(),
+      });
+      toast.success(
+        next
+          ? `"${label}" inherits knowledge from its parent.`
+          : `"${label}" uses its own knowledge notes.`
+      );
+    } catch (error) {
+      console.error(error);
+      toast.error('Could not update knowledge inheritance.');
+    } finally {
+      setTogglingInheritId(null);
+    }
+  };
+
+  const parentKnowledgeFor = (data: Record<string, unknown>) => {
+    const parentId = readParentCategoryId(data);
+    if (!parentId) return '';
+    const parentDoc = parentDocById.get(parentId);
+    return parentDoc ? readLiveLikeLocalCategoryKnowledge(parentDoc) : '';
+  };
+
   const knowledgeDraft = (id: string, data: Record<string, unknown>) => {
     if (knowledgeEdits[id] !== undefined) return knowledgeEdits[id]!;
     return readLiveLikeLocalCategoryKnowledge(data);
@@ -297,9 +379,14 @@ export default function AreaCategoryNamesPanel({
           )}
           {showLiveLikeLocalKnowledge && (
             <>
-              {' '}
               Add <span className="font-medium">Live like a local knowledge</span> for categories shown in the
               concierge (not &quot;Local gems only&quot;) so the AI can weigh local context when guests pick that theme.
+              {showSubcategories && (
+                <>
+                  {' '}
+                  Subcategories inherit the parent&apos;s knowledge by default — uncheck to write separate notes.
+                </>
+              )}
             </>
           )}
         </p>
@@ -327,12 +414,33 @@ export default function AreaCategoryNamesPanel({
 
       {!editingId && (
         <form onSubmit={handleAdd} className="space-y-3">
+          {showSubcategories && parentCategoryOptions.length > 0 && (
+            <div>
+              <AdminLabel>Parent category (optional — leave empty for a top-level category)</AdminLabel>
+              <AdminSelect
+                value={newParentCategoryId}
+                onChange={(e) => {
+                  setNewParentCategoryId(e.target.value);
+                  if (e.target.value) setNewInheritKnowledge(true);
+                }}
+              >
+                <option value="">Top-level category</option>
+                {parentCategoryOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </AdminSelect>
+            </div>
+          )}
           <div className="flex gap-2">
             <input
               type="text"
               value={nameInputValue}
               onChange={(e) => localeEditor.setValue('name', e.target.value)}
-              placeholder={editPlaceholder}
+              placeholder={
+                newParentCategoryId ? 'Subcategory name (English on EN tab)' : editPlaceholder
+              }
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg admin-input"
             />
             <button
@@ -343,7 +451,18 @@ export default function AreaCategoryNamesPanel({
               {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
             </button>
           </div>
-          {showLiveLikeLocalKnowledge && (
+          {showLiveLikeLocalKnowledge && newParentCategoryId && (
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={newInheritKnowledge}
+                onChange={(e) => setNewInheritKnowledge(e.target.checked)}
+                className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+              />
+              Inherit knowledge from parent
+            </label>
+          )}
+          {showLiveLikeLocalKnowledge && (!newParentCategoryId || !newInheritKnowledge) && (
             <AdminTextarea
               value={newKnowledge}
               onChange={(e) => setNewKnowledge(e.target.value)}
@@ -363,12 +482,18 @@ export default function AreaCategoryNamesPanel({
         <ul className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
           {categories.map((cat) => {
             const excludedFromLiveLikeLocal = isExcludedFromLiveLikeLocal(cat.data);
+            const parentId = readParentCategoryId(cat.data);
+            const isSubcategory = Boolean(parentId);
+            const parentLabel = parentId
+              ? categoryPrimaryName(parentDocById.get(parentId), primary)
+              : '';
+            const inheritsParent = inheritsKnowledgeFromParent(cat.data);
             return (
             <li
               key={cat.id}
               className={`p-3 ${
                 excludedFromLiveLikeLocal ? 'bg-gray-100/80' : 'bg-gray-50/50'
-              }`}
+              } ${isSubcategory ? 'pl-8' : ''}`}
             >
               <div className="flex items-center justify-between gap-2">
                 {editingId === cat.id ? (
@@ -401,6 +526,11 @@ export default function AreaCategoryNamesPanel({
                       <span className={`truncate ${excludedFromLiveLikeLocal ? 'text-gray-500' : ''}`}>
                         {displayName(cat.data)}
                       </span>
+                      {isSubcategory && parentLabel && (
+                        <span className="text-[10px] font-medium text-gray-400 truncate shrink-0">
+                          under {parentLabel}
+                        </span>
+                      )}
                       {showLiveLikeLocalExclude && excludedFromLiveLikeLocal && (
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-white border border-gray-200 px-1.5 py-0.5 rounded shrink-0">
                           Local gems only
@@ -460,29 +590,57 @@ export default function AreaCategoryNamesPanel({
                     <Sparkles size={12} className="text-vailo-teal" />
                     Live like a local knowledge
                   </label>
-                  <AdminTextarea
-                    value={knowledgeDraft(cat.id, cat.data)}
-                    onChange={(e) =>
-                      setKnowledgeEdits((prev) => ({ ...prev, [cat.id]: e.target.value }))
-                    }
-                    rows={2}
-                    placeholder="e.g. Best May–October; family-friendly beaches; avoid midday in August heat."
-                    className="text-sm bg-white !min-h-0 resize-y"
-                  />
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => void saveLiveLikeLocalKnowledge(cat.id, cat.data)}
-                      disabled={!knowledgeIsDirty(cat.id, cat.data) || savingKnowledgeId === cat.id}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-vailo-teal text-white disabled:opacity-40"
-                    >
-                      {savingKnowledgeId === cat.id ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        'Save knowledge'
-                      )}
-                    </button>
-                  </div>
+                  {isSubcategory && (
+                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={inheritsParent}
+                        disabled={togglingInheritId === cat.id}
+                        onChange={() =>
+                          void toggleInheritKnowledge(cat.id, cat.data, displayName(cat.data))
+                        }
+                        className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                      />
+                      Inherit knowledge from parent
+                    </label>
+                  )}
+                  {isSubcategory && inheritsParent ? (
+                    <AdminTextarea
+                      value={parentKnowledgeFor(cat.data)}
+                      readOnly
+                      rows={2}
+                      placeholder="Parent category has no knowledge notes yet."
+                      className="text-sm bg-gray-50 !min-h-0 resize-y text-gray-500"
+                    />
+                  ) : (
+                    <>
+                      <AdminTextarea
+                        value={knowledgeDraft(cat.id, cat.data)}
+                        onChange={(e) =>
+                          setKnowledgeEdits((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                        }
+                        rows={2}
+                        placeholder="e.g. Best May–October; family-friendly beaches; avoid midday in August heat."
+                        className="text-sm bg-white !min-h-0 resize-y"
+                      />
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void saveLiveLikeLocalKnowledge(cat.id, cat.data)}
+                          disabled={
+                            !knowledgeIsDirty(cat.id, cat.data) || savingKnowledgeId === cat.id
+                          }
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-vailo-teal text-white disabled:opacity-40"
+                        >
+                          {savingKnowledgeId === cat.id ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            'Save knowledge'
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </li>

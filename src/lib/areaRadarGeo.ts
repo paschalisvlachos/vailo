@@ -161,3 +161,35 @@ export function ringFromGooglePath(path: google.maps.MVCArray<google.maps.LatLng
   }
   return out;
 }
+
+export type FirestoreRingPoint = { lat: number; lng: number };
+
+/** Firestore-safe polygon storage (GeoJSON coordinates are nested arrays and cannot be saved). */
+export function ringToFirestore(ring: LatLng[]): FirestoreRingPoint[] {
+  return ring.map(({ lat, lng }) => ({ lat: Number(lat), lng: Number(lng) }));
+}
+
+export function ringFromFirestoreRing(raw: unknown): LatLng[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LatLng[] = [];
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const rec = p as FirestoreRingPoint;
+    const lat =
+      typeof rec.lat === 'number' ? rec.lat : parseFloat(String(rec.lat ?? ''));
+    const lng =
+      typeof rec.lng === 'number' ? rec.lng : parseFloat(String(rec.lng ?? ''));
+    if (Number.isFinite(lat) && Number.isFinite(lng)) out.push({ lat, lng });
+  }
+  return out;
+}
+
+/** Prefer Firestore ring; fall back to legacy GeoJSON if present. */
+export function resolveSearchRegionRing(
+  searchRegionRing: unknown,
+  searchRegionGeoJson: GeoJsonPolygon | null | undefined
+): LatLng[] {
+  const fromRing = ringFromFirestoreRing(searchRegionRing);
+  if (fromRing.length >= 3) return fromRing;
+  return ringFromGeoJson(searchRegionGeoJson);
+}

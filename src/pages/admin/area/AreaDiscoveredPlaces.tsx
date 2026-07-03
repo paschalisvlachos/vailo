@@ -124,7 +124,11 @@ function discoveredPlaceRowClass(
 function placeMatchesSearch(place: DiscoveredPlace, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return String(place.name || '').toLowerCase().includes(q);
+  if (String(place.name || '').toLowerCase().includes(q)) return true;
+  for (const alt of place.alternateTitles || []) {
+    if (String(alt || '').toLowerCase().includes(q)) return true;
+  }
+  return false;
 }
 
 function isAiGuestPlace(place: DiscoveredPlace): boolean {
@@ -431,9 +435,12 @@ export default function AreaDiscoveredPlaces() {
           ? reviewedPlaces
           : hiddenPlaces;
 
+  const hasSearch = searchText.trim().length > 0;
+  const searchPool = hasSearch ? places : visiblePlaces;
+
   const filteredPlaces = useMemo(
-    () => visiblePlaces.filter((place) => placeMatchesSearch(place, searchText)),
-    [visiblePlaces, searchText]
+    () => searchPool.filter((place) => placeMatchesSearch(place, searchText)),
+    [searchPool, searchText]
   );
 
   const selectableFilteredPlaces = useMemo(
@@ -441,7 +448,6 @@ export default function AreaDiscoveredPlaces() {
     [filteredPlaces]
   );
 
-  const hasSearch = searchText.trim().length > 0;
   const isHiddenTab = filter === 'hidden';
   const isReviewedTab = filter === 'reviewed';
   const showSelectionColumn = !isHiddenTab;
@@ -1371,7 +1377,7 @@ export default function AreaDiscoveredPlaces() {
             type="search"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder="Search by place name…"
+            placeholder="Search all discovered places…"
             className="pl-9 py-2 text-sm"
             aria-label="Search discovered places"
           />

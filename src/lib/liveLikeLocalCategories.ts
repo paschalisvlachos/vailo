@@ -1,4 +1,5 @@
 import { categoryPrimaryName } from './categoryLocale';
+import { inheritsKnowledgeFromParent, readParentCategoryId } from './categoryHierarchy';
 
 /** Optional context for Live like a local when recommending this category. */
 export function readLiveLikeLocalCategoryKnowledge(
@@ -16,17 +17,40 @@ export function getCategoryKnowledgeMode(knowledge: string): CategoryKnowledgeMo
   return 'any';
 }
 
+export function resolveLiveLikeLocalCategoryKnowledge(
+  doc: Record<string, unknown>,
+  parentDoc: Record<string, unknown> | null | undefined,
+  primaryLocale: string
+): string {
+  const primary = categoryPrimaryName(doc, primaryLocale).trim();
+  if (!primary || isExcludedFromLiveLikeLocal(doc)) return '';
+
+  if (readParentCategoryId(doc) && inheritsKnowledgeFromParent(doc) && parentDoc) {
+    return readLiveLikeLocalCategoryKnowledge(parentDoc);
+  }
+  return readLiveLikeLocalCategoryKnowledge(doc);
+}
+
 /** Primary category name → admin knowledge note (concierge-visible categories only). */
 export function collectCategoryKnowledgeByPrimary(
-  docs: Array<{ data: Record<string, unknown> }>,
+  docs: Array<{ id?: string; data: Record<string, unknown> }>,
   primaryLocale: string
 ): Record<string, string> {
+  const docById = new Map<string, Record<string, unknown>>();
+  for (const { id, data } of docs) {
+    if (id) docById.set(id, data);
+  }
+
   const map: Record<string, string> = {};
   for (const { data } of docs) {
     if (isExcludedFromLiveLikeLocal(data)) continue;
     const primary = categoryPrimaryName(data, primaryLocale).trim();
-    const knowledge = readLiveLikeLocalCategoryKnowledge(data);
-    if (primary && knowledge) map[primary] = knowledge;
+    if (!primary) continue;
+
+    const parentId = readParentCategoryId(data);
+    const parentDoc = parentId ? docById.get(parentId) : undefined;
+    const knowledge = resolveLiveLikeLocalCategoryKnowledge(data, parentDoc, primaryLocale);
+    if (knowledge) map[primary] = knowledge;
   }
   return map;
 }

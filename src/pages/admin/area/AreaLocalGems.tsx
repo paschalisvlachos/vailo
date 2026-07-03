@@ -37,12 +37,12 @@ import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
 import {
   categoryPrimaryName,
-  categorySelectionIncludes,
   gemCategoryPrimaries,
   normalizeCategorySelectionList,
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
-import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
+import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
+import { buildAdminCategoryHierarchy } from '../../../lib/categoryHierarchy';
 import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
@@ -167,41 +167,25 @@ export default function AreaLocalGems() {
 
   const categoryPillOptions = useMemo(
     () =>
-      categories.map((cat) => {
-        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-        const label = resolveCategoryLabel(
-          cat.data,
-          localeEditor.contentLocale,
-          localeSettings.primaryLocale
-        );
-        return { value: primaryName, label: label || primaryName };
-      }),
+      buildAdminCategoryHierarchy(
+        categories,
+        localeEditor.contentLocale,
+        localeSettings.primaryLocale
+      ).selectableOptions.map((opt) => ({ value: opt.primary, label: opt.label })),
     [categories, localeEditor.contentLocale, localeSettings.primaryLocale]
   );
 
-  const handleCategoryPillToggle = (value: string) => {
-    setFormData((prev) => {
-      const current = normalizeCategorySelectionList(
-        prev.categories,
-        categoryCatalogDocs,
-        localeSettings.primaryLocale
-      );
-      const lower = value.toLowerCase();
-      const has = current.some((c) => c.toLowerCase() === lower);
-      const next = has
-        ? current.filter((c) => c.toLowerCase() !== lower)
-        : [...current, value];
-      const normalized = normalizeCategorySelectionList(
-        next,
-        categoryCatalogDocs,
-        localeSettings.primaryLocale
-      );
-      return {
-        ...prev,
-        categories: normalized,
-        category: normalized[0] || '',
-      };
-    });
+  const handleGemCategoriesChange = (next: string[]) => {
+    const normalized = normalizeCategorySelectionList(
+      next,
+      categoryCatalogDocs,
+      localeSettings.primaryLocale
+    );
+    setFormData((prev) => ({
+      ...prev,
+      categories: normalized,
+      category: normalized[0] || '',
+    }));
   };
 
   // 1. Fetch Dynamic Categories
@@ -385,37 +369,73 @@ export default function AreaLocalGems() {
         });
       }
 
-      const { alternateTitlesText, ...formRest } = formData;
+      const localized = localeEditor.buildPayload();
+      const canonicalName =
+        String(localized.name || localeEditor.getPrimaryValue('name') || formData.name || '').trim();
       const alternateTitles = dedupeAlternateTitles(
-        formData.name,
-        alternateTitlesText
+        canonicalName,
+        formData.alternateTitlesText
           .split(/[\n,]+/)
           .map((s) => s.trim())
           .filter(Boolean)
       );
 
-      const gemData = {
-        ...formRest,
+      const gemData: Record<string, unknown> = {
+        name: canonicalName,
+        description: String(
+          localized.description ||
+            localeEditor.getPrimaryValue('description') ||
+            formData.description ||
+            ''
+        ).trim(),
         categories: normalizedGemCategories,
         category: normalizedGemCategories[0] || '',
-        ...localeEditor.buildPayload(),
+        rating: formData.rating,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        googleMapsUrl: formData.googleMapsUrl,
         photoUrl: finalPhotoUrl,
+        isDailyTrip: Boolean(formData.isDailyTrip),
         alternateTitles,
+        ...localized,
         updatedAt: new Date().toISOString(),
       };
+
+      if (editingSourceDoc) {
+        for (const key of [
+          'sourcePropertyId',
+          'sourcePropertyTypeId',
+          'sourcePropertyGemId',
+          'insertedByLabel',
+          'syncedAt',
+          'sourceDiscoveredPlaceId',
+          'createdAt',
+        ] as const) {
+          if (editingSourceDoc[key] !== undefined) gemData[key] = editingSourceDoc[key];
+        }
+      }
+
+      for (const key of Object.keys(gemData)) {
+        if (gemData[key] === undefined) delete gemData[key];
+      }
 
       if (editingGemId) {
         await updateDoc(doc(db, 'countries', decodedCountry, 'areas', areaId, 'localGems', editingGemId), gemData);
       } else {
-        await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGems'), gemData);
+        await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGems'), {
+          ...gemData,
+          createdAt: new Date().toISOString(),
+        });
       }
 
       closeForm();
     } catch (error) {
-      console.error("Error saving Gem:", error);
-      toast.error("Failed to save Local Gem.");
+      console.error('Error saving Gem:', error);
+      const msg = error instanceof Error ? error.message : 'Failed to save Local Gem.';
+      toast.error(msg.startsWith('Failed') || msg.startsWith('Could not') ? msg : `Failed to save Local Gem: ${msg}`);
     } finally {
       setIsSubmitting(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -456,9 +476,11 @@ export default function AreaLocalGems() {
     );
     setEditingSourceDoc(gem);
     setFormData({
+      ...initialFormState,
       ...gem,
       categories: normalized,
       category: normalized[0] || '',
+      isDailyTrip: Boolean(gem.isDailyTrip),
       alternateTitlesText: Array.isArray(gem.alternateTitles)
         ? gem.alternateTitles.join('\n')
         : '',
@@ -601,18 +623,13 @@ export default function AreaLocalGems() {
           />
         </div>
         <div className="sm:col-span-2">
-          <CategoryPillSelector
+          <HierarchicalCategoryPillSelector
             label="Categories * (select all that apply)"
-            options={categoryPillOptions}
-            isSelected={(value) =>
-              categorySelectionIncludes(
-                normalizedGemCategories,
-                value,
-                categoryCatalogDocs,
-                localeSettings.primaryLocale
-              )
-            }
-            onToggle={handleCategoryPillToggle}
+            categoryDocs={categories}
+            selectedPrimaries={normalizedGemCategories}
+            onSelectedChange={handleGemCategoriesChange}
+            locale={localeEditor.contentLocale}
+            primaryLocale={localeSettings.primaryLocale}
             colorClass="orange"
           />
         </div>

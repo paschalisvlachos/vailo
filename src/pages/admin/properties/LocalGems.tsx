@@ -20,12 +20,12 @@ import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyCont
 import { Languages, Loader2 as Loader2Icon } from 'lucide-react';
 import {
   categoryPrimaryName,
-  categorySelectionIncludes,
   gemCategoryPrimaries,
   normalizeCategorySelectionList,
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
-import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
+import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
+import { buildAdminCategoryHierarchy } from '../../../lib/categoryHierarchy';
 import { syncPropertyGemToArea } from '../../../lib/propertyGemAreaSync';
 import CopyGemsModal from '../../../components/admin/CopyGemsModal';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
@@ -128,41 +128,25 @@ export default function LocalGems() {
 
   const categoryPillOptions = useMemo(
     () =>
-      localGemsCategoryDocs.map((cat) => {
-        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-        const label = resolveCategoryLabel(
-          cat.data,
-          localeEditor.contentLocale,
-          localeSettings.primaryLocale
-        );
-        return { value: primaryName, label: label || primaryName };
-      }),
+      buildAdminCategoryHierarchy(
+        localGemsCategoryDocs,
+        localeEditor.contentLocale,
+        localeSettings.primaryLocale
+      ).selectableOptions.map((opt) => ({ value: opt.primary, label: opt.label })),
     [localGemsCategoryDocs, localeEditor.contentLocale, localeSettings.primaryLocale]
   );
 
-  const handleCategoryPillToggle = (value: string) => {
-    setFormData((prev) => {
-      const current = normalizeCategorySelectionList(
-        prev.categories,
-        categoryCatalogDocs,
-        localeSettings.primaryLocale
-      );
-      const lower = value.toLowerCase();
-      const has = current.some((c) => c.toLowerCase() === lower);
-      const next = has
-        ? current.filter((c) => c.toLowerCase() !== lower)
-        : [...current, value];
-      const normalized = normalizeCategorySelectionList(
-        next,
-        categoryCatalogDocs,
-        localeSettings.primaryLocale
-      );
-      return {
-        ...prev,
-        categories: normalized,
-        category: normalized[0] || '',
-      };
-    });
+  const handleGemCategoriesChange = (next: string[]) => {
+    const normalized = normalizeCategorySelectionList(
+      next,
+      categoryCatalogDocs,
+      localeSettings.primaryLocale
+    );
+    setFormData((prev) => ({
+      ...prev,
+      categories: normalized,
+      category: normalized[0] || '',
+    }));
   };
 
   // 1. Fetch Area Context (from Parent or Types)
@@ -1000,18 +984,13 @@ export default function LocalGems() {
             
             <div className="md:col-span-2">
               {localGemsCategoryDocs.length > 0 ? (
-                <CategoryPillSelector
+                <HierarchicalCategoryPillSelector
                   label="Categories * (select all that apply)"
-                  options={categoryPillOptions}
-                  isSelected={(value) =>
-                    categorySelectionIncludes(
-                      normalizedGemCategories,
-                      value,
-                      categoryCatalogDocs,
-                      localeSettings.primaryLocale
-                    )
-                  }
-                  onToggle={handleCategoryPillToggle}
+                  categoryDocs={localGemsCategoryDocs}
+                  selectedPrimaries={normalizedGemCategories}
+                  onSelectedChange={handleGemCategoriesChange}
+                  locale={localeEditor.contentLocale}
+                  primaryLocale={localeSettings.primaryLocale}
                   colorClass="blue"
                 />
               ) : (

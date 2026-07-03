@@ -4,8 +4,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import { isGuestPortalUrlPath } from "./lib/guestAccess";
 import GuestPortalLoadingScreen from "./components/guest/GuestPortalLoadingScreen";
-import Layout from "./components/admin/Layout";
-import Login from "./components/admin/Login";
+import AdminAuthenticatedShell from "./components/admin/AdminAuthenticatedShell";
 import PropertiesPage from "./pages/admin/properties/PropertiesPage";
 import PropertyFormPage from "./pages/admin/properties/PropertyFormPage";
 import OwnersPage from "./pages/admin/OwnersPage";
@@ -59,7 +58,6 @@ import MailboxPage from "./pages/admin/MailboxPage";
 import DashboardPage from "./pages/admin/DashboardPage";
 
 import { ToastProvider } from "./context/ToastContext";
-import { AdminSessionProvider, useAdminSession } from "./context/AdminSessionContext";
 import {
   PlatformAdminOnly,
   PropertyAccessGuard,
@@ -69,7 +67,7 @@ import {
   ScopedAdminHome,
 } from "./components/admin/AdminAccessGuards";
 import GuestPortal from "./pages/guest/GuestPortal";
-import { adminPath } from "./lib/adminRoutes";
+import { ADMIN_BASE, adminPath } from "./lib/adminRoutes";
 
 /** Dev: root `/` is the Vite entry — send visitors to the static marketing site. */
 function DevMarketingRedirect() {
@@ -108,29 +106,6 @@ export default function App() {
     );
   }
 
-  function AdminSessionGate({ children }: { children: React.ReactNode }) {
-    const { loading } = useAdminSession();
-    if (loading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-vailo-surface text-vailo-teal text-sm font-medium">
-          Loading your access…
-        </div>
-      );
-    }
-    return <>{children}</>;
-  }
-
-  const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-    if (!user) return <Login />;
-    return (
-      <AdminSessionProvider>
-        <AdminSessionGate>
-          <Layout>{children}</Layout>
-        </AdminSessionGate>
-      </AdminSessionProvider>
-    );
-  };
-
   return (
     <ToastProvider>
     <BrowserRouter>
@@ -151,109 +126,98 @@ export default function App() {
         <Route path="/add-property/*" element={<LegacyAdminRedirect />} />
         <Route path="/add-owner/*" element={<LegacyAdminRedirect />} />
 
-        {/* Admin app (vailo.app/admin) */}
-        <Route path={adminPath()} element={<AdminRoute><PlatformAdminOnly><DashboardPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/mailbox')} element={<AdminRoute><PlatformAdminOnly><MailboxPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/inbox')} element={<Navigate to={adminPath('/mailbox')} replace />} />
-        <Route
-          path={adminPath('/properties')}
-          element={
-            <AdminRoute>
+        {/* Admin app — one session shell for all routes (avoids reload on every navigation) */}
+        <Route path={ADMIN_BASE} element={<AdminAuthenticatedShell user={user} />}>
+          <Route index element={<PlatformAdminOnly><DashboardPage /></PlatformAdminOnly>} />
+          <Route path="mailbox" element={<PlatformAdminOnly><MailboxPage /></PlatformAdminOnly>} />
+          <Route path="inbox" element={<Navigate to={adminPath('/mailbox')} replace />} />
+          <Route
+            path="properties"
+            element={
               <ScopedAdminHome>
                 <PropertiesPage />
               </ScopedAdminHome>
-            </AdminRoute>
-          }
-        />
-        <Route path={adminPath('/add-property')} element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/properties/:id/edit')} element={<AdminRoute><PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly></AdminRoute>} />
-
-        <Route
-          path={adminPath('/properties/:id')}
-          element={
-            <AdminRoute>
+            }
+          />
+          <Route path="add-property" element={<PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly>} />
+          <Route path="properties/:id/edit" element={<PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly>} />
+          <Route
+            path="properties/:id"
+            element={
               <PropertyAccessGuard>
                 <PropertyLayout />
               </PropertyAccessGuard>
-            </AdminRoute>
-          }
-        >
-          <Route index element={<Overview />} />
-          <Route path="types" element={<PropertyTypes />} />
-          <Route path="local-gems" element={<LocalGems />} />
-          <Route path="green-score" element={<GreenScore />} />
-          <Route path="calendar" element={<Calendar />} />
-          <Route path="reservations" element={<Reservations />} />
-          <Route path="house-guide" element={<HouseGuide />} />
-          <Route path="features" element={<Features />} />
-          <Route path="guest-issues" element={<GuestIssues />} />
-          <Route path="pick-feedback" element={<PickFeedback />} />
-          <Route path="ai-gaps" element={<AiGaps />} />
-          <Route path="house-guests" element={<HouseGuests />} />
-          <Route path="testers" element={<PropertyTesters />} />
-          <Route path="analytics" element={<PropertyAnalytics />} />
+            }
+          >
+            <Route index element={<Overview />} />
+            <Route path="types" element={<PropertyTypes />} />
+            <Route path="local-gems" element={<LocalGems />} />
+            <Route path="green-score" element={<GreenScore />} />
+            <Route path="calendar" element={<Calendar />} />
+            <Route path="reservations" element={<Reservations />} />
+            <Route path="house-guide" element={<HouseGuide />} />
+            <Route path="features" element={<Features />} />
+            <Route path="guest-issues" element={<GuestIssues />} />
+            <Route path="pick-feedback" element={<PickFeedback />} />
+            <Route path="ai-gaps" element={<AiGaps />} />
+            <Route path="house-guests" element={<HouseGuests />} />
+            <Route path="testers" element={<PropertyTesters />} />
+            <Route path="analytics" element={<PropertyAnalytics />} />
+          </Route>
+
+          <Route path="owners" element={<AgentOwnersGuard><OwnersPage /></AgentOwnersGuard>} />
+          <Route path="add-owner" element={<AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard>} />
+          <Route path="owners/:id/edit" element={<AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard>} />
+          <Route path="billing" element={<PlatformAdminOnly><Billing /></PlatformAdminOnly>} />
+          <Route path="expenses" element={<PlatformAdminOnly><ExpensesPage /></PlatformAdminOnly>} />
+          <Route path="expenses/add" element={<PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly>} />
+          <Route path="expenses/:id/edit" element={<PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly>} />
+          <Route path="legal" element={<PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly>} />
+          <Route path="settings" element={<PlatformAdminOnly><Settings /></PlatformAdminOnly>} />
+          <Route path="account/password" element={<ChangePasswordPage />} />
+          <Route path="knowledge" element={<PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly>} />
+          <Route path="knowledge/web" element={<PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly>} />
+          <Route path="knowledge/client" element={<PlatformAdminOnly><ClientKnowledge /></PlatformAdminOnly>} />
+          <Route path="knowledge/code" element={<PlatformAdminOnly><AppCodeKnowledge /></PlatformAdminOnly>} />
+          <Route path="area" element={<PlatformAdminOnly><AreaSelector /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/local-gems-categories" element={<PlatformAdminOnly><LocalGemsCategories /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/features-categories" element={<PlatformAdminOnly><FeaturesCategories /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/features-photos" element={<PlatformAdminOnly><FeaturesPhotos /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/local-gems" element={<PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/features" element={<PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/discovered-places" element={<PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/area-radar" element={<PlatformAdminOnly><AreaRadar /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/local-trails" element={<PlatformAdminOnly><AreaLocalTrails /></PlatformAdminOnly>} />
+
+          <Route path="excursions/providers" element={<PlatformAdminOnly><ExcursionProvidersPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/add" element={<PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:id/edit" element={<PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/bookings" element={<PlatformAdminOnly><ExcursionBookingsListPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions" element={<PlatformAdminOnly><ExcursionsListPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/add" element={<PlatformAdminOnly><ExcursionFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/edit" element={<PlatformAdminOnly><ExcursionFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/availability" element={<PlatformAdminOnly><ExcursionAvailabilityPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/discounts" element={<PlatformAdminOnly><ExcursionDiscountsListPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/discounts/add" element={<PlatformAdminOnly><ExcursionDiscountFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/discounts/:discountId/edit" element={<PlatformAdminOnly><ExcursionDiscountFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/bookings" element={<PlatformAdminOnly><ExcursionBookingsListPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/bookings/add" element={<PlatformAdminOnly><ExcursionBookingFormPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/excursions/:excursionId/bookings/:bookingId" element={<PlatformAdminOnly><ExcursionBookingDetailPage /></PlatformAdminOnly>} />
+
+          <Route path="excursion-portal" element={<ExcursionPortalGuard><ExcursionProviderPortalHome /></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionProviderFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/bookings" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/add" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/edit" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/availability" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionAvailabilityPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/discounts" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionDiscountsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/discounts/add" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionDiscountFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/discounts/:discountId/edit" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionDiscountFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/bookings" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/bookings/add" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/excursions/:excursionId/bookings/:bookingId" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingDetailPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
         </Route>
-
-        <Route path={adminPath('/owners')} element={<AdminRoute><AgentOwnersGuard><OwnersPage /></AgentOwnersGuard></AdminRoute>} />
-        <Route path={adminPath('/add-owner')} element={<AdminRoute><AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard></AdminRoute>} />
-        <Route path={adminPath('/owners/:id/edit')} element={<AdminRoute><AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard></AdminRoute>} />
-        <Route path={adminPath('/billing')} element={<AdminRoute><PlatformAdminOnly><Billing /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/expenses')} element={<AdminRoute><PlatformAdminOnly><ExpensesPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/expenses/add')} element={<AdminRoute><PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/expenses/:id/edit')} element={<AdminRoute><PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/legal')} element={<AdminRoute><PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/settings')} element={<AdminRoute><PlatformAdminOnly><Settings /></PlatformAdminOnly></AdminRoute>} />
-        <Route
-          path={adminPath('/account/password')}
-          element={
-            <AdminRoute>
-              <ChangePasswordPage />
-            </AdminRoute>
-          }
-        />
-        <Route path={adminPath('/knowledge')} element={<AdminRoute><PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/knowledge/web')} element={<AdminRoute><PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/knowledge/client')} element={<AdminRoute><PlatformAdminOnly><ClientKnowledge /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/knowledge/code')} element={<AdminRoute><PlatformAdminOnly><AppCodeKnowledge /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area')} element={<AdminRoute><PlatformAdminOnly><AreaSelector /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/local-gems-categories')} element={<AdminRoute><PlatformAdminOnly><LocalGemsCategories /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/features-categories')} element={<AdminRoute><PlatformAdminOnly><FeaturesCategories /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/features-photos')} element={<AdminRoute><PlatformAdminOnly><FeaturesPhotos /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/local-gems')} element={<AdminRoute><PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/features')} element={<AdminRoute><PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/discovered-places')} element={<AdminRoute><PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/area-radar')} element={<AdminRoute><PlatformAdminOnly><AreaRadar /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/area/:country/:area/local-trails')} element={<AdminRoute><PlatformAdminOnly><AreaLocalTrails /></PlatformAdminOnly></AdminRoute>} />
-
-        <Route path={adminPath('/excursions/providers')} element={<AdminRoute><PlatformAdminOnly><ExcursionProvidersPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/add')} element={<AdminRoute><PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:id/edit')} element={<AdminRoute><PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/bookings')} element={<AdminRoute><PlatformAdminOnly><ExcursionBookingsListPage /></PlatformAdminOnly></AdminRoute>} />
-
-        <Route path={adminPath('/excursions/providers/:providerId/excursions')} element={<AdminRoute><PlatformAdminOnly><ExcursionsListPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/add')} element={<AdminRoute><PlatformAdminOnly><ExcursionFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/edit')} element={<AdminRoute><PlatformAdminOnly><ExcursionFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/availability')} element={<AdminRoute><PlatformAdminOnly><ExcursionAvailabilityPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/discounts')} element={<AdminRoute><PlatformAdminOnly><ExcursionDiscountsListPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/discounts/add')} element={<AdminRoute><PlatformAdminOnly><ExcursionDiscountFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/discounts/:discountId/edit')} element={<AdminRoute><PlatformAdminOnly><ExcursionDiscountFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/bookings')} element={<AdminRoute><PlatformAdminOnly><ExcursionBookingsListPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/bookings/add')} element={<AdminRoute><PlatformAdminOnly><ExcursionBookingFormPage /></PlatformAdminOnly></AdminRoute>} />
-        <Route path={adminPath('/excursions/providers/:providerId/excursions/:excursionId/bookings/:bookingId')} element={<AdminRoute><PlatformAdminOnly><ExcursionBookingDetailPage /></PlatformAdminOnly></AdminRoute>} />
-
-        <Route path={adminPath('/excursion-portal')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderPortalHome /></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionProviderFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/bookings')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/add')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/edit')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/availability')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionAvailabilityPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/discounts')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionDiscountsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/discounts/add')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionDiscountFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/discounts/:discountId/edit')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionDiscountFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/bookings')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/bookings/add')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
-        <Route path={adminPath('/excursion-portal/:providerId/excursions/:excursionId/bookings/:bookingId')} element={<AdminRoute><ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingDetailPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard></AdminRoute>} />
 
         {/* Guest portal (vailo.app/:property/:unit) — after /admin routes */}
         <Route path="/:propertySlug/:typeSlug" element={<GuestPortal />} />

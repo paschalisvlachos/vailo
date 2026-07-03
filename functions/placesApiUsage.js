@@ -28,6 +28,7 @@ const SOURCE_LABELS = {
   property_types: "Property — Listing types",
   admin_magic_fill: "Admin — Magic Fill (unspecified)",
   photo_mirror: "Photo mirror (Storage cache miss)",
+  area_radar: "Area — Radar bulk discovery",
 };
 
 const VALID_USAGE_CALLERS = new Set(Object.keys(SOURCE_LABELS));

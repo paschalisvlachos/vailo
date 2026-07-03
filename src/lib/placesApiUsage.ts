@@ -16,6 +16,7 @@ export const PLACES_SOURCE_LABELS: Record<string, string> = {
   property_types: 'Property — Listing types',
   admin_magic_fill: 'Admin — Magic Fill (unspecified)',
   photo_mirror: 'Photo mirror (Storage cache miss)',
+  area_radar: 'Area — Radar bulk discovery',
 };
 
 export const PLACES_ENDPOINT_UNIT_COST_USD: Record<string, number> = {

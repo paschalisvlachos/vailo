@@ -1,3 +1,4 @@
+import { effectiveMaxDistanceKm } from './flexiblePicks';
 import { resolveLocalizedString } from './propertyContentLocales';
 import { namesLikelySame, normalizePlaceName } from './placeNameUtils';
 import type { UnverifiedAiMention } from './guestDiscoveredPlaces';
@@ -59,6 +60,65 @@ function rowName(row: Record<string, unknown>): string {
 function isReviewedDiscovered(row: Record<string, unknown>): boolean {
   if (String(row.status || '').toLowerCase() === 'hidden') return false;
   return String(row.reviewStatus || '').toLowerCase() === 'reviewed';
+}
+
+function drivingKmFromAnchor(
+  anchor: { lat: number; lng: number },
+  lat: number,
+  lng: number
+): number {
+  const R = 6371;
+  const dLat = ((lat - anchor.lat) * Math.PI) / 180;
+  const dLon = ((lng - anchor.lng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((anchor.lat * Math.PI) / 180) *
+      Math.cos((lat * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1.35;
+}
+
+/** Keep pool entries within radius of the chat search anchor. */
+export function filterConciergeMatchPool(
+  pool: PoolEntry[],
+  anchorCoords: { lat: number; lng: number },
+  maxKm: number,
+  opts?: { requireCoords?: boolean; strict?: boolean }
+): PoolEntry[] {
+  const cap = opts?.strict === false ? effectiveMaxDistanceKm(maxKm) : maxKm;
+  return pool.filter((entry) => {
+    if (entry.latitude == null || entry.longitude == null) {
+      return !opts?.requireCoords;
+    }
+    return drivingKmFromAnchor(anchorCoords, entry.latitude, entry.longitude) <= cap;
+  });
+}
+
+/** Drop far picks, attach distance labels, sort nearest-first. */
+export function finalizeConciergeCuratedItems(
+  items: ConciergePickItem[],
+  anchorCoords: { lat: number; lng: number },
+  maxKm: number
+): ConciergePickItem[] {
+  return items
+    .map((item) => {
+      const lat = item.latitude;
+      const lng = item.longitude;
+      if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return null;
+      const km = drivingKmFromAnchor(anchorCoords, lat, lng);
+      if (km > maxKm) return null;
+      return {
+        ...item,
+        estimatedDistance: `${km.toFixed(1)}km`,
+        beyondRadius: false,
+      };
+    })
+    .filter((item): item is ConciergePickItem => item != null)
+    .sort((a, b) => {
+      const aKm = parseFloat(String(a.estimatedDistance || '').replace('km', '')) || 999;
+      const bKm = parseFloat(String(b.estimatedDistance || '').replace('km', '')) || 999;
+      return aKm - bKm;
+    });
 }
 
 export function buildConciergeMatchPool(params: {

@@ -37,6 +37,7 @@ import AreaLocalGems from "./pages/admin/area/AreaLocalGems";
 import AreaFeatures from "./pages/admin/area/AreaFeatures";
 import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
 import AreaLocalTrails from "./pages/admin/area/AreaLocalTrails";
+import AreaRadar from "./pages/admin/area/AreaRadar";
 import ExcursionProvidersPage from "./pages/admin/excursions/ExcursionProvidersPage";
 import ExcursionProviderFormPage from "./pages/admin/excursions/ExcursionProviderFormPage";
 import ExcursionProviderPortalHome from "./pages/admin/excursions/ExcursionProviderPortalHome";
@@ -221,6 +222,7 @@ export default function App() {
         <Route path={adminPath('/area/:country/:area/local-gems')} element={<AdminRoute><PlatformAdminOnly><AreaLocalGems /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/features')} element={<AdminRoute><PlatformAdminOnly><AreaFeatures /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/discovered-places')} element={<AdminRoute><PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly></AdminRoute>} />
+        <Route path={adminPath('/area/:country/:area/area-radar')} element={<AdminRoute><PlatformAdminOnly><AreaRadar /></PlatformAdminOnly></AdminRoute>} />
         <Route path={adminPath('/area/:country/:area/local-trails')} element={<AdminRoute><PlatformAdminOnly><AreaLocalTrails /></PlatformAdminOnly></AdminRoute>} />
 
         <Route path={adminPath('/excursions/providers')} element={<AdminRoute><PlatformAdminOnly><ExcursionProvidersPage /></PlatformAdminOnly></AdminRoute>} />

@@ -17,6 +17,7 @@ import {
   Loader2,
   Radar,
   Footprints,
+  ScanSearch,
 } from 'lucide-react';
 import AreaLanguagesCard from '../../../components/admin/AreaLanguagesCard';
 import { loadCountryNames } from '../../../lib/countryNames';
@@ -35,6 +36,7 @@ const MODULES = [
   { id: 'local-gems-categories', title: 'Local Gems Categories', icon: Grid, desc: 'Category structure for local recommendations' },
   { id: 'local-gems', title: 'Local Gems', icon: MapIcon, desc: 'Add restaurants, beaches, and experiences' },
   { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review AI-imported venues from guest plans' },
+  { id: 'area-radar', title: 'Area Radar', icon: ScanSearch, desc: 'Draw a region on the map and bulk-scout new places' },
   { id: 'local-trails', title: 'Local Trails', icon: Footprints, desc: 'Sync hiking trails from AllTrails for this area' },
   { id: 'features-categories', title: 'Features Categories', icon: Layers, desc: 'Category structure for local features' },
   { id: 'features', title: 'Master Features', icon: Briefcase, desc: 'Car rentals, chefs, transfers, and more' },

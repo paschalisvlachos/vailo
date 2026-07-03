@@ -28,6 +28,13 @@ export type ConciergePlaceContext = {
   scope?: 'property' | 'area';
 };
 
+export type ConciergeSearchAnchor = {
+  label: string;
+  coords: { lat: number; lng: number };
+  isProperty: boolean;
+  radiusKm: number;
+};
+
 export type ConciergeChatContext = {
   propertyName: string;
   propertyTypeName?: string;
@@ -35,16 +42,27 @@ export type ConciergeChatContext = {
   country: string;
   categories: ConciergeCategoryContext[];
   curatedPlaces: ConciergePlaceContext[];
+  searchAnchor: ConciergeSearchAnchor;
 };
 
+function buildSearchAnchorBlock(anchor: ConciergeSearchAnchor): string {
+  const gps = `${anchor.coords.lat.toFixed(5)}, ${anchor.coords.lng.toFixed(5)}`;
+  if (anchor.isProperty) {
+    return `SEARCH ANCHOR — center all recommendations on the guest's accommodation: "${anchor.label}" (GPS: ${gps}), within ${anchor.radiusKm}km. Curated host picks near the stay are ideal when they match the brief.`;
+  }
+  return `SEARCH ANCHOR — the guest is exploring "${anchor.label}" (GPS: ${gps}), NOT at their accommodation. Recommend ONLY places within ${anchor.radiusKm}km driving distance of this exact anchor. Do NOT suggest famous spots in other villages or towns — if nothing in the curated list fits, use your knowledge of places genuinely in or immediately beside "${anchor.label}" only.`;
+}
+
 function buildCuratedPlacesBlock(places: ConciergePlaceContext[]): string {
-  if (!places.length) return 'No Vailo-curated places loaded yet — rely on your regional knowledge with official place names only.';
+  if (!places.length) {
+    return 'No Vailo-curated places within this search area — use your regional knowledge with official Google Maps place names only.';
+  }
   const lines = places.slice(0, 60).map((p) => {
     const scope = p.scope === 'area' ? 'area gem' : 'host pick';
     const desc = p.description?.trim() ? ` — ${p.description.trim()}` : '';
     return `- ${p.name} (${p.category}, ${scope})${desc}`;
   });
-  return `Vailo curated picks (STRONGLY prefer these exact names when they match the guest's brief — they appear as rich cards with photos and maps):\n${lines.join('\n')}`;
+  return `Vailo curated picks near the search anchor (prefer these exact names when they match — guests see them as rich cards with photos and maps):\n${lines.join('\n')}`;
 }
 
 function buildCategoriesBlock(categories: ConciergeCategoryContext[]): string {
@@ -69,11 +87,13 @@ Your mission: understand what the guest truly wants, then recommend ONLY excepti
 
 ${guestAiLanguageBlock(locale)}
 
+${buildSearchAnchorBlock(context.searchAnchor)}
+
 HOW YOU WORK
-1. DISCOVERY FIRST — Before naming any place, ask thoughtful questions ONE AT A TIME. Gather enough context: mood & interests, time of day, how far they'll travel, who's with them, pace, and deal-breakers.
-2. DO NOT rush to recommendations. If key details are missing, ask another focused question instead of guessing.
+1. DISCOVERY FIRST — Before naming any place, ask thoughtful questions ONE AT A TIME when the guest's intent is still vague. Gather mood, time of day, who's with them, and deal-breakers. If they already named what they want (e.g. "restaurants at the old port"), you may recommend directly.
+2. LOCATION — All recommendations must be near the SEARCH ANCHOR above. Never drift to other neighbourhoods or towns unless the guest names a new place.
 3. WHEN READY — Suggest 2–5 standout places maximum. Quality beats quantity. Use exact official Google Maps names.
-4. Vailo curated picks below MUST be used with their exact names when they fit — guests see them as photo cards.
+4. Vailo curated picks below MUST be used with their exact names when they fit the anchor and brief — guests see them as photo cards.
 5. Stay on local travel, food, beaches, culture, and day plans. Redirect house-stay questions to the property assistant.
 6. Tone: warm, confident, concise — like a brilliant friend who lives here.
 

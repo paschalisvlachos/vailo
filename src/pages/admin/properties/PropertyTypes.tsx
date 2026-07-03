@@ -6,7 +6,12 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
 import { loadCountryNames } from '../../../lib/countryNames';
 import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
-import { formatGuestSlug, getTypePublicSlug, mergePreviousSlugs } from '../../../lib/guestPortalSlug';
+import {
+  formatGuestSlug,
+  getTypePublicSlug,
+  mergePreviousSlugs,
+  slugFromPropertyTypeName,
+} from '../../../lib/guestPortalSlug';
 import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
 import {
   buildGuestPortalPublicListingUrl,
@@ -16,7 +21,7 @@ import {
 import { useToast } from '../../../context/ToastContext';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone, Copy, Check } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
 import {
@@ -41,6 +46,7 @@ export default function PropertyTypes() {
 
   const isListingOnly = propertyAccess.level === 'listing_only';
   const canAssignAllocatedOwner = isPlatformAdmin || isAgent;
+  const canEditUrlSlug = isPlatformAdmin;
   const allowedTypeIds = isListingOnly ? propertyAccess.typeIds : null;
   const listingOnlyAutoOpened = useRef(false);
   
@@ -64,6 +70,7 @@ export default function PropertyTypes() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [qrDownloadingId, setQrDownloadingId] = useState<string | null>(null);
+  const [copiedUrlTypeId, setCopiedUrlTypeId] = useState<string | null>(null);
   const [cloningTypeId, setCloningTypeId] = useState<string | null>(null);
   const [isICalSyncing, setIsICalSyncing] = useState(false);
 
@@ -187,19 +194,23 @@ export default function PropertyTypes() {
   }, [isListingOnly, lockedListingId, propertyTypes, propertyAccess]);
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (e.target.name === 'urlSlug') setIsSlugManuallyEdited(true);
-    
+    if (e.target.name === 'urlSlug' && canEditUrlSlug) setIsSlugManuallyEdited(true);
+
     setTypeFormData(prev => {
       const newData = { ...prev, [e.target.name]: e.target.value };
-      
+
       // Force city reset if country changes
       if (e.target.name === 'country') {
-        newData.city = ''; 
+        newData.city = '';
       }
 
-      // Auto-generate ONLY the child slug when typing the property name
-      if (e.target.name === 'propertyTypeName' && !isSlugManuallyEdited) {
-        newData.urlSlug = e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      // Auto-generate slug from name only when creating a listing (admins may override manually)
+      if (
+        e.target.name === 'propertyTypeName' &&
+        !isSlugManuallyEdited &&
+        (!editingTypeId || canEditUrlSlug)
+      ) {
+        newData.urlSlug = slugFromPropertyTypeName(e.target.value);
       }
 
       return newData;
@@ -207,6 +218,7 @@ export default function PropertyTypes() {
   };
 
   const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEditUrlSlug) return;
     setIsSlugManuallyEdited(true);
     setTypeFormData({ ...typeFormData, urlSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') });
   };
@@ -285,7 +297,8 @@ export default function PropertyTypes() {
       setTypeFormData((prev) => ({
         ...prev,
         propertyTypeName: listingName || prev.propertyTypeName,
-        urlSlug: !isSlugManuallyEdited && slugFromName ? slugFromName : prev.urlSlug,
+        urlSlug:
+          canEditUrlSlug && !isSlugManuallyEdited && slugFromName ? slugFromName : prev.urlSlug,
         latitude: googleData.latitude?.toString() || prev.latitude,
         longitude: googleData.longitude?.toString() || prev.longitude,
         googleMapsUrl: googleData.googleMapsUrl || url,
@@ -451,20 +464,28 @@ export default function PropertyTypes() {
         });
       }
 
-      const newSlug = formatGuestSlug(typeFormData.urlSlug);
       const existingType = editingTypeId
         ? propertyTypes.find((t) => t.id === editingTypeId)
         : null;
+      const newSlug = canEditUrlSlug
+        ? formatGuestSlug(typeFormData.urlSlug)
+        : editingTypeId && existingType
+          ? getTypePublicSlug(existingType)
+          : formatGuestSlug(typeFormData.urlSlug) ||
+            slugFromPropertyTypeName(typeFormData.propertyTypeName);
+      const slugChanged = canEditUrlSlug && newSlug !== getTypePublicSlug(existingType ?? {});
       const payload: Record<string, unknown> = {
         ...typeFormData,
         urlSlug: newSlug,
         typeSlug: newSlug,
         photoUrl: finalPhotoUrl,
-        previousUrlSlugs: mergePreviousSlugs(
-          existingType?.previousUrlSlugs,
-          editingTypeId ? slugBeforeEdit : undefined,
-          newSlug
-        ),
+        previousUrlSlugs: slugChanged
+          ? mergePreviousSlugs(
+              existingType?.previousUrlSlugs,
+              editingTypeId ? slugBeforeEdit : undefined,
+              newSlug
+            )
+          : existingType?.previousUrlSlugs ?? [],
       };
 
       if (isEndOwner) {
@@ -556,6 +577,18 @@ export default function PropertyTypes() {
     }
   };
 
+  const copyListingUrl = (type: (typeof propertyTypes)[0]) => {
+    const url = buildGuestPortalPublicListingUrl(property, type);
+    if (!url) {
+      toast.warning('Set property and unit URL slugs before copying the guest portal link.');
+      return;
+    }
+    navigator.clipboard.writeText(url);
+    setCopiedUrlTypeId(type.id);
+    setTimeout(() => setCopiedUrlTypeId(null), 2000);
+    toast.success('Guest portal URL copied.');
+  };
+
   // --- RENDER LIST VIEW --- //
   if (!isFormOpen) {
     return (
@@ -600,7 +633,24 @@ export default function PropertyTypes() {
                       <h4 className="font-bold text-gray-900">{type.propertyTypeName}</h4>
                       <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{type.internalRefCode}</span>
                     </div>
-                    <p className="text-sm text-gray-500 mb-3 truncate">/{type.urlSlug}</p>
+                    <div className="flex items-center gap-1 mb-3 min-w-0">
+                      <p className="text-sm text-gray-500 truncate flex-1">
+                        {buildGuestPortalPublicListingUrl(property, type) || 'Set property and unit URL slugs'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => copyListingUrl(type)}
+                        className="p-1.5 text-gray-400 hover:text-vailo-teal shrink-0"
+                        title="Copy guest portal URL"
+                        aria-label={`Copy portal URL for ${type.propertyTypeName}`}
+                      >
+                        {copiedUrlTypeId === type.id ? (
+                          <Check size={16} className="text-emerald-600" />
+                        ) : (
+                          <Copy size={16} />
+                        )}
+                      </button>
+                    </div>
                     
                     {type.iCalUrl && (
                       <div className="mb-3 flex items-center text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded w-max border border-green-100">
@@ -838,23 +888,40 @@ export default function PropertyTypes() {
               <input type="text" required name="propertyTypeName" value={typeFormData.propertyTypeName} onChange={handleTypeChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
             
-            {/* 🔥 FIXED SLUG INPUT 🔥 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">URL Slug *</label>
-              <div className="flex">
-                <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm whitespace-nowrap overflow-hidden">
-                  vailo.com/{property?.urlSlug || 'property'}/
-                </span>
-                <input 
-                  type="text" 
-                  required 
-                  name="urlSlug" 
-                  value={typeFormData.urlSlug} 
-                  onChange={handleSlugChange} 
-                  placeholder="e.g., grand-villa" 
-                  className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-lg border border-gray-300 admin-input outline-none" 
-                />
-              </div>
+              {canEditUrlSlug ? (
+                <div className="flex">
+                  <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm whitespace-nowrap overflow-hidden">
+                    vailo.com/{property?.urlSlug || 'property'}/
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    name="urlSlug"
+                    value={typeFormData.urlSlug}
+                    onChange={handleSlugChange}
+                    placeholder="e.g., grand-villa"
+                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-lg border border-gray-300 admin-input outline-none"
+                  />
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-700 font-mono bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                    vailo.com/{property?.urlSlug || 'property'}/{typeFormData.urlSlug || '—'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    To change the URL slug, contact Vailo at{' '}
+                    <a
+                      href="mailto:contact@vailo.app"
+                      className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
+                    >
+                      contact@vailo.app
+                    </a>
+                    .
+                  </p>
+                </>
+              )}
             </div>
             
             {canAssignAllocatedOwner ? (

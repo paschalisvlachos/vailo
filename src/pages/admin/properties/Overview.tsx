@@ -197,15 +197,11 @@ export default function Overview() {
     if (!propertyId) return;
     setIsSaving(true);
     try {
-      const newPropertySlug = formatGuestSlug(formData.urlSlug);
+      const newPropertySlug = isPlatformAdmin
+        ? formatGuestSlug(formData.urlSlug)
+        : formatGuestSlug(property.urlSlug);
       const propertyPatch: Record<string, unknown> = {
         propertyName: formData.propertyName.trim(),
-        urlSlug: newPropertySlug,
-        previousUrlSlugs: mergePreviousSlugs(
-          property.previousUrlSlugs,
-          property.urlSlug,
-          newPropertySlug
-        ),
         internalRefCode: formData.internalRefCode.trim(),
         listingKind: formData.listingKind,
         country: formData.country,
@@ -215,6 +211,12 @@ export default function Overview() {
         updatedAt: new Date().toISOString(),
       };
       if (isPlatformAdmin) {
+        propertyPatch.urlSlug = newPropertySlug;
+        propertyPatch.previousUrlSlugs = mergePreviousSlugs(
+          property.previousUrlSlugs,
+          property.urlSlug,
+          newPropertySlug
+        );
         propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
       }
       await updateDoc(doc(db, 'properties', propertyId), propertyPatch);
@@ -320,13 +322,31 @@ export default function Overview() {
               </div>
               <div>
                 <AdminLabel htmlFor="urlSlug">URL slug *</AdminLabel>
-                <AdminInput
-                  id="urlSlug"
-                  name="urlSlug"
-                  value={formData.urlSlug}
-                  onChange={handleChange}
-                  className="font-mono text-sm"
-                />
+                {isPlatformAdmin ? (
+                  <AdminInput
+                    id="urlSlug"
+                    name="urlSlug"
+                    value={formData.urlSlug}
+                    onChange={handleChange}
+                    className="font-mono text-sm"
+                  />
+                ) : (
+                  <>
+                    <p className="font-medium text-vailo-dark font-mono text-sm bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
+                      /{property.urlSlug || '—'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      To change the URL slug, contact Vailo at{' '}
+                      <a
+                        href="mailto:contact@vailo.app"
+                        className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
+                      >
+                        contact@vailo.app
+                      </a>
+                      .
+                    </p>
+                  </>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

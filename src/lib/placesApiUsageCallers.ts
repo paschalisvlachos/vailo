@@ -7,6 +7,7 @@ export const PLACES_USAGE_CALLER = {
   propertyFeatures: 'property_features',
   propertyTypes: 'property_types',
   guestAiConcierge: 'guest_ai_concierge',
+  areaRadar: 'area_radar',
 } as const;
 
 export type PlacesUsageCaller =

@@ -52,6 +52,7 @@ const {
   MAGIC_FILL_LEGACY_UNIT,
 } = require("./placesApiUsage");
 const { syncAllTrailsForAreaHandler } = require("./allTrailsSync");
+const { pointInPolygon, parseBoundaryRing } = require("./areaRadarGeo");
 const {
   askAppCodeKnowledgeHandler,
   getAppCodeKnowledgeMetaHandler,
@@ -1214,6 +1215,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
   const anchorLng = payload.anchorLng;
   const maxKm = typeof payload.maxKm === "number" ? payload.maxKm : null;
   const knowledgeMode = String(payload.knowledgeMode || "any").trim();
+  const usageCaller = normalizeUsageCaller(payload.usageCaller || "guest_ai_concierge");
+  const boundaryRing = parseBoundaryRing(payload.boundaryRing);
+  const discoverSource = String(payload.discoverSource || "").trim();
+  const discoverCategory = String(payload.discoverCategory || "").trim();
+  const discoverDescription = String(payload.discoverDescription || "").trim();
 
   if (!title) {
     throw new HttpsError("invalid-argument", "Place title is required.");
@@ -1273,7 +1279,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
     for (const variant of placeSearchTitleVariants(title)) {
       searchQuery = [variant, area, country].filter(Boolean).join(", ");
       place = await fetchPlaceFromGoogle(searchQuery, apiKey, biasLat, biasLng, variant, {
-        usageSource: "guest_ai_concierge",
+        usageSource: usageCaller,
       });
       if (place) break;
     }
@@ -1304,6 +1310,19 @@ exports.resolvePlacePhoto = onCall(async (request) => {
 
     const resolvedLat = place.latitude ?? latitude ?? null;
     const resolvedLng = place.longitude ?? longitude ?? null;
+
+    if (
+      boundaryRing &&
+      typeof resolvedLat === "number" &&
+      typeof resolvedLng === "number" &&
+      !pointInPolygon(resolvedLat, resolvedLng, boundaryRing)
+    ) {
+      logger.warn(
+        `Rejected Google result "${place.name}" for "${title}" — outside_radar_polygon`
+      );
+      return { photoUrl: null, googleMapsUrl: null, googlePlaceId: null, notFound: true };
+    }
+
     const resolvedNorm = normalizePlaceName(place.name || title);
 
     const geoDuplicate = await findDuplicateDiscoveredPlace(
@@ -1348,9 +1367,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       name: place.name || title,
       normalizedName: resolvedNorm,
       googlePlaceId: place.googlePlaceId || null,
-      category: place.category || "",
-      googleCategories: place.category ? [String(place.category).trim().toLowerCase()].filter(Boolean) : [],
-      description: place.description || "",
+      category: discoverCategory || place.category || "",
+      googleCategories: (discoverCategory || place.category)
+        ? [String(discoverCategory || place.category).trim().toLowerCase()].filter(Boolean)
+        : [],
+      description: discoverDescription || place.description || "",
       latitude: resolvedLat,
       longitude: resolvedLng,
       googleMapsUrl: place.googleMapsUrl || null,
@@ -1359,7 +1380,7 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       phoneNumber: place.phoneNumber || "",
       websiteUri: place.websiteUri || "",
       searchQuery,
-      source: "google",
+      source: discoverSource || "google",
       status: "active",
       needsReview: true,
       reviewStatus: "new",

@@ -72,12 +72,22 @@ import {
   sendConciergeChatMessage,
   type ConciergeChatContext,
   type ConciergeChatMessage,
+  type ConciergeSearchAnchor,
 } from '../../lib/liveLikeLocalConciergeChat';
 import {
   buildConciergeMatchPool,
+  filterConciergeMatchPool,
+  finalizeConciergeCuratedItems,
   formatTextOnlyRecommendations,
   processConciergeRecommendations,
 } from '../../lib/conciergeRecommendations';
+import {
+  filterCoordsWithinRadius,
+  resolveConciergeLocation,
+  conciergeRadiusForAnchor,
+  peekConciergeAnchorFromText,
+  type ConciergeAnchor,
+} from '../../lib/conciergeChatLocation';
 import { runSilentAiPlaceDiscovery } from '../../lib/silentAiDiscovery';
 import { Sparkles, ArrowLeft, Navigation, Clock, MapPin, Send, Loader2, Compass, Heart, Eye } from 'lucide-react';
 
@@ -130,6 +140,7 @@ type Step = 'LOCATION' | 'CATEGORIES' | 'DISTANCE' | 'TIME' | 'DONE';
 type InteractionMode = 'wizard' | 'chat';
 
 const AI_EXPERT_GEMINI_MODEL = 'gemini-3.5-flash';
+const CONCIERGE_AI_TIMEOUT_MS = 45_000;
 
 /**
  * Parse the model's JSON reply, tolerating markdown fences and truncated output.
@@ -566,6 +577,11 @@ export default function AiExpertView({
   const [chatInput, setChatInput] = useState('');
   const [conciergeMessages, setConciergeMessages] = useState<ConciergeChatMessage[]>([]);
   const [conciergeSending, setConciergeSending] = useState(false);
+  const [conciergeLocationCandidates, setConciergeLocationCandidates] = useState<GeocodedPlace[]>([]);
+  const [conciergeAnchorLabel, setConciergeAnchorLabel] = useState('');
+  const conciergeAnchorRef = useRef<ConciergeAnchor | null>(null);
+  const conciergePendingMessageRef = useRef<string | null>(null);
+  const conciergeMessagesRef = useRef<ConciergeChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingLabel, setThinkingLabel] = useState<GuestLocaleUiKey>('aiExpertThinking');
   const [curatingStepIndex, setCuratingStepIndex] = useState(0);
@@ -622,70 +638,6 @@ export default function AiExpertView({
   const getPropertyTypeName = () =>
     propertyType?.propertyTypeName || propertyType?.name || '';
 
-  const conciergeChatContext = useMemo((): ConciergeChatContext => {
-    const primary = contentSettings.primaryLocale;
-    const reviewed = contentSettings.reviewedLocales;
-    const localizeGem = (g: any) => ({
-      name: resolveLocalizedString(g, 'name', locale, primary, reviewed),
-      category: resolveLocalizedString(g, 'category', locale, primary, reviewed),
-      description: resolveLocalizedString(g, 'description', locale, primary, reviewed),
-    });
-    const localizeFeature = (f: any) => ({
-      name: resolveLocalizedString(f, 'name', locale, primary, reviewed) || f.businessName,
-      category: (f.categories as string[])?.join(', ') || 'Local',
-      description: resolveLocalizedString(f, 'description', locale, primary, reviewed),
-    });
-
-    const curatedPlaces = [
-      ...mergedGems.map((g) => {
-        const lg = localizeGem(g);
-        return {
-          name: lg.name,
-          category: lg.category,
-          description: lg.description,
-          scope: (g.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
-        };
-      }),
-      ...mergedFeatures.map((f) => {
-        const lf = localizeFeature(f);
-        return {
-          name: lf.name,
-          category: lf.category,
-          description: lf.description,
-          scope: (f.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
-        };
-      }),
-    ].filter((p) => p.name?.trim());
-
-    return {
-      propertyName: property?.propertyName || t('aiExpertYourStay'),
-      propertyTypeName: getPropertyTypeName() || undefined,
-      areaName:
-        listingAreaCtx?.masterArea ||
-        propertyType?.city ||
-        property?.city ||
-        t('aiExpertTheRegion'),
-      country: listingAreaCtx?.country || propertyType?.country || property?.country || '',
-      categories: availableCategories.map((cat) => ({
-        label: cat.label,
-        knowledge: categoryKnowledgeByPrimary[cat.primary],
-      })),
-      curatedPlaces,
-    };
-  }, [
-    availableCategories,
-    categoryKnowledgeByPrimary,
-    contentSettings.primaryLocale,
-    contentSettings.reviewedLocales,
-    listingAreaCtx,
-    locale,
-    mergedFeatures,
-    mergedGems,
-    property,
-    propertyType,
-    t,
-  ]);
-
   const conciergeMatchPool = useMemo(
     () =>
       buildConciergeMatchPool({
@@ -738,6 +690,21 @@ export default function AiExpertView({
       ''
     );
   };
+
+  useEffect(() => {
+    conciergeMessagesRef.current = conciergeMessages;
+  }, [conciergeMessages]);
+
+  useEffect(() => {
+    if (!propertyCoords || conciergeAnchorRef.current) return;
+    const anchor: ConciergeAnchor = {
+      label: getNearPropertyLabel(),
+      coords: propertyCoords,
+      isProperty: true,
+    };
+    conciergeAnchorRef.current = anchor;
+    setConciergeAnchorLabel(anchor.label);
+  }, [propertyCoords, property, propertyType, locale]);
 
   useEffect(() => {
     if (!propertyCoords || preferences.location?.trim()) return;
@@ -1033,6 +1000,293 @@ export default function AiExpertView({
     }
 
     return { ok: true };
+  };
+
+  const getPropertyAnchor = useCallback((): ConciergeAnchor | null => {
+    if (!propertyCoords) return null;
+    return {
+      label: getNearPropertyLabel(),
+      coords: propertyCoords,
+      isProperty: true,
+    };
+  }, [propertyCoords, property, propertyType, locale]);
+
+  const buildConciergeChatContext = useCallback(
+    (searchAnchor: ConciergeSearchAnchor): ConciergeChatContext => {
+      const primary = contentSettings.primaryLocale;
+      const reviewed = contentSettings.reviewedLocales;
+      const localizeGem = (g: any) => ({
+        name: resolveLocalizedString(g, 'name', locale, primary, reviewed),
+        category: resolveLocalizedString(g, 'category', locale, primary, reviewed),
+        description: resolveLocalizedString(g, 'description', locale, primary, reviewed),
+      });
+      const localizeFeature = (f: any) => ({
+        name: resolveLocalizedString(f, 'name', locale, primary, reviewed) || f.businessName,
+        category: (f.categories as string[])?.join(', ') || 'Local',
+        description: resolveLocalizedString(f, 'description', locale, primary, reviewed),
+      });
+
+      const withCoords = <T extends Record<string, unknown>>(rows: T[]) =>
+        rows.map((row) => {
+          const coords = extractCoords(row);
+          return {
+            ...row,
+            latitude: coords?.lat,
+            longitude: coords?.lng,
+          };
+        });
+
+      const poolOpts = {
+        requireCoords: !searchAnchor.isProperty,
+        strict: true as const,
+      };
+      const gemsInRange = filterCoordsWithinRadius(
+        withCoords(mergedGems),
+        searchAnchor.coords,
+        searchAnchor.radiusKm,
+        poolOpts
+      );
+      const featuresInRange = filterCoordsWithinRadius(
+        withCoords(mergedFeatures),
+        searchAnchor.coords,
+        searchAnchor.radiusKm,
+        poolOpts
+      );
+
+      const curatedPlaces = [
+        ...gemsInRange.map((g) => {
+          const lg = localizeGem(g);
+          return {
+            name: lg.name,
+            category: lg.category,
+            description: lg.description,
+            scope: (g.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
+          };
+        }),
+        ...featuresInRange.map((f) => {
+          const lf = localizeFeature(f);
+          return {
+            name: lf.name,
+            category: lf.category,
+            description: lf.description,
+            scope: (f.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
+          };
+        }),
+      ].filter((p) => p.name?.trim());
+
+      return {
+        propertyName: property?.propertyName || t('aiExpertYourStay'),
+        propertyTypeName: getPropertyTypeName() || undefined,
+        areaName:
+          listingAreaCtx?.masterArea ||
+          propertyType?.city ||
+          property?.city ||
+          t('aiExpertTheRegion'),
+        country: listingAreaCtx?.country || propertyType?.country || property?.country || '',
+        categories: availableCategories.map((cat) => ({
+          label: cat.label,
+          knowledge: categoryKnowledgeByPrimary[cat.primary],
+        })),
+        curatedPlaces,
+        searchAnchor,
+      };
+    },
+    [
+      availableCategories,
+      categoryKnowledgeByPrimary,
+      contentSettings.primaryLocale,
+      contentSettings.reviewedLocales,
+      listingAreaCtx,
+      locale,
+      mergedFeatures,
+      mergedGems,
+      property,
+      propertyType,
+      t,
+    ]
+  );
+
+  const executeConciergeChatRequest = useCallback(
+    async (
+      userText: string,
+      priorHistory: ConciergeChatMessage[],
+      searchAnchor: ConciergeSearchAnchor
+    ) => {
+      const chatContext = buildConciergeChatContext(searchAnchor);
+      const poolOpts = {
+        requireCoords: !searchAnchor.isProperty,
+        strict: true as const,
+      };
+      const filteredPool = filterConciergeMatchPool(
+        conciergeMatchPool,
+        searchAnchor.coords,
+        searchAnchor.radiusKm,
+        poolOpts
+      );
+
+      const structured = await Promise.race([
+        sendConciergeChatMessage({
+          locale,
+          context: chatContext,
+          history: priorHistory,
+          userMessage: userText,
+        }),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(
+            () => reject(new Error('concierge_ai_timeout')),
+            CONCIERGE_AI_TIMEOUT_MS
+          );
+        }),
+      ]);
+      const processed = processConciergeRecommendations(structured, filteredPool);
+
+      let curatedItems = finalizeConciergeCuratedItems(
+        processed.curatedItems,
+        searchAnchor.coords,
+        searchAnchor.radiusKm
+      );
+      const messageId = `m-${Date.now()}`;
+      logConciergeChatMessage('model', processed.replyText, {
+        picksSummary:
+          curatedItems.length > 0
+            ? curatedItems
+                .map((item) => item.title)
+                .filter(Boolean)
+                .slice(0, 12)
+                .join(', ')
+            : undefined,
+      });
+
+      setConciergeMessages((prev) => [
+        ...prev,
+        {
+          id: messageId,
+          role: 'model',
+          text: processed.replyText,
+          curatedPicks:
+            curatedItems.length > 0
+              ? { categoryName: processed.categoryName, items: curatedItems }
+              : undefined,
+          textOnlyAppend: formatTextOnlyRecommendations(processed.textOnly) || undefined,
+        },
+      ]);
+
+      if (processed.unverifiedMentions.length > 0) {
+        void persistUnverifiedAiMentions(processed.unverifiedMentions, {
+          country: listingAreaCtx?.country || '',
+          areaId: listingAreaCtx?.areaId || '',
+        });
+      }
+
+      if (curatedItems.length > 0) {
+        const miniPlan = {
+          type: 'picks',
+          categories: [
+            {
+              categoryName: processed.categoryName,
+              items: curatedItems.map((item) => ({
+                ...item,
+                title: item.title,
+              })),
+            },
+          ],
+        };
+        void enrichPhotosAndMapLinks(
+          miniPlan,
+          getGeographicAreaHint() ||
+            locationFullNameRef.current ||
+            preferences.locationFullName ||
+            preferences.location ||
+            richLocationName,
+          searchAnchor.coords
+        )
+          .then((enriched) => {
+            const enrichedItems = finalizeConciergeCuratedItems(
+              enriched?.categories?.[0]?.items ?? [],
+              searchAnchor.coords,
+              searchAnchor.radiusKm
+            );
+            if (enrichedItems.length === 0) return;
+            setConciergeMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === messageId && msg.curatedPicks
+                  ? {
+                      ...msg,
+                      curatedPicks: {
+                        ...msg.curatedPicks,
+                        items: enrichedItems,
+                      },
+                    }
+                  : msg
+              )
+            );
+          })
+          .catch((enrichErr) => {
+            console.warn('concierge pick enrichment failed:', enrichErr);
+          });
+      }
+    },
+    [
+      buildConciergeChatContext,
+      conciergeMatchPool,
+      enrichPhotosAndMapLinks,
+      listingAreaCtx,
+      locale,
+      logConciergeChatMessage,
+      preferences.location,
+      preferences.locationFullName,
+      richLocationName,
+    ]
+  );
+
+  const confirmConciergeLocationChoice = async (place: GeocodedPlace) => {
+    setConciergeSending(true);
+    try {
+      const check = await validateDrivingFromProperty(place.lat, place.lng, place.label);
+      if (check.ok === false) {
+        setConciergeMessages((prev) => [
+          ...prev,
+          {
+            id: `loc-err-${Date.now()}`,
+            role: 'model',
+            text: check.message,
+          },
+        ]);
+        return;
+      }
+
+      const anchor: ConciergeAnchor = {
+        label: place.label,
+        coords: { lat: place.lat, lng: place.lng },
+        isProperty: false,
+        placeKind: place.placeKind,
+      };
+      conciergeAnchorRef.current = anchor;
+      setConciergeAnchorLabel(anchor.label);
+      setConciergeLocationCandidates([]);
+
+      const pending = conciergePendingMessageRef.current;
+      conciergePendingMessageRef.current = null;
+      if (!pending) return;
+
+      const searchAnchor: ConciergeSearchAnchor = {
+        ...anchor,
+        radiusKm: conciergeRadiusForAnchor(anchor, pending),
+      };
+      await executeConciergeChatRequest(pending, conciergeMessagesRef.current, searchAnchor);
+    } catch (err) {
+      console.error('concierge location confirm error:', err);
+      setConciergeMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: 'model',
+          text: t('aiExpertErrorConnect'),
+        },
+      ]);
+    } finally {
+      setConciergeSending(false);
+    }
   };
 
   const engageWizard = useCallback(() => {
@@ -1935,82 +2189,64 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     setConciergeMessages((prev) => [...prev, userMessage]);
     logConciergeChatMessage('user', userText);
     setConciergeSending(true);
+    setConciergeLocationCandidates([]);
+
+    const { country, cityArea } = getLocationContext();
+    const peekAnchor = peekConciergeAnchorFromText(userText, cityArea);
+    if (peekAnchor) {
+      setConciergeAnchorLabel(peekAnchor.label);
+    }
 
     try {
-      const structured = await sendConciergeChatMessage({
+      const { coords: propCoords } = getLocationContext();
+      const locationResult = await resolveConciergeLocation({
+        userText,
+        sessionAnchor: conciergeAnchorRef.current,
+        propertyAnchor: getPropertyAnchor(),
+        propCoords,
+        country,
+        cityArea,
         locale,
-        context: conciergeChatContext,
-        history: priorHistory,
-        userMessage: userText,
+        validateDayTrip: validateDrivingFromProperty,
       });
-      const processed = processConciergeRecommendations(structured, conciergeMatchPool);
 
-      let curatedItems = processed.curatedItems;
-      if (curatedItems.length > 0) {
-        const startCoords = getStartCoords();
-        const miniPlan = {
-          type: 'picks',
-          categories: [
-            {
-              categoryName: processed.categoryName,
-              items: curatedItems.map((item) => ({
-                ...item,
-                title: item.title,
-              })),
-            },
-          ],
-        };
-        try {
-          const enriched = await enrichPhotosAndMapLinks(
-            miniPlan,
-            mapAreaHint,
-            startCoords
-          );
-          const enrichedItems = enriched?.categories?.[0]?.items;
-          if (Array.isArray(enrichedItems) && enrichedItems.length > 0) {
-            curatedItems = enrichedItems;
-          }
-        } catch (enrichErr) {
-          console.warn('concierge pick enrichment failed:', enrichErr);
-        }
+      if (locationResult.status === 'choose') {
+        conciergePendingMessageRef.current = userText;
+        setConciergeLocationCandidates(locationResult.candidates);
+        logConciergeChatMessage('model', locationResult.message);
+        setConciergeMessages((prev) => [
+          ...prev,
+          {
+            id: `loc-${Date.now()}`,
+            role: 'model',
+            text: locationResult.message,
+          },
+        ]);
+        return;
       }
 
-      if (processed.unverifiedMentions.length > 0) {
-        void persistUnverifiedAiMentions(processed.unverifiedMentions, {
-          country: listingAreaCtx?.country || '',
-          areaId: listingAreaCtx?.areaId || '',
-        });
+      if (locationResult.status === 'declined' || locationResult.status === 'not_found') {
+        logConciergeChatMessage('model', locationResult.message);
+        setConciergeMessages((prev) => [
+          ...prev,
+          {
+            id: `loc-${Date.now()}`,
+            role: 'model',
+            text: locationResult.message,
+          },
+        ]);
+        return;
       }
 
-      const replyForAnalytics = [
-        processed.replyText,
-        formatTextOnlyRecommendations(processed.textOnly),
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-      const picksSummary =
-        curatedItems.length > 0
-          ? curatedItems
-              .map((item) => item.title)
-              .filter(Boolean)
-              .slice(0, 12)
-              .join(', ')
-          : undefined;
-      logConciergeChatMessage('model', replyForAnalytics, { picksSummary });
+      conciergeAnchorRef.current = locationResult.anchor;
+      setConciergeAnchorLabel(locationResult.anchor.label);
+      conciergePendingMessageRef.current = null;
 
-      setConciergeMessages((prev) => [
-        ...prev,
-        {
-          id: `m-${Date.now()}`,
-          role: 'model',
-          text: processed.replyText,
-          curatedPicks:
-            curatedItems.length > 0
-              ? { categoryName: processed.categoryName, items: curatedItems }
-              : undefined,
-          textOnlyAppend: formatTextOnlyRecommendations(processed.textOnly) || undefined,
-        },
-      ]);
+      const searchAnchor: ConciergeSearchAnchor = {
+        ...locationResult.anchor,
+        radiusKm: locationResult.radiusKm,
+      };
+      await executeConciergeChatRequest(userText, priorHistory, searchAnchor);
     } catch (err) {
       console.error('concierge chat error:', err);
       setConciergeMessages((prev) => [
@@ -2055,6 +2291,20 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     setChatInput('');
     setConciergeMessages([]);
     setConciergeSending(false);
+    setConciergeLocationCandidates([]);
+    conciergePendingMessageRef.current = null;
+    if (propertyCoords) {
+      const anchor: ConciergeAnchor = {
+        label: getNearPropertyLabel(),
+        coords: propertyCoords,
+        isProperty: true,
+      };
+      conciergeAnchorRef.current = anchor;
+      setConciergeAnchorLabel(anchor.label);
+    } else {
+      conciergeAnchorRef.current = null;
+      setConciergeAnchorLabel('');
+    }
     setLocationCandidates([]);
     const nearLabel = propertyCoords ? getNearPropertyLabel() : '';
     locationCoordsRef.current = propertyCoords;
@@ -2522,6 +2772,48 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
               </div>
             )
           )}
+
+        {interactionMode === 'chat' && conciergeAnchorLabel && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-white/8 border border-white/12 px-3.5 py-2.5">
+            <MapPin size={14} className="text-vailo-gold shrink-0" />
+            <span className="guest-eyebrow text-[10px] text-white/45 shrink-0">
+              {t('aiExpertStartingFrom')}
+            </span>
+            <span className="text-sm text-white/85 font-medium truncate">
+              {conciergeAnchorLabel}
+            </span>
+          </div>
+        )}
+
+        {interactionMode === 'chat' && conciergeLocationCandidates.length > 0 && (
+          <div className={`${AI_EXPERT_PANEL} mb-4`}>
+            <p className="text-sm text-white/60 mb-2">{t('aiExpertWhichLocation')}</p>
+            <div className="flex flex-col gap-2.5">
+              {conciergeLocationCandidates.map((place) => (
+                <button
+                  key={`chat-loc-${place.lat}-${place.lng}`}
+                  type="button"
+                  disabled={conciergeSending}
+                  onClick={() => void confirmConciergeLocationChoice(place)}
+                  className="group flex items-start gap-3 bg-white/8 border border-white/15 text-white px-4 py-4 min-h-[48px] rounded-xl text-base font-medium text-left hover:border-vailo-gold/40 hover:bg-vailo-gold/10 transition-all disabled:opacity-50"
+                >
+                  <MapPin size={16} className="text-vailo-gold shrink-0 mt-0.5" />
+                  <span>
+                    {place.label}
+                    {place.distanceFromPropertyKm != null && (
+                      <span className="block text-sm font-normal text-white/55 mt-0.5">
+                        {tf('aiExpertKmFromProperty', {
+                          km: Math.round(place.distanceFromPropertyKm),
+                          name: getPropertyDisplayName(),
+                        })}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {conciergeSending && interactionMode === 'chat' && (
           <div className="mb-5 flex items-end gap-2.5">

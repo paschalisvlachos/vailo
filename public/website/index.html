@@ -187,9 +187,16 @@
     }
     .hero-actions {
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 40px;
+    }
+    .hero-actions .btn {
+      padding: 12px 18px;
+      font-size: 0.875rem;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .hero-stats {
       display: flex;
@@ -946,7 +953,13 @@
           local discovery, and bookings in one place. Less inbox noise. More five-star moments.
         </p>
         <div class="hero-actions">
-          <button type="button" class="btn btn-gold" data-open-contact>Request a demo</button>
+          <a
+            href="/vailo-demo/villa-vailo?typeId=Kjtkq2IVUEB84CQAo30B&adminPreview=1&previewFrame=mobile"
+            class="btn btn-gold"
+            target="_blank"
+            rel="noopener noreferrer"
+          >View a demo</a>
+          <button type="button" class="btn btn-primary" data-open-contact>Request a presentation</button>
           <a href="#product" class="btn btn-secondary">See the product</a>
         </div>
         <div class="hero-stats">
@@ -1257,7 +1270,7 @@
             How do I get started?
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <div class="faq-a">Request a demo and we'll walk you through setup. Existing partners can log in directly to the platform admin to configure properties and publish guest portals.</div>
+          <div class="faq-a">Request a presentation and we'll walk you through setup. Existing partners can log in directly to the platform admin to configure properties and publish guest portals.</div>
         </div>
       </div>
     </div>
@@ -1268,7 +1281,13 @@
       <h2>Ready to elevate every stay?</h2>
       <p>Join property owners and managers who treat guest experience as a product — not an afterthought.</p>
       <div class="cta-actions">
-        <button type="button" class="btn btn-gold" data-open-contact>Request a demo</button>
+        <a
+          href="/vailo-demo/villa-vailo?typeId=Kjtkq2IVUEB84CQAo30B&adminPreview=1&previewFrame=mobile"
+          class="btn btn-gold"
+          target="_blank"
+          rel="noopener noreferrer"
+        >View a demo</a>
+        <button type="button" class="btn btn-primary" data-open-contact>Request a presentation</button>
         <a href="/admin" class="btn btn-secondary" style="background: rgba(255,255,255,0.1); color: white; border-color: rgba(255,255,255,0.2);">Platform login</a>
       </div>
     </div>

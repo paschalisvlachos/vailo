@@ -32,6 +32,15 @@ function collectExistingSlugs(
   return slugs;
 }
 
+export function stripListingForCopy(source: Record<string, unknown>): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (LISTING_DOC_OMIT_KEYS.has(key)) continue;
+    payload[key] = value;
+  }
+  return payload;
+}
+
 export function buildClonedListingName(sourceName: string): string {
   const trimmed = String(sourceName || '').trim() || 'Listing';
   if (/\(\s*copy\s*\)$/i.test(trimmed)) return `${trimmed} 2`;
@@ -54,12 +63,7 @@ export function buildClonedListingPayload(
   existingTypes: Array<{ id: string; urlSlug?: string; typeSlug?: string }>
 ): Record<string, unknown> {
   const existingSlugs = collectExistingSlugs(existingTypes);
-  const payload: Record<string, unknown> = {};
-
-  for (const [key, value] of Object.entries(source)) {
-    if (LISTING_DOC_OMIT_KEYS.has(key)) continue;
-    payload[key] = value;
-  }
+  const payload = stripListingForCopy(source);
 
   const sourceSlug = formatGuestSlug(String(source.urlSlug || source.typeSlug || ''));
   const newSlug = buildUniqueCloneSlug(sourceSlug, existingSlugs);
@@ -75,36 +79,53 @@ export function buildClonedListingPayload(
   return payload;
 }
 
-export async function clonePropertyListing(params: {
+export async function fetchListingSubcollections(
+  propertyId: string,
+  typeId: string
+): Promise<{
+  gems: Record<string, unknown>[];
+  houseGuide: Record<string, unknown> | null;
+  greenScore: Record<string, unknown> | null;
+}> {
+  const gemsSnap = await getDocs(
+    collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'localGems')
+  );
+  const gems = gemsSnap.docs.map((d) => stripGemForCopy(d.data()));
+
+  const guideSnap = await getDoc(
+    doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'houseGuide', 'data')
+  );
+  const greenSnap = await getDoc(
+    doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'greenScore', 'data')
+  );
+
+  return {
+    gems,
+    houseGuide: guideSnap.exists() ? (guideSnap.data() as Record<string, unknown>) : null,
+    greenScore: greenSnap.exists() ? (greenSnap.data() as Record<string, unknown>) : null,
+  };
+}
+
+export async function createListingFromCapturedContent(params: {
   propertyId: string;
-  sourceTypeId: string;
-  sourceData: Record<string, unknown>;
+  sourceListingData: Record<string, unknown>;
   existingTypes: Array<{ id: string; urlSlug?: string; typeSlug?: string }>;
+  gems: Record<string, unknown>[];
+  houseGuide: Record<string, unknown> | null;
+  greenScore: Record<string, unknown> | null;
   propertyName?: string;
 }): Promise<ClonePropertyListingResult> {
-  const payload = buildClonedListingPayload(params.sourceData, params.existingTypes);
+  const payload = buildClonedListingPayload(params.sourceListingData, params.existingTypes);
 
   const newRef = await addDoc(
     collection(db, 'properties', params.propertyId, 'propertyTypes'),
     payload
   );
 
-  const gemsSnap = await getDocs(
-    collection(
-      db,
-      'properties',
-      params.propertyId,
-      'propertyTypes',
-      params.sourceTypeId,
-      'localGems'
-    )
-  );
-  const gems = gemsSnap.docs.map((d) => stripGemForCopy(d.data()));
-
   let gemsCopied = 0;
-  if (gems.length > 0) {
+  if (params.gems.length > 0) {
     const result = await pasteGemsToListing({
-      gems,
+      gems: params.gems,
       propertyId: params.propertyId,
       typeId: newRef.id,
       propertyName: params.propertyName || '',
@@ -120,55 +141,19 @@ export async function clonePropertyListing(params: {
   }
 
   let houseGuideCopied = false;
-  const sourceGuideRef = doc(
-    db,
-    'properties',
-    params.propertyId,
-    'propertyTypes',
-    params.sourceTypeId,
-    'houseGuide',
-    'data'
-  );
-  const guideSnap = await getDoc(sourceGuideRef);
-  if (guideSnap.exists()) {
+  if (params.houseGuide) {
     await setDoc(
-      doc(
-        db,
-        'properties',
-        params.propertyId,
-        'propertyTypes',
-        newRef.id,
-        'houseGuide',
-        'data'
-      ),
-      guideSnap.data()
+      doc(db, 'properties', params.propertyId, 'propertyTypes', newRef.id, 'houseGuide', 'data'),
+      params.houseGuide
     );
     houseGuideCopied = true;
   }
 
   let greenScoreCopied = false;
-  const sourceGreenRef = doc(
-    db,
-    'properties',
-    params.propertyId,
-    'propertyTypes',
-    params.sourceTypeId,
-    'greenScore',
-    'data'
-  );
-  const greenSnap = await getDoc(sourceGreenRef);
-  if (greenSnap.exists()) {
+  if (params.greenScore) {
     await setDoc(
-      doc(
-        db,
-        'properties',
-        params.propertyId,
-        'propertyTypes',
-        newRef.id,
-        'greenScore',
-        'data'
-      ),
-      greenSnap.data()
+      doc(db, 'properties', params.propertyId, 'propertyTypes', newRef.id, 'greenScore', 'data'),
+      params.greenScore
     );
     greenScoreCopied = true;
   }
@@ -180,4 +165,27 @@ export async function clonePropertyListing(params: {
     houseGuideCopied,
     greenScoreCopied,
   };
+}
+
+export async function clonePropertyListing(params: {
+  propertyId: string;
+  sourceTypeId: string;
+  sourceData: Record<string, unknown>;
+  existingTypes: Array<{ id: string; urlSlug?: string; typeSlug?: string }>;
+  propertyName?: string;
+}): Promise<ClonePropertyListingResult> {
+  const { gems, houseGuide, greenScore } = await fetchListingSubcollections(
+    params.propertyId,
+    params.sourceTypeId
+  );
+
+  return createListingFromCapturedContent({
+    propertyId: params.propertyId,
+    sourceListingData: params.sourceData,
+    existingTypes: params.existingTypes,
+    gems,
+    houseGuide,
+    greenScore,
+    propertyName: params.propertyName,
+  });
 }

@@ -100,25 +100,23 @@ export function finalizeConciergeCuratedItems(
   anchorCoords: { lat: number; lng: number },
   maxKm: number
 ): ConciergePickItem[] {
-  return items
-    .map((item) => {
-      const lat = item.latitude;
-      const lng = item.longitude;
-      if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return null;
-      const km = drivingKmFromAnchor(anchorCoords, lat, lng);
-      if (km > maxKm) return null;
-      return {
-        ...item,
-        estimatedDistance: `${km.toFixed(1)}km`,
-        beyondRadius: false,
-      };
-    })
-    .filter((item): item is ConciergePickItem => item != null)
-    .sort((a, b) => {
-      const aKm = parseFloat(String(a.estimatedDistance || '').replace('km', '')) || 999;
-      const bKm = parseFloat(String(b.estimatedDistance || '').replace('km', '')) || 999;
-      return aKm - bKm;
+  const withDistance: ConciergePickItem[] = [];
+  for (const item of items) {
+    const lat = item.latitude;
+    const lng = item.longitude;
+    if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) continue;
+    const km = drivingKmFromAnchor(anchorCoords, lat, lng);
+    if (km > maxKm) continue;
+    withDistance.push({
+      ...item,
+      estimatedDistance: `${km.toFixed(1)}km`,
     });
+  }
+  return withDistance.sort((a, b) => {
+    const aKm = parseFloat(String(a.estimatedDistance || '').replace('km', '')) || 999;
+    const bKm = parseFloat(String(b.estimatedDistance || '').replace('km', '')) || 999;
+    return aKm - bKm;
+  });
 }
 
 export function buildConciergeMatchPool(params: {

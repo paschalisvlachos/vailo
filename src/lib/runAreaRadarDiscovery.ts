@@ -12,7 +12,6 @@ import {
   gridAnchorsInPolygon,
   approxPolygonAreaKm2,
   type GeoJsonPolygon,
-  type LatLng,
 } from './areaRadarGeo';
 import {
   AREA_RADAR_CANDIDATES_PER_CATEGORY,

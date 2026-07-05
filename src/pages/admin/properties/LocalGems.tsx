@@ -22,7 +22,6 @@ import {
   categoryPrimaryName,
   gemCategoryPrimaries,
   normalizeCategorySelectionList,
-  resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
 import { buildAdminCategoryHierarchy } from '../../../lib/categoryHierarchy';

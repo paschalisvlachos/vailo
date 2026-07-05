@@ -42,7 +42,6 @@ import {
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
-import { buildAdminCategoryHierarchy } from '../../../lib/categoryHierarchy';
 import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
@@ -90,6 +89,7 @@ export default function AreaLocalGems() {
     googleMapsUrl: '',
     photoUrl: '',
     isDailyTrip: false,
+    suggestedByVailo: false,
     alternateTitlesText: '',
   };
   
@@ -164,16 +164,6 @@ export default function AreaLocalGems() {
       )
     ).length;
   };
-
-  const categoryPillOptions = useMemo(
-    () =>
-      buildAdminCategoryHierarchy(
-        categories,
-        localeEditor.contentLocale,
-        localeSettings.primaryLocale
-      ).selectableOptions.map((opt) => ({ value: opt.primary, label: opt.label })),
-    [categories, localeEditor.contentLocale, localeSettings.primaryLocale]
-  );
 
   const handleGemCategoriesChange = (next: string[]) => {
     const normalized = normalizeCategorySelectionList(
@@ -396,6 +386,7 @@ export default function AreaLocalGems() {
         googleMapsUrl: formData.googleMapsUrl,
         photoUrl: finalPhotoUrl,
         isDailyTrip: Boolean(formData.isDailyTrip),
+        suggestedByVailo: Boolean(formData.suggestedByVailo),
         alternateTitles,
         ...localized,
         updatedAt: new Date().toISOString(),
@@ -481,6 +472,7 @@ export default function AreaLocalGems() {
       categories: normalized,
       category: normalized[0] || '',
       isDailyTrip: Boolean(gem.isDailyTrip),
+      suggestedByVailo: Boolean(gem.suggestedByVailo),
       alternateTitlesText: Array.isArray(gem.alternateTitles)
         ? gem.alternateTitles.join('\n')
         : '',
@@ -657,6 +649,23 @@ export default function AreaLocalGems() {
             />
             <span className="ml-2 text-sm text-gray-600">Tag as a full-day excursion</span>
           </div>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-3">
+            <input
+              type="checkbox"
+              name="suggestedByVailo"
+              checked={formData.suggestedByVailo}
+              onChange={handleChange}
+              className="mt-0.5 h-5 w-5 text-vailo-teal rounded cursor-pointer shrink-0"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-gray-900">Suggested by Vailo</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Mark this as a Vailo-curated recommendation for the area catalog.
+              </span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -924,6 +933,11 @@ export default function AreaLocalGems() {
                           {gem.isDailyTrip && (
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-teal/10 text-vailo-teal">
                               Day trip
+                            </span>
+                          )}
+                          {gem.suggestedByVailo && (
+                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-gold/15 text-vailo-dark">
+                              Vailo
                             </span>
                           )}
                           {gem.insertedByLabel && (

@@ -21,7 +21,7 @@ import {
 import { useToast } from '../../../context/ToastContext';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone, Copy, Check, ClipboardCopy, ClipboardPaste, X } from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
 import {
@@ -35,6 +35,14 @@ import {
   syncPropertyTypeICalCallable,
 } from '../../../lib/icalSync';
 import { clonePropertyListing } from '../../../lib/clonePropertyListing';
+import {
+  capturePropertyListingForCopy,
+  clearCopiedListing,
+  copiedListingSummary,
+  pasteCopiedPropertyListing,
+  readCopiedListing,
+  type CopiedPropertyListing,
+} from '../../../lib/propertyListingCopy';
 
 export default function PropertyTypes() {
   const { property, propertyId, propertyAccess, lockedListingId } =
@@ -72,6 +80,11 @@ export default function PropertyTypes() {
   const [qrDownloadingId, setQrDownloadingId] = useState<string | null>(null);
   const [copiedUrlTypeId, setCopiedUrlTypeId] = useState<string | null>(null);
   const [cloningTypeId, setCloningTypeId] = useState<string | null>(null);
+  const [copyingListingId, setCopyingListingId] = useState<string | null>(null);
+  const [isPastingListing, setIsPastingListing] = useState(false);
+  const [copiedListingClip, setCopiedListingClip] = useState<CopiedPropertyListing | null>(() =>
+    readCopiedListing()
+  );
   const [isICalSyncing, setIsICalSyncing] = useState(false);
 
   // Master Area Database States
@@ -427,6 +440,68 @@ export default function PropertyTypes() {
     }
   };
 
+  const handleCopyListingForPaste = async (type: (typeof propertyTypes)[0]) => {
+    if (!isPlatformAdmin) return;
+    setCopyingListingId(type.id);
+    try {
+      const clip = await capturePropertyListingForCopy({
+        propertyId,
+        typeId: type.id,
+        typeData: type,
+        propertyName: property?.propertyName,
+      });
+      setCopiedListingClip(clip);
+      toast.success(
+        `Copied "${type.propertyTypeName}" — open another property and click Paste listing.`
+      );
+    } catch (error) {
+      console.error('Copy listing failed:', error);
+      toast.error('Failed to copy property listing.');
+    } finally {
+      setCopyingListingId(null);
+    }
+  };
+
+  const handlePasteCopiedListing = async () => {
+    if (!isPlatformAdmin || !copiedListingClip || !propertyId) return;
+    if (isListingOnly) {
+      toast.error('You cannot create new property listings.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Paste "${copiedListingClip.sourceListingName || 'listing'}" into ${property?.propertyName || 'this property'}? A new listing will be created with settings, local gems, house guide, and green score. Reservations and analytics are not copied.`
+      )
+    ) {
+      return;
+    }
+
+    setIsPastingListing(true);
+    try {
+      const result = await pasteCopiedPropertyListing({
+        propertyId,
+        clip: copiedListingClip,
+        existingTypes: propertyTypes,
+        propertyName: property?.propertyName,
+      });
+
+      const parts = [
+        'Listing pasted.',
+        result.gemsCopied > 0 ? `${result.gemsCopied} local gem${result.gemsCopied === 1 ? '' : 's'}` : null,
+        result.houseGuideCopied ? 'house guide' : null,
+        result.greenScoreCopied ? 'green score' : null,
+      ].filter(Boolean);
+
+      toast.success(parts.length > 1 ? parts.join(' · ') : 'Listing pasted.');
+      openTypeEditor({ id: result.newTypeId, ...result.listingData });
+    } catch (error) {
+      console.error('Paste listing failed:', error);
+      toast.error('Failed to paste property listing.');
+    } finally {
+      setIsPastingListing(false);
+    }
+  };
+
   const submitPropertyType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!propertyId) return;
@@ -598,12 +673,63 @@ export default function PropertyTypes() {
             <h3 className="text-lg font-bold text-gray-900">Configured Property Listings</h3>
             <p className="text-sm text-gray-500">Manage individual units, rooms, or tiers within this property.</p>
           </div>
-          {!isListingOnly && (
-            <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-              <Plus size={18} className="mr-2" /> Add Property Listing
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {isPlatformAdmin && copiedListingClip && !isListingOnly && (
+              <button
+                type="button"
+                onClick={() => void handlePasteCopiedListing()}
+                disabled={isPastingListing}
+                className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isPastingListing ? (
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                ) : (
+                  <ClipboardPaste size={18} className="mr-2" />
+                )}
+                Paste listing
+              </button>
+            )}
+            {!isListingOnly && (
+              <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+                <Plus size={18} className="mr-2" /> Add Property Listing
+              </button>
+            )}
+          </div>
         </div>
+
+        {isPlatformAdmin && copiedListingClip && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-vailo-teal/20 bg-vailo-teal/5 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-vailo-teal">Listing ready to paste</p>
+              <p className="text-xs text-gray-600 truncate">{copiedListingSummary(copiedListingClip)}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {!isListingOnly && (
+                <button
+                  type="button"
+                  onClick={() => void handlePasteCopiedListing()}
+                  disabled={isPastingListing}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-vailo-teal text-white hover:bg-vailo-teal-hover disabled:opacity-50"
+                >
+                  {isPastingListing ? <Loader2 size={14} className="animate-spin" /> : <ClipboardPaste size={14} />}
+                  Paste here
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  clearCopiedListing();
+                  setCopiedListingClip(null);
+                  toast.success('Copied listing cleared.');
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-white/80"
+                title="Clear copied listing"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {visiblePropertyTypes.length === 0 ? (
           <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
@@ -686,6 +812,22 @@ export default function PropertyTypes() {
                             <Copy size={14} className="mr-1.5" />
                           )}
                           Clone
+                        </button>
+                      )}
+                      {isPlatformAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyListingForPaste(type)}
+                          disabled={copyingListingId === type.id}
+                          className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors disabled:opacity-50"
+                          title="Copy entire listing to paste into another property"
+                        >
+                          {copyingListingId === type.id ? (
+                            <Loader2 size={14} className="mr-1.5 animate-spin" />
+                          ) : (
+                            <ClipboardCopy size={14} className="mr-1.5" />
+                          )}
+                          Copy listing
                         </button>
                       )}
                       <button

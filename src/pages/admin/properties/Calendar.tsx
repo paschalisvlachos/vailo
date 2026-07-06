@@ -5,6 +5,7 @@ import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import CalendarBookingDetailsModal from '../../../components/admin/CalendarBookingDetailsModal';
+import ResetBookingsDateRangeModal from '../../../components/admin/ResetBookingsDateRangeModal';
 import {
   formatBookingDateRange,
   getBookingInvitationStatus,
@@ -12,9 +13,10 @@ import {
   patchSyncedBookingList,
   type SyncedBooking,
 } from '../../../lib/syncedBooking';
+import { resetPropertyBookingsInDateRange } from '../../../lib/resetPropertyBookings';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
 import { formatICalSyncError, formatICalSyncSuccessMessage, syncPropertyTypeICalCallable } from '../../../lib/icalSync';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw, Eraser } from 'lucide-react';
 
 function bookingStatusLabel(status: ReturnType<typeof getBookingInvitationStatus>): string {
   switch (status) {
@@ -49,6 +51,7 @@ export default function Calendar() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [detailsBooking, setDetailsBooking] = useState<SyncedBooking | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
+  const [resetRangeOpen, setResetRangeOpen] = useState(false);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -77,6 +80,29 @@ export default function Calendar() {
   const today = new Date();
 
   const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
+  const resetScopeBookings: SyncedBooking[] = selectedType?.syncedBookings || [];
+
+  const handleResetDateRange = async (rangeStart: string, rangeEnd: string) => {
+    if (!selectedTypeId) return;
+    try {
+      const removed = await resetPropertyBookingsInDateRange(
+        propertyId,
+        propertyTypes,
+        [selectedTypeId],
+        rangeStart,
+        rangeEnd
+      );
+      toast.success(
+        removed === 1
+          ? 'Removed 1 reservation from this unit.'
+          : `Removed ${removed} reservations from this unit.`
+      );
+    } catch (error) {
+      console.error('Reset bookings error:', error);
+      toast.error('Failed to clear reservations for that date range.');
+      throw error;
+    }
+  };
 
   const handleSync = async () => {
     if (!selectedType?.iCalUrl || !selectedTypeId) return;
@@ -197,6 +223,15 @@ export default function Calendar() {
               No iCal configured
             </span>
           )}
+
+          <button
+            type="button"
+            onClick={() => setResetRangeOpen(true)}
+            className="flex items-center px-4 py-2 bg-white border border-red-200 text-red-700 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors shadow-sm"
+          >
+            <Eraser size={14} className="mr-2" />
+            Clear date range
+          </button>
 
           <button
             onClick={handleSync}
@@ -338,6 +373,15 @@ export default function Calendar() {
           saving={savingDetails}
           onClose={() => setDetailsBooking(null)}
           onSave={(payload) => void saveBookingDetails(detailsBooking, payload)}
+        />
+      )}
+
+      {resetRangeOpen && (
+        <ResetBookingsDateRangeModal
+          scopeLabel={selectedType?.propertyTypeName || 'this unit'}
+          bookings={resetScopeBookings}
+          onClose={() => setResetRangeOpen(false)}
+          onConfirm={handleResetDateRange}
         />
       )}
     </div>

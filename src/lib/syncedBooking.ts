@@ -56,6 +56,56 @@ export function matchesSyncedBooking(a: SyncedBooking, b: SyncedBooking): boolea
   return Boolean(a.start && a.end && a.start === b.start && a.end === b.end);
 }
 
+/** Parse YYYY-MM-DD (or ISO datetime prefix) to local midnight. */
+export function parseSyncedBookingDay(iso?: string): Date | null {
+  if (!iso) return null;
+  const day = String(iso).slice(0, 10);
+  const parts = day.split('-').map(Number);
+  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
+  const [y, m, d] = parts;
+  const date = new Date(y, m - 1, d);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+/**
+ * True when a stay overlaps an inclusive admin range [rangeStart, rangeEnd].
+ * Stays use check-in (inclusive) and check-out (exclusive), matching the calendar grid.
+ */
+export function bookingOverlapsInclusiveDateRange(
+  booking: SyncedBooking,
+  rangeStart: string,
+  rangeEnd: string
+): boolean {
+  const bStart = parseSyncedBookingDay(booking.start);
+  const bEnd = parseSyncedBookingDay(booking.end);
+  const rStart = parseSyncedBookingDay(rangeStart);
+  const rEnd = parseSyncedBookingDay(rangeEnd);
+  if (!bStart || !bEnd || !rStart || !rEnd) return false;
+  const rEndExclusive = new Date(rEnd);
+  rEndExclusive.setDate(rEndExclusive.getDate() + 1);
+  return bStart < rEndExclusive && bEnd > rStart;
+}
+
+export function filterSyncedBookingsOutsideDateRange(
+  bookings: SyncedBooking[],
+  rangeStart: string,
+  rangeEnd: string
+): SyncedBooking[] {
+  return bookings.filter(
+    (b) => !bookingOverlapsInclusiveDateRange(b, rangeStart, rangeEnd)
+  );
+}
+
+export function countSyncedBookingsInDateRange(
+  bookings: SyncedBooking[],
+  rangeStart: string,
+  rangeEnd: string
+): number {
+  return bookings.filter((b) => bookingOverlapsInclusiveDateRange(b, rangeStart, rangeEnd))
+    .length;
+}
+
 export function patchSyncedBookingList(
   bookings: SyncedBooking[],
   target: SyncedBooking,

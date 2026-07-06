@@ -5,6 +5,7 @@ import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import CalendarBookingDetailsModal from '../../../components/admin/CalendarBookingDetailsModal';
+import ResetBookingsDateRangeModal from '../../../components/admin/ResetBookingsDateRangeModal';
 import GuestWhatsAppLink from '../../../components/admin/GuestWhatsAppLink';
 import GuestInviteEmailPreviewModal from '../../../components/admin/GuestInviteEmailPreviewModal';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
@@ -14,8 +15,10 @@ import {
   buildGuestInviteClipboardText,
   buildGuestInviteEmailPayloadFromBooking,
   buildGuestInviteWhatsAppMessage,
+  buildOpenPortalInviteClipboardText,
 } from '../../../lib/guestInviteEmailTemplate';
-import { buildInvitePortalUrl, getGuestPortalPublicOrigin } from '../../../lib/guestAccess';
+import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRequired } from '../../../lib/guestAccess';
+import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
 import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
@@ -26,6 +29,7 @@ import {
   patchSyncedBookingListRevokeAccess,
   type SyncedBooking,
 } from '../../../lib/syncedBooking';
+import { resetPropertyBookingsInDateRange } from '../../../lib/resetPropertyBookings';
 import {
   Calendar as CalendarIcon,
   Plus,
@@ -41,6 +45,7 @@ import {
   Undo2,
   RefreshCw,
   Eye,
+  Eraser,
 } from 'lucide-react';
 
 type ReservationRow = SyncedBooking & { typeId: string; typeName: string };
@@ -76,6 +81,8 @@ export default function Reservations() {
     Record<string, { password: string; token: string }>
   >({});
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null);
+  const [resetRangeOpen, setResetRangeOpen] = useState(false);
+  const [copiedOpenPortalInvite, setCopiedOpenPortalInvite] = useState(false);
 
   const initialFormState = {
     typeId: '',
@@ -110,6 +117,71 @@ export default function Reservations() {
   const displayedBookings = filterTypeId === 'all' 
     ? allBookings 
     : allBookings.filter(b => b.typeId === filterTypeId);
+
+  const resetScopeLabel =
+    filterTypeId === 'all'
+      ? 'all units'
+      : propertyTypes.find((t) => t.id === filterTypeId)?.propertyTypeName || 'this unit';
+
+  const resetScopeBookings: SyncedBooking[] =
+    filterTypeId === 'all'
+      ? propertyTypes.flatMap((pt) => pt.syncedBookings || [])
+      : propertyTypes.find((t) => t.id === filterTypeId)?.syncedBookings || [];
+
+  const resetScopeTypeIds =
+    filterTypeId === 'all' ? propertyTypes.map((t) => t.id) : [filterTypeId];
+
+  const handleResetDateRange = async (rangeStart: string, rangeEnd: string) => {
+    try {
+      const removed = await resetPropertyBookingsInDateRange(
+        propertyId,
+        propertyTypes,
+        resetScopeTypeIds,
+        rangeStart,
+        rangeEnd
+      );
+      toast.success(
+        removed === 1
+          ? 'Removed 1 reservation.'
+          : `Removed ${removed} reservations.`
+      );
+    } catch (error) {
+      console.error('Reset bookings error:', error);
+      toast.error('Failed to clear reservations for that date range.');
+      throw error;
+    }
+  };
+
+  const handleCopyOpenPortalInvitation = async () => {
+    const type =
+      filterTypeId === 'all'
+        ? propertyTypes[0]
+        : propertyTypes.find((t) => t.id === filterTypeId);
+    if (!type) {
+      toast.warning('Add a property listing before copying the portal invitation.');
+      return;
+    }
+    const url = buildGuestPortalPublicListingUrl(property, type);
+    if (!url) {
+      toast.warning('Set property and unit URL slugs before copying the portal invitation.');
+      return;
+    }
+    const text = buildOpenPortalInviteClipboardText({
+      propertyName: property.propertyName || 'Your stay',
+      unitName: type.propertyTypeName || 'Your unit',
+      portalUrl: url,
+      hostLabel: property.propertyName,
+      accessRequired: isGuestPortalAccessRequired(property),
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedOpenPortalInvite(true);
+      setTimeout(() => setCopiedOpenPortalInvite(false), 2500);
+      toast.success('Portal invitation copied — paste into email, Airbnb, or chat.');
+    } catch {
+      toast.error('Could not copy to clipboard.');
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -554,9 +626,31 @@ export default function Reservations() {
           </select>
         </div>
 
-        <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm text-sm font-medium">
-          <Plus size={18} className="mr-2" /> Add Manual Booking
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setResetRangeOpen(true)}
+            className="flex items-center px-4 py-2 bg-white border border-red-200 text-red-700 rounded-xl hover:bg-red-50 transition-colors shadow-sm text-sm font-medium"
+          >
+            <Eraser size={18} className="mr-2" /> Clear date range
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCopyOpenPortalInvitation()}
+            title="Copy a general guest portal invitation to paste anywhere"
+            className="flex items-center px-4 py-2 bg-white border border-vailo-teal/30 text-vailo-teal rounded-xl hover:bg-vailo-teal/5 transition-colors shadow-sm text-sm font-medium"
+          >
+            {copiedOpenPortalInvite ? (
+              <Check size={18} className="mr-2" />
+            ) : (
+              <Copy size={18} className="mr-2" />
+            )}
+            Copy open portal invitation
+          </button>
+          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm text-sm font-medium">
+            <Plus size={18} className="mr-2" /> Add Manual Booking
+          </button>
+        </div>
       </div>
 
       {/* Bookings Table */}
@@ -872,6 +966,15 @@ export default function Reservations() {
           saveLabel={
             isBookingGuestDetailsComplete(detailsBooking) ? 'Save changes' : 'Save details'
           }
+        />
+      )}
+
+      {resetRangeOpen && (
+        <ResetBookingsDateRangeModal
+          scopeLabel={resetScopeLabel}
+          bookings={resetScopeBookings}
+          onClose={() => setResetRangeOpen(false)}
+          onConfirm={handleResetDateRange}
         />
       )}
     </div>

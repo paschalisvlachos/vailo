@@ -143,6 +143,55 @@ export function buildGuestInviteClipboardText(payload: GuestInviteEmailPayload):
   return lines.join('\n');
 }
 
+export type OpenPortalInvitePayload = {
+  propertyName: string;
+  unitName: string;
+  portalUrl: string;
+  hostLabel?: string;
+  /** When true, guest portal uses invite/password gate. */
+  accessRequired?: boolean;
+};
+
+/** General plain-text portal invitation for clipboard (Airbnb, email, chat). */
+export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayload): string {
+  const property = payload.propertyName.trim() || 'your property';
+  const unit = payload.unitName.trim();
+  const host = payload.hostLabel?.trim();
+  const url = payload.portalUrl.trim();
+  const accessRequired = payload.accessRequired === true;
+
+  const intro = accessRequired
+    ? `Your private guest portal for ${property} is ready. Your host will share access details for your stay.`
+    : `Your guest portal for ${property} is ready — open it anytime during your stay. No access code is required.`;
+
+  const accessNote = accessRequired
+    ? 'Open the link when you arrive — your host will provide your personal access password or invitation.'
+    : 'Save the link on your phone for quick access to your house guide, local tips, and the Vailo assistant.';
+
+  const lines = [
+    'Hello,',
+    '',
+    intro,
+    '',
+    GUEST_INVITE_PORTAL_BENEFITS,
+    '',
+    unit ? `Accommodation: ${unit}` : '',
+    '',
+    'Open your portal:',
+    url,
+    '',
+    accessNote,
+    '',
+    'Warm regards,',
+    host || 'Your host',
+    '',
+    '—',
+    'Powered by Vailo',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
 /** Short WhatsApp invitation — link, password, and Vailo portal benefits (admin → guest). */
 export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload): string {
   const greeting = payload.guestName.trim() || 'there';

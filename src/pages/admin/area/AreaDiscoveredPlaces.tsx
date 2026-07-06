@@ -39,13 +39,11 @@ import {
 } from '../../../lib/googlePlaceCategories';
 import {
   categoryPrimaryName,
-  categorySelectionIncludes,
   gemCategoryPrimaries,
   normalizeCategorySelectionList,
-  resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
 import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
-import CategoryPillSelector from '../../../components/admin/CategoryPillSelector';
+import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
 import {
   Radar,
   CheckCircle2,
@@ -100,6 +98,7 @@ type DiscoveredPlace = {
   alternateTitles?: string[];
   lastFailureReason?: string;
   lastMatchedTitle?: string;
+  suggestedByVailo?: boolean;
 };
 
 /** Rating ≤ 4.0 — highlight row for review. */
@@ -224,6 +223,7 @@ function placeToLocalGemPayload(
     googleMapsUrl: (place.verifiedGoogleMapsUrl || '').trim(),
     photoUrl: place.photoUrl || '',
     isDailyTrip: false,
+    suggestedByVailo: Boolean(place.suggestedByVailo),
     alternateTitles: place.alternateTitles || [],
     updatedAt: new Date(),
     sourceDiscoveredPlaceId: place.id,
@@ -306,6 +306,7 @@ export default function AreaDiscoveredPlaces() {
     rating: '',
     alternateTitlesText: '',
     googleCategoriesText: '',
+    suggestedByVailo: false,
   });
 
   useEffect(() => {
@@ -340,32 +341,13 @@ export default function AreaDiscoveredPlaces() {
     [formData.categories, categoryCatalogDocs, localeSettings.primaryLocale]
   );
 
-  const categoryPillOptions = useMemo(
-    () =>
-      categories.map((cat) => {
-        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-        const label = resolveCategoryLabel(
-          cat.data,
-          localeSettings.primaryLocale,
-          localeSettings.primaryLocale
-        );
-        return { value: primaryName, label: label || primaryName };
-      }),
-    [categories, localeSettings.primaryLocale]
-  );
-
-  const handleCategoryPillToggle = (value: string) => {
+  const handleCategoriesChange = (next: string[]) => {
     setFormData((prev) => {
       const current = normalizeCategorySelectionList(
         prev.categories,
         categoryCatalogDocs,
         localeSettings.primaryLocale
       );
-      const lower = value.toLowerCase();
-      const has = current.some((c) => c.toLowerCase() === lower);
-      const next = has
-        ? current.filter((c) => c.toLowerCase() !== lower)
-        : [...current, value];
       const normalized = normalizeCategorySelectionList(
         next,
         categoryCatalogDocs,
@@ -590,6 +572,7 @@ export default function AreaDiscoveredPlaces() {
       googleCategoriesText: formatGoogleCategoriesList(
         googleCategoriesFromPlace(place, categoryCatalogDocs, localeSettings.primaryLocale)
       ),
+      suggestedByVailo: Boolean(place.suggestedByVailo),
     });
   };
 
@@ -631,6 +614,7 @@ export default function AreaDiscoveredPlaces() {
       rating: formData.rating ? parseFloat(formData.rating) : null,
       alternateTitles,
       googleCategories: parseGoogleCategoriesText(formData.googleCategoriesText),
+      suggestedByVailo: Boolean(formData.suggestedByVailo),
       updatedAt: new Date(),
     };
   };
@@ -977,6 +961,7 @@ export default function AreaDiscoveredPlaces() {
           verifiedGoogleMapsUrl: formData.verifiedGoogleMapsUrl.trim(),
           photoUrl: formData.photoUrl,
           rating: formData.rating ? parseFloat(formData.rating) : place.rating,
+          suggestedByVailo: formData.suggestedByVailo,
         }
       : place;
 
@@ -1101,18 +1086,13 @@ export default function AreaDiscoveredPlaces() {
           />
         </div>
         <div className="col-span-2 sm:col-span-4 lg:col-span-6">
-          <CategoryPillSelector
+          <HierarchicalCategoryPillSelector
             label="Categories (select all that apply)"
-            options={categoryPillOptions}
-            isSelected={(value) =>
-              categorySelectionIncludes(
-                normalizedFormCategories,
-                value,
-                categoryCatalogDocs,
-                localeSettings.primaryLocale
-              )
-            }
-            onToggle={handleCategoryPillToggle}
+            categoryDocs={categories}
+            selectedPrimaries={normalizedFormCategories}
+            onSelectedChange={handleCategoriesChange}
+            locale={localeSettings.primaryLocale}
+            primaryLocale={localeSettings.primaryLocale}
             colorClass="blue"
           />
         </div>
@@ -1227,6 +1207,24 @@ export default function AreaDiscoveredPlaces() {
               Showing saved variants. Verify this place to edit or refresh them.
             </p>
           )}
+        </div>
+        <div className="col-span-2 sm:col-span-4 lg:col-span-6">
+          <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={formData.suggestedByVailo}
+              onChange={(e) =>
+                setFormData({ ...formData, suggestedByVailo: e.target.checked })
+              }
+              className="mt-0.5 h-4 w-4 text-vailo-teal rounded cursor-pointer shrink-0"
+            />
+            <span>
+              <span className="block text-xs font-semibold text-gray-900">Suggested by Vailo</span>
+              <span className="block text-[10px] text-gray-500 mt-0.5">
+                Mark as a Vailo-curated recommendation — carried over when promoted to Local Gems.
+              </span>
+            </span>
+          </label>
         </div>
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
@@ -1755,6 +1753,11 @@ export default function AreaDiscoveredPlaces() {
                           {isAiGuest && (
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
                               AI pick
+                            </span>
+                          )}
+                          {place.suggestedByVailo && (
+                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-gold/15 text-vailo-dark">
+                              Vailo
                             </span>
                           )}
                           {hasVerifiedMaps && !isHidden && (

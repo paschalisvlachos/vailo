@@ -42,8 +42,13 @@ function formatBookingDateRange(start, end) {
   return `${fmt(start)} → ${fmt(end)}`;
 }
 
-const GUEST_INVITE_PORTAL_BENEFITS =
-  "Inside you'll find your house guide, local tips, Live Like a Local recommendations, and curated restaurants and activities — everything for your stay in one place on your phone.";
+const GUEST_INVITE_PORTAL_BENEFITS = `With Vailo, you'll have everything you need for your stay in one place, including check-in information, Wi-Fi details, house information, and useful contacts.
+
+You can also chat with the Vailo AI Assistant to ask anything about the villa or your stay. Through the Live Like a Local feature, you can discover the best restaurants, beaches, attractions, and local experiences, with recommendations carefully selected by locals.
+
+You can also find excursions, boat trips, and many activities that you can arrange and book.
+
+Once activated, Vailo will be available throughout your stay, making your holiday easier, more enjoyable, and completely stress-free.`;
 
 function resolveGuestInviteLogoUrl(override) {
   const trimmed = String(override || "").trim();

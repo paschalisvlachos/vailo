@@ -101,13 +101,12 @@ export default function CalendarBookingDetailsModal({
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-              Email <span className="text-red-500">*</span>
+              Email
             </label>
             <input
               type="email"
               value={guestEmail}
               onChange={(e) => setGuestEmail(e.target.value)}
-              required
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-vailo-teal/20"
             />
           </div>

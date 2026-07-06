@@ -112,8 +112,8 @@ export default function GuestInviteEmailPreviewModal({
         <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2 bg-gray-50/80">
           {!detailsComplete && (
             <p className="w-full text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-1">
-              Guest details are incomplete — add name, email, and language for an accurate preview and
-              before sending.
+              Guest details are incomplete — add name and language for an accurate preview and before
+              sending.
             </p>
           )}
           <button

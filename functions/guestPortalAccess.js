@@ -72,7 +72,6 @@ function bookingGuestComplete(b) {
   return Boolean(
     b.guestDetailsComplete &&
       String(b.guestName || "").trim() &&
-      String(b.guestEmail || "").trim() &&
       String(b.guestLocale || "").trim()
   );
 }

@@ -27,9 +27,8 @@ export type SyncedBooking = {
 
 export function isBookingGuestDetailsComplete(booking: SyncedBooking): boolean {
   const name = booking.guestName?.trim();
-  const email = booking.guestEmail?.trim();
   const locale = booking.guestLocale?.trim();
-  return Boolean(booking.guestDetailsComplete && name && email && locale);
+  return Boolean(booking.guestDetailsComplete && name && locale);
 }
 
 export type BookingInvitationStatus = 'needs_details' | 'ready_for_reservations' | 'invited';

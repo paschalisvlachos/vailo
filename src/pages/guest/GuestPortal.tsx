@@ -1,17 +1,17 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { useParams, useNavigate, useSearchParams, Navigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import AiExpertView from './AiExpertView';
+const AiExpertView = lazy(() => import('./AiExpertView'));
+const GuestPropertyAssistant = lazy(() => import('../../components/guest/GuestPropertyAssistant'));
+const GuestExcursions = lazy(() => import('../../components/guest/GuestExcursions'));
+const GuestSavedLocalGems = lazy(() => import('../../components/guest/GuestSavedLocalGems'));
 import LegalDocumentModal from '../../components/guest/LegalDocumentModal';
 import GuestLegalFooter from '../../components/guest/GuestLegalFooter';
 import GuestFloatingActions from '../../components/guest/GuestFloatingActions';
 import GuestReportIssueSheet from '../../components/guest/GuestReportIssueSheet';
-import GuestPropertyAssistant from '../../components/guest/GuestPropertyAssistant';
 import PropertyEssentials from '../../components/guest/PropertyEssentials';
 import GuestLocalServices from '../../components/guest/GuestLocalServices';
-import GuestExcursions from '../../components/guest/GuestExcursions';
-import GuestSavedLocalGems from '../../components/guest/GuestSavedLocalGems';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
@@ -68,6 +68,10 @@ import {
 } from 'lucide-react';
 
 const GEMS_PAGE_SIZE = 5;
+
+function GuestSubviewFallback() {
+  return <GuestPortalLoadingScreen status="Loading…" />;
+}
 
 function GemDescription({
   gemId,
@@ -369,7 +373,7 @@ function GuestPortalPage({
   const [gems, setGems] = useState<any[]>([]);
   const [features, setFeatures] = useState<any[]>([]);
   
-  const [loading, setLoading] = useState(true);
+  const [resolving, setResolving] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant' | 'excursions' | 'savedGems'>('portal');
@@ -422,9 +426,12 @@ function GuestPortalPage({
       const isNewTarget = guestLoadKeyRef.current !== loadKey;
       if (!isNewTarget && propertyId) return;
       guestLoadKeyRef.current = loadKey;
-      setLoading(true);
+      setResolving(true);
       setError(null);
-      if (isNewTarget) setGems([]);
+      if (isNewTarget) {
+        setGems([]);
+        setFeatures([]);
+      }
       try {
         const slugParam = formatGuestSlug(propertySlug);
         let propDoc = null;
@@ -443,7 +450,7 @@ function GuestPortalPage({
 
         if (!propDoc) {
           setError('Property not found.');
-          setLoading(false);
+          setResolving(false);
           return;
         }
 
@@ -458,51 +465,82 @@ function GuestPortalPage({
           )
         );
 
-        const typesSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'propertyTypes'));
-        const typeMatch = resolvePropertyTypeFromUrl(
-          typesSnap.docs,
-          typeSlug || '',
-          typeIdFromQuery
-        );
+        let targetTypeId: string | null = null;
+        let targetTypeData: Record<string, unknown> | null = null;
+        const preferredTypeId = String(typeIdFromQuery || '').trim();
 
-        if (!typeMatch) {
-          setError('Unit not found.');
-          setLoading(false);
-          return;
+        if (preferredTypeId) {
+          const typeDocSnap = await getDoc(
+            doc(db, 'properties', resolvedPropertyId, 'propertyTypes', preferredTypeId)
+          );
+          if (typeDocSnap.exists()) {
+            targetTypeId = typeDocSnap.id;
+            targetTypeData = typeDocSnap.data();
+          }
         }
 
-        const targetTypeId = typeMatch.id;
-        const targetTypeData = typeMatch.data;
+        if (!targetTypeId) {
+          const typesSnap = await getDocs(
+            collection(db, 'properties', resolvedPropertyId, 'propertyTypes')
+          );
+          const typeMatch = resolvePropertyTypeFromUrl(
+            typesSnap.docs,
+            typeSlug || '',
+            typeIdFromQuery
+          );
+          if (!typeMatch) {
+            setError('Unit not found.');
+            setResolving(false);
+            return;
+          }
+          targetTypeId = typeMatch.id;
+          targetTypeData = typeMatch.data;
+        }
+
         setTypeId(targetTypeId);
         setTypeData(targetTypeData);
+        setResolving(false);
 
-        const guideDoc = await getDoc(
-          doc(db, 'properties', resolvedPropertyId, 'propertyTypes', targetTypeId, 'houseGuide', 'data')
+        const guideRef = doc(
+          db,
+          'properties',
+          resolvedPropertyId,
+          'propertyTypes',
+          targetTypeId,
+          'houseGuide',
+          'data'
         );
+        const gemsRef = collection(
+          db,
+          'properties',
+          resolvedPropertyId,
+          'propertyTypes',
+          targetTypeId,
+          'localGems'
+        );
+        const featuresRef = collection(db, 'properties', resolvedPropertyId, 'features');
+
+        const guidePromise = getDoc(guideRef);
+        const gemsPromise = getDocs(gemsRef);
+        const featuresPromise = getDocs(featuresRef);
+
+        const guideDoc = await guidePromise;
         if (guideDoc.exists()) setGuide(guideDoc.data());
 
-        const gemsSnap = await getDocs(
-          collection(db, 'properties', resolvedPropertyId, 'propertyTypes', targetTypeId, 'localGems')
-        );
-        const loadedGems = gemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setGems(loadedGems);
-
-        const featuresSnap = await getDocs(collection(db, 'properties', resolvedPropertyId, 'features'));
-        const loadedFeatures = featuresSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setFeatures(loadedFeatures);
-
+        const [gemsSnap, featuresSnap] = await Promise.all([gemsPromise, featuresPromise]);
+        setGems(gemsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setFeatures(featuresSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (err) {
         console.error("Error loading guest portal:", err);
         setError("Failed to load property data.");
-      } finally {
-        setLoading(false);
+        setResolving(false);
       }
     };
     fetchGuestData();
   }, [propertySlug, typeSlug, typeIdFromQuery]);
 
   useEffect(() => {
-    if (loading || error || !property || !typeData) return;
+    if (resolving || error || !property || !typeData) return;
     const canonicalProperty = formatGuestSlug(property.urlSlug);
     const canonicalType = getTypePublicSlug(typeData);
     if (!canonicalProperty || !canonicalType) return;
@@ -510,7 +548,7 @@ function GuestPortalPage({
       const qs = typeId ? `?typeId=${encodeURIComponent(typeId)}` : '';
       navigate(`/${canonicalProperty}/${canonicalType}${qs}`, { replace: true });
     }
-  }, [loading, error, property, typeData, propertySlug, typeSlug, typeId, navigate]);
+  }, [resolving, error, property, typeData, propertySlug, typeSlug, typeId, navigate]);
 
   // NEW: Fetch Dynamic Weather when Property Data Loads
   useEffect(() => {
@@ -666,7 +704,7 @@ function GuestPortalPage({
     [features]
   );
 
-  if (loading) return <GuestPortalLoadingScreen status={t('preparingStay')} />;
+  if (resolving) return <GuestPortalLoadingScreen status={t('preparingStay')} />;
   if (error) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F3F4F6] px-6 font-sans">
       <div className="text-center max-w-sm">
@@ -689,7 +727,6 @@ function GuestPortalPage({
     <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
       <style>
         {`
-          @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
           .font-luxury { font-family: 'Lora', serif; }
           .font-sans { font-family: 'DM Sans', sans-serif; }
           .hero-text-shadow { text-shadow: 0 2px 24px rgba(0,0,0,0.35); }
@@ -1011,42 +1048,49 @@ function GuestPortalPage({
 
           </>
         ) : activeView === 'aiExpert' ? (
-          <AiExpertView
-            onClose={() => setActiveView('portal')}
-            property={property}
-            propertyType={typeData}
-            features={features}
-            gems={gems}
-            locale={locale}
-            setLocale={setLocale}
-            localeOptions={localeOptions}
-          />
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <AiExpertView
+              onClose={() => setActiveView('portal')}
+              property={property}
+              propertyType={typeData}
+              features={features}
+              gems={gems}
+              locale={locale}
+              setLocale={setLocale}
+              localeOptions={localeOptions}
+            />
+          </Suspense>
         ) : activeView === 'excursions' ? (
-          <GuestExcursions
-            propertyId={propertyId}
-            typeId={typeId}
-            propertyType={typeData}
-            prefetchedListings={excursionListings}
-            prefetchedLoading={excursionsLoading}
-            onClose={() => setActiveView('portal')}
-            onOverlayOpenChange={setExcursionOverlayOpen}
-          />
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <GuestExcursions
+              propertyId={propertyId}
+              typeId={typeId}
+              propertyType={typeData}
+              prefetchedListings={excursionListings}
+              prefetchedLoading={excursionsLoading}
+              onClose={() => setActiveView('portal')}
+              onOverlayOpenChange={setExcursionOverlayOpen}
+            />
+          </Suspense>
         ) : activeView === 'savedGems' && propertyId && typeId ? (
-          <GuestSavedLocalGems
-            propertyId={propertyId}
-            typeId={typeId}
-            mapAreaHint={mapAreaHint}
-            propertyCoords={
-              hasPropertyCoords ? { lat: propertyLat!, lng: propertyLng! } : null
-            }
-            onClose={() => setActiveView('portal')}
-          />
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <GuestSavedLocalGems
+              propertyId={propertyId}
+              typeId={typeId}
+              mapAreaHint={mapAreaHint}
+              propertyCoords={
+                hasPropertyCoords ? { lat: propertyLat!, lng: propertyLng! } : null
+              }
+              onClose={() => setActiveView('portal')}
+            />
+          </Suspense>
         ) : (
-          <GuestPropertyAssistant
-            propertyId={propertyId}
-            typeId={typeId}
-            property={property}
-            propertyType={typeData}
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <GuestPropertyAssistant
+              propertyId={propertyId}
+              typeId={typeId}
+              property={property}
+              propertyType={typeData}
             guide={guide}
             onClose={() => setActiveView('portal')}
             onOpenPrivacy={() => setLegalModal('privacy')}
@@ -1057,6 +1101,7 @@ function GuestPortalPage({
             }}
             whatsappHref={whatsappHref}
           />
+          </Suspense>
         )}
       </div>
 

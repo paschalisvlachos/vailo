@@ -206,8 +206,8 @@ export default function Reservations() {
       guestLocale: string;
     }
   ) => {
-    if (!payload.guestName || !payload.guestEmail || !payload.guestLocale) {
-      toast.warning('Name, email, and language are required.');
+    if (!payload.guestName || !payload.guestLocale) {
+      toast.warning('Name and language are required.');
       return;
     }
 

@@ -91,7 +91,29 @@ export function buildGuestCategoryHierarchy(
   return { parentCategories, subcategoriesByParentPrimary };
 }
 
-/** Flat list passed to plan generation: subcategory primaries when chosen, else parent. */
+/** Flat list passed to plan generation from wizard picks (parent or subcategory primary per group). */
+export function resolveWizardCategoryPicks(picks: Record<string, string>): string[] {
+  return Object.values(picks).filter(Boolean);
+}
+
+export function pickWizardCategoryItem(
+  picks: Record<string, string>,
+  parentPrimary: string,
+  primary: string
+): Record<string, string> {
+  if (picks[parentPrimary] === primary) {
+    const next = { ...picks };
+    delete next[parentPrimary];
+    return next;
+  }
+  const otherGroups = Object.keys(picks).filter((p) => p !== parentPrimary).length;
+  if (!(parentPrimary in picks) && otherGroups >= MAX_WIZARD_PARENT_CATEGORIES) {
+    return picks;
+  }
+  return { ...picks, [parentPrimary]: primary };
+}
+
+/** @deprecated Prefer resolveWizardCategoryPicks with pickWizardCategoryItem state. */
 export function resolveWizardCategorySelection(
   selectedParents: string[],
   subcatsByParent: Record<string, string[]>,

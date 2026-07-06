@@ -38,7 +38,7 @@ export function collectHouseGuests(propertyTypes: PropertyTypeWithBookings[]): H
         typeId: type.id,
         unitName,
         guestName: booking.guestName!.trim(),
-        guestEmail: booking.guestEmail!.trim(),
+        guestEmail: booking.guestEmail?.trim() || '',
         guestWhatsapp: (booking.guestWhatsapp || booking.guestPhone || '').trim() || '—',
         guestLocale: booking.guestLocale!.trim(),
         start: booking.start,

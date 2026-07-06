@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
@@ -66,8 +66,9 @@ import {
   ExcursionProviderAccessGuard,
   ScopedAdminHome,
 } from "./components/admin/AdminAccessGuards";
-import GuestPortal from "./pages/guest/GuestPortal";
 import { ADMIN_BASE, adminPath } from "./lib/adminRoutes";
+
+const GuestPortal = lazy(() => import("./pages/guest/GuestPortal"));
 
 /** Dev: root `/` is the Vite entry — send visitors to the static marketing site. */
 function DevMarketingRedirect() {
@@ -85,20 +86,22 @@ function LegacyAdminRedirect() {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() =>
+    typeof window !== "undefined" ? !isGuestPortalUrlPath(window.location.pathname) : true
+  );
 
   useEffect(() => {
+    const guestPortalPath = isGuestPortalUrlPath(window.location.pathname);
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false);
+      if (!guestPortalPath) {
+        setLoading(false);
+      }
     });
     return () => unsubscribe();
   }, []);
 
   if (loading) {
-    if (typeof window !== "undefined" && isGuestPortalUrlPath(window.location.pathname)) {
-      return <GuestPortalLoadingScreen status="Loading Vailo" />;
-    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-vailo-surface text-vailo-teal text-sm font-medium">
         Loading Vailo…
@@ -220,7 +223,14 @@ export default function App() {
         </Route>
 
         {/* Guest portal (vailo.app/:property/:unit) — after /admin routes */}
-        <Route path="/:propertySlug/:typeSlug" element={<GuestPortal />} />
+        <Route
+          path="/:propertySlug/:typeSlug"
+          element={
+            <Suspense fallback={<GuestPortalLoadingScreen status="Loading Vailo" />}>
+              <GuestPortal />
+            </Suspense>
+          }
+        />
       </Routes>
     </BrowserRouter>
     </ToastProvider>

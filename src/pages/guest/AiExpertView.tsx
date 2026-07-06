@@ -57,8 +57,8 @@ import {
 } from '../../lib/categoryLocale';
 import {
   MAX_WIZARD_PARENT_CATEGORIES,
-  SUBCATEGORY_PREVIEW_COUNT,
-  resolveWizardCategorySelection,
+  pickWizardCategoryItem,
+  resolveWizardCategoryPicks,
 } from '../../lib/categoryHierarchy';
 import {
   buildCategoryKnowledgePromptSection,
@@ -120,6 +120,23 @@ const AI_EXPERT_BTN_PRIMARY_PILL =
   'bg-gradient-to-br from-vailo-gold to-[#a88648] text-white border border-vailo-gold/80 shadow-[0_2px_12px_rgba(197,160,89,0.35)]';
 const AI_EXPERT_BTN_SECONDARY =
   'bg-vailo-gold/20 text-white border border-vailo-gold/50 font-semibold hover:bg-vailo-gold/30 hover:border-vailo-gold/70 shadow-[0_2px_12px_rgba(197,160,89,0.2)] transition-all';
+
+function wizardCategoryPillClass(
+  active: boolean,
+  deactivated: boolean,
+  blocked: boolean,
+  size: 'sm' | 'md' = 'md'
+): string {
+  const sizing =
+    size === 'sm'
+      ? 'guest-pill px-3 py-2 rounded-full text-xs font-semibold'
+      : 'guest-pill px-4 py-2.5 rounded-full text-sm font-semibold';
+  const base = `${sizing} transition-all border`;
+  if (active) return `${base} ${AI_EXPERT_BTN_PRIMARY_PILL}`;
+  if (blocked) return `${base} bg-white/5 text-white/30 border-white/10 cursor-not-allowed opacity-50`;
+  if (deactivated) return `${base} bg-white/5 text-white/35 border-white/10 hover:border-white/20`;
+  return `${base} bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40`;
+}
 
 interface AiExpertViewProps {
   onClose: () => void;
@@ -634,9 +651,7 @@ export default function AiExpertView({
   });
 
   const [customLoc, setCustomLoc] = useState('');
-  const [selectedParentCats, setSelectedParentCats] = useState<string[]>([]);
-  const [selectedSubcatsByParent, setSelectedSubcatsByParent] = useState<Record<string, string[]>>({});
-  const [expandedSubcatParents, setExpandedSubcatParents] = useState<Set<string>>(new Set());
+  const [wizardCategoryPicks, setWizardCategoryPicks] = useState<Record<string, string>>({});
   const [startTime, setStartTime] = useState('09:00');
   const [tripDurationHours, setTripDurationHours] = useState<number | null>(6);
 
@@ -791,67 +806,28 @@ export default function AiExpertView({
     [allCategoryOptions, availableCategories]
   );
 
+  const wizardCategoryGroupCount = Object.keys(wizardCategoryPicks).length;
+
   const effectiveWizardCategories = useMemo(
-    () =>
-      resolveWizardCategorySelection(
-        selectedParentCats,
-        selectedSubcatsByParent,
-        subcategoriesByParentPrimary
-      ),
-    [selectedParentCats, selectedSubcatsByParent, subcategoriesByParentPrimary]
+    () => resolveWizardCategoryPicks(wizardCategoryPicks),
+    [wizardCategoryPicks]
   );
 
   const wizardCategoriesDisplayText = useMemo(
     () =>
-      selectedParentCats
-        .map((parentPrimary) => {
-          const parentLabel =
-            parentCategories.find((c) => c.primary === parentPrimary)?.label ?? parentPrimary;
-          const subs = selectedSubcatsByParent[parentPrimary] || [];
-          if (subs.length === 0) return parentLabel;
-          return subs.map((s) => resolveCategoryDisplayLabel(s)).join(', ');
-        })
-        .join(' · '),
-    [
-      selectedParentCats,
-      selectedSubcatsByParent,
-      parentCategories,
-      resolveCategoryDisplayLabel,
-    ]
+      effectiveWizardCategories.map((primary) => resolveCategoryDisplayLabel(primary)).join(' · '),
+    [effectiveWizardCategories, resolveCategoryDisplayLabel]
   );
 
-  const toggleWizardParentCategory = (primary: string) => {
-    setSelectedParentCats((prev) => {
-      if (prev.includes(primary)) {
-        setSelectedSubcatsByParent((subs) => {
-          const next = { ...subs };
-          delete next[primary];
-          return next;
-        });
-        setExpandedSubcatParents((expanded) => {
-          const next = new Set(expanded);
-          next.delete(primary);
-          return next;
-        });
-        return prev.filter((p) => p !== primary);
-      }
-      if (prev.length >= MAX_WIZARD_PARENT_CATEGORIES) return prev;
-      return [...prev, primary];
-    });
+  const selectWizardCategoryItem = (parentPrimary: string, primary: string) => {
+    setWizardCategoryPicks((prev) => pickWizardCategoryItem(prev, parentPrimary, primary));
   };
 
-  const toggleWizardSubcategory = (parentPrimary: string, subPrimary: string) => {
-    setSelectedSubcatsByParent((prev) => {
-      const current = prev[parentPrimary] || [];
-      const has = current.includes(subPrimary);
-      return {
-        ...prev,
-        [parentPrimary]: has
-          ? current.filter((s) => s !== subPrimary)
-          : [...current, subPrimary],
-      };
-    });
-  };
+  const resetWizardCategories = () => setWizardCategoryPicks({});
+
+  const canSelectWizardGroup = (parentPrimary: string) =>
+    parentPrimary in wizardCategoryPicks ||
+    wizardCategoryGroupCount < MAX_WIZARD_PARENT_CATEGORIES;
 
   useEffect(() => {
     if (step === 'TIME') setTimeChoiceMode('choose');
@@ -2397,9 +2373,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       distance: '',
       timeFrame: '',
     });
-    setSelectedParentCats([]);
-    setSelectedSubcatsByParent({});
-    setExpandedSubcatParents(new Set());
+    setWizardCategoryPicks({});
     setCustomLoc('');
     setStartTime('09:00');
     setTripDurationHours(6);
@@ -2996,28 +2970,89 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
               <div className={AI_EXPERT_PANEL}>
                 <p className={AI_EXPERT_PANEL_TITLE}>{t('aiExpertCategoriesTitle')}</p>
                 <p className={AI_EXPERT_PANEL_SUB}>{t('aiExpertCategoriesSub')}</p>
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="space-y-3 mb-4">
                   {categoriesLoading && parentCategories.length === 0 ? (
                     <p className="text-sm text-white/50 flex items-center gap-2">
                       <Loader2 size={14} className="animate-spin text-vailo-gold" /> {t('aiExpertLoadingCategories')}
                     </p>
                   ) : parentCategories.length > 0 ? (
-                    parentCategories.map((cat) => (
-                      <button
-                        key={cat.primary}
-                        onClick={() => {
-                          engageWizard();
-                          toggleWizardParentCategory(cat.primary);
-                        }}
-                        className={`guest-pill px-4 py-2.5 rounded-full text-sm font-semibold transition-all border ${
-                          selectedParentCats.includes(cat.primary)
-                            ? AI_EXPERT_BTN_PRIMARY_PILL
-                            : 'bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40'
-                        }`}
-                      >
-                        {cat.label}
-                      </button>
-                    ))
+                    <>
+                      {(() => {
+                        const parentOnly = parentCategories.filter(
+                          (cat) => (subcategoriesByParentPrimary[cat.primary] || []).length === 0
+                        );
+                        const withSubs = parentCategories.filter(
+                          (cat) => (subcategoriesByParentPrimary[cat.primary] || []).length > 0
+                        );
+                        return (
+                          <>
+                            {parentOnly.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {parentOnly.map((cat) => {
+                                  const active = wizardCategoryPicks[cat.primary] === cat.primary;
+                                  const blocked = !canSelectWizardGroup(cat.primary) && !active;
+                                  return (
+                                    <button
+                                      key={cat.primary}
+                                      type="button"
+                                      disabled={blocked}
+                                      onClick={() => {
+                                        engageWizard();
+                                        selectWizardCategoryItem(cat.primary, cat.primary);
+                                      }}
+                                      className={wizardCategoryPillClass(active, false, blocked)}
+                                    >
+                                      {cat.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {withSubs.map((cat) => {
+                              const subs = subcategoriesByParentPrimary[cat.primary] || [];
+                              const groupPick = wizardCategoryPicks[cat.primary];
+                              const groupSelectable = canSelectWizardGroup(cat.primary);
+
+                              return (
+                                <div
+                                  key={cat.primary}
+                                  className="rounded-xl border border-white/10 bg-white/5 p-3"
+                                >
+                                  <div className="flex flex-wrap gap-2">
+                                    {[cat, ...subs].map((item) => {
+                                      const isParent = item.primary === cat.primary;
+                                      const active = groupPick === item.primary;
+                                      const deactivated =
+                                        groupPick !== undefined && groupPick !== item.primary;
+                                      const blocked = !groupSelectable && !active;
+                                      return (
+                                        <button
+                                          key={item.primary}
+                                          type="button"
+                                          disabled={blocked}
+                                          onClick={() => {
+                                            engageWizard();
+                                            selectWizardCategoryItem(cat.primary, item.primary);
+                                          }}
+                                          className={wizardCategoryPillClass(
+                                            active,
+                                            deactivated,
+                                            blocked,
+                                            isParent ? 'md' : 'sm'
+                                          )}
+                                        >
+                                          {item.label}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </>
+                        );
+                      })()}
+                    </>
                   ) : (
                     <p className="text-sm text-white/60 leading-relaxed">
                       {areaConfigIssue === 'invalid-master' ? (
@@ -3034,59 +3069,18 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                   )}
                 </div>
 
-                {selectedParentCats.map((parentPrimary) => {
-                  const allSubs = subcategoriesByParentPrimary[parentPrimary] || [];
-                  if (allSubs.length === 0) return null;
-
-                  const parentLabel =
-                    parentCategories.find((c) => c.primary === parentPrimary)?.label ?? parentPrimary;
-                  const expanded = expandedSubcatParents.has(parentPrimary);
-                  const visibleSubs = expanded
-                    ? allSubs
-                    : allSubs.slice(0, SUBCATEGORY_PREVIEW_COUNT);
-                  const hasMore = allSubs.length > SUBCATEGORY_PREVIEW_COUNT;
-                  const selectedSubs = selectedSubcatsByParent[parentPrimary] || [];
-
-                  return (
-                    <div
-                      key={parentPrimary}
-                      className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3"
-                    >
-                      <p className="text-xs font-semibold text-vailo-gold mb-1">{parentLabel}</p>
-                      <p className="text-[11px] text-white/50 mb-2">{t('aiExpertSubcategoriesPickAny')}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {visibleSubs.map((sub) => (
-                          <button
-                            key={sub.primary}
-                            type="button"
-                            onClick={() => toggleWizardSubcategory(parentPrimary, sub.primary)}
-                            className={`guest-pill px-3 py-2 rounded-full text-xs font-semibold transition-all border ${
-                              selectedSubs.includes(sub.primary)
-                                ? AI_EXPERT_BTN_PRIMARY_PILL
-                                : 'bg-white/8 text-white/75 border-white/15 hover:border-vailo-gold/35'
-                            }`}
-                          >
-                            {sub.label}
-                          </button>
-                        ))}
-                        {hasMore && !expanded && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedSubcatParents((prev) => new Set([...prev, parentPrimary]))
-                            }
-                            className="guest-pill px-3 py-2 rounded-full text-xs font-semibold border bg-white/8 text-white/80 border-white/15 hover:border-vailo-gold/40"
-                          >
-                            {t('aiExpertSubcategoriesAll')}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {wizardCategoryGroupCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetWizardCategories}
+                    className={`w-full py-3 min-h-[44px] rounded-xl text-sm mb-3 ${AI_EXPERT_BTN_SECONDARY}`}
+                  >
+                    {t('aiExpertResetCategories')}
+                  </button>
+                )}
 
                 <button
-                  disabled={selectedParentCats.length === 0}
+                  disabled={wizardCategoryGroupCount === 0}
                   onClick={() =>
                     advanceStep(
                       'CATEGORIES',
@@ -3096,7 +3090,7 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                   }
                   className={`w-full py-4 min-h-[48px] rounded-xl text-base disabled:opacity-40 ${AI_EXPERT_BTN_PRIMARY}`}
                 >
-                  {tf('aiExpertContinueSelected', { count: selectedParentCats.length })}
+                  {tf('aiExpertContinueSelected', { count: wizardCategoryGroupCount })}
                 </button>
               </div>
             )}

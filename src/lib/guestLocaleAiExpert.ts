@@ -45,6 +45,7 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertCategoriesSub'
   | 'aiExpertSubcategoriesAll'
   | 'aiExpertSubcategoriesPickAny'
+  | 'aiExpertResetCategories'
   | 'aiExpertLoadingCategories'
   | 'aiExpertContinueSelected'
   | 'aiExpertStartingFrom'
@@ -152,9 +153,10 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertNearYourProperty: 'Near your property',
   aiExpertCategoriesTitle: 'What are you in the mood for?',
   aiExpertCategoriesSub:
-    'Choose up to three themes — tap a theme to refine with subcategories.',
+    'Choose up to three themes. Tap a category or subcategory — only one per group.',
   aiExpertSubcategoriesAll: 'All',
   aiExpertSubcategoriesPickAny: 'Pick any that apply (optional)',
+  aiExpertResetCategories: 'Reset categories',
   aiExpertLoadingCategories: 'Loading local categories…',
   aiExpertContinueSelected: 'Continue · {count} selected',
   aiExpertStartingFrom: 'Starting from',
@@ -278,9 +280,10 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertNearYourProperty: 'Κοντά στο κατάλυμά σας',
   aiExpertCategoriesTitle: 'Τι σας ενδιαφέρει σήμερα;',
   aiExpertCategoriesSub:
-    'Επιλέξτε έως τρία θέματα — πατήστε ένα θέμα για να επιλέξετε υποκατηγορίες.',
+    'Επιλέξτε έως τρεις θεματικές. Πατήστε κατηγορία ή υποκατηγορία — μία ανά ομάδα.',
   aiExpertSubcategoriesAll: 'Όλες',
   aiExpertSubcategoriesPickAny: 'Επιλέξτε όσες θέλετε (προαιρετικό)',
+  aiExpertResetCategories: 'Επαναφορά κατηγοριών',
   aiExpertLoadingCategories: 'Φόρτωση τοπικών κατηγοριών…',
   aiExpertContinueSelected: 'Συνέχεια · {count} επιλεγμένα',
   aiExpertStartingFrom: 'Αφετηρία',

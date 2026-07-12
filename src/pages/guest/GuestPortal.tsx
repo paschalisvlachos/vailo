@@ -390,7 +390,12 @@ function GuestPortalPage({
   const [featuredPreviewKey, setFeaturedPreviewKey] = useState<FeaturedKey | null>(null);
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
-  const { excursionsAvailable, excursionListings, excursionsLoading } = useGuestAreaData();
+  const {
+    excursionsAvailable,
+    excursionListings,
+    excursionsLoading,
+    listingAreaCtx,
+  } = useGuestAreaData();
 
   // NEW: Dynamic Weather State
   const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
@@ -796,7 +801,10 @@ function GuestPortalPage({
                       onFeaturedPreview={setFeaturedPreviewKey}
                       onLiveLikeLocal={openLiveLikeLocal}
                       onAssistant={openAssistant}
-                      showExcursions={excursionsAvailable}
+                      showExcursions={
+                        excursionsAvailable ||
+                        (excursionsLoading && Boolean(listingAreaCtx?.areaId))
+                      }
                       onExcursions={openExcursions}
                       onSavedLocalGems={openSavedLocalGems}
                       savedLocalGemsMenuSub={savedLocalGemsMenuSub}

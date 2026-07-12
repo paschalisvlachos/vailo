@@ -58,6 +58,7 @@ export default function HierarchicalCategoryPillSelector({
       const next = new Set(prev);
       for (const parent of parentOptions) {
         if (
+          primaryInList(parent.primary, selectedPrimaries) ||
           parentHasSelectedSubcategories(
             parent.primary,
             selectedPrimaries,
@@ -81,28 +82,35 @@ export default function HierarchicalCategoryPillSelector({
 
   const handleParentClick = (parentPrimary: string) => {
     const subs = subcategoriesByParentPrimary[parentPrimary] || [];
+    const willSelect = !primaryInList(parentPrimary, selectedPrimaries);
+    togglePrimary(parentPrimary);
     if (subs.length > 0) {
       setExpandedParents((prev) => {
         const next = new Set(prev);
-        if (next.has(parentPrimary)) next.delete(parentPrimary);
-        else next.add(parentPrimary);
+        if (willSelect) next.add(parentPrimary);
+        else next.delete(parentPrimary);
         return next;
       });
-      return;
     }
-    togglePrimary(parentPrimary);
   };
 
-  const parentPillClass = (parentPrimary: string, hasSubs: boolean) => {
-    const isExpanded = expandedParents.has(parentPrimary);
+  const toggleParentExpanded = (parentPrimary: string) => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(parentPrimary)) next.delete(parentPrimary);
+      else next.add(parentPrimary);
+      return next;
+    });
+  };
+
+  const parentPillClass = (parentPrimary: string) => {
     const isLeafSelected = primaryInList(parentPrimary, selectedPrimaries);
     const hasSelectedSubs = parentHasSelectedSubcategories(
       parentPrimary,
       selectedPrimaries,
       subcategoriesByParentPrimary
     );
-    const isActive =
-      (!hasSubs && isLeafSelected) || (hasSubs && (isExpanded || hasSelectedSubs));
+    const isActive = isLeafSelected || hasSelectedSubs;
 
     return `px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
       isActive
@@ -127,14 +135,30 @@ export default function HierarchicalCategoryPillSelector({
         {parentOptions.map((parent) => {
           const subs = subcategoriesByParentPrimary[parent.primary] || [];
           return (
-            <button
-              key={parent.primary}
-              type="button"
-              onClick={() => handleParentClick(parent.primary)}
-              className={parentPillClass(parent.primary, subs.length > 0)}
-            >
-              {parent.label}
-            </button>
+            <span key={parent.primary} className="inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handleParentClick(parent.primary)}
+                className={parentPillClass(parent.primary)}
+              >
+                {parent.label}
+              </button>
+              {subs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggleParentExpanded(parent.primary)}
+                  className={`h-7 w-7 rounded-full text-[10px] font-bold border transition-all ${
+                    expandedParents.has(parent.primary)
+                      ? `${styles.active} shadow-sm`
+                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                  }`}
+                  aria-label={`${expandedParents.has(parent.primary) ? 'Hide' : 'Show'} subcategories for ${parent.label}`}
+                  title="Optional subcategories"
+                >
+                  {expandedParents.has(parent.primary) ? '−' : '+'}
+                </button>
+              )}
+            </span>
           );
         })}
       </div>
@@ -149,7 +173,7 @@ export default function HierarchicalCategoryPillSelector({
             className={`rounded-lg border p-3 ${styles.panel}`}
           >
             <p className={`text-xs font-semibold mb-2 ${styles.accent}`}>
-              {parent.label} — pick all that apply
+              {parent.label} — optional subcategories
             </p>
             <div className="flex flex-wrap gap-2">
               {subs.map((sub) => (

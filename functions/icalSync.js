@@ -83,12 +83,24 @@ function bookingsMatchByDates(a, b) {
   return Boolean(a?.start && a?.end && b?.start && b?.end && a.start === b.start && a.end === b.end);
 }
 
+/** Skip re-adding an iCal block that an admin already split into separate stays. */
+function isSplitHandledICalEvent(existingBookings, iCalEvent) {
+  if (!iCalEvent?.start || !iCalEvent?.end) return false;
+  return existingBookings.some(
+    (b) =>
+      b.splitFromRange?.start === iCalEvent.start && b.splitFromRange?.end === iCalEvent.end
+  );
+}
+
 /** Keep existing DB rows (guest invites, etc.); append only new iCal events. */
 function applyIncrementalICalSync(existingBookings, iCalEvents) {
   const updated = existingBookings.map((b) => ({ ...b }));
   let added = 0;
 
   for (const iCalEvent of iCalEvents) {
+    if (isSplitHandledICalEvent(updated, iCalEvent)) {
+      continue;
+    }
     const matchIndex = updated.findIndex((b) => bookingsMatchByDates(b, iCalEvent));
     if (matchIndex >= 0) {
       const existing = updated[matchIndex];

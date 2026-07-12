@@ -23,7 +23,25 @@ export type SyncedBooking = {
   accessSource?: GuestAccessSource;
   /** Set when a reservation is cancelled — blocks portal even if invite was sent. */
   portalAccessRevokedAt?: string;
+  /** Links segments created by splitting one reservation. */
+  splitGroupId?: string;
+  /** Original iCal date span before admin split — prevents re-import as one block. */
+  splitFromRange?: { start: string; end: string };
+  /** 1-based index within splitGroupId. */
+  splitPartIndex?: number;
 };
+
+export type SplitBookingPart = { start: string; end: string };
+
+export function isPropertyReservationSplitEnabled(
+  property: { reservationSplitEnabled?: boolean } | null | undefined
+): boolean {
+  return property?.reservationSplitEnabled === true;
+}
+
+export function isSplitBookingPart(booking: SyncedBooking | null | undefined): boolean {
+  return Boolean(booking?.splitGroupId && booking.splitPartIndex);
+}
 
 export function isBookingGuestDetailsComplete(booking: SyncedBooking): boolean {
   const name = booking.guestName?.trim();
@@ -188,5 +206,98 @@ export function patchSyncedBookingListRevokeAccess(
 ): SyncedBooking[] {
   return bookings.map((b) =>
     matchesSyncedBooking(b, target) ? revokeGuestPortalAccessBooking(b) : b
+  );
+}
+
+/** Validate stay segments for splitting one reservation into non-overlapping parts. */
+export function validateReservationSplitParts(
+  original: SyncedBooking,
+  parts: SplitBookingPart[]
+): string | null {
+  if (parts.length < 2) return 'Add at least two stay segments.';
+
+  const origStart = parseSyncedBookingDay(original.start);
+  const origEnd = parseSyncedBookingDay(original.end);
+  if (!origStart || !origEnd) return 'Original reservation has invalid dates.';
+  if (origStart >= origEnd) return 'Original reservation has invalid dates.';
+
+  const normalized = parts.map((part) => ({
+    start: String(part.start || '').slice(0, 10),
+    end: String(part.end || '').slice(0, 10),
+  }));
+
+  for (let i = 0; i < normalized.length; i += 1) {
+    const part = normalized[i];
+    const pStart = parseSyncedBookingDay(part.start);
+    const pEnd = parseSyncedBookingDay(part.end);
+    if (!pStart || !pEnd) return `Segment ${i + 1} needs valid check-in and check-out dates.`;
+    if (pStart >= pEnd) return `Segment ${i + 1}: check-out must be after check-in.`;
+    if (pStart < origStart || pEnd > origEnd) {
+      return `Segment ${i + 1} must fall within the original stay (${formatBookingDateRange(original.start, original.end)}).`;
+    }
+  }
+
+  const sorted = [...normalized].sort((a, b) => a.start.localeCompare(b.start));
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const aEnd = parseSyncedBookingDay(sorted[i].end)!;
+    const bStart = parseSyncedBookingDay(sorted[i + 1].start)!;
+    if (aEnd > bStart) return 'Stay segments cannot overlap each other.';
+  }
+
+  return null;
+}
+
+function copyGuestFieldsForSplit(original: SyncedBooking): Partial<SyncedBooking> {
+  return {
+    summary: original.summary,
+    provider: original.provider,
+    guestName: original.guestName,
+    guestEmail: original.guestEmail,
+    guestWhatsapp: original.guestWhatsapp,
+    guestPhone: original.guestPhone,
+    guestLocale: original.guestLocale,
+    guestDetailsComplete: original.guestDetailsComplete,
+    isInvited: false,
+    inviteStatus: 'not_sent',
+  };
+}
+
+/** Build new booking rows from one reservation split into dated segments. */
+export function buildSplitBookingsFromOriginal(
+  original: SyncedBooking,
+  parts: SplitBookingPart[]
+): SyncedBooking[] {
+  const splitGroupId = `split-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const splitFromRange = {
+    start: String(original.start || '').slice(0, 10),
+    end: String(original.end || '').slice(0, 10),
+  };
+  const guestFields = copyGuestFieldsForSplit(original);
+  const sorted = [...parts]
+    .map((part) => ({
+      start: String(part.start || '').slice(0, 10),
+      end: String(part.end || '').slice(0, 10),
+    }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+
+  return sorted.map((part, index) => ({
+    ...guestFields,
+    id: `${original.id || 'booking'}-split-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+    start: part.start,
+    end: part.end,
+    splitGroupId,
+    splitFromRange,
+    splitPartIndex: index + 1,
+  }));
+}
+
+export function replaceBookingWithSplits(
+  bookings: SyncedBooking[],
+  target: SyncedBooking,
+  splitParts: SyncedBooking[]
+): SyncedBooking[] {
+  const remaining = bookings.filter((b) => !matchesSyncedBooking(b, target));
+  return [...remaining, ...splitParts].sort((a, b) =>
+    String(a.start || '').localeCompare(String(b.start || ''))
   );
 }

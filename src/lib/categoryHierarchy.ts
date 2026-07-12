@@ -194,7 +194,7 @@ export function buildAdminCategoryHierarchy(
 ): {
   parentOptions: CategoryOption[];
   subcategoriesByParentPrimary: Record<string, CategoryOption[]>;
-  /** Parents without subcategories plus every subcategory — the values stored on gems. */
+  /** Every parent plus subcategories — all valid values stored on gems. */
   selectableOptions: CategoryOption[];
 } {
   const parents: CategoryDocRecord[] = [];
@@ -238,8 +238,8 @@ export function buildAdminCategoryHierarchy(
   const selectableOptions: CategoryOption[] = [];
   for (const parent of parentOptions) {
     const subs = subcategoriesByParentPrimary[parent.primary] || [];
-    if (subs.length === 0) selectableOptions.push(parent);
-    else selectableOptions.push(...subs);
+    selectableOptions.push(parent);
+    if (subs.length > 0) selectableOptions.push(...subs);
   }
 
   return { parentOptions, subcategoriesByParentPrimary, selectableOptions };

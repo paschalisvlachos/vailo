@@ -61,6 +61,7 @@ export type PropertyRecord = {
   googleMapsUrl?: string;
   createdAt?: string;
   guestPortalAccessRequired?: boolean;
+  reservationSplitEnabled?: boolean;
   contentPrimaryLocale?: string;
   contentEnabledLocales?: string[];
 };

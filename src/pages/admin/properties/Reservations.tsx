@@ -6,6 +6,7 @@ import { useToast } from '../../../context/ToastContext';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import CalendarBookingDetailsModal from '../../../components/admin/CalendarBookingDetailsModal';
 import ResetBookingsDateRangeModal from '../../../components/admin/ResetBookingsDateRangeModal';
+import SplitReservationModal from '../../../components/admin/SplitReservationModal';
 import GuestWhatsAppLink from '../../../components/admin/GuestWhatsAppLink';
 import GuestInviteEmailPreviewModal from '../../../components/admin/GuestInviteEmailPreviewModal';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
@@ -22,11 +23,16 @@ import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode
 import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
+  buildSplitBookingsFromOriginal,
   getBookingInvitationStatus,
   guestDetailsPatch,
   isBookingGuestDetailsComplete,
+  isPropertyReservationSplitEnabled,
+  isSplitBookingPart,
   patchSyncedBookingList,
   patchSyncedBookingListRevokeAccess,
+  replaceBookingWithSplits,
+  type SplitBookingPart,
   type SyncedBooking,
 } from '../../../lib/syncedBooking';
 import { resetPropertyBookingsInDateRange } from '../../../lib/resetPropertyBookings';
@@ -46,6 +52,7 @@ import {
   RefreshCw,
   Eye,
   Eraser,
+  Scissors,
 } from 'lucide-react';
 
 type ReservationRow = SyncedBooking & { typeId: string; typeName: string };
@@ -56,6 +63,7 @@ export default function Reservations() {
       propertyName?: string;
       urlSlug?: string;
       guestPortalAccessRequired?: boolean;
+      reservationSplitEnabled?: boolean;
     };
     propertyId: string;
   }>();
@@ -82,7 +90,10 @@ export default function Reservations() {
   >({});
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null);
   const [resetRangeOpen, setResetRangeOpen] = useState(false);
+  const [splitBooking, setSplitBooking] = useState<ReservationRow | null>(null);
   const [copiedOpenPortalInvite, setCopiedOpenPortalInvite] = useState(false);
+
+  const reservationSplitEnabled = isPropertyReservationSplitEnabled(property);
 
   const initialFormState = {
     typeId: '',
@@ -490,6 +501,28 @@ export default function Reservations() {
     return buildGuestInviteWhatsAppMessage(payload);
   };
 
+  const handleSplitConfirm = async (booking: ReservationRow, parts: SplitBookingPart[]) => {
+    const targetType = propertyTypes.find((t) => t.id === booking.typeId);
+    if (!targetType) {
+      toast.error('Unit not found.');
+      return;
+    }
+
+    const splitParts = buildSplitBookingsFromOriginal(booking, parts);
+    const updatedBookings = replaceBookingWithSplits(
+      targetType.syncedBookings || [],
+      booking,
+      splitParts
+    );
+
+    await setDoc(
+      doc(db, 'properties', propertyId, 'propertyTypes', booking.typeId),
+      { syncedBookings: updatedBookings },
+      { merge: true }
+    );
+    toast.success(`Split into ${splitParts.length} reservations.`);
+  };
+
   const handleDelete = async (booking: any) => {
     if (
       !window.confirm(
@@ -719,6 +752,11 @@ export default function Reservations() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{checkIn} &rarr; {checkOut}</div>
                         <div className="text-xs text-gray-500 mt-1">{booking.provider}</div>
+                        {isSplitBookingPart(booking) && (
+                          <div className="text-[10px] font-bold text-vailo-teal mt-1 uppercase tracking-wide">
+                            Split part {booking.splitPartIndex}
+                          </div>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -762,6 +800,18 @@ export default function Reservations() {
                       {/* Actions */}
                       <td className="px-6 py-4 text-right text-sm font-medium">
                         <div className="flex flex-wrap items-center justify-end gap-2 max-w-[420px] ml-auto">
+                          {reservationSplitEnabled && !isSplitBookingPart(booking) && (
+                            <button
+                              type="button"
+                              onClick={() => setSplitBooking(booking)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors"
+                              title="Split this reservation into separate stays with their own dates"
+                            >
+                              <Scissors size={14} />
+                              Split
+                            </button>
+                          )}
+
                           {detailsComplete && (
                             <button
                               type="button"
@@ -975,6 +1025,14 @@ export default function Reservations() {
           bookings={resetScopeBookings}
           onClose={() => setResetRangeOpen(false)}
           onConfirm={handleResetDateRange}
+        />
+      )}
+
+      {splitBooking && (
+        <SplitReservationModal
+          booking={splitBooking}
+          onClose={() => setSplitBooking(null)}
+          onConfirm={(parts) => handleSplitConfirm(splitBooking, parts)}
         />
       )}
     </div>

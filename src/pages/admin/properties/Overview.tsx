@@ -37,6 +37,7 @@ import PropertyLanguagesCard from '../../../components/admin/PropertyLanguagesCa
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { PROPERTY_ASSIGNMENT_ROLES } from '../../../lib/adminAccess';
 import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
+import { isPropertyReservationSplitEnabled } from '../../../lib/syncedBooking';
 
 interface OwnerOption {
   id: string;
@@ -58,6 +59,7 @@ type FormData = {
   email: string;
   phone: string;
   guestPortalAccessRequired: boolean;
+  reservationSplitEnabled: boolean;
 };
 
 function buildFormFromProperty(property: PropertyRecord): FormData {
@@ -72,6 +74,7 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     email: '',
     phone: '',
     guestPortalAccessRequired: isGuestPortalAccessRequired(property),
+    reservationSplitEnabled: isPropertyReservationSplitEnabled(property),
   };
 }
 
@@ -218,6 +221,7 @@ export default function Overview() {
           newPropertySlug
         );
         propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
+        propertyPatch.reservationSplitEnabled = formData.reservationSplitEnabled;
       }
       await updateDoc(doc(db, 'properties', propertyId), propertyPatch);
       if (formData.ownerId) {
@@ -536,6 +540,42 @@ export default function Overview() {
                 This setting is managed by your Vailo administrator.
               </p>
             ) : null}
+          </div>
+        )}
+      </AdminCard>
+
+      <AdminCard className="p-6">
+        <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-4">
+          Reservations
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">
+          When enabled, admins can split a single iCal reservation into separate stays with
+          their own dates — useful when a channel exports overlapping bookings as one block.
+        </p>
+        {isEditing && isPlatformAdmin ? (
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="reservationSplitEnabled"
+              checked={formData.reservationSplitEnabled}
+              onChange={handleChange}
+              className="mt-1 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
+            />
+            <span className="text-sm text-gray-700">
+              <span className="font-semibold text-gray-900">Allow reservation splitting</span>
+              <span className="block text-gray-500 mt-1">
+                Shows a Split action on each reservation in the Reservations tab for this
+                property.
+              </span>
+            </span>
+          </label>
+        ) : (
+          <div className="text-sm text-gray-700">
+            {isPropertyReservationSplitEnabled(property) ? (
+              <AdminBadge variant="teal">Splitting enabled</AdminBadge>
+            ) : (
+              <span className="text-gray-500">Splitting disabled</span>
+            )}
           </div>
         )}
       </AdminCard>

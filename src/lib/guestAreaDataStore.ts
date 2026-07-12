@@ -129,7 +129,7 @@ export function GuestAreaPrefetcher({
   const areaData = useGuestAreaData();
   const listingAreaCtx = areaData.listingAreaCtx;
 
-  const areaKey = `${propertyType?.country ?? ''}|${propertyType?.city ?? ''}|${propertyGems.length}|${propertyFeatures.length}|${locale}|${contentSettings.primaryLocale}`;
+  const areaKey = `${propertyType?.country ?? ''}|${propertyType?.city ?? ''}|${locale}|${contentSettings.primaryLocale}`;
 
   useEffect(() => {
     if (prefetchKey === areaKey) return;

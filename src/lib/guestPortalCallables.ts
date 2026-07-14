@@ -151,3 +151,23 @@ export async function logGuestPortalAnalyticsCallable(params: {
   const res = await call<{ ok: boolean; logged?: number }>('logGuestPortalAnalytics')(params);
   return res.data;
 }
+
+export type AssistantEscalationResult = {
+  issueId: string;
+  hostEmailSent: boolean;
+  deduped?: boolean;
+  rateLimited?: boolean;
+  previewMode?: boolean;
+  hostNotifyStatus?: string;
+};
+
+export async function escalateAssistantQuestionCallable(params: {
+  propertyId: string;
+  typeId: string;
+  sessionId: string;
+  guestQuestion: string;
+  aiResponse: string;
+}): Promise<AssistantEscalationResult> {
+  const res = await call<AssistantEscalationResult>('escalateAssistantQuestion')(params);
+  return res.data;
+}

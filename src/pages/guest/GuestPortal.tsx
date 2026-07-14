@@ -1107,7 +1107,6 @@ function GuestPortalPage({
               setActiveView('portal');
               setReportSheetOpen(true);
             }}
-            whatsappHref={whatsappHref}
           />
           </Suspense>
         )}

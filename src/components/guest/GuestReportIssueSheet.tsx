@@ -85,6 +85,7 @@ Return plain text only — no markdown.`;
         propertyTypeId,
         propertyTypeName,
         propertyName,
+        source: 'manual_report',
         seenByHost: false,
         resolved: false,
         createdAt: serverTimestamp(),
@@ -163,7 +164,8 @@ Return plain text only — no markdown.`;
               <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5 text-base">
                 <Sparkles size={16} className="shrink-0" />
                 <span>
-                  Your host has been notified and will contact you ASAP. Here&apos;s what you can try now
+                  Your report has been saved for your host. Here&apos;s what you can try in the
+                  meantime
                 </span>
               </div>
               <div className="text-base text-gray-700 leading-relaxed whitespace-pre-wrap border-l-2 border-[#C5A059]/50 pl-3">

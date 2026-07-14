@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { areaNameToId } from '../../lib/areaUtils';
 import { useGuestAreaData } from '../../lib/guestAreaDataStore';
+import {
+  loadSearchAreaContentOnce,
+  useLiveLikeLocalAreaOverlay,
+  type LiveLikeLocalAreaOverlay,
+} from '../../lib/useLiveLikeLocalAreaOverlay';
+import { resolveSearchAreaContext } from '../../lib/searchAreaContext';
+import type { ListingAreaContext } from '../../lib/listingAreaContext';
 import { getGenerativeModel } from "firebase/ai";
 import { ai } from '../../lib/firebase';
 import {
@@ -475,10 +482,30 @@ export default function AiExpertView({
   const { track } = useGuestAnalytics();
   const { t } = useGuestLocale();
   const typeId = propertyType?.id as string | undefined;
+  const guestAreaSnapshot = useGuestAreaData();
+  const { listingAreaCtx, areaConfigIssue, invalidMasterAreaRaw } = guestAreaSnapshot;
+
+  const contentSettings = usePropertyContentLocaleSettings(
+    property as Record<string, unknown> | undefined
+  );
+
+  const [activeSearchAreaCtx, setActiveSearchAreaCtx] = useState<ListingAreaContext | null>(null);
+  const llalContentOverrideRef = useRef<LiveLikeLocalAreaOverlay | null>(null);
+
+  const llalOverlay = useLiveLikeLocalAreaOverlay({
+    listingSnapshot: guestAreaSnapshot,
+    searchAreaCtx: activeSearchAreaCtx,
+    propertyGems: _gems,
+    propertyFeatures: _features,
+    locale,
+    contentSettings,
+  });
+
+  const llalContentRef = useRef(llalOverlay);
+  llalContentRef.current = llalContentOverrideRef.current ?? llalOverlay;
+
   const {
-    listingAreaCtx,
-    areaConfigIssue,
-    invalidMasterAreaRaw,
+    contentAreaCtx,
     categoriesLoading,
     parentCategories,
     subcategoriesByParentPrimary,
@@ -491,7 +518,7 @@ export default function AiExpertView({
     mergedFeatures,
     verifiedDiscoveredPlaces,
     guestEligibleTrails,
-  } = useGuestAreaData();
+  } = llalOverlay;
 
   const logWizardMessage = useCallback(
     (
@@ -526,6 +553,56 @@ export default function AiExpertView({
     [track]
   );
 
+  const syncSearchAreaForPlace = useCallback(
+    async (place: GeocodedPlace, userInput: string, isNearProperty: boolean) => {
+      if (isNearProperty) {
+        setActiveSearchAreaCtx(null);
+        llalContentOverrideRef.current = null;
+        return null;
+      }
+
+      const country =
+        listingAreaCtx?.country ||
+        (typeof propertyType?.country === 'string' ? propertyType.country.trim() : '') ||
+        (typeof property?.country === 'string' ? property.country.trim() : '');
+      if (!country) {
+        setActiveSearchAreaCtx(null);
+        llalContentOverrideRef.current = null;
+        return null;
+      }
+
+      const resolved = await resolveSearchAreaContext({
+        country,
+        place,
+        userInput,
+        listingAreaCtx,
+      });
+      setActiveSearchAreaCtx(resolved);
+      llalContentOverrideRef.current = null;
+
+      if (resolved) {
+        llalContentOverrideRef.current = await loadSearchAreaContentOnce({
+          areaCtx: resolved,
+          propertyGems: _gems,
+          propertyFeatures: _features,
+          locale,
+          contentSettings,
+        });
+      }
+
+      return resolved;
+    },
+    [
+      _features,
+      _gems,
+      contentSettings,
+      listingAreaCtx,
+      locale,
+      property?.country,
+      propertyType?.country,
+    ]
+  );
+
   const logConciergeChatMessage = useCallback(
     (
       role: 'user' | 'model',
@@ -542,9 +619,6 @@ export default function AiExpertView({
     [track]
   );
 
-  const contentSettings = usePropertyContentLocaleSettings(
-    property as Record<string, unknown> | undefined
-  );
   const tf = (key: GuestLocaleUiKey, vars: Record<string, string | number>) =>
     guestUiTFormat(locale, key, vars);
 
@@ -750,7 +824,8 @@ export default function AiExpertView({
    * results instead of the place card. Always falls back to something useful.
    */
   const getGeographicAreaHint = (): string => {
-    const masterArea = listingAreaCtx?.masterArea || '';
+    const masterArea =
+      contentAreaCtx?.masterArea || listingAreaCtx?.masterArea || '';
     const country = propertyType?.country || property?.country || '';
     const parts = [masterArea, country].filter(Boolean);
     if (parts.length > 0) return parts.join(', ');
@@ -929,8 +1004,10 @@ export default function AiExpertView({
 
   const getPlanPhotoContext = (): PlanPhotoContext => {
     const { cityArea, country } = getLocationContext();
-    const areaName = [cityArea, country].filter(Boolean).join(', ');
-    const areaId = listingAreaCtx?.areaId || areaNameToId(cityArea);
+    const activeArea = contentAreaCtx?.masterArea || cityArea;
+    const areaName = [activeArea, country].filter(Boolean).join(', ');
+    const areaId = contentAreaCtx?.areaId || listingAreaCtx?.areaId || areaNameToId(cityArea);
+    const llal = llalContentRef.current;
     return {
       propertyPhotoUrl: propertyType?.photoUrl || property?.photoUrl || '',
       propertyName: getPropertyDisplayName(),
@@ -940,9 +1017,9 @@ export default function AiExpertView({
       areaName: areaName || country || 'Greece',
       country,
       areaId,
-      gems: mergedGems as any,
-      features: mergedFeatures as any,
-      discoveredPlaces: discoveredPlaces.map((p) => ({
+      gems: llal.mergedGems as any,
+      features: llal.mergedFeatures as any,
+      discoveredPlaces: llal.discoveredPlaces.map((p) => ({
         name: p.name,
         photoUrl: p.photoUrl,
         googleMapsUrl: p.googleMapsUrl,
@@ -955,25 +1032,27 @@ export default function AiExpertView({
   };
 
   const getMapEnrichmentContext = useCallback((): MapEnrichmentContext | undefined => {
-    if (!listingAreaCtx?.areaId || !listingAreaCtx?.country) return undefined;
+    const ctx = contentAreaCtx ?? listingAreaCtx;
+    if (!ctx?.areaId || !ctx?.country) return undefined;
     return {
-      country: listingAreaCtx.country,
-      areaId: listingAreaCtx.areaId,
-      areaName: listingAreaCtx.masterArea || getGeographicAreaHint(),
+      country: ctx.country,
+      areaId: ctx.areaId,
+      areaName: ctx.masterArea || getGeographicAreaHint(),
     };
-  }, [listingAreaCtx]);
+  }, [contentAreaCtx, listingAreaCtx]);
 
   const persistPlanUnverifiedMentions = useCallback(
     (plan: Record<string, unknown> | null | undefined) => {
-      if (!listingAreaCtx?.country || !listingAreaCtx?.areaId || !plan) return;
+      const ctx = contentAreaCtx ?? listingAreaCtx;
+      if (!ctx?.country || !ctx?.areaId || !plan) return;
       const mentions = collectUnverifiedMentionsFromPlan(plan);
       if (mentions.length === 0) return;
       void persistUnverifiedAiMentions(mentions, {
-        country: listingAreaCtx.country,
-        areaId: listingAreaCtx.areaId,
+        country: ctx.country,
+        areaId: ctx.areaId,
       });
     },
-    [listingAreaCtx]
+    [contentAreaCtx, listingAreaCtx]
   );
 
   /** Photos then re-sync map links from resolved Google Place IDs. */
@@ -1067,6 +1146,7 @@ export default function AiExpertView({
 
   const buildConciergeChatContext = useCallback(
     (searchAnchor: ConciergeSearchAnchor): ConciergeChatContext => {
+      const llal = llalContentRef.current;
       const primary = contentSettings.primaryLocale;
       const reviewed = contentSettings.reviewedLocales;
       const localizeGem = (g: any) => ({
@@ -1095,13 +1175,13 @@ export default function AiExpertView({
         strict: true as const,
       };
       const gemsInRange = filterCoordsWithinRadius(
-        withCoords(mergedGems),
+        withCoords(llal.mergedGems),
         searchAnchor.coords,
         searchAnchor.radiusKm,
         poolOpts
       );
       const featuresInRange = filterCoordsWithinRadius(
-        withCoords(mergedFeatures),
+        withCoords(llal.mergedFeatures),
         searchAnchor.coords,
         searchAnchor.radiusKm,
         poolOpts
@@ -1128,32 +1208,30 @@ export default function AiExpertView({
         }),
       ].filter((p) => p.name?.trim());
 
+      const activeArea = llal.contentAreaCtx ?? listingAreaCtx;
+
       return {
         propertyName: property?.propertyName || t('aiExpertYourStay'),
         propertyTypeName: getPropertyTypeName() || undefined,
         areaName:
-          listingAreaCtx?.masterArea ||
+          activeArea?.masterArea ||
           propertyType?.city ||
           property?.city ||
           t('aiExpertTheRegion'),
-        country: listingAreaCtx?.country || propertyType?.country || property?.country || '',
-        categories: availableCategories.map((cat) => ({
+        country: activeArea?.country || propertyType?.country || property?.country || '',
+        categories: llal.availableCategories.map((cat) => ({
           label: cat.label,
-          knowledge: categoryKnowledgeByPrimary[cat.primary],
+          knowledge: llal.categoryKnowledgeByPrimary[cat.primary],
         })),
         curatedPlaces,
         searchAnchor,
       };
     },
     [
-      availableCategories,
-      categoryKnowledgeByPrimary,
       contentSettings.primaryLocale,
       contentSettings.reviewedLocales,
       listingAreaCtx,
       locale,
-      mergedFeatures,
-      mergedGems,
       property,
       propertyType,
       t,
@@ -1226,9 +1304,10 @@ export default function AiExpertView({
       ]);
 
       if (processed.unverifiedMentions.length > 0) {
+        const ctx = llalContentRef.current.contentAreaCtx ?? listingAreaCtx;
         void persistUnverifiedAiMentions(processed.unverifiedMentions, {
-          country: listingAreaCtx?.country || '',
-          areaId: listingAreaCtx?.areaId || '',
+          country: ctx?.country || '',
+          areaId: ctx?.areaId || '',
         });
       }
 
@@ -1323,6 +1402,8 @@ export default function AiExpertView({
       conciergePendingMessageRef.current = null;
       if (!pending) return;
 
+      await syncSearchAreaForPlace(place, pending, false);
+
       const searchAnchor: ConciergeSearchAnchor = {
         ...anchor,
         radiusKm: conciergeRadiusForAnchor(anchor, pending),
@@ -1347,7 +1428,7 @@ export default function AiExpertView({
     setChatEnabled(false);
   }, []);
 
-  const applyStartingLocation = (place: GeocodedPlace, userLabel: string) => {
+  const applyStartingLocation = async (place: GeocodedPlace, userLabel: string) => {
     locationCoordsRef.current = { lat: place.lat, lng: place.lng };
     locationFullNameRef.current = place.displayName;
     setPreferences((prev) => ({
@@ -1358,6 +1439,7 @@ export default function AiExpertView({
     }));
     setLocationCandidates([]);
     setCustomLoc('');
+    await syncSearchAreaForPlace(place, userLabel, false);
     setStep('CATEGORIES');
   };
 
@@ -1374,7 +1456,7 @@ export default function AiExpertView({
         ]);
         return;
       }
-      applyStartingLocation(place, userLabel);
+      await applyStartingLocation(place, userLabel);
     } finally {
       setIsThinking(false);
       setThinkingLabel('aiExpertThinking');
@@ -1511,6 +1593,7 @@ export default function AiExpertView({
       const isNearProperty = value === nearPropertyLabel;
       let locCoords: { lat: number, lng: number } | null = null;
       let locFullName = '';
+      let resolvedPlace: GeocodedPlace | null = null;
       
       if (!isNearProperty) {
         setIsThinking(true);
@@ -1580,6 +1663,7 @@ export default function AiExpertView({
 
           locCoords = { lat: resolved.place.lat, lng: resolved.place.lng };
           locFullName = resolved.place.displayName;
+          resolvedPlace = resolved.place;
         } catch (error) {
           console.error('Free Geocoding failed:', error);
           const aiText = t('aiExpertErrorVerifyFailed');
@@ -1607,6 +1691,22 @@ export default function AiExpertView({
         locationFullName: locFullName,
       }));
       setLocationCandidates([]);
+
+      if (isNearProperty) {
+        await syncSearchAreaForPlace(
+          {
+            lat: locCoords?.lat ?? 0,
+            lng: locCoords?.lng ?? 0,
+            displayName: nearPropertyLabel,
+            label: nearPropertyLabel,
+          },
+          value,
+          true
+        );
+      } else if (resolvedPlace) {
+        await syncSearchAreaForPlace(resolvedPlace, value, false);
+      }
+
       setStep('CATEGORIES');
     } else if (currentStep === 'CATEGORIES') {
       setPreferences(prev => ({ ...prev, categories: value }));
@@ -1815,7 +1915,9 @@ export default function AiExpertView({
         setIsThinking(false);
         markItemsShown(collectDbItemsFromPlan(initialPlan));
 
-        if (listingAreaCtx?.country && listingAreaCtx?.areaId && nonHikingCategories.length > 0) {
+        if (nonHikingCategories.length > 0) {
+          const activeArea = contentAreaCtx ?? listingAreaCtx;
+          if (activeArea?.country && activeArea?.areaId) {
           const primary = contentSettings.primaryLocale;
           const reviewed = contentSettings.reviewedLocales;
           const knownGemNamesByCategory: Record<string, string[]> = {};
@@ -1847,9 +1949,9 @@ export default function AiExpertView({
             gpsString,
             distanceLimitKm: distanceLimitNum,
             areaCtx: {
-              country: listingAreaCtx.country,
-              areaId: listingAreaCtx.areaId,
-              areaName: listingAreaCtx.masterArea || getGeographicAreaHint(),
+              country: activeArea.country,
+              areaId: activeArea.areaId,
+              areaName: activeArea.masterArea || getGeographicAreaHint(),
             },
             startCoords,
             knownGems: mergedGems.map((g) => ({
@@ -1870,6 +1972,7 @@ export default function AiExpertView({
           }).catch((err) => {
             console.warn('[Vailo silent AI] background task failed', err);
           });
+          }
         }
 
         return;
@@ -2298,6 +2401,19 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
       setConciergeAnchorLabel(locationResult.anchor.label);
       conciergePendingMessageRef.current = null;
 
+      const anchorPlace: GeocodedPlace = {
+        lat: locationResult.anchor.coords.lat,
+        lng: locationResult.anchor.coords.lng,
+        displayName: locationResult.anchor.label,
+        label: locationResult.anchor.label,
+        placeKind: locationResult.anchor.placeKind,
+      };
+      await syncSearchAreaForPlace(
+        anchorPlace,
+        userText,
+        locationResult.anchor.isProperty
+      );
+
       const searchAnchor: ConciergeSearchAnchor = {
         ...locationResult.anchor,
         radiusKm: locationResult.radiusKm,
@@ -2375,6 +2491,8 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
     });
     setWizardCategoryPicks({});
     setCustomLoc('');
+    setActiveSearchAreaCtx(null);
+    llalContentOverrideRef.current = null;
     setStartTime('09:00');
     setTripDurationHours(6);
     setTimeChoiceMode('choose');

@@ -23,12 +23,18 @@ import type { GuestIssue } from '../../../lib/guestIssues';
 
 function parseIssue(id: string, data: Record<string, unknown>): GuestIssue {
   const createdAt = data.createdAt;
+  const sourceRaw = data.source;
+  const source =
+    sourceRaw === 'assistant_escalation' || sourceRaw === 'manual_report'
+      ? sourceRaw
+      : undefined;
   return {
     id,
     description: typeof data.description === 'string' ? data.description : '',
     aiResponse: typeof data.aiResponse === 'string' ? data.aiResponse : '',
     propertyTypeId: typeof data.propertyTypeId === 'string' ? data.propertyTypeId : '',
     propertyTypeName: typeof data.propertyTypeName === 'string' ? data.propertyTypeName : '',
+    source,
     seenByHost: data.seenByHost === true,
     resolved: data.resolved === true,
     createdAt:
@@ -136,7 +142,7 @@ export default function GuestIssues() {
       {unseenCount > 0 && (
         <AdminAlert variant="gold" icon={<AlertTriangle size={18} />} title={`${unseenCount} new issue${unseenCount === 1 ? '' : 's'}`}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <span>Guests submitted these via Report Issue on the portal.</span>
+            <span>Guests submitted these via the portal or 24/7 assistant.</span>
             <AdminButton variant="secondary" onClick={markAllSeen} disabled={markingAll} className="shrink-0">
               {markingAll ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
               Mark all seen
@@ -154,7 +160,7 @@ export default function GuestIssues() {
         <AdminEmptyState
           icon={<AlertTriangle size={28} />}
           title="No guest issues yet"
-          description="When guests use Report Issue on their portal, submissions will appear here."
+          description="When guests report issues or the assistant escalates a knowledge gap, submissions appear here."
         />
       ) : (
         <div className="space-y-3">
@@ -172,6 +178,9 @@ export default function GuestIssues() {
                     <div className="flex flex-wrap items-center gap-2 mb-1">
                       {isNew && <AdminBadge variant="gold">New</AdminBadge>}
                       {issue.resolved && <AdminBadge variant="teal">Resolved</AdminBadge>}
+                      {issue.source === 'assistant_escalation' && (
+                        <AdminBadge variant="teal">Assistant</AdminBadge>
+                      )}
                       {issue.propertyTypeName && (
                         <span className="text-xs text-gray-500">{issue.propertyTypeName}</span>
                       )}

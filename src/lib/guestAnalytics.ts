@@ -8,6 +8,7 @@ export type GuestAnalyticsEventType =
   | 'gem_description_expand'
   | 'assistant_user_message'
   | 'assistant_reply'
+  | 'assistant_escalation'
   | 'ai_expert_selection'
   | 'ai_expert_plan'
   | 'ai_expert_user_message'
@@ -48,6 +49,8 @@ export type GuestAnalyticsPayload = {
   bookingStatus?: 'confirmed' | 'pending';
   bookingDate?: string;
   bookingTotal?: number;
+  hostEmailSent?: boolean;
+  deduped?: boolean;
   bookingCurrency?: string;
 };
 

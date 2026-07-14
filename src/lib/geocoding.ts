@@ -110,6 +110,8 @@ export type GeocodedPlace = {
   distanceFromPropertyKm?: number;
   placeKind?: GeocodedPlaceKind;
   nameMatched?: boolean;
+  /** Address parts from Nominatim — used to map subareas to configured admin areas. */
+  addressHints?: string[];
 };
 
 type NominatimAddress = {
@@ -279,6 +281,13 @@ function scorePlaceCandidate(
   return score;
 }
 
+function addressHintsFromHit(hit: NominatimHit): string[] {
+  const addr = hit.address;
+  if (!addr) return [];
+  return [addr.city, addr.town, addr.village, addr.municipality, addr.county, addr.state]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+}
+
 function hitToPlace(
   hit: NominatimHit,
   userInput: string,
@@ -303,6 +312,7 @@ function hitToPlace(
     distanceFromPropertyKm,
     placeKind,
     nameMatched,
+    addressHints: addressHintsFromHit(hit),
   };
 }
 

@@ -23,15 +23,25 @@ export function buildWhatsAppUrl(phoneDigits: string, message?: string): string 
 export function buildGuestWhatsAppLink(
   whatsappRaw: string | undefined,
   propertyName: string,
-  propertyTypeName?: string
+  propertyTypeName?: string,
+  guestQuestion?: string
 ): string | null {
   const digits = normalizeWhatsAppPhone(whatsappRaw || '');
   if (!digits) return null;
 
   const stayLabel = [propertyName, propertyTypeName].filter(Boolean).join(' — ');
-  const message = stayLabel
-    ? `Hello! I'm a guest staying at ${stayLabel}. I have a quick question about my stay.`
-    : `Hello! I'm a guest at your property and have a quick question about my stay.`;
+  const question = guestQuestion?.trim().slice(0, 500);
+
+  let message: string;
+  if (question) {
+    message = stayLabel
+      ? `Hello! I'm a guest staying at ${stayLabel}. The 24/7 assistant couldn't find this in the house guide — could you help?\n\n"${question}"`
+      : `Hello! I'm a guest at your property. The 24/7 assistant couldn't find this in the house guide — could you help?\n\n"${question}"`;
+  } else {
+    message = stayLabel
+      ? `Hello! I'm a guest staying at ${stayLabel}. I have a quick question about my stay.`
+      : `Hello! I'm a guest at your property and have a quick question about my stay.`;
+  }
 
   return buildWhatsAppUrl(digits, message);
 }

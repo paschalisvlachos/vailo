@@ -157,6 +157,7 @@ export function eventTypeLabel(type: string): string {
     gem_description_expand: 'Gem description expanded',
     assistant_user_message: 'Assistant question',
     assistant_reply: 'Assistant reply',
+    assistant_escalation: 'Assistant escalation',
     ai_expert_user_message: 'AI expert question',
     ai_expert_reply: 'AI expert reply',
     ai_expert_selection: 'AI expert choice',

@@ -1893,6 +1893,9 @@ registerICalSync({ firestore, firebaseExports: exports });
 const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
 registerGuestApplianceGuide({ firestore, firebaseExports: exports });
 
+const { registerGuestAssistantEscalation } = require("./guestAssistantEscalation");
+registerGuestAssistantEscalation({ firestore, logger, firebaseExports: exports });
+
 const { registerMarketingContact } = require("./marketingContact");
 registerMarketingContact({ firestore, logger, firebaseExports: exports });
 

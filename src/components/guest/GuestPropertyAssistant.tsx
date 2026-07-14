@@ -17,6 +17,8 @@ import { openExternalUrl } from '../../lib/geocoding';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { buildPropertyAssistantSystemPrompt } from '../../lib/guestPropertyAssistantPrompt';
+import { escalateAssistantQuestionCallable } from '../../lib/guestPortalCallables';
+import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import {
   buildApplianceReferenceUserBlock,
   fetchGuestApplianceGuide,
@@ -33,13 +35,22 @@ const CONSENT_KEY = 'vailo:assistant-consent:v1';
 const MAX_USER_INPUT = 1000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB
 
+type EscalationState = {
+  status: 'pending' | 'done' | 'error';
+  hostEmailSent?: boolean;
+  deduped?: boolean;
+};
+
 type ChatMessage = {
   id: string;
   role: 'user' | 'model';
   text: string;
   imageDataUrl?: string;
+  /** Guest question that triggered this reply (for escalation + WhatsApp). */
+  guestQuestion?: string;
   /** Show report / WhatsApp actions when the model could not answer from the guide. */
   showEscalation?: boolean;
+  escalation?: EscalationState;
 };
 
 type Props = {
@@ -52,10 +63,7 @@ type Props = {
   onOpenPrivacy: () => void;
   onOpenTerms: () => void;
   onOpenReport: () => void;
-  whatsappHref?: string | null;
 };
-
-/** True when the reply indicates the guide has no answer — guest should escalate. */
 function assistantReplyNeedsEscalation(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (!t) return true;
@@ -90,41 +98,74 @@ function assistantReplyNeedsEscalation(text: string): boolean {
 }
 
 function EscalationHelp({
+  guestQuestion,
+  propertyName,
+  propertyTypeName,
+  whatsappRaw,
+  escalation,
   onOpenReport,
-  whatsappHref,
 }: {
+  guestQuestion?: string;
+  propertyName: string;
+  propertyTypeName: string;
+  whatsappRaw?: string;
+  escalation?: EscalationState;
   onOpenReport: () => void;
-  whatsappHref?: string | null;
 }) {
+  const whatsappHref = buildGuestWhatsAppLink(
+    whatsappRaw,
+    propertyName,
+    propertyTypeName,
+    guestQuestion
+  );
+
+  const hostNotified =
+    escalation?.status === 'done' && escalation.hostEmailSent && !escalation.deduped;
+  const savedForHost = escalation?.status === 'done';
+
   return (
     <div className="mt-3 pt-3 border-t border-[#0B4F5C]/10">
-      <p className="text-sm text-gray-600 leading-relaxed mb-3">
-        I couldn&apos;t find that in your house guide. Please{' '}
-        <span className="font-semibold text-[#051F26]">report the issue</span> so your host can
-        help
-        {whatsappHref
-          ? ', or contact them on WhatsApp for an immediate reply.'
-          : '.'}
-      </p>
+      {escalation?.status === 'pending' ? (
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+          <Loader2 size={14} className="animate-spin text-[#0B4F5C] shrink-0" />
+          Notifying your host…
+        </div>
+      ) : hostNotified ? (
+        <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 leading-relaxed">
+          We&apos;ve emailed your host about this question. For a faster reply, you can also
+          message them on WhatsApp below.
+        </div>
+      ) : savedForHost ? (
+        <div className="mb-3 rounded-xl border border-[#0B4F5C]/10 bg-[#0B4F5C]/5 px-3 py-2.5 text-sm text-gray-700 leading-relaxed">
+          We&apos;ve saved this for your host. If you need help right away, use WhatsApp below or
+          report the issue with more detail.
+        </div>
+      ) : (
+        <p className="text-sm text-gray-600 leading-relaxed mb-3">
+          I couldn&apos;t find that in your house guide. Your host can help — use WhatsApp for the
+          quickest reply, or report the issue so they can follow up.
+        </p>
+      )}
+
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onOpenReport}
-          className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#0B4F5C] text-white hover:bg-[#083a43] transition-colors"
-        >
-          <AlertTriangle size={14} />
-          Report issue
-        </button>
         {whatsappHref ? (
           <button
             type="button"
             onClick={() => openExternalUrl(whatsappHref)}
-            className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#25D366] text-white hover:bg-[#20bd5a] transition-colors"
+            className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#25D366] text-white hover:bg-[#20bd5a] transition-colors shadow-sm"
           >
-            <MessageCircle size={14} />
+            <MessageCircle size={16} />
             WhatsApp host
           </button>
         ) : null}
+        <button
+          type="button"
+          onClick={onOpenReport}
+          className="guest-btn-action w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-[#0B4F5C]/15 bg-white text-[#0B4F5C] hover:bg-[#0B4F5C]/5 transition-colors"
+        >
+          <AlertTriangle size={14} />
+          Report issue with details
+        </button>
       </div>
     </div>
   );
@@ -155,9 +196,9 @@ export default function GuestPropertyAssistant({
   onOpenPrivacy,
   onOpenTerms,
   onOpenReport,
-  whatsappHref,
 }: Props) {
   const { locale, setLocale, t, localeOptions } = useGuestLocale();
+  const escalatingRef = useRef<Set<string>>(new Set());
 
   const suggestedPrompts = useMemo(
     () => [
@@ -253,6 +294,75 @@ export default function GuestPropertyAssistant({
       role: msg.role === 'model' ? ('model' as const) : ('user' as const),
       parts: [{ text: msg.text || '' }] as Part[],
     }));
+
+  const triggerEscalation = async (
+    messageId: string,
+    guestQuestion: string,
+    aiResponse: string
+  ) => {
+    if (escalatingRef.current.has(messageId)) return;
+    escalatingRef.current.add(messageId);
+
+    if (!propertyId || !typeId) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, escalation: { status: 'error' as const } } : m
+        )
+      );
+      return;
+    }
+
+    const session = readGuestPortalSession();
+    if (
+      !session?.sessionId ||
+      session.propertyId !== propertyId ||
+      session.typeId !== typeId
+    ) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, escalation: { status: 'done' as const, hostEmailSent: false } }
+            : m
+        )
+      );
+      return;
+    }
+
+    try {
+      const result = await escalateAssistantQuestionCallable({
+        propertyId,
+        typeId,
+        sessionId: session.sessionId,
+        guestQuestion,
+        aiResponse,
+      });
+      track('assistant_escalation', {
+        hostEmailSent: result.hostEmailSent,
+        deduped: Boolean(result.deduped),
+      });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                escalation: {
+                  status: 'done' as const,
+                  hostEmailSent: result.hostEmailSent,
+                  deduped: result.deduped,
+                },
+              }
+            : m
+        )
+      );
+    } catch (err) {
+      console.error('assistant escalation failed:', err);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, escalation: { status: 'error' as const } } : m
+        )
+      );
+    }
+  };
 
   const sendMessage = async () => {
     const trimmed = input.trim();
@@ -350,15 +460,31 @@ export default function GuestPropertyAssistant({
       const replyText =
         responseText || "I don't have that information in your house guide yet.";
       track('assistant_reply', { text: replyText });
+
+      const modelMessageId = `m-${Date.now()}`;
+      const needsEscalation = showEscalation || !responseText;
+      const guestQuestionForEscalation =
+        trimmed ||
+        (pendingImageSnapshot ? 'Guest sent a photo and needs help with their stay.' : '');
+
       setMessages((prev) => [
         ...prev,
         {
-          id: `m-${Date.now()}`,
+          id: modelMessageId,
           role: 'model',
           text: replyText,
-          showEscalation: showEscalation || !responseText,
+          guestQuestion: guestQuestionForEscalation || undefined,
+          showEscalation: needsEscalation,
+          escalation:
+            needsEscalation && guestQuestionForEscalation
+              ? { status: 'pending' as const }
+              : undefined,
         },
       ]);
+
+      if (needsEscalation && guestQuestionForEscalation) {
+        void triggerEscalation(modelMessageId, guestQuestionForEscalation, replyText);
+      }
     } catch (err) {
       console.error('assistant error:', err);
       setError("Something went wrong. Please try again in a moment.");
@@ -541,8 +667,12 @@ export default function GuestPropertyAssistant({
                     <p className="text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                     {(msg.showEscalation ?? assistantReplyNeedsEscalation(msg.text)) && (
                       <EscalationHelp
+                        guestQuestion={msg.guestQuestion}
+                        propertyName={propertyName}
+                        propertyTypeName={propertyTypeName}
+                        whatsappRaw={propertyType?.whatsapp}
+                        escalation={msg.escalation}
                         onOpenReport={onOpenReport}
-                        whatsappHref={whatsappHref}
                       />
                     )}
                   </div>

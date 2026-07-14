@@ -27,7 +27,7 @@ export function httpsCallableMessage(error: unknown, fallback: string): string {
     }
 
     if (code === 'functions/not-found') {
-      return fallback;
+      return msg || fallback;
     }
 
     if (code === 'functions/permission-denied') {

@@ -10,6 +10,7 @@ type Props = {
   title?: string;
   /** When set, renders a labeled pill button instead of icon-only. */
   label?: string;
+  disabled?: boolean;
 };
 
 function WhatsAppIcon({ size }: { size: number }) {
@@ -33,6 +34,7 @@ export default function GuestWhatsAppLink({
   size = 18,
   title = 'Open WhatsApp chat',
   label,
+  disabled = false,
 }: Props) {
   const digits = normalizeWhatsAppPhone(phone);
   if (!digits) return null;
@@ -46,6 +48,18 @@ export default function GuestWhatsAppLink({
   const resolvedTitle = title || (label ? `WhatsApp: ${label}` : 'Open WhatsApp chat');
 
   if (label) {
+    if (disabled) {
+      return (
+        <span
+          title={resolvedTitle}
+          aria-disabled="true"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-xs font-bold text-gray-400 cursor-not-allowed opacity-60 ${className}`}
+        >
+          <WhatsAppIcon size={14} />
+          {label}
+        </span>
+      );
+    }
     return (
       <a
         href={url}
@@ -57,6 +71,18 @@ export default function GuestWhatsAppLink({
         <WhatsAppIcon size={14} />
         {label}
       </a>
+    );
+  }
+
+  if (disabled) {
+    return (
+      <span
+        title={resolvedTitle}
+        aria-disabled="true"
+        className={`inline-flex shrink-0 items-center justify-center rounded-full text-gray-300 cursor-not-allowed opacity-60 ${className}`}
+      >
+        <WhatsAppIcon size={size} />
+      </span>
     );
   }
 

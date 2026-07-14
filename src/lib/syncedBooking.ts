@@ -15,6 +15,8 @@ export type SyncedBooking = {
   isInvited?: boolean;
   /** ISO timestamp — updated on send / re-invite (delivery TBD). */
   lastInvitedAt?: string;
+  /** How the invitation was last delivered to the guest. */
+  lastInviteChannel?: 'email' | 'whatsapp';
   inviteToken?: string;
   invitePasswordHash?: string;
   inviteStatus?: GuestInviteStatus;
@@ -22,11 +24,14 @@ export type SyncedBooking = {
   portalAccessUntil?: string;
   accessSource?: GuestAccessSource;
   /** Set when a reservation is cancelled — blocks portal even if invite was sent. */
-  portalAccessRevokedAt?: string;
+  portalAccessRevokedAt?: string | null;
   /** Links segments created by splitting one reservation. */
   splitGroupId?: string;
   /** Original iCal date span before admin split — prevents re-import as one block. */
   splitFromRange?: { start: string; end: string };
+  /** ISO timestamp when automated post-stay thank-you email was sent. */
+  postStayThankYouSentAt?: string;
+  postStayThankYouResendId?: string | null;
   /** 1-based index within splitGroupId. */
   splitPartIndex?: number;
 };
@@ -44,9 +49,11 @@ export function isSplitBookingPart(booking: SyncedBooking | null | undefined): b
 }
 
 export function isBookingGuestDetailsComplete(booking: SyncedBooking): boolean {
-  const name = booking.guestName?.trim();
+  const name = (booking.guestName || booking.summary || '').trim();
   const locale = booking.guestLocale?.trim();
-  return Boolean(booking.guestDetailsComplete && name && locale);
+  if (!name || !locale) return false;
+  if (booking.guestDetailsComplete === false) return false;
+  return true;
 }
 
 export type BookingInvitationStatus = 'needs_details' | 'ready_for_reservations' | 'invited';
@@ -55,6 +62,38 @@ export function getBookingInvitationStatus(booking: SyncedBooking): BookingInvit
   if (booking.isInvited) return 'invited';
   if (isBookingGuestDetailsComplete(booking)) return 'ready_for_reservations';
   return 'needs_details';
+}
+
+export function getBookingInvitationStatusLabel(booking: SyncedBooking): string {
+  const status = getBookingInvitationStatus(booking);
+  if (status === 'invited') {
+    if (booking.lastInviteChannel === 'whatsapp') return 'Invited · WhatsApp';
+    if (booking.lastInviteChannel === 'email') return 'Invited · Email';
+    return 'Invited';
+  }
+  if (status === 'ready_for_reservations') return 'Ready for invitation';
+  return 'Needs guest details';
+}
+
+/** True on checkout day and after (invitation / invite WhatsApp actions should stop). */
+export function isBookingCheckoutReached(booking: SyncedBooking): boolean {
+  const endDay = parseSyncedBookingDay(booking.end);
+  if (!endDay) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.getTime() >= endDay.getTime();
+}
+
+/** True when checkout was at least one calendar day ago (thank-you email / WhatsApp eligible). */
+export function isPostStayThankYouEligible(booking: SyncedBooking): boolean {
+  const endDay = parseSyncedBookingDay(booking.end);
+  if (!endDay || !isBookingGuestDetailsComplete(booking)) return false;
+  const thankYouDay = new Date(endDay);
+  thankYouDay.setDate(thankYouDay.getDate() + 1);
+  thankYouDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today >= thankYouDay;
 }
 
 /** Display range e.g. 05/06/2026 → 13/06/2026 (ISO day strings YYYY-MM-DD). */
@@ -124,6 +163,21 @@ export function countSyncedBookingsInDateRange(
     .length;
 }
 
+export function buildMarkInvitedViaWhatsAppPatch(
+  booking: SyncedBooking,
+  accessUntil: string
+): Partial<SyncedBooking> {
+  return {
+    isInvited: true,
+    lastInvitedAt: new Date().toISOString(),
+    lastInviteChannel: 'whatsapp',
+    inviteStatus: booking.inviteStatus === 'opened' ? 'opened' : 'waiting',
+    portalAccessUntil: accessUntil,
+    portalAccessRevokedAt: null,
+    accessSource: 'invite',
+  };
+}
+
 export function patchSyncedBookingList(
   bookings: SyncedBooking[],
   target: SyncedBooking,
@@ -169,6 +223,7 @@ export function mergeSyncedBookingFromExisting(
     invitePasswordHash: existing.invitePasswordHash,
     inviteStatus: existing.inviteStatus,
     lastInvitedAt: existing.lastInvitedAt,
+    lastInviteChannel: existing.lastInviteChannel,
     portalActivatedAt: existing.portalActivatedAt,
     portalAccessUntil: existing.portalAccessUntil,
     accessSource: existing.accessSource,

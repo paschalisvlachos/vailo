@@ -15,6 +15,14 @@ You can also find excursions, boat trips, and many activities that you can arran
 
 Once activated, Vailo will be available throughout your stay, making your holiday easier, more enjoyable, and completely stress-free.`;
 
+/** Display label for property + listing (unit) together. */
+export function formatGuestStayLabel(propertyName: string, unitName: string): string {
+  const property = propertyName.trim();
+  const unit = unitName.trim();
+  if (property && unit) return `${property} — ${unit}`;
+  return property || unit || 'Your stay';
+}
+
 export type GuestInviteEmailPayload = {
   guestName: string;
   guestEmail: string;
@@ -47,22 +55,23 @@ function escapeHtml(text: string): string {
 }
 
 export function buildGuestInviteEmailSubject(payload: GuestInviteEmailPayload): string {
-  const property = payload.propertyName.trim() || 'Your stay';
+  const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   if (payload.reinvite) {
-    return `${property} — updated guest portal access`;
+    return `${stayLabel} — updated guest portal access`;
   }
-  return `${property} — your guest portal is ready`;
+  return `${stayLabel} — your guest portal is ready`;
 }
 
 export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): string {
   const greeting = payload.guestName.trim() || 'Guest';
   const property = payload.propertyName.trim() || 'your property';
   const unit = payload.unitName.trim();
+  const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   const host = payload.hostLabel?.trim();
 
   const intro = payload.reinvite
-    ? `We've refreshed your private guest portal access for ${property}.`
-    : `Your private guest portal for ${property} is ready.`;
+    ? `We've refreshed your private guest portal access for ${stayLabel}.`
+    : `Your private guest portal for ${stayLabel} is ready.`;
 
   const lines = [
     `Hello ${greeting},`,
@@ -71,7 +80,8 @@ export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): str
     '',
     GUEST_INVITE_PORTAL_BENEFITS,
     '',
-    unit ? `Accommodation: ${unit}` : '',
+    property ? `Property: ${property}` : '',
+    unit ? `Listing: ${unit}` : '',
     payload.stayRangeLabel ? `Stay: ${payload.stayRangeLabel}` : '',
     '',
     'Open your portal:',
@@ -104,13 +114,13 @@ export function buildGuestInviteClipboardText(payload: GuestInviteEmailPayload):
   }
 
   const greeting = payload.guestName.trim() || 'Guest';
-  const property = payload.propertyName.trim() || 'your property';
   const unit = payload.unitName.trim();
+  const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   const host = payload.hostLabel?.trim();
 
   const intro = payload.reinvite
-    ? `We've refreshed your private guest portal access for ${property}.`
-    : `Your private guest portal for ${property} is ready.`;
+    ? `We've refreshed your private guest portal access for ${stayLabel}.`
+    : `Your private guest portal for ${stayLabel} is ready.`;
 
   const passwordNote = payload.reinvite
     ? 'Use the access password from your latest invitation email, or ask your host for a new one.'
@@ -195,15 +205,15 @@ export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayl
 /** Short WhatsApp invitation — link, password, and Vailo portal benefits (admin → guest). */
 export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload): string {
   const greeting = payload.guestName.trim() || 'there';
-  const property = payload.propertyName.trim() || 'your stay';
   const unit = payload.unitName.trim();
+  const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   const stay = payload.stayRangeLabel.trim();
   const url = payload.inviteUrl.trim();
   const passwordIsPlaceholder = invitePasswordIsPlaceholder(payload.accessPassword);
 
   const intro = payload.reinvite
-    ? `Your guest portal access for ${property} has been updated.`
-    : `Your private Vailo guest portal for ${property} is ready.`;
+    ? `Your guest portal access for ${stayLabel} has been updated.`
+    : `Your private Vailo guest portal for ${stayLabel} is ready.`;
 
   const lines = [
     `Hello ${greeting},`,
@@ -235,6 +245,7 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
   const greeting = escapeHtml(payload.guestName.trim() || 'Guest');
   const property = escapeHtml(payload.propertyName.trim() || 'Your stay');
   const unit = escapeHtml(payload.unitName.trim());
+  const stayLabel = escapeHtml(formatGuestStayLabel(payload.propertyName, payload.unitName));
   const stay = escapeHtml(payload.stayRangeLabel.trim());
   const inviteUrl = escapeHtml(payload.inviteUrl.trim());
   const password = escapeHtml(payload.accessPassword.trim());
@@ -243,12 +254,12 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
 
   const headline = payload.reinvite ? 'Your portal access has been updated' : 'Your guest portal is ready';
   const intro = payload.reinvite
-    ? `We've issued new credentials for your private guest portal at <strong>${property}</strong>. Use the link and password below — any previous password no longer works.`
-    : `Welcome! Your host has opened a private guest portal for <strong>${property}</strong> with local tips, your house guide, and tools for your stay.`;
+    ? `We've issued new credentials for your private guest portal at <strong>${stayLabel}</strong>. Use the link and password below — any previous password no longer works.`
+    : `Welcome! Your host has opened a private guest portal for <strong>${stayLabel}</strong> with local tips, your house guide, and tools for your stay.`;
 
   const preheader = payload.reinvite
-    ? `Updated access for ${payload.propertyName.trim() || 'your stay'} — open your guest portal`
-    : `Your guest portal for ${payload.propertyName.trim() || 'your stay'} is ready`;
+    ? `Updated access for ${formatGuestStayLabel(payload.propertyName, payload.unitName)} — open your guest portal`
+    : `Your guest portal for ${formatGuestStayLabel(payload.propertyName, payload.unitName)} is ready`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -283,7 +294,8 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;background-color:#F8FAFA;border:1px solid #E2E8F0;border-radius:14px;">
                 <tr>
                   <td style="padding:18px 20px;">
-                    ${unit ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Stay at</span> ${unit}</p>` : ''}
+                    ${property ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Property</span> ${property}</p>` : ''}
+                    ${unit ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Listing</span> ${unit}</p>` : ''}
                     ${stay ? `<p style="margin:0;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Dates</span> ${stay}</p>` : ''}
                   </td>
                 </tr>

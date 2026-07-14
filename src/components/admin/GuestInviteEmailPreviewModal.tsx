@@ -4,6 +4,7 @@ import {
   buildGuestInviteEmailHtml,
   buildGuestInviteEmailPayloadFromBooking,
   buildGuestInviteEmailSubject,
+  formatGuestStayLabel,
   type GuestInviteEmailBookingContext,
 } from '../../lib/guestInviteEmailTemplate';
 
@@ -93,7 +94,8 @@ export default function GuestInviteEmailPreviewModal({
               Email preview
             </h3>
             <p className="text-sm text-gray-500 mt-1 truncate">
-              To {payload.guestEmail || '—'} · {payload.guestName}
+              {formatGuestStayLabel(propertyName, unitName)} · To{' '}
+              {payload.guestEmail || '—'} · {payload.guestName}
             </p>
             <p className="text-xs text-gray-400 mt-1">
               Subject: <span className="font-medium text-gray-600">{subject}</span>

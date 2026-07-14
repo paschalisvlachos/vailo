@@ -46,6 +46,8 @@ export type GuestPortalSession = {
   guestName?: string;
   /** Invitation / stay default language (e.g. en, el). */
   guestLocale?: string | null;
+  /** Set for invite sessions — used to avoid reusing another guest's session. */
+  inviteToken?: string | null;
 };
 
 export type SyncedBookingAccessFields = {
@@ -61,8 +63,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function parseIsoDay(iso?: string): Date | null {
   if (!iso) return null;
-  const parts = iso.split('-').map(Number);
-  if (parts.length < 3) return null;
+  const day = String(iso).trim().slice(0, 10);
+  const parts = day.split('-').map(Number);
+  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
   const d = new Date(parts[0], parts[1] - 1, parts[2]);
   d.setHours(0, 0, 0, 0);
   return d;

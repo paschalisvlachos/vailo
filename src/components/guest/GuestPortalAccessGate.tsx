@@ -66,11 +66,20 @@ export default function GuestPortalAccessGate({
     if (!stored || !sessionMatchesUnit(stored, propertyId, typeId)) {
       return 'absent';
     }
+    if (
+      inviteToken &&
+      stored.inviteToken &&
+      stored.inviteToken !== inviteToken
+    ) {
+      clearGuestPortalSession();
+      return 'absent';
+    }
     try {
       const result = await validateGuestPortalSession(
         propertyId,
         typeId,
-        stored.sessionId
+        stored.sessionId,
+        inviteToken
       );
       if (result.valid && result.session) {
         if (adminPreview && result.session.source !== 'admin_preview') {
@@ -93,12 +102,16 @@ export default function GuestPortalAccessGate({
         setError('Your guest portal access has expired.');
         return 'revoked';
       }
+      if (result.reason === 'invite_mismatch') {
+        clearGuestPortalSession();
+        return 'absent';
+      }
     } catch {
       /* fall through */
     }
     clearGuestPortalSession();
     return 'absent';
-  }, [adminPreview, propertyId, typeId, grant]);
+  }, [adminPreview, inviteToken, propertyId, typeId, grant]);
 
   const tryOnSiteActivation = useCallback(async () => {
     const stored = readGuestPortalSession();

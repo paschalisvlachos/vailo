@@ -64,23 +64,31 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
+function formatGuestStayLabel(propertyName, unitName) {
+  const property = String(propertyName || "").trim();
+  const unit = String(unitName || "").trim();
+  if (property && unit) return `${property} — ${unit}`;
+  return property || unit || "Your stay";
+}
+
 function buildGuestInviteEmailSubject(payload) {
-  const property = String(payload.propertyName || "").trim() || "Your stay";
+  const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   if (payload.reinvite) {
-    return `${property} — updated guest portal access`;
+    return `${stayLabel} — updated guest portal access`;
   }
-  return `${property} — your guest portal is ready`;
+  return `${stayLabel} — your guest portal is ready`;
 }
 
 function buildGuestInviteEmailText(payload) {
   const greeting = String(payload.guestName || "").trim() || "Guest";
   const property = String(payload.propertyName || "").trim() || "your property";
   const unit = String(payload.unitName || "").trim();
+  const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   const host = String(payload.hostLabel || "").trim();
 
   const intro = payload.reinvite
-    ? `We've refreshed your private guest portal access for ${property}.`
-    : `Your private guest portal for ${property} is ready.`;
+    ? `We've refreshed your private guest portal access for ${stayLabel}.`
+    : `Your private guest portal for ${stayLabel} is ready.`;
 
   const lines = [
     `Hello ${greeting},`,
@@ -89,7 +97,8 @@ function buildGuestInviteEmailText(payload) {
     "",
     GUEST_INVITE_PORTAL_BENEFITS,
     "",
-    unit ? `Accommodation: ${unit}` : "",
+    property ? `Property: ${property}` : "",
+    unit ? `Listing: ${unit}` : "",
     payload.stayRangeLabel ? `Stay: ${payload.stayRangeLabel}` : "",
     "",
     "Open your portal:",
@@ -114,6 +123,7 @@ function buildGuestInviteEmailHtml(payload) {
   const greeting = escapeHtml(String(payload.guestName || "").trim() || "Guest");
   const property = escapeHtml(String(payload.propertyName || "").trim() || "Your stay");
   const unit = escapeHtml(String(payload.unitName || "").trim());
+  const stayLabel = escapeHtml(formatGuestStayLabel(payload.propertyName, payload.unitName));
   const stay = escapeHtml(String(payload.stayRangeLabel || "").trim());
   const inviteUrl = escapeHtml(String(payload.inviteUrl || "").trim());
   const password = escapeHtml(String(payload.accessPassword || "").trim());
@@ -124,12 +134,12 @@ function buildGuestInviteEmailHtml(payload) {
     ? "Your portal access has been updated"
     : "Your guest portal is ready";
   const intro = payload.reinvite
-    ? `We've issued new credentials for your private guest portal at <strong>${property}</strong>. Use the link and password below — any previous password no longer works.`
-    : `Welcome! Your host has opened a private guest portal for <strong>${property}</strong> with local tips, your house guide, and tools for your stay.`;
+    ? `We've issued new credentials for your private guest portal at <strong>${stayLabel}</strong>. Use the link and password below — any previous password no longer works.`
+    : `Welcome! Your host has opened a private guest portal for <strong>${stayLabel}</strong> with local tips, your house guide, and tools for your stay.`;
 
   const preheader = payload.reinvite
-    ? `Updated access for ${String(payload.propertyName || "").trim() || "your stay"} — open your guest portal`
-    : `Your guest portal for ${String(payload.propertyName || "").trim() || "your stay"} is ready`;
+    ? `Updated access for ${formatGuestStayLabel(payload.propertyName, payload.unitName)} — open your guest portal`
+    : `Your guest portal for ${formatGuestStayLabel(payload.propertyName, payload.unitName)} is ready`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -164,7 +174,8 @@ function buildGuestInviteEmailHtml(payload) {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;background-color:#F8FAFA;border:1px solid #E2E8F0;border-radius:14px;">
                 <tr>
                   <td style="padding:18px 20px;">
-                    ${unit ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Stay at</span> ${unit}</p>` : ""}
+                    ${property ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Property</span> ${property}</p>` : ""}
+                    ${unit ? `<p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Listing</span> ${unit}</p>` : ""}
                     ${stay ? `<p style="margin:0;font-size:13px;line-height:1.5;color:#64748B;"><span style="display:inline-block;min-width:92px;font-weight:700;color:#0B4F5C;">Dates</span> ${stay}</p>` : ""}
                   </td>
                 </tr>

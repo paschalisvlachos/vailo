@@ -17,16 +17,23 @@ import {
   buildGuestInviteEmailPayloadFromBooking,
   buildGuestInviteWhatsAppMessage,
   buildOpenPortalInviteClipboardText,
+  formatGuestStayLabel,
 } from '../../../lib/guestInviteEmailTemplate';
-import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRequired } from '../../../lib/guestAccess';
+import { buildPostStayThankYouWhatsAppMessage } from '../../../lib/postStayThankYouTemplate';
+import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRequired, portalAccessUntilFromEnd } from '../../../lib/guestAccess';
 import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
 import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
   buildSplitBookingsFromOriginal,
+  buildMarkInvitedViaWhatsAppPatch,
+  formatBookingDateRange,
   getBookingInvitationStatus,
+  getBookingInvitationStatusLabel,
   guestDetailsPatch,
+  isBookingCheckoutReached,
   isBookingGuestDetailsComplete,
+  isPostStayThankYouEligible,
   isPropertyReservationSplitEnabled,
   isSplitBookingPart,
   patchSyncedBookingList,
@@ -80,6 +87,7 @@ export default function Reservations() {
   const [savingDetails, setSavingDetails] = useState(false);
   const [inviteCredentials, setInviteCredentials] = useState<{
     guestName: string;
+    stayLabel: string;
     inviteUrl: string;
     password: string;
   } | null>(null);
@@ -89,6 +97,7 @@ export default function Reservations() {
     Record<string, { password: string; token: string }>
   >({});
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null);
+  const [markingWhatsAppInviteId, setMarkingWhatsAppInviteId] = useState<string | null>(null);
   const [resetRangeOpen, setResetRangeOpen] = useState(false);
   const [splitBooking, setSplitBooking] = useState<ReservationRow | null>(null);
   const [copiedOpenPortalInvite, setCopiedOpenPortalInvite] = useState(false);
@@ -257,7 +266,7 @@ export default function Reservations() {
         summary: formData.guestName,
         provider: 'Direct Booking',
         guestName: formData.guestName,
-        guestEmail: formData.guestEmail,
+        guestEmail: formData.guestEmail.trim(),
         guestPhone: formData.guestPhone || '',
         guestWhatsapp: formData.guestPhone || '',
         guestLocale: formData.guestLocale,
@@ -331,16 +340,21 @@ export default function Reservations() {
     }
 
     const guestLabel = booking.guestName || booking.summary || 'guest';
+    const stayLabel = formatGuestStayLabel(
+      property.propertyName || 'Your property',
+      booking.typeName
+    );
 
     setSendingInvite(true);
     try {
-      const { inviteToken, invitePassword, inviteUrl: emailedInviteUrl } =
+      const result =
         await sendGuestInviteCallable(
           propertyId,
           booking.typeId,
           booking.id,
           options?.reinvite
         );
+      const { inviteToken, invitePassword, inviteUrl: emailedInviteUrl } = result;
       const type = propertyTypes.find((t) => t.id === booking.typeId);
       const propSlug = formatGuestSlug(property.urlSlug);
       const unitSlug = type ? getTypePublicSlug(type) : '';
@@ -358,6 +372,7 @@ export default function Reservations() {
           : '');
       setInviteCredentials({
         guestName: guestLabel,
+        stayLabel,
         inviteUrl,
         password: invitePassword,
       });
@@ -368,9 +383,11 @@ export default function Reservations() {
         }));
       }
       toast.success(
-        options?.reinvite
-          ? `Re-invite emailed to ${booking.guestEmail?.trim() || guestLabel}.`
-          : `Invitation emailed to ${booking.guestEmail?.trim() || guestLabel}.`
+        result.emailSent === false
+          ? `Invitation saved for ${stayLabel}, but the email could not be confirmed. Copy the link manually if needed.`
+          : options?.reinvite
+            ? `Re-invite sent for ${stayLabel} to ${booking.guestEmail?.trim() || guestLabel}.`
+            : `Invitation sent for ${stayLabel} to ${booking.guestEmail?.trim() || guestLabel}.`
       );
     } catch (err) {
       toast.error(httpsCallableMessage(err, 'Failed to send invite.'));
@@ -402,6 +419,64 @@ export default function Reservations() {
       { merge: true }
     );
     toast.success('Invitation withdrawn and guest portal access revoked.');
+  };
+
+  const handleMarkInviteSentViaWhatsApp = async (booking: ReservationRow) => {
+    if (!booking.id) {
+      toast.warning('Save guest details first so this reservation has an id.');
+      return;
+    }
+    if (!isBookingGuestDetailsComplete(booking)) {
+      toast.warning('Add guest details before marking the invitation as sent.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Mark this guest as invited via WhatsApp? Portal access credentials will stay active — use the same link and password you already shared.'
+      )
+    ) {
+      return;
+    }
+
+    setMarkingWhatsAppInviteId(booking.id);
+    try {
+      const targetType = propertyTypes.find((t) => t.id === booking.typeId);
+      if (!targetType?.syncedBookings) {
+        toast.error('Unit not found.');
+        return;
+      }
+
+      const current =
+        targetType.syncedBookings.find((b: SyncedBooking) => b.id === booking.id) || booking;
+      const accessUntil =
+        current.portalAccessUntil || portalAccessUntilFromEnd(current.end || booking.end);
+      if (!accessUntil) {
+        toast.warning('Invalid stay dates on this reservation.');
+        return;
+      }
+
+      const updatedBookings = patchSyncedBookingList(
+        targetType.syncedBookings,
+        current,
+        buildMarkInvitedViaWhatsAppPatch(current, accessUntil)
+      );
+
+      await setDoc(
+        doc(db, 'properties', propertyId, 'propertyTypes', booking.typeId),
+        { syncedBookings: updatedBookings },
+        { merge: true }
+      );
+
+      toast.success(
+        booking.isInvited
+          ? 'Invitation channel updated to WhatsApp.'
+          : 'Marked as invited via WhatsApp.'
+      );
+    } catch (err) {
+      toast.error(httpsCallableMessage(err, 'Could not mark invitation as sent.'));
+    } finally {
+      setMarkingWhatsAppInviteId(null);
+    }
   };
 
   const buildInvitePayloadForBooking = (
@@ -501,6 +576,15 @@ export default function Reservations() {
     return buildGuestInviteWhatsAppMessage(payload);
   };
 
+  const buildThankYouWhatsAppMessage = (booking: ReservationRow) =>
+    buildPostStayThankYouWhatsAppMessage({
+      guestName: booking.guestName || booking.summary || 'Guest',
+      propertyName: property.propertyName || 'Your property',
+      unitName: booking.typeName,
+      stayRangeLabel: formatBookingDateRange(booking.start, booking.end),
+      hostLabel: property.propertyName || 'Your host',
+    });
+
   const handleSplitConfirm = async (booking: ReservationRow, parts: SplitBookingPart[]) => {
     const targetType = propertyTypes.find((t) => t.id === booking.typeId);
     if (!targetType) {
@@ -582,8 +666,10 @@ export default function Reservations() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Guest Email *</label>
-                <input type="email" required name="guestEmail" value={formData.guestEmail} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" placeholder="john@example.com" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Guest Email <span className="text-gray-400 font-normal">(Optional — needed to email an invite)</span>
+                </label>
+                <input type="email" name="guestEmail" value={formData.guestEmail} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal" placeholder="john@example.com" />
               </div>
 
               <div>
@@ -722,6 +808,9 @@ export default function Reservations() {
                   const detailsComplete = isBookingGuestDetailsComplete(booking);
                   const copyKey = booking.id || `${booking.start}-${booking.end}`;
                   const whatsappPhone = detailsComplete ? bookingWhatsAppPhone(booking) : null;
+                  const inviteClosed = isBookingCheckoutReached(booking);
+                  const inviteClosedTitle =
+                    'Checkout date has passed — invitation actions are no longer available';
 
                   return (
                     <tr key={booking.id} className="hover:bg-gray-50 transition-colors">
@@ -757,13 +846,18 @@ export default function Reservations() {
                             Split part {booking.splitPartIndex}
                           </div>
                         )}
+                        {booking.postStayThankYouSentAt && (
+                          <div className="text-[10px] font-bold text-emerald-700 mt-1 uppercase tracking-wide">
+                            Thank-you email sent
+                          </div>
+                        )}
                       </td>
 
                       {/* Status */}
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         {status === 'invited' ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800">
-                            Invited
+                            {getBookingInvitationStatusLabel(booking)}
                           </span>
                         ) : status === 'ready_for_reservations' ? (
                           <span className="inline-flex max-w-[200px] mx-auto px-2.5 py-1 rounded-full text-[10px] font-bold leading-tight bg-emerald-50 text-emerald-800">
@@ -827,9 +921,13 @@ export default function Reservations() {
                             <button
                               type="button"
                               onClick={() => void handleCopyInvitation(booking)}
-                              disabled={copyingInviteId === copyKey}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 hover:border-vailo-teal/20 transition-colors disabled:opacity-50"
-                              title="Copy full invitation text for email, Airbnb, or chat"
+                              disabled={inviteClosed || copyingInviteId === copyKey}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 hover:border-vailo-teal/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200 disabled:hover:bg-white"
+                              title={
+                                inviteClosed
+                                  ? inviteClosedTitle
+                                  : 'Copy full invitation text for email, Airbnb, or chat'
+                              }
                             >
                               {copyingInviteId === copyKey ? (
                                 <Loader2 size={14} className="animate-spin" />
@@ -848,15 +946,45 @@ export default function Reservations() {
 
                           {booking.isInvited ? (
                             <>
-                              <span className="flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-gray-400">
+                              <span
+                                className={`flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold ${
+                                  inviteClosed
+                                    ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-60'
+                                    : 'border-gray-200 bg-white text-gray-400'
+                                }`}
+                                title={
+                                  inviteClosed
+                                    ? inviteClosedTitle
+                                    : booking.lastInviteChannel === 'whatsapp'
+                                      ? 'Invitation sent via WhatsApp'
+                                      : booking.lastInviteChannel === 'email'
+                                        ? 'Invitation sent via email'
+                                        : 'Invitation was sent'
+                                }
+                              >
                                 <Mail size={14} className="mr-1.5" />
-                                Sent
+                                {booking.lastInviteChannel === 'whatsapp'
+                                  ? 'Sent · WhatsApp'
+                                  : booking.lastInviteChannel === 'email'
+                                    ? 'Sent · Email'
+                                    : 'Sent'}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => void sendInvite(booking, { reinvite: true })}
-                                className="flex items-center px-3 py-1.5 rounded-lg border border-vailo-teal/15 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
-                                title="Send invitation again"
+                                disabled={
+                                  inviteClosed ||
+                                  sendingInvite ||
+                                  !booking.guestEmail?.trim()?.includes('@')
+                                }
+                                className="flex items-center px-3 py-1.5 rounded-lg border border-vailo-teal/15 bg-white text-xs font-bold text-vailo-teal hover:bg-vailo-teal/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200 disabled:hover:bg-white"
+                                title={
+                                  inviteClosed
+                                    ? inviteClosedTitle
+                                    : !booking.guestEmail?.trim()?.includes('@')
+                                      ? 'Add guest email to re-send by email'
+                                      : 'Send invitation again by email'
+                                }
                               >
                                 <RefreshCw size={14} className="mr-1.5" />
                                 Re-invite
@@ -864,28 +992,58 @@ export default function Reservations() {
                               <button
                                 type="button"
                                 onClick={() => void handleUninvite(booking)}
-                                className="flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-                                title="Mark invitation as not sent"
+                                disabled={inviteClosed}
+                                className="flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200 disabled:hover:bg-white"
+                                title={
+                                  inviteClosed ? inviteClosedTitle : 'Mark invitation as not sent'
+                                }
                               >
                                 <Undo2 size={14} className="mr-1.5" />
                                 Unsend
                               </button>
                             </>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => void sendInvite(booking)}
-                              className="flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-white border-vailo-teal/15 text-vailo-teal hover:bg-vailo-teal/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200"
-                              disabled={!detailsComplete || sendingInvite}
-                              title={
-                                !detailsComplete
-                                  ? 'Add guest details first'
-                                  : 'Email invitation link and access password to guest'
-                              }
-                            >
-                              <Mail size={14} className="mr-1.5" />
-                              Send Invite
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void sendInvite(booking)}
+                                className="flex items-center px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-white border-vailo-teal/15 text-vailo-teal hover:bg-vailo-teal/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200"
+                                disabled={
+                                  !detailsComplete ||
+                                  sendingInvite ||
+                                  inviteClosed ||
+                                  !booking.guestEmail?.trim()?.includes('@')
+                                }
+                                title={
+                                  inviteClosed
+                                    ? inviteClosedTitle
+                                    : !detailsComplete
+                                      ? 'Add guest details first'
+                                      : !booking.guestEmail?.trim()
+                                        ? 'Add guest email to send an invitation by email'
+                                        : 'Email invitation link and access password to guest'
+                                }
+                              >
+                                <Mail size={14} className="mr-1.5" />
+                                Send Invite
+                              </button>
+                              {!inviteClosed && detailsComplete && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleMarkInviteSentViaWhatsApp(booking)}
+                                  disabled={markingWhatsAppInviteId === booking.id}
+                                  className="flex items-center px-3 py-1.5 rounded-lg border border-[#25D366]/35 bg-white text-xs font-bold text-[#128C7E] hover:bg-emerald-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Mark as invited after sharing the portal link and password on WhatsApp"
+                                >
+                                  {markingWhatsAppInviteId === booking.id ? (
+                                    <Loader2 size={14} className="mr-1.5 animate-spin" />
+                                  ) : (
+                                    <Check size={14} className="mr-1.5" />
+                                  )}
+                                  Mark invited (WhatsApp)
+                                </button>
+                              )}
+                            </>
                           )}
 
                           {whatsappPhone && detailsComplete && (
@@ -893,11 +1051,23 @@ export default function Reservations() {
                               phone={whatsappPhone}
                               message={buildWhatsAppInviteMessage(booking)}
                               label="WhatsApp"
+                              disabled={inviteClosed}
                               title={
-                                booking.isInvited || invitePreviewSecrets[booking.id!]
-                                  ? 'Open WhatsApp with guest portal invitation'
-                                  : 'Send invite first to include link and password in the WhatsApp message'
+                                inviteClosed
+                                  ? inviteClosedTitle
+                                  : booking.isInvited || invitePreviewSecrets[booking.id!]
+                                    ? 'Open WhatsApp with guest portal invitation'
+                                    : 'Send invite first to include link and password in the WhatsApp message'
                               }
+                            />
+                          )}
+
+                          {whatsappPhone && isPostStayThankYouEligible(booking) && (
+                            <GuestWhatsAppLink
+                              phone={whatsappPhone}
+                              message={buildThankYouWhatsAppMessage(booking)}
+                              label="Thank you"
+                              title="Open WhatsApp with a post-stay thank-you message (same text as the automated email)"
                             />
                           )}
 
@@ -954,10 +1124,12 @@ export default function Reservations() {
           aria-modal="true"
         >
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl p-6">
-            <h3 className="text-lg font-bold text-gray-900">Invitation for {inviteCredentials.guestName}</h3>
+            <h3 className="text-lg font-bold text-gray-900">
+              Invitation for {inviteCredentials.guestName}
+            </h3>
             <p className="text-sm text-gray-500 mt-1 mb-4">
-              Share the link and password with the guest. The same access applies if they open the
-              unit URL on site during their stay.
+              {inviteCredentials.stayLabel} — share the link and password with the guest. The same
+              access applies if they open the unit URL on site during their stay.
             </p>
             <div className="space-y-3 text-sm">
               <div>

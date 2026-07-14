@@ -14,17 +14,23 @@ function call<T>(name: string) {
 export async function validateGuestPortalSession(
   propertyId: string,
   typeId: string,
-  sessionId: string
+  sessionId: string,
+  inviteToken?: string | null
 ): Promise<{
   valid: boolean;
-  reason?: 'expired' | 'booking_cancelled';
+  reason?: 'expired' | 'booking_cancelled' | 'invite_mismatch';
   session?: GuestPortalSession;
 }> {
   const res = await call<{
     valid: boolean;
-    reason?: 'expired' | 'booking_cancelled';
+    reason?: 'expired' | 'booking_cancelled' | 'invite_mismatch';
     session?: GuestPortalSession;
-  }>('validateGuestPortalSession')({ propertyId, typeId, sessionId });
+  }>('validateGuestPortalSession')({
+    propertyId,
+    typeId,
+    sessionId,
+    inviteToken: inviteToken || undefined,
+  });
   return res.data;
 }
 
@@ -72,6 +78,31 @@ export async function prepareGuestInviteCopyCallable(
     propertyId,
     typeId,
     bookingId,
+  });
+  return res.data;
+}
+
+export async function markGuestInviteSentCallable(
+  propertyId: string,
+  typeId: string,
+  bookingId: string,
+  channel: 'whatsapp' | 'email' = 'whatsapp'
+): Promise<{
+  inviteToken: string;
+  invitePassword?: string | null;
+  inviteUrl?: string;
+  alreadyInvited?: boolean;
+}> {
+  const res = await call<{
+    inviteToken: string;
+    invitePassword?: string | null;
+    inviteUrl?: string;
+    alreadyInvited?: boolean;
+  }>('markGuestInviteSent')({
+    propertyId,
+    typeId,
+    bookingId,
+    channel,
   });
   return res.data;
 }

@@ -1896,6 +1896,9 @@ registerGuestApplianceGuide({ firestore, firebaseExports: exports });
 const { registerGuestAssistantEscalation } = require("./guestAssistantEscalation");
 registerGuestAssistantEscalation({ firestore, logger, firebaseExports: exports });
 
+const { registerPostStayThankYou } = require("./postStayThankYou");
+registerPostStayThankYou({ firestore, logger, firebaseExports: exports });
+
 const { registerMarketingContact } = require("./marketingContact");
 registerMarketingContact({ firestore, logger, firebaseExports: exports });
 

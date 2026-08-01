@@ -21,6 +21,9 @@ export type GuestLocaleUiKey =
   | 'website'
   | 'copyWifi'
   | 'wifiCopied'
+  | 'serviceVoucherLabel'
+  | 'serviceVoucherHint'
+  | 'serviceVoucherCopied'
   | 'failedLoadProperty'
   | 'loadingPortal'
   | 'guestLoadingVailo'
@@ -96,6 +99,9 @@ const UI_EN: Record<GuestLocaleUiKey, string> = {
   website: 'Website',
   copyWifi: 'Copy Wi-Fi password',
   wifiCopied: 'Copied',
+  serviceVoucherLabel: 'Voucher code',
+  serviceVoucherHint: 'You can apply this code on the partner website.',
+  serviceVoucherCopied: 'Copied',
   failedLoadProperty: 'Failed to load property data.',
   loadingPortal: 'Loading your stay…',
   guestLoadingVailo: 'Loading Vailo',

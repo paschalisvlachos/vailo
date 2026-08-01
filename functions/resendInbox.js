@@ -7,6 +7,7 @@ const { requirePlatformAdmin } = require("./platformAdmin");
 const resendApiKey = defineSecret("RESEND_API_KEY");
 
 const INBOX_COLLECTION = "adminInboxMessages";
+const DELETED_IDS_COLLECTION = "adminInboxDeletedIds";
 const INBOX_FROM = "Vailo <info@vailo.app>";
 const CONTACT_FROM = "Vailo Website <contact@vailo.app>";
 
@@ -53,9 +54,76 @@ function messageDocId(resendEmailId) {
   return `resend_${resendEmailId}`;
 }
 
+async function isResendEmailDeleted(firestore, resendEmailId) {
+  const snap = await firestore.collection(DELETED_IDS_COLLECTION).doc(resendEmailId).get();
+  return snap.exists;
+}
+
+async function tryDeleteFromResend(apiKey, { resendEmailId, resendSentId }, logger) {
+  const attempts = [];
+  if (resendEmailId) {
+    attempts.push(`/emails/receiving/${encodeURIComponent(resendEmailId)}`);
+  }
+  if (resendSentId) {
+    attempts.push(`/emails/${encodeURIComponent(resendSentId)}`);
+  }
+
+  let removedFromResend = false;
+  for (const path of attempts) {
+    try {
+      const response = await fetch(`https://api.resend.com${path}`, {
+        method: "DELETE",
+        headers: resendHeaders(apiKey),
+      });
+      if (response.ok) {
+        removedFromResend = true;
+      } else {
+        logger.info("Resend delete unavailable or failed", { path, status: response.status });
+      }
+    } catch (err) {
+      logger.warn("Resend delete attempt failed", { path, err: String(err?.message || err) });
+    }
+  }
+  return removedFromResend;
+}
+
+async function deleteAdminInboxMessageById(firestore, apiKey, admin, messageId, logger) {
+  const ref = firestore.collection(INBOX_COLLECTION).doc(messageId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    return { ok: false, notFound: true, removedFromResend: false };
+  }
+
+  const data = snap.data() || {};
+  const resendEmailId = String(data.resendEmailId || "").trim() || null;
+  const resendSentId = String(data.resendSentId || "").trim() || null;
+
+  if (resendEmailId) {
+    await firestore.collection(DELETED_IDS_COLLECTION).doc(resendEmailId).set({
+      messageDocId: messageId,
+      deletedAt: FieldValue.serverTimestamp(),
+      deletedBy: admin.uid,
+    });
+  }
+
+  const removedFromResend = await tryDeleteFromResend(
+    apiKey,
+    { resendEmailId, resendSentId },
+    logger
+  );
+
+  await ref.delete();
+
+  return { ok: true, notFound: false, removedFromResend };
+}
+
 async function upsertReceivedEmail(firestore, apiKey, summary, source) {
   const resendEmailId = String(summary?.id || summary?.email_id || "").trim();
   if (!resendEmailId) return null;
+
+  if (await isResendEmailDeleted(firestore, resendEmailId)) {
+    return null;
+  }
 
   const docId = messageDocId(resendEmailId);
   const ref = firestore.collection(INBOX_COLLECTION).doc(docId);
@@ -252,6 +320,71 @@ function registerResendInbox({ firestore, logger, firebaseExports }) {
         { merge: true }
       );
       return { ok: true };
+    }
+  );
+
+  firebaseExports.deleteAdminInboxMessage = onCall(
+    { region: "us-central1", secrets: [resendApiKey] },
+    async (request) => {
+      const admin = await requirePlatformAdmin(request, firestore);
+      const messageId = String(request.data?.messageId || "").trim();
+      if (!messageId) {
+        throw new HttpsError("invalid-argument", "messageId required.");
+      }
+
+      const result = await deleteAdminInboxMessageById(
+        firestore,
+        resendApiKey.value(),
+        admin,
+        messageId,
+        logger
+      );
+      if (result.notFound) {
+        throw new HttpsError("not-found", "Message not found.");
+      }
+
+      return { ok: true, removedFromResend: result.removedFromResend };
+    }
+  );
+
+  firebaseExports.deleteAdminInboxMessages = onCall(
+    { region: "us-central1", secrets: [resendApiKey] },
+    async (request) => {
+      const admin = await requirePlatformAdmin(request, firestore);
+      const rawIds = request.data?.messageIds;
+      if (!Array.isArray(rawIds) || !rawIds.length) {
+        throw new HttpsError("invalid-argument", "messageIds array required.");
+      }
+
+      const messageIds = [
+        ...new Set(rawIds.map((id) => String(id || "").trim()).filter(Boolean)),
+      ].slice(0, 100);
+      if (!messageIds.length) {
+        throw new HttpsError("invalid-argument", "messageIds array required.");
+      }
+
+      const apiKey = resendApiKey.value();
+      let deleted = 0;
+      let notFound = 0;
+      let removedFromResend = 0;
+
+      for (const messageId of messageIds) {
+        const result = await deleteAdminInboxMessageById(
+          firestore,
+          apiKey,
+          admin,
+          messageId,
+          logger
+        );
+        if (result.notFound) {
+          notFound += 1;
+        } else {
+          deleted += 1;
+          if (result.removedFromResend) removedFromResend += 1;
+        }
+      }
+
+      return { ok: true, deleted, notFound, removedFromResend };
     }
   );
 

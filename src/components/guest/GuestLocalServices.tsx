@@ -5,15 +5,19 @@ import {
   Anchor,
   Briefcase,
   Car,
+  Check,
+  Copy,
+  Globe,
   Mail,
   MessageCircle,
   Sparkles,
+  Ticket,
   UtensilsCrossed,
   Waves,
   X,
   ExternalLink,
 } from 'lucide-react';
-import { openExternalUrl } from '../../lib/geocoding';
+import { openExternalUrl, isValidExternalUrl } from '../../lib/geocoding';
 import {
   buildServiceEmailLink,
   buildServiceInquiryMessage,
@@ -21,6 +25,7 @@ import {
 } from '../../lib/guestServiceContact';
 import { normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { guestUiT } from '../../lib/guestLocaleUi';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 import MirroredPhotoImg from '../shared/MirroredPhotoImg';
@@ -33,6 +38,8 @@ export type GuestPortalFeature = {
   categories?: string[];
   whatsapp?: string;
   email?: string;
+  website?: string;
+  voucherCode?: string;
   agreement?: string;
   isLocal?: boolean;
 };
@@ -64,7 +71,20 @@ function categoryIcon(name: string) {
   if (n.includes('car')) return Car;
   if (n.includes('food') || n.includes('restaurant') || n.includes('chef')) return UtensilsCrossed;
   if (n.includes('pool') || n.includes('spa') || n.includes('wellness')) return Waves;
+  if (n.includes('voucher') || n.includes('discount') || n.includes('promo')) return Ticket;
   return Briefcase;
+}
+
+function normalizeWebsiteUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function serviceWebsiteUrl(url?: string): string {
+  const normalized = normalizeWebsiteUrl(url || '');
+  return isValidExternalUrl(normalized) ? normalized : '';
 }
 
 function ContactTag({
@@ -101,6 +121,7 @@ function ServiceDetailSheet({
   onClose: () => void;
 }) {
   const { locale, contentPrimaryLocale } = useGuestLocale();
+  const [copiedVoucher, setCopiedVoucher] = useState(false);
   const title = featureTitle(feature, locale, contentPrimaryLocale);
   const description = resolveLocalizedString(
     feature,
@@ -114,7 +135,17 @@ function ServiceDetailSheet({
   const emailSubject = `Inquiry from ${[propertyName, propertyTypeName].filter(Boolean).join(' — ')}`;
   const whatsappHref = buildServiceWhatsAppLink(feature.whatsapp, inquiryMessage);
   const emailHref = buildServiceEmailLink(feature.email, inquiryMessage, emailSubject);
-  const hasContact = !!(whatsappHref || emailHref);
+  const voucherCode = feature.voucherCode?.trim() || '';
+  const websiteUrl = serviceWebsiteUrl(feature.website);
+  const hasContact = !!(whatsappHref || emailHref || websiteUrl);
+
+  const copyVoucherCode = () => {
+    if (!voucherCode || typeof navigator === 'undefined') return;
+    navigator.clipboard.writeText(voucherCode).then(() => {
+      setCopiedVoucher(true);
+      window.setTimeout(() => setCopiedVoucher(false), 2000);
+    });
+  };
 
   useBodyScrollLock(true);
 
@@ -190,6 +221,28 @@ function ServiceDetailSheet({
             </p>
           )}
 
+          {voucherCode && (
+            <div className="mb-5 rounded-xl border border-[#C5A059]/30 bg-[#C5A059]/8 px-4 py-4 text-center">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#6b5420] mb-2">
+                {guestUiT(locale, 'serviceVoucherLabel')}
+              </p>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <code className="text-lg font-bold tracking-[0.2em] text-[#051F26]">{voucherCode}</code>
+                <button
+                  type="button"
+                  onClick={copyVoucherCode}
+                  className="inline-flex items-center justify-center p-2 rounded-lg border border-[#C5A059]/30 text-[#6b5420] hover:bg-white/70 transition-colors"
+                  aria-label={guestUiT(locale, 'serviceVoucherLabel')}
+                >
+                  {copiedVoucher ? <Check size={16} /> : <Copy size={16} />}
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                {guestUiT(locale, 'serviceVoucherHint')}
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2.5">
             {whatsappHref && (
               <button
@@ -216,7 +269,20 @@ function ServiceDetailSheet({
                 <ExternalLink size={16} className="text-gray-400 shrink-0 ml-2" />
               </a>
             )}
-            {!hasContact && (
+            {websiteUrl && (
+              <button
+                type="button"
+                onClick={() => openExternalUrl(websiteUrl)}
+                className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white hover:border-[#0B4F5C]/30 hover:bg-[#0B4F5C]/5 transition-colors"
+              >
+                <span className="flex items-center gap-2.5 text-[#051F26] font-semibold text-sm min-w-0">
+                  <Globe size={18} className="shrink-0 text-[#0B4F5C]" />
+                  <span className="truncate">{websiteUrl.replace(/^https?:\/\//i, '')}</span>
+                </span>
+                <ExternalLink size={16} className="text-gray-400 shrink-0 ml-2" />
+              </button>
+            )}
+            {!hasContact && !voucherCode && (
               <p className="text-sm text-gray-500 text-center py-4">
                 Contact details are not available. Please ask your host.
               </p>
@@ -302,6 +368,8 @@ export default function GuestLocalServices({
             const CatIcon = categoryIcon(category);
             const hasWhatsApp = !!normalizeWhatsAppPhone(feature.whatsapp || '');
             const hasEmail = !!(feature.email?.trim() && feature.email.includes('@'));
+            const hasVoucher = !!feature.voucherCode?.trim();
+            const hasWebsite = !!serviceWebsiteUrl(feature.website);
 
             return (
               <div key={feature.id}>
@@ -342,10 +410,22 @@ export default function GuestLocalServices({
                         {listDescription}
                       </p>
                     )}
-                    {(hasWhatsApp || hasEmail) && (
+                    {(hasWhatsApp || hasEmail || hasVoucher || hasWebsite) && (
                       <div className="flex flex-wrap gap-1.5">
+                        {hasVoucher && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 bg-amber-50 text-amber-800 border border-amber-200/80">
+                            <Ticket size={11} />
+                            Voucher
+                          </span>
+                        )}
                         {hasWhatsApp && <ContactTag kind="whatsapp" label="WhatsApp" />}
                         {hasEmail && <ContactTag kind="email" label="Email" />}
+                        {hasWebsite && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 bg-[#0B4F5C]/8 text-[#0B4F5C] border border-[#0B4F5C]/15">
+                            <Globe size={11} />
+                            {guestUiT(locale, 'website')}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

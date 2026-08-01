@@ -6,7 +6,7 @@ import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ai, db, storage } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
-import { Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles } from 'lucide-react';
+import { Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles, Ticket } from 'lucide-react';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
@@ -60,6 +60,7 @@ export default function Features() {
     whatsapp: '',
     email: '',
     website: '',
+    voucherCode: '',
     photoUrl: '', // This stores the currently active/selected photo
     isMainPage: false,
     isLocal: false,
@@ -762,6 +763,28 @@ export default function Features() {
                 </div>
               </div>
 
+              {/* 4b. VOUCHER */}
+              <div>
+                <h3 className="text-lg font-bold border-b pb-2 mb-4 mt-8">Voucher</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Optional code shown to guests before WhatsApp. Add the partner website above so guests know where to apply it.
+                </p>
+                <div className="max-w-md">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Voucher code</label>
+                  <div className="relative">
+                    <Ticket className="absolute left-3 top-3 text-gray-400" size={18} />
+                    <input
+                      type="text"
+                      name="voucherCode"
+                      value={formData.voucherCode}
+                      onChange={handleChange}
+                      placeholder="e.g. STAY2026"
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg admin-input outline-none font-mono tracking-wide"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* 5. LOCATION */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -964,6 +987,9 @@ export default function Features() {
                 <div className="flex flex-wrap gap-2 mb-4">
                   {feat.isMainPage && <span className="text-[10px] font-bold bg-vailo-teal/10 text-vailo-dark px-2 py-1 rounded-md">Main Page</span>}
                   {feat.isLocal && <span className="text-[10px] font-bold bg-vailo-gold/15 text-vailo-teal-hover px-2 py-1 rounded-md">Local Experience</span>}
+                  {feat.voucherCode && (
+                    <span className="text-[10px] font-bold bg-amber-50 text-amber-800 px-2 py-1 rounded-md">Voucher</span>
+                  )}
                 </div>
 
                 <div className="mt-auto flex justify-end gap-2 pt-4 border-t border-gray-100">

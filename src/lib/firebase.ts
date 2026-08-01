@@ -7,8 +7,15 @@ import { getFunctions } from "firebase/functions";
 import { getAI } from "firebase/ai";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
+const firebaseApiKey = String(import.meta.env.VITE_FIREBASE_API_KEY || "").trim();
+if (!firebaseApiKey) {
+  throw new Error(
+    "Missing VITE_FIREBASE_API_KEY in .env. Copy your Firebase Web API key from Project settings → General → Your apps, add it to .env, and restart the dev server."
+  );
+}
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: firebaseApiKey,
   authDomain: "vailoapp-497113.firebaseapp.com",
   projectId: "vailoapp-497113",
   storageBucket: "vailoapp-497113.firebasestorage.app",

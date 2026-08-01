@@ -47,6 +47,31 @@ export async function markAdminInboxReadCallable(messageId: string): Promise<voi
   await call<{ ok: boolean }>('markAdminInboxRead')({ messageId });
 }
 
+export async function deleteAdminInboxMessageCallable(
+  messageId: string
+): Promise<{ removedFromResend: boolean }> {
+  const res = await call<{ ok: boolean; removedFromResend: boolean }>('deleteAdminInboxMessage')({
+    messageId,
+  });
+  return { removedFromResend: res.data.removedFromResend ?? false };
+}
+
+export async function deleteAdminInboxMessagesCallable(
+  messageIds: string[]
+): Promise<{ deleted: number; notFound: number; removedFromResend: number }> {
+  const res = await call<{
+    ok: boolean;
+    deleted: number;
+    notFound: number;
+    removedFromResend: number;
+  }>('deleteAdminInboxMessages')({ messageIds });
+  return {
+    deleted: res.data.deleted ?? 0,
+    notFound: res.data.notFound ?? 0,
+    removedFromResend: res.data.removedFromResend ?? 0,
+  };
+}
+
 export async function sendAdminInboxEmailCallable(input: {
   to: string[];
   subject: string;

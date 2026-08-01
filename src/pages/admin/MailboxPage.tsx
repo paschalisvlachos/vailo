@@ -6,7 +6,7 @@ import {
   query,
   type DocumentData,
 } from 'firebase/firestore';
-import { Loader2, Inbox, Mail, Paperclip, Plus, RefreshCw, Reply, Send, X } from 'lucide-react';
+import { Loader2, Inbox, Mail, Paperclip, Plus, RefreshCw, Reply, Send, Trash2, X } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { httpsCallableMessage } from '../../lib/callableError';
@@ -15,6 +15,8 @@ import {
   getAdminInboxAttachmentCallable,
   htmlToPlainText,
   inboxReplyAddress,
+  deleteAdminInboxMessageCallable,
+  deleteAdminInboxMessagesCallable,
   markAdminInboxReadCallable,
   sendAdminInboxEmailCallable,
   syncResendInboxCallable,
@@ -72,6 +74,8 @@ export default function MailboxPage() {
   const [composeReplyToId, setComposeReplyToId] = useState<string | undefined>();
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const selected = useMemo(
     () => messages.find((m) => m.id === selectedId) ?? null,
@@ -89,6 +93,9 @@ export default function MailboxPage() {
   );
 
   const visibleMessages = folder === 'inbox' ? inboxMessages : sentMessages;
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected =
+    visibleMessages.length > 0 && visibleMessages.every((m) => selectedIds.has(m.id));
 
   const inboxUnreadCount = useMemo(
     () => inboxMessages.filter((m) => !m.readAt).length,
@@ -157,6 +164,18 @@ export default function MailboxPage() {
     );
     return () => unsub();
   }, [toast]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [folder]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const visible = new Set(visibleMessages.map((m) => m.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleMessages]);
 
   useEffect(() => {
     setSelectedId((current) => {
@@ -237,6 +256,89 @@ export default function MailboxPage() {
       toast.error('Failed to send email.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const toggleSelected = (messageId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(messageId);
+      else next.delete(messageId);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(visibleMessages.map((m) => m.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const deleteSuccessMessage = (count: number, removedFromResend: number) => {
+    if (count === 1) {
+      return removedFromResend > 0
+        ? 'Message deleted from mailbox and Resend.'
+        : 'Message deleted from mailbox. Resend may still retain a copy until their retention policy expires.';
+    }
+    if (removedFromResend > 0) {
+      return `Deleted ${count} messages. ${removedFromResend} removed from Resend.`;
+    }
+    return `Deleted ${count} messages. Resend may still retain copies until their retention policy expires.`;
+  };
+
+  const deleteMessage = async (message: AdminInboxMessage) => {
+    const label = message.subject || 'this message';
+    if (
+      !window.confirm(
+        `Delete "${label}" permanently? This cannot be undone and the message will be removed from the mailbox.`
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { removedFromResend } = await deleteAdminInboxMessageCallable(message.id);
+      setSelectedIds((prev) => {
+        if (!prev.has(message.id)) return prev;
+        const next = new Set(prev);
+        next.delete(message.id);
+        return next;
+      });
+      if (selectedId === message.id) setSelectedId(null);
+      toast.success(deleteSuccessMessage(1, removedFromResend ? 1 : 0));
+    } catch (err) {
+      console.error(err);
+      toast.error(httpsCallableMessage(err, 'Could not delete message.'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteSelectedMessages = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (
+      !window.confirm(
+        `Delete ${ids.length} message${ids.length === 1 ? '' : 's'} permanently? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { deleted, removedFromResend } = await deleteAdminInboxMessagesCallable(ids);
+      setSelectedIds(new Set());
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null);
+      toast.success(deleteSuccessMessage(deleted, removedFromResend));
+    } catch (err) {
+      console.error(err);
+      toast.error(httpsCallableMessage(err, 'Could not delete selected messages.'));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -355,6 +457,39 @@ export default function MailboxPage() {
               Sent
             </button>
           </div>
+          {!loading && visibleMessages.length > 0 && (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50/80">
+              <label className="inline-flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={(e) => (e.target.checked ? selectAllVisible() : clearSelection())}
+                  className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                />
+                <span>{selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}</span>
+              </label>
+              {selectedCount > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedMessages}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto admin-scroll-y max-h-[560px]">
             {loading ? (
               <div className="p-8 flex justify-center text-gray-400">
@@ -369,14 +504,25 @@ export default function MailboxPage() {
                 {visibleMessages.map((m) => {
                   const unread = folder === 'inbox' && !m.readAt;
                   const active = m.id === selectedId;
+                  const checked = selectedIds.has(m.id);
                   return (
-                    <li key={m.id}>
+                    <li key={m.id} className="flex items-stretch border-b border-gray-50">
+                      <label className="flex items-center px-3 shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => toggleSelected(m.id, e.target.checked)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal"
+                          aria-label={`Select ${m.subject}`}
+                        />
+                      </label>
                       <button
                         type="button"
                         onClick={() => openMessage(m)}
-                        className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                        className={`flex-1 min-w-0 text-left px-2 py-3 hover:bg-gray-50 transition-colors ${
                           active ? 'bg-vailo-teal/5' : ''
-                        }`}
+                        } ${checked ? 'bg-vailo-teal/[0.03]' : ''}`}
                       >
                         <div className="flex items-start gap-2">
                           {unread && (
@@ -419,16 +565,28 @@ export default function MailboxPage() {
                   </p>
                   <p className="text-xs text-gray-400 mt-2">{formatInboxDate(selected.createdAt)}</p>
                 </div>
-                {selected.direction !== 'outbound' && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {selected.direction !== 'outbound' && (
+                    <button
+                      type="button"
+                      onClick={() => openCompose(selected)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-vailo-teal/20 text-vailo-teal text-sm font-medium hover:bg-vailo-teal/5"
+                    >
+                      <Reply size={16} />
+                      Reply
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => openCompose(selected)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-vailo-teal/20 text-vailo-teal text-sm font-medium hover:bg-vailo-teal/5"
+                    onClick={() => deleteMessage(selected)}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                    title="Delete permanently"
                   >
-                    <Reply size={16} />
-                    Reply
+                    {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                    Delete
                   </button>
-                )}
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-4">
                 {selected.html ? (

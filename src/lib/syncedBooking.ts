@@ -303,7 +303,7 @@ export function validateReservationSplitParts(
 }
 
 function copyGuestFieldsForSplit(original: SyncedBooking): Partial<SyncedBooking> {
-  return {
+  return sanitizeSyncedBookingForFirestore({
     summary: original.summary,
     provider: original.provider,
     guestName: original.guestName,
@@ -314,7 +314,7 @@ function copyGuestFieldsForSplit(original: SyncedBooking): Partial<SyncedBooking
     guestDetailsComplete: original.guestDetailsComplete,
     isInvited: false,
     inviteStatus: 'not_sent',
-  };
+  });
 }
 
 /** Build new booking rows from one reservation split into dated segments. */
@@ -352,7 +352,23 @@ export function replaceBookingWithSplits(
   splitParts: SyncedBooking[]
 ): SyncedBooking[] {
   const remaining = bookings.filter((b) => !matchesSyncedBooking(b, target));
-  return [...remaining, ...splitParts].sort((a, b) =>
-    String(a.start || '').localeCompare(String(b.start || ''))
+  return sanitizeSyncedBookingsForFirestore(
+    [...remaining, ...splitParts].sort((a, b) =>
+      String(a.start || '').localeCompare(String(b.start || ''))
+    )
   );
+}
+
+/** Firestore rejects explicit `undefined` field values on write. */
+export function sanitizeSyncedBookingForFirestore(booking: SyncedBooking): SyncedBooking {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(booking)) {
+    if (value === undefined) continue;
+    out[key] = value;
+  }
+  return out as SyncedBooking;
+}
+
+export function sanitizeSyncedBookingsForFirestore(bookings: SyncedBooking[]): SyncedBooking[] {
+  return bookings.map(sanitizeSyncedBookingForFirestore);
 }

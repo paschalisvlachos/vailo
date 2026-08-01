@@ -21,6 +21,7 @@ import {
 } from '../../../lib/guestInviteEmailTemplate';
 import { buildPostStayThankYouWhatsAppMessage } from '../../../lib/postStayThankYouTemplate';
 import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRequired, portalAccessUntilFromEnd } from '../../../lib/guestAccess';
+import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../../lib/whatsappLink';
 import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
 import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
 import { httpsCallableMessage } from '../../../lib/callableError';
@@ -97,6 +98,7 @@ export default function Reservations() {
     Record<string, { password: string; token: string }>
   >({});
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null);
+  const [openingWhatsAppInviteId, setOpeningWhatsAppInviteId] = useState<string | null>(null);
   const [markingWhatsAppInviteId, setMarkingWhatsAppInviteId] = useState<string | null>(null);
   const [resetRangeOpen, setResetRangeOpen] = useState(false);
   const [splitBooking, setSplitBooking] = useState<ReservationRow | null>(null);
@@ -481,10 +483,14 @@ export default function Reservations() {
 
   const buildInvitePayloadForBooking = (
     booking: ReservationRow,
-    options?: { reinvite?: boolean }
+    options?: {
+      reinvite?: boolean;
+      secrets?: { password: string; token: string };
+    }
   ) => {
     const type = propertyTypes.find((t) => t.id === booking.typeId);
-    const secrets = booking.id ? invitePreviewSecrets[booking.id] : undefined;
+    const secrets =
+      options?.secrets ?? (booking.id ? invitePreviewSecrets[booking.id] : undefined);
     return buildGuestInviteEmailPayloadFromBooking({
       booking,
       propertyName: property.propertyName || 'Your property',
@@ -498,6 +504,28 @@ export default function Reservations() {
       inviteToken: secrets?.token || booking.inviteToken,
       logoUrl: `${window.location.origin}/vailoLogo.png`,
     });
+  };
+
+  const resolveInviteSecretsForBooking = async (
+    booking: ReservationRow
+  ): Promise<{ password: string; token: string } | undefined> => {
+    if (!booking.id) return undefined;
+
+    let secrets = invitePreviewSecrets[booking.id];
+    if (!secrets?.password && !(booking.isInvited && booking.inviteToken)) {
+      const prepared = await prepareGuestInviteCopyCallable(
+        propertyId,
+        booking.typeId,
+        booking.id
+      );
+      secrets = { password: prepared.invitePassword, token: prepared.inviteToken };
+      setInvitePreviewSecrets((prev) => ({
+        ...prev,
+        [booking.id!]: secrets!,
+      }));
+    }
+
+    return secrets;
   };
 
   const handleCopyInvitation = async (booking: ReservationRow) => {
@@ -520,36 +548,12 @@ export default function Reservations() {
     }
 
     const copyKey = booking.id || `${booking.start}-${booking.end}`;
-    let secrets = invitePreviewSecrets[booking.id];
 
     setCopyingInviteId(copyKey);
     try {
-      if (!secrets?.password && !(booking.isInvited && booking.inviteToken)) {
-        const prepared = await prepareGuestInviteCopyCallable(
-          propertyId,
-          booking.typeId,
-          booking.id
-        );
-        secrets = { password: prepared.invitePassword, token: prepared.inviteToken };
-        setInvitePreviewSecrets((prev) => ({
-          ...prev,
-          [booking.id!]: secrets!,
-        }));
-      }
+      const secrets = await resolveInviteSecretsForBooking(booking);
 
-      const payload = buildGuestInviteEmailPayloadFromBooking({
-        booking,
-        propertyName: property.propertyName || 'Your property',
-        unitName: booking.typeName,
-        propertySlug: property.urlSlug,
-        unitType: type,
-        typeId: booking.typeId,
-        origin: getGuestPortalPublicOrigin(),
-        reinvite: false,
-        accessPassword: secrets?.password,
-        inviteToken: secrets?.token || booking.inviteToken,
-        logoUrl: `${window.location.origin}/vailoLogo.png`,
-      });
+      const payload = buildInvitePayloadForBooking(booking, { secrets });
       const text = buildGuestInviteClipboardText(payload);
 
       await navigator.clipboard.writeText(text);
@@ -571,9 +575,50 @@ export default function Reservations() {
     );
   };
 
-  const buildWhatsAppInviteMessage = (booking: ReservationRow) => {
-    const payload = buildInvitePayloadForBooking(booking, { reinvite: false });
+  const buildWhatsAppInviteMessage = (
+    booking: ReservationRow,
+    secrets?: { password: string; token: string }
+  ) => {
+    const payload = buildInvitePayloadForBooking(booking, { reinvite: false, secrets });
     return buildGuestInviteWhatsAppMessage(payload);
+  };
+
+  const handleOpenWhatsAppInvite = async (booking: ReservationRow) => {
+    if (!isBookingGuestDetailsComplete(booking)) {
+      toast.warning('Add guest details before sending an invitation.');
+      return;
+    }
+    if (!booking.id) {
+      toast.warning('Save guest details first so this reservation has an id.');
+      return;
+    }
+
+    const phone = bookingWhatsAppPhone(booking);
+    const digits = phone ? normalizeWhatsAppPhone(phone) : null;
+    if (!digits) {
+      toast.warning('Add a valid guest phone number for WhatsApp.');
+      return;
+    }
+
+    const type = propertyTypes.find((t) => t.id === booking.typeId);
+    const propSlug = formatGuestSlug(property.urlSlug);
+    const unitSlug = type ? getTypePublicSlug(type) : '';
+    if (!propSlug || !unitSlug) {
+      toast.warning('Set property and unit URL slugs before sending a WhatsApp invitation.');
+      return;
+    }
+
+    setOpeningWhatsAppInviteId(booking.id);
+    try {
+      const secrets = await resolveInviteSecretsForBooking(booking);
+      const message = buildWhatsAppInviteMessage(booking, secrets);
+      const url = buildWhatsAppUrl(digits, message);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(httpsCallableMessage(err, 'Could not prepare WhatsApp invitation.'));
+    } finally {
+      setOpeningWhatsAppInviteId(null);
+    }
   };
 
   const buildThankYouWhatsAppMessage = (booking: ReservationRow) =>
@@ -1049,15 +1094,14 @@ export default function Reservations() {
                           {whatsappPhone && detailsComplete && (
                             <GuestWhatsAppLink
                               phone={whatsappPhone}
-                              message={buildWhatsAppInviteMessage(booking)}
                               label="WhatsApp"
                               disabled={inviteClosed}
+                              loading={openingWhatsAppInviteId === booking.id}
+                              onClick={() => void handleOpenWhatsAppInvite(booking)}
                               title={
                                 inviteClosed
                                   ? inviteClosedTitle
-                                  : booking.isInvited || invitePreviewSecrets[booking.id!]
-                                    ? 'Open WhatsApp with guest portal invitation'
-                                    : 'Send invite first to include link and password in the WhatsApp message'
+                                  : 'Open WhatsApp with guest portal link and access password'
                               }
                             />
                           )}

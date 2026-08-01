@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react';
 import { buildWhatsAppChatUrl } from '../../lib/guestWhatsApp';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 
@@ -11,6 +12,9 @@ type Props = {
   /** When set, renders a labeled pill button instead of icon-only. */
   label?: string;
   disabled?: boolean;
+  /** When set with label, renders a button that runs this instead of opening a static link. */
+  onClick?: () => void;
+  loading?: boolean;
 };
 
 function WhatsAppIcon({ size }: { size: number }) {
@@ -35,6 +39,8 @@ export default function GuestWhatsAppLink({
   title = 'Open WhatsApp chat',
   label,
   disabled = false,
+  onClick,
+  loading = false,
 }: Props) {
   const digits = normalizeWhatsAppPhone(phone);
   if (!digits) return null;
@@ -58,6 +64,24 @@ export default function GuestWhatsAppLink({
           <WhatsAppIcon size={14} />
           {label}
         </span>
+      );
+    }
+    if (onClick) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={loading}
+          title={resolvedTitle}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#25D366]/35 bg-white text-xs font-bold text-[#128C7E] hover:bg-emerald-50 hover:border-[#25D366]/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+        >
+          {loading ? (
+            <Loader2 size={14} className="animate-spin" aria-hidden />
+          ) : (
+            <WhatsAppIcon size={14} />
+          )}
+          {label}
+        </button>
       );
     }
     return (

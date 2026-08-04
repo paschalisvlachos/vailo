@@ -100,6 +100,7 @@
         "*.local"
       ],
       "predeploy": [
+        "node scripts/buildCodeKnowledgeIndex.mjs",
         "npm --prefix \"$RESOURCE_DIR\" run lint"
       ],
       "source": "functions"

@@ -1904,3 +1904,6 @@ registerMarketingContact({ firestore, logger, firebaseExports: exports });
 
 const { registerResendInbox } = require("./resendInbox");
 registerResendInbox({ firestore, logger, firebaseExports: exports });
+
+const { registerStagingSync } = require("./stagingSync");
+registerStagingSync({ firestore, firebaseExports: exports });

@@ -1,0 +1,54 @@
+name: Deploy Staging Environment
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    env:
+      VITE_APP_ENV: staging
+      VITE_FIREBASE_API_KEY: ${{ secrets.STAGING_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: vailo-staging.firebaseapp.com
+      VITE_FIREBASE_PROJECT_ID: vailo-staging
+      VITE_FIREBASE_STORAGE_BUCKET: vailo-staging.firebasestorage.app
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.STAGING_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ secrets.STAGING_FIREBASE_APP_ID }}
+      VITE_GUEST_PORTAL_ORIGIN: https://vailo-staging.web.app
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Vite App (Staging Config)
+        run: npm run build:staging
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@14
+
+      - name: Write GCP Service Account Key
+        run: echo '${{ secrets.GCP_SA_KEY_STAGING }}' > /tmp/gcp_staging.json
+
+      - name: Deploy Hosting to Staging
+        run: firebase deploy --only hosting --project vailo-staging --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_staging.json
+          CI: 'true'
+
+      - name: Remove Service Account Key
+        if: always()
+        run: rm -f /tmp/gcp_staging.json

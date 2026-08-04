@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Globe, MessageSquareText, QrCode, Settings as SettingsIcon } from 'lucide-react';
+import { Globe, Database, MessageSquareText, QrCode, Settings as SettingsIcon } from 'lucide-react';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import PlatformLanguagesEditor from '../../components/admin/PlatformLanguagesEditor';
 import PlatformGuestUiStringsEditor from '../../components/admin/PlatformGuestUiStringsEditor';
 import PlatformMarketingQrPanel from '../../components/admin/PlatformMarketingQrPanel';
+import PlatformStagingSyncPanel from '../../components/admin/PlatformStagingSyncPanel';
 
-type SettingsSection = 'languages' | 'guest-ui' | 'qr-code';
+type SettingsSection = 'languages' | 'guest-ui' | 'qr-code' | 'staging';
 
 export default function Settings() {
   const [section, setSection] = useState<SettingsSection>('languages');
@@ -55,11 +56,24 @@ export default function Settings() {
           <QrCode size={16} className="mr-2 shrink-0" />
           QR code
         </button>
+        <button
+          type="button"
+          onClick={() => setSection('staging')}
+          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+            section === 'staging'
+              ? 'bg-vailo-teal text-white shadow-sm'
+              : 'text-gray-500 hover:text-vailo-teal hover:bg-vailo-surface-elevated'
+          }`}
+        >
+          <Database size={16} className="mr-2 shrink-0" />
+          Staging
+        </button>
       </div>
 
       {section === 'languages' && <PlatformLanguagesEditor />}
       {section === 'guest-ui' && <PlatformGuestUiStringsEditor />}
       {section === 'qr-code' && <PlatformMarketingQrPanel />}
+      {section === 'staging' && <PlatformStagingSyncPanel />}
     </div>
   );
 }

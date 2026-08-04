@@ -24,4 +24,7 @@ dist-ssr
 *.sw?
 
 .env
+.env.local
+.env.*.local
 functions/.env
+*-service-account*.json

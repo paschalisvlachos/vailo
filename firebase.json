@@ -6,7 +6,7 @@
       "**/.*",
       "**/node_modules/**"
     ],
-    "predeploy": ["npm run build"],
+    "predeploy": ["node scripts/predeploy-hosting.mjs"],
     "rewrites": [
       {
         "source": "/api/contact",

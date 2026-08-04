@@ -1,0 +1,55 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      VITE_APP_ENV: production
+      VITE_FIREBASE_API_KEY: ${{ secrets.PRODUCTION_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: vailoapp-497113.firebaseapp.com
+      VITE_FIREBASE_PROJECT_ID: vailoapp-497113
+      VITE_FIREBASE_STORAGE_BUCKET: vailoapp-497113.firebasestorage.app
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "1023597244475"
+      VITE_FIREBASE_APP_ID: "1:1023597244475:web:d93a069968cda7531bac1e"
+      VITE_FIREBASE_MEASUREMENT_ID: "G-1XJ4P63WBQ"
+      VITE_GUEST_PORTAL_ORIGIN: https://vailo.app
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Vite App (Production)
+        run: npm run build
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@14
+
+      - name: Write GCP Service Account Key
+        run: echo '${{ secrets.GCP_SA_KEY_PRODUCTION }}' > /tmp/gcp_prod.json
+
+      - name: Deploy Hosting to Production
+        run: firebase deploy --only hosting --project vailoapp-497113 --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_prod.json
+          CI: "true"
+
+      - name: Remove Service Account Key
+        if: always()
+        run: rm -f /tmp/gcp_prod.json

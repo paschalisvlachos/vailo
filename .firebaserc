@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "vailoapp-497113"
+    "default": "vailoapp-497113",
+    "production": "vailoapp-497113",
+    "staging": "vailo-staging"
   }
 }

@@ -7,21 +7,27 @@ import { getFunctions } from "firebase/functions";
 import { getAI } from "firebase/ai";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
-const firebaseApiKey = String(import.meta.env.VITE_FIREBASE_API_KEY || "").trim();
-if (!firebaseApiKey) {
-  throw new Error(
-    "Missing VITE_FIREBASE_API_KEY in .env. Copy your Firebase Web API key from Project settings → General → Your apps, add it to .env, and restart the dev server."
-  );
+const appEnv = String(import.meta.env.VITE_APP_ENV || "production").trim().toLowerCase();
+export const isStagingEnv = appEnv === "staging";
+
+function requireEnv(name: string, fallback?: string): string {
+  const value = String(import.meta.env[name] || fallback || "").trim();
+  if (!value) {
+    throw new Error(
+      `Missing ${name}. Copy values from Firebase Project settings → General → Your apps.`
+    );
+  }
+  return value;
 }
 
 const firebaseConfig = {
-  apiKey: firebaseApiKey,
-  authDomain: "vailoapp-497113.firebaseapp.com",
-  projectId: "vailoapp-497113",
-  storageBucket: "vailoapp-497113.firebasestorage.app",
-  messagingSenderId: "1023597244475",
-  appId: "1:1023597244475:web:d93a069968cda7531bac1e",
-  measurementId: "G-1XJ4P63WBQ"
+  apiKey: requireEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: requireEnv("VITE_FIREBASE_AUTH_DOMAIN", "vailoapp-497113.firebaseapp.com"),
+  projectId: requireEnv("VITE_FIREBASE_PROJECT_ID", "vailoapp-497113"),
+  storageBucket: requireEnv("VITE_FIREBASE_STORAGE_BUCKET", "vailoapp-497113.firebasestorage.app"),
+  messagingSenderId: requireEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "1023597244475"),
+  appId: requireEnv("VITE_FIREBASE_APP_ID", "1:1023597244475:web:d93a069968cda7531bac1e"),
+  measurementId: String(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-1XJ4P63WBQ").trim() || undefined,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -29,10 +35,11 @@ const app = initializeApp(firebaseConfig);
 /** Cloud Functions region (must match functions/setGlobalOptions in functions/index.js). */
 export const cloudFunctions = getFunctions(app, "us-central1");
 
-// Initialize App Check (production + opt-in dev). Skipped in local dev by default so admin
+// Initialize App Check in production only. Skipped in local dev and staging so admin
 // callables work without registering a debug token; set VITE_ENABLE_APP_CHECK=true to test it locally.
 const shouldInitAppCheck =
   typeof window !== "undefined" &&
+  !isStagingEnv &&
   (!import.meta.env.DEV || import.meta.env.VITE_ENABLE_APP_CHECK === "true");
 
 if (shouldInitAppCheck) {

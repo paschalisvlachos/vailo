@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/buildCodeKnowledgeIndex.mjs && tsc -b && vite build && node scripts/postbuild-hosting.mjs",
+    "build:staging": "node scripts/buildCodeKnowledgeIndex.mjs && tsc -b && vite build --mode staging && node scripts/postbuild-hosting.mjs",
     "build:code-index": "node scripts/buildCodeKnowledgeIndex.mjs",
+    "seed:staging": "node scripts/seed-staging.mjs",
+    "clone:staging": "node scripts/clone-prod-to-staging.mjs",
+    "provision:staging-login": "node scripts/provision-staging-login.mjs",
+    "deploy:staging": "firebase deploy --only hosting --project staging",
+    "deploy:production": "firebase deploy --only hosting --project production",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -14,6 +20,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "dompurify": "^3.4.5",
     "firebase": "^12.13.0",
+    "firebase-admin": "^14.2.0",
     "lucide-react": "^1.14.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",
@@ -22,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@faker-js/faker": "^10.5.0",
     "@types/dompurify": "^3.0.5",
     "@types/google.maps": "^3.65.2",
     "@types/node": "^24.12.2",
@@ -30,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.5.0",
+    "dotenv": "^17.4.2",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

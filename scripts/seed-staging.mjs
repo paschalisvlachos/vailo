@@ -6,7 +6,9 @@
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json npm run seed:staging
  */
 import 'dotenv/config';
-import admin from 'firebase-admin';
+import { applicationDefault, getApp, getApps, initializeApp } from 'firebase-admin/app';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import { faker } from '@faker-js/faker';
 
 const SEED_TAG = 'vailo-staging-seed';
@@ -17,14 +19,14 @@ const ADMIN_PASSWORD = String(process.env.STAGING_ADMIN_PASSWORD || 'StagingAdmi
 const OWNER_EMAIL = String(process.env.STAGING_OWNER_EMAIL || 'owner@staging.vailo.app').trim().toLowerCase();
 const OWNER_PASSWORD = String(process.env.STAGING_OWNER_PASSWORD || 'StagingOwner123!');
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+if (!getApps().length) {
+  initializeApp({
+    credential: applicationDefault(),
   });
 }
 
-const db = admin.firestore();
-const auth = admin.auth();
+const db = getFirestore();
+const auth = getAuth();
 
 function slugify(text) {
   return String(text || '')
@@ -135,7 +137,7 @@ async function seedOwners() {
     authUid: adminUid,
     authProvisionedAt: new Date().toISOString(),
     seedTag: SEED_TAG,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   const ownerRef = db.collection('owners').doc('staging_owner');
@@ -148,7 +150,7 @@ async function seedOwners() {
     authUid: ownerUid,
     authProvisionedAt: new Date().toISOString(),
     seedTag: SEED_TAG,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   const agentRef = db.collection('owners').doc('staging_agent');
@@ -159,7 +161,7 @@ async function seedOwners() {
     status: 'active',
     company: faker.company.name(),
     seedTag: SEED_TAG,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   return { adminRef, ownerRef, agentRef };
@@ -190,7 +192,7 @@ async function seedProperties(ownerRef) {
       area: 'Paros',
       guestPortalAccessRequired: false,
       seedTag: SEED_TAG,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     const listingName = listingNames[i];
@@ -212,13 +214,14 @@ async function seedProperties(ownerRef) {
       whatsapp: '+306900000000',
       internalRefCode: `STG-L${String(i + 1).padStart(3, '0')}`,
       seedTag: SEED_TAG,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
   }
 }
 
 async function seedDatabase() {
-  const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || admin.app().options.projectId;
+  const projectId =
+    process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || getApp().options.projectId;
   console.log(`Seeding staging database (project: ${projectId || 'unknown'})...`);
 
   await clearPreviousSeedData();

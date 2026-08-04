@@ -9,7 +9,7 @@
     "build:staging": "node scripts/buildCodeKnowledgeIndex.mjs && tsc -b && vite build --mode staging && node scripts/postbuild-hosting.mjs",
     "build:code-index": "node scripts/buildCodeKnowledgeIndex.mjs",
     "seed:staging": "node scripts/seed-staging.mjs",
-    "deploy:staging": "firebase deploy --only hosting,firestore:rules --project staging",
+    "deploy:staging": "firebase deploy --only hosting --project staging",
     "lint": "eslint .",
     "preview": "vite preview"
   },

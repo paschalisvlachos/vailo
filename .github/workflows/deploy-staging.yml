@@ -43,8 +43,8 @@ jobs:
       - name: Write GCP Service Account Key
         run: echo '${{ secrets.GCP_SA_KEY_STAGING }}' > /tmp/gcp_key.json
 
-      - name: Deploy Hosting and Firestore Rules to Staging
-        run: firebase deploy --only hosting,firestore:rules --project vailo-staging --non-interactive
+      - name: Deploy Hosting to Staging
+        run: firebase deploy --only hosting --project vailo-staging --non-interactive
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_key.json
           CI: 'true'

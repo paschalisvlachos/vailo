@@ -40,7 +40,7 @@ async function triggerStagingDatabaseSyncHandler(request, firestore) {
     throw new HttpsError(
       "internal",
       status === 404
-        ? "GitHub workflow not found. Push sync-staging-from-production.yml to the staging branch."
+        ? "GitHub workflow not found on the main branch. Merge or copy .github/workflows/sync-staging-from-production.yml into main and push."
         : `Could not start staging sync (${status || "error"}): ${detail}`
     );
   }

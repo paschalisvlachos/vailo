@@ -10,6 +10,7 @@
     "build:code-index": "node scripts/buildCodeKnowledgeIndex.mjs",
     "seed:staging": "node scripts/seed-staging.mjs",
     "clone:staging": "node scripts/clone-prod-to-staging.mjs",
+    "provision:staging-login": "node scripts/provision-staging-login.mjs",
     "deploy:staging": "firebase deploy --only hosting --project staging",
     "lint": "eslint .",
     "preview": "vite preview"

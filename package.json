@@ -12,6 +12,7 @@
     "clone:staging": "node scripts/clone-prod-to-staging.mjs",
     "provision:staging-login": "node scripts/provision-staging-login.mjs",
     "deploy:staging": "firebase deploy --only hosting --project staging",
+    "deploy:production": "firebase deploy --only hosting --project production",
     "lint": "eslint .",
     "preview": "vite preview"
   },

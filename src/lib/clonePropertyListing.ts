@@ -2,6 +2,7 @@ import { addDoc, collection, doc, getDoc, getDocs, setDoc } from 'firebase/fires
 import { db } from './firebase';
 import { formatGuestSlug } from './guestPortalSlug';
 import { pasteGemsToListing, stripGemForCopy } from './propertyGemCopy';
+import { pasteFeaturesToListing, stripFeatureForCopy } from './propertyFeatureCopy';
 
 const LISTING_DOC_OMIT_KEYS = new Set([
   'id',
@@ -15,6 +16,7 @@ export type ClonePropertyListingResult = {
   newTypeId: string;
   listingData: Record<string, unknown>;
   gemsCopied: number;
+  featuresCopied: number;
   houseGuideCopied: boolean;
   greenScoreCopied: boolean;
 };
@@ -84,6 +86,7 @@ export async function fetchListingSubcollections(
   typeId: string
 ): Promise<{
   gems: Record<string, unknown>[];
+  features: Record<string, unknown>[];
   houseGuide: Record<string, unknown> | null;
   greenScore: Record<string, unknown> | null;
 }> {
@@ -91,6 +94,11 @@ export async function fetchListingSubcollections(
     collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'localGems')
   );
   const gems = gemsSnap.docs.map((d) => stripGemForCopy(d.data()));
+
+  const featuresSnap = await getDocs(
+    collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'features')
+  );
+  const features = featuresSnap.docs.map((d) => stripFeatureForCopy(d.data()));
 
   const guideSnap = await getDoc(
     doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'houseGuide', 'data')
@@ -101,6 +109,7 @@ export async function fetchListingSubcollections(
 
   return {
     gems,
+    features,
     houseGuide: guideSnap.exists() ? (guideSnap.data() as Record<string, unknown>) : null,
     greenScore: greenSnap.exists() ? (greenSnap.data() as Record<string, unknown>) : null,
   };
@@ -111,6 +120,7 @@ export async function createListingFromCapturedContent(params: {
   sourceListingData: Record<string, unknown>;
   existingTypes: Array<{ id: string; urlSlug?: string; typeSlug?: string }>;
   gems: Record<string, unknown>[];
+  features: Record<string, unknown>[];
   houseGuide: Record<string, unknown> | null;
   greenScore: Record<string, unknown> | null;
   propertyName?: string;
@@ -140,6 +150,16 @@ export async function createListingFromCapturedContent(params: {
     gemsCopied = result.pasted;
   }
 
+  let featuresCopied = 0;
+  if (params.features.length > 0) {
+    const result = await pasteFeaturesToListing({
+      features: params.features,
+      propertyId: params.propertyId,
+      typeId: newRef.id,
+    });
+    featuresCopied = result.pasted;
+  }
+
   let houseGuideCopied = false;
   if (params.houseGuide) {
     await setDoc(
@@ -162,6 +182,7 @@ export async function createListingFromCapturedContent(params: {
     newTypeId: newRef.id,
     listingData: payload,
     gemsCopied,
+    featuresCopied,
     houseGuideCopied,
     greenScoreCopied,
   };
@@ -174,7 +195,7 @@ export async function clonePropertyListing(params: {
   existingTypes: Array<{ id: string; urlSlug?: string; typeSlug?: string }>;
   propertyName?: string;
 }): Promise<ClonePropertyListingResult> {
-  const { gems, houseGuide, greenScore } = await fetchListingSubcollections(
+  const { gems, features, houseGuide, greenScore } = await fetchListingSubcollections(
     params.propertyId,
     params.sourceTypeId
   );
@@ -184,6 +205,7 @@ export async function clonePropertyListing(params: {
     sourceListingData: params.sourceData,
     existingTypes: params.existingTypes,
     gems,
+    features,
     houseGuide,
     greenScore,
     propertyName: params.propertyName,

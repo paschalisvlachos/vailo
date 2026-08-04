@@ -523,7 +523,14 @@ function GuestPortalPage({
           targetTypeId,
           'localGems'
         );
-        const featuresRef = collection(db, 'properties', resolvedPropertyId, 'features');
+        const featuresRef = collection(
+          db,
+          'properties',
+          resolvedPropertyId,
+          'propertyTypes',
+          targetTypeId,
+          'features'
+        );
 
         const guidePromise = getDoc(guideRef);
         const gemsPromise = getDocs(gemsRef);

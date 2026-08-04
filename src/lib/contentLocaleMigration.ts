@@ -65,5 +65,18 @@ export async function migratePropertyContentFromPrimary(propertyId: string): Pro
     featuresUpdated += 1;
   }
 
+  for (const typeDoc of typesSnap.docs) {
+    const listingFeaturesSnap = await getDocs(
+      collection(db, 'properties', propertyId, 'propertyTypes', typeDoc.id, 'features')
+    );
+    for (const featDoc of listingFeaturesSnap.docs) {
+      const data = featDoc.data() as Record<string, unknown>;
+      const maps = buildMapsFromDoc(data, FEATURE_FIELDS, primary);
+      const filled = copyPrimaryToEmptyLocales(maps, FEATURE_FIELDS, primary, targets);
+      await updateDoc(featDoc.ref, buildLocalizedFirestorePayload(FEATURE_FIELDS, filled, primary, {}));
+      featuresUpdated += 1;
+    }
+  }
+
   return { gemsUpdated, featuresUpdated };
 }

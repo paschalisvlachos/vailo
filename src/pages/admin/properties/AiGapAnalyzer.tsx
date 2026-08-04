@@ -8,6 +8,8 @@ import { Sparkles, Loader2, Send, Bot, User, Search } from 'lucide-react';
 export default function AiGapAnalyzer() {
   const { property, propertyId } = useOutletContext<{ property: any; propertyId: string }>();
 
+  const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
+  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   const [features, setFeatures] = useState<any[]>([]);
   const [messages, setMessages] = useState<{ role: 'ai' | 'user'; text: string }[]>([]);
   const [input, setInput] = useState('');
@@ -16,11 +18,27 @@ export default function AiGapAnalyzer() {
 
   useEffect(() => {
     if (!propertyId) return;
-    const unsub = onSnapshot(collection(db, 'properties', propertyId, 'features'), (snap) => {
-      setFeatures(snap.docs.map((doc) => doc.data()));
+    const unsub = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snap) => {
+      const types = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setPropertyTypes(types);
+      if (types.length > 0 && !selectedTypeId) setSelectedTypeId(types[0].id);
     });
     return () => unsub();
-  }, [propertyId]);
+  }, [propertyId, selectedTypeId]);
+
+  useEffect(() => {
+    if (!propertyId || !selectedTypeId) {
+      setFeatures([]);
+      return;
+    }
+    const unsub = onSnapshot(
+      collection(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'features'),
+      (snap) => {
+        setFeatures(snap.docs.map((doc) => doc.data()));
+      }
+    );
+    return () => unsub();
+  }, [propertyId, selectedTypeId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -90,6 +108,23 @@ export default function AiGapAnalyzer() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-280px)] min-h-[500px]">
+      {propertyTypes.length > 0 && (
+        <div className="bg-vailo-teal/5 border border-vailo-teal/10 rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+          <div>
+            <h4 className="text-sm font-bold text-vailo-dark">Listing</h4>
+            <p className="text-xs text-vailo-teal-hover">Analyze features for the selected unit.</p>
+          </div>
+          <select
+            value={selectedTypeId}
+            onChange={(e) => setSelectedTypeId(e.target.value)}
+            className="px-4 py-2 bg-white border border-vailo-teal/15 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
+          >
+            {propertyTypes.map((type) => (
+              <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex justify-between items-center mb-6 shrink-0">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center">

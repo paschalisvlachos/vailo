@@ -426,6 +426,7 @@ export default function PropertyTypes() {
       const parts = [
         'Listing cloned.',
         result.gemsCopied > 0 ? `${result.gemsCopied} local gem${result.gemsCopied === 1 ? '' : 's'}` : null,
+        result.featuresCopied > 0 ? `${result.featuresCopied} feature${result.featuresCopied === 1 ? '' : 's'}` : null,
         result.houseGuideCopied ? 'house guide' : null,
         result.greenScoreCopied ? 'green score' : null,
       ].filter(Boolean);
@@ -488,6 +489,7 @@ export default function PropertyTypes() {
       const parts = [
         'Listing pasted.',
         result.gemsCopied > 0 ? `${result.gemsCopied} local gem${result.gemsCopied === 1 ? '' : 's'}` : null,
+        result.featuresCopied > 0 ? `${result.featuresCopied} feature${result.featuresCopied === 1 ? '' : 's'}` : null,
         result.houseGuideCopied ? 'house guide' : null,
         result.greenScoreCopied ? 'green score' : null,
       ].filter(Boolean);

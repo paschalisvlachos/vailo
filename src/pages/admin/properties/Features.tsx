@@ -6,7 +6,15 @@ import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ai, db, storage } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
-import { Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles, Ticket } from 'lucide-react';
+import { Plus, Image as ImageIcon, Pencil, Trash2, Briefcase, Loader2, MapPin, Wand2, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles, Ticket, Building, Copy, ClipboardPaste, X } from 'lucide-react';
+import CopyFeaturesModal from '../../../components/admin/CopyFeaturesModal';
+import {
+  clearCopiedFeatures,
+  readCopiedFeatures,
+  writeCopiedFeatures,
+  type CopiedPropertyFeatures,
+} from '../../../lib/propertyFeatureCopy';
+import { migratePropertyFeaturesToFirstListing } from '../../../lib/propertyFeatureMigration';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
@@ -28,6 +36,8 @@ export default function Features() {
   const toast = useToast();
   
   const [propertyAreaContext, setPropertyAreaContext] = useState<{country: string, areaId: string, areaName: string} | null>(null);
+  const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
+  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
   
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
@@ -70,6 +80,10 @@ export default function Features() {
   const [formData, setFormData] = useState(initialFormState);
   const [editingSourceDoc, setEditingSourceDoc] = useState<Record<string, unknown> | null>(null);
   const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+  const [selectedFeatureIds, setSelectedFeatureIds] = useState<Set<string>>(new Set());
+  const [copiedClip, setCopiedClip] = useState<CopiedPropertyFeatures | null>(() => readCopiedFeatures());
+  const [pasteModalOpen, setPasteModalOpen] = useState(false);
+  const [migrationDone, setMigrationDone] = useState(false);
 
   const localeSettings = usePropertyContentLocaleSettings(property);
   const { languages } = usePlatformLanguages();
@@ -234,14 +248,135 @@ export default function Features() {
 
   useEffect(() => {
     if (!propertyId) return;
-    const featsRef = collection(db, 'properties', propertyId, 'features');
+    const unsubTypes = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
+      const typesData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setPropertyTypes(typesData);
+      if (typesData.length > 0 && !selectedTypeId) {
+        setSelectedTypeId(typesData[0].id);
+      }
+    });
+    return () => unsubTypes();
+  }, [propertyId, selectedTypeId]);
+
+  useEffect(() => {
+    if (!propertyId || migrationDone || propertyTypes.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await migratePropertyFeaturesToFirstListing(propertyId);
+        if (cancelled) return;
+        if (result.deduped > 0) {
+          toast.success(
+            `Removed ${result.deduped} duplicate feature${result.deduped === 1 ? '' : 's'}.`
+          );
+        }
+        if (result.migrated > 0) {
+          toast.success(
+            `Moved ${result.migrated} existing feature${result.migrated === 1 ? '' : 's'} to ${propertyTypes[0]?.propertyTypeName || 'the first listing'}.`
+          );
+          if (result.firstTypeId) setSelectedTypeId(result.firstTypeId);
+        }
+      } catch (err) {
+        console.error('Feature migration failed:', err);
+      } finally {
+        if (!cancelled) setMigrationDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, migrationDone, propertyTypes, toast]);
+
+  useEffect(() => {
+    setSelectedFeatureIds(new Set());
+  }, [selectedTypeId]);
+
+  useEffect(() => {
+    if (!propertyId || !selectedTypeId) {
+      setFeatures([]);
+      setIsLoading(false);
+      return;
+    }
+    const featsRef = collection(
+      db,
+      'properties',
+      propertyId,
+      'propertyTypes',
+      selectedTypeId,
+      'features'
+    );
     const unsubscribe = onSnapshot(featsRef, (snapshot) => {
-      const fetchedFeatures = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const fetchedFeatures = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setFeatures(fetchedFeatures);
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, [propertyId]);
+  }, [propertyId, selectedTypeId]);
+
+  const selectedFeatures = useMemo(
+    () => features.filter((f) => selectedFeatureIds.has(f.id)),
+    [features, selectedFeatureIds]
+  );
+  const allFeaturesSelected = features.length > 0 && selectedFeatureIds.size === features.length;
+
+  const toggleFeatureSelection = (featureId: string) => {
+    setSelectedFeatureIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(featureId)) next.delete(featureId);
+      else next.add(featureId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFeatures = () => {
+    if (allFeaturesSelected) {
+      setSelectedFeatureIds(new Set());
+    } else {
+      setSelectedFeatureIds(new Set(features.map((f) => f.id)));
+    }
+  };
+
+  const handleCopySelectedFeatures = () => {
+    if (!propertyId || !selectedTypeId || selectedFeatures.length === 0) return;
+    const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
+    const clip: CopiedPropertyFeatures = {
+      features: selectedFeatures.map((f) => ({ ...f })),
+      sourcePropertyId: propertyId,
+      sourceTypeId: selectedTypeId,
+      sourcePropertyName: property?.propertyName,
+      sourceListingName: selectedType?.propertyTypeName,
+      copiedAt: new Date().toISOString(),
+    };
+    writeCopiedFeatures(clip);
+    setCopiedClip(clip);
+    setSelectedFeatureIds(new Set());
+    toast.success(
+      `Copied ${clip.features.length} feature${clip.features.length === 1 ? '' : 's'}. Choose listings to paste into.`
+    );
+  };
+
+  const handleClearCopiedFeatures = () => {
+    clearCopiedFeatures();
+    setCopiedClip(null);
+    toast.success('Copied features cleared.');
+  };
+
+  const handlePasteComplete = (result: { pasted: number; skipped: number; targets: number }) => {
+    if (result.pasted === 0 && result.skipped > 0) {
+      toast.warning(
+        `No features pasted — all ${result.skipped} already exist on the selected listing${result.targets === 1 ? '' : 's'}.`
+      );
+      return;
+    }
+    const skippedPart =
+      result.skipped > 0 ? ` ${result.skipped} skipped (already on listing).` : '';
+    toast.success(
+      `Pasted ${result.pasted} feature${result.pasted === 1 ? '' : 's'} across ${result.targets} listing${result.targets === 1 ? '' : 's'}.${skippedPart}`
+    );
+  };
+
+  const featuresCollectionPath = (typeId: string) =>
+    collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'features');
 
   const availableMasterPhotos = featuresCategories
     .filter((cat) =>
@@ -440,7 +575,10 @@ export default function Features() {
       // Only upload if the actively selected photo is the custom one they uploaded
       if (customFile && formData.photoUrl === customPreview) {
         setIsUploadingImage(true);
-        const storageRef = ref(storage, `properties/${propertyId}/features/${Date.now()}_${customFile.name}`);
+        const storageRef = ref(
+          storage,
+          `properties/${propertyId}/propertyTypes/${selectedTypeId}/features/${Date.now()}_${customFile.name}`
+        );
         await uploadBytes(storageRef, customFile);
         finalPhotoUrl = await getDownloadURL(storageRef);
       } else if (finalPhotoUrl) {
@@ -460,10 +598,18 @@ export default function Features() {
         updatedAt: new Date().toISOString(),
       };
 
+      if (!selectedTypeId) {
+        toast.warning('Select a property listing first.');
+        return;
+      }
+
       if (editingFeatureId) {
-        await updateDoc(doc(db, 'properties', propertyId, 'features', editingFeatureId), featureData);
+        await updateDoc(
+          doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'features', editingFeatureId),
+          featureData
+        );
       } else {
-        await addDoc(collection(db, 'properties', propertyId, 'features'), featureData);
+        await addDoc(featuresCollectionPath(selectedTypeId), featureData);
       }
 
       closeAndResetForm();
@@ -476,8 +622,11 @@ export default function Features() {
   };
 
   const handleDelete = async (id: string, name: string) => {
+    if (!selectedTypeId) return;
     if (window.confirm(`Delete ${name}?`)) {
-      await deleteDoc(doc(db, 'properties', propertyId, 'features', id));
+      await deleteDoc(
+        doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId, 'features', id)
+      );
     }
   };
 
@@ -552,8 +701,36 @@ export default function Features() {
     setIsFormOpen(true);
   };
 
+  if (propertyTypes.length === 0) {
+    return (
+      <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+        <Building size={32} className="mx-auto text-gray-400 mb-3" />
+        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Listings Configured</h3>
+        <p className="text-gray-500 max-w-sm mx-auto mb-6">
+          Features are assigned to specific units. Please go to the <b>Property Listings</b> tab and create a unit before adding features.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
+      <div className="bg-vailo-teal/5 border border-vailo-teal/10 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-vailo-dark">Select Unit Level</h4>
+          <p className="text-xs text-vailo-teal-hover">Features are assigned specifically to the selected property listing.</p>
+        </div>
+        <select
+          value={selectedTypeId}
+          onChange={(e) => setSelectedTypeId(e.target.value)}
+          className="px-4 py-2 bg-white border border-vailo-teal/15 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
+        >
+          {propertyTypes.map((type) => (
+            <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 flex items-center">
@@ -561,16 +738,85 @@ export default function Features() {
             Property Features
           </h2>
           <p className="text-gray-500 mt-1">
-            Manage services and local experiences specific to this property. 
+            Manage services and local experiences for this listing.
             {propertyAreaContext && <span className="ml-1 font-medium text-vailo-teal">(Connected to {propertyAreaContext.areaName})</span>}
           </p>
         </div>
         {!isFormOpen && (
-          <button onClick={openAddForm} className="flex items-center px-4 py-2 bg-vailo-teal text-white text-sm font-bold rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-            <Plus size={18} className="mr-2" /> Add Feature
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {copiedClip && (
+              <button
+                type="button"
+                onClick={() => setPasteModalOpen(true)}
+                className="flex items-center px-4 py-2 bg-white text-vailo-teal border border-vailo-teal/25 rounded-xl hover:bg-vailo-teal/5 transition-colors shadow-sm"
+              >
+                <ClipboardPaste size={18} className="mr-2" />
+                Paste {copiedClip.features.length} copied
+              </button>
+            )}
+            <button onClick={openAddForm} className="flex items-center px-4 py-2 bg-vailo-teal text-white text-sm font-bold rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+              <Plus size={18} className="mr-2" /> Add Feature
+            </button>
+          </div>
         )}
       </div>
+
+      {copiedClip && !isFormOpen && (
+        <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5">
+          <span className="text-xs font-semibold text-vailo-teal">
+            {copiedClip.features.length} feature{copiedClip.features.length === 1 ? '' : 's'} ready to paste
+            {copiedClip.sourceListingName ? ` from ${copiedClip.sourceListingName}` : ''}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPasteModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
+          >
+            <ClipboardPaste size={14} />
+            Paste to listings
+          </button>
+          <button
+            type="button"
+            onClick={handleClearCopiedFeatures}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            <X size={14} />
+            Clear
+          </button>
+        </div>
+      )}
+
+      {selectedFeatureIds.size > 0 && !isFormOpen && (
+        <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5">
+          <span className="text-xs font-semibold text-vailo-teal">
+            {selectedFeatureIds.size} selected
+          </span>
+          <button
+            type="button"
+            onClick={handleCopySelectedFeatures}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
+          >
+            <Copy size={14} />
+            Copy selected
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedFeatureIds(new Set())}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
+      {pasteModalOpen && copiedClip && (
+        <CopyFeaturesModal
+          clip={copiedClip}
+          excludeSource={{ propertyId, typeId: selectedTypeId }}
+          onClose={() => setPasteModalOpen(false)}
+          onPasted={handlePasteComplete}
+        />
+      )}
 
       {!propertyAreaContext && !isLoading && (
         <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl mb-6 text-sm text-yellow-800">
@@ -941,13 +1187,37 @@ export default function Features() {
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center">
           <Briefcase size={40} className="mx-auto text-gray-300 mb-4" />
           <h3 className="text-lg font-bold text-gray-900 mb-2">No Features Added</h3>
-          <p className="text-gray-500">Create the first specific feature for this property.</p>
+          <p className="text-gray-500">Create the first feature for this listing, or paste from another unit.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div>
+          {features.length > 0 && !isFormOpen && (
+            <div className="flex items-center gap-2 mb-4">
+              <input
+                type="checkbox"
+                checked={allFeaturesSelected}
+                onChange={toggleSelectAllFeatures}
+                className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20"
+                aria-label="Select all features"
+              />
+              <span className="text-sm text-gray-600">Select all</span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feat) => (
             <div key={feat.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
               <div className="h-48 bg-gray-200 relative">
+                {!isFormOpen && (
+                  <div className="absolute top-3 left-3 z-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedFeatureIds.has(feat.id)}
+                      onChange={() => toggleFeatureSelection(feat.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20 bg-white/90"
+                      aria-label={`Select ${feat.name}`}
+                    />
+                  </div>
+                )}
                 {feat.photoUrl ? (
                   <MirroredPhotoImg
                     src={feat.photoUrl}
@@ -967,7 +1237,7 @@ export default function Features() {
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon size={32} /></div>
                 )}
-                <div className="absolute top-3 left-3 flex flex-wrap gap-1 max-w-[70%]">
+                <div className="absolute bottom-3 left-3 flex flex-wrap gap-1 max-w-[70%]">
                   {feat.categories?.map((cat: string) => (
                     <span key={cat} className="bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-[10px] font-bold text-gray-900 shadow-sm whitespace-nowrap">
                       {cat}
@@ -999,6 +1269,7 @@ export default function Features() {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>

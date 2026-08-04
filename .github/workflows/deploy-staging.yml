@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy_and_seed:
+  deploy:
     runs-on: ubuntu-latest
     environment: staging
 
@@ -40,10 +40,8 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@14
 
-      - name: Write GCP Service Account Keys
-        run: |
-          echo '${{ secrets.GCP_SA_KEY_STAGING }}' > /tmp/gcp_staging.json
-          echo '${{ secrets.GCP_SA_KEY_PRODUCTION }}' > /tmp/gcp_prod.json
+      - name: Write GCP Service Account Key
+        run: echo '${{ secrets.GCP_SA_KEY_STAGING }}' > /tmp/gcp_staging.json
 
       - name: Deploy Hosting to Staging
         run: firebase deploy --only hosting --project vailo-staging --non-interactive
@@ -51,12 +49,6 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_staging.json
           CI: 'true'
 
-      - name: Clone Production Database to Staging
-        run: node scripts/clone-prod-to-staging.mjs
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS_PRODUCTION: /tmp/gcp_prod.json
-          GOOGLE_APPLICATION_CREDENTIALS_STAGING: /tmp/gcp_staging.json
-
-      - name: Remove Service Account Keys
+      - name: Remove Service Account Key
         if: always()
-        run: rm -f /tmp/gcp_staging.json /tmp/gcp_prod.json
+        run: rm -f /tmp/gcp_staging.json

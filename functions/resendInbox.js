@@ -54,9 +54,70 @@ function messageDocId(resendEmailId) {
   return `resend_${resendEmailId}`;
 }
 
-async function isResendEmailDeleted(firestore, resendEmailId) {
-  const snap = await firestore.collection(DELETED_IDS_COLLECTION).doc(resendEmailId).get();
-  return snap.exists;
+function resolveResendEmailId(data, messageDocIdValue) {
+  const fromField = String(data?.resendEmailId || "").trim();
+  if (fromField) return fromField;
+  const docId = String(messageDocIdValue || "").trim();
+  if (docId.startsWith("resend_")) {
+    return docId.slice("resend_".length).trim() || null;
+  }
+  return null;
+}
+
+function normalizeMessageHeaderId(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^<|>$/g, "")
+    .toLowerCase();
+}
+
+async function isInboxMessageDeleted(firestore, { resendEmailId, messageHeaderId, docId }) {
+  const checks = [];
+  if (resendEmailId) {
+    checks.push(firestore.collection(DELETED_IDS_COLLECTION).doc(resendEmailId).get());
+    checks.push(
+      firestore.collection(DELETED_IDS_COLLECTION).doc(`doc_${messageDocId(resendEmailId)}`).get()
+    );
+  }
+  if (docId) {
+    checks.push(firestore.collection(DELETED_IDS_COLLECTION).doc(`doc_${docId}`).get());
+  }
+  const headerId = normalizeMessageHeaderId(messageHeaderId);
+  if (headerId) {
+    checks.push(firestore.collection(DELETED_IDS_COLLECTION).doc(`mid_${headerId}`).get());
+  }
+  const snaps = await Promise.all(checks);
+  return snaps.some((snap) => snap.exists);
+}
+
+async function recordDeletedInboxMessage(firestore, admin, { resendEmailId, resendSentId, docId, messageHeaderId }) {
+  const payload = {
+    deletedAt: FieldValue.serverTimestamp(),
+    deletedBy: admin.uid,
+    docId: docId || null,
+    resendEmailId: resendEmailId || null,
+    resendSentId: resendSentId || null,
+    messageHeaderId: messageHeaderId || null,
+  };
+
+  const writes = [];
+  if (resendEmailId) {
+    writes.push(firestore.collection(DELETED_IDS_COLLECTION).doc(resendEmailId).set(payload));
+    writes.push(
+      firestore.collection(DELETED_IDS_COLLECTION).doc(`doc_${messageDocId(resendEmailId)}`).set(payload)
+    );
+  }
+  if (docId) {
+    writes.push(firestore.collection(DELETED_IDS_COLLECTION).doc(`doc_${docId}`).set(payload));
+  }
+  if (resendSentId) {
+    writes.push(firestore.collection(DELETED_IDS_COLLECTION).doc(`sent_${resendSentId}`).set(payload));
+  }
+  const headerId = normalizeMessageHeaderId(messageHeaderId);
+  if (headerId) {
+    writes.push(firestore.collection(DELETED_IDS_COLLECTION).doc(`mid_${headerId}`).set(payload));
+  }
+  await Promise.all(writes);
 }
 
 async function tryDeleteFromResend(apiKey, { resendEmailId, resendSentId }, logger) {
@@ -95,16 +156,16 @@ async function deleteAdminInboxMessageById(firestore, apiKey, admin, messageId, 
   }
 
   const data = snap.data() || {};
-  const resendEmailId = String(data.resendEmailId || "").trim() || null;
+  const resendEmailId = resolveResendEmailId(data, messageId);
   const resendSentId = String(data.resendSentId || "").trim() || null;
+  const messageHeaderId = String(data.messageId || "").trim() || null;
 
-  if (resendEmailId) {
-    await firestore.collection(DELETED_IDS_COLLECTION).doc(resendEmailId).set({
-      messageDocId: messageId,
-      deletedAt: FieldValue.serverTimestamp(),
-      deletedBy: admin.uid,
-    });
-  }
+  await recordDeletedInboxMessage(firestore, admin, {
+    resendEmailId,
+    resendSentId,
+    docId: messageId,
+    messageHeaderId,
+  });
 
   const removedFromResend = await tryDeleteFromResend(
     apiKey,
@@ -117,11 +178,19 @@ async function deleteAdminInboxMessageById(firestore, apiKey, admin, messageId, 
   return { ok: true, notFound: false, removedFromResend };
 }
 
-async function upsertReceivedEmail(firestore, apiKey, summary, source) {
+async function upsertReceivedEmail(firestore, apiKey, summary, source, logger) {
   const resendEmailId = String(summary?.id || summary?.email_id || "").trim();
   if (!resendEmailId) return null;
 
-  if (await isResendEmailDeleted(firestore, resendEmailId)) {
+  const headerFromSummary = summary?.message_id || null;
+  if (
+    await isInboxMessageDeleted(firestore, {
+      resendEmailId,
+      messageHeaderId: headerFromSummary,
+      docId: messageDocId(resendEmailId),
+    })
+  ) {
+    logger?.info?.("resendInbox: skip deleted message", { resendEmailId, source });
     return null;
   }
 
@@ -133,6 +202,17 @@ async function upsertReceivedEmail(firestore, apiKey, summary, source) {
   }
 
   const full = await resendFetch(apiKey, `/emails/receiving/${encodeURIComponent(resendEmailId)}`);
+
+  if (
+    await isInboxMessageDeleted(firestore, {
+      resendEmailId,
+      messageHeaderId: full.message_id || headerFromSummary,
+      docId: messageDocId(resendEmailId),
+    })
+  ) {
+    logger?.info?.("resendInbox: skip deleted message after fetch", { resendEmailId, source });
+    return null;
+  }
 
   const attachments = (full.attachments || summary.attachments || []).map((a) => ({
     id: a.id,
@@ -223,8 +303,8 @@ async function syncAllReceived(firestore, apiKey, logger) {
     const list = await resendFetch(apiKey, `/emails/receiving${qs}`);
     const items = list?.data || [];
     for (const item of items) {
-      await upsertReceivedEmail(firestore, apiKey, item, "sync");
-      synced += 1;
+      const docId = await upsertReceivedEmail(firestore, apiKey, item, "sync", logger);
+      if (docId) synced += 1;
     }
     hasMore = Boolean(list?.has_more);
     after = items.length ? items[items.length - 1].id : null;
@@ -268,7 +348,8 @@ function registerResendInbox({ firestore, logger, firebaseExports }) {
             firestore,
             resendApiKey.value(),
             payload.data,
-            "webhook"
+            "webhook",
+            logger
           );
         }
 

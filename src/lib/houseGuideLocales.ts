@@ -55,6 +55,7 @@ export const HOUSE_GUIDE_TEXTAREA_FIELD_IDS = [
   'electricalAppliances',
   'smartHomeDevices',
   'dailyNeedsInfo',
+  'transportationInfo',
 ] as const;
 
 export type HouseGuideTextFieldId = (typeof HOUSE_GUIDE_TEXTAREA_FIELD_IDS)[number];

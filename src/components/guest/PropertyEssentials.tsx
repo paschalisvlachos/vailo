@@ -19,6 +19,7 @@ import {
   Wrench,
   MessageCircleQuestion,
   ShoppingBag,
+  Car,
   ChevronDown,
   Bot,
 } from 'lucide-react';
@@ -59,6 +60,7 @@ const ICONS: Record<string, ReactNode> = {
   Wrench: <Wrench size={18} />,
   MessageCircleQuestion: <MessageCircleQuestion size={18} />,
   ShoppingBag: <ShoppingBag size={18} />,
+  Car: <Car size={18} />,
 };
 
 export default function PropertyEssentials({

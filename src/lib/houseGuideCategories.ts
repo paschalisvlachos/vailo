@@ -56,6 +56,17 @@ export const HOUSE_GUIDE_EMERGENCY_OPTIONS = [
   'Other',
 ];
 
+export const HOUSE_GUIDE_TRANSPORTATION_OPTIONS = [
+  'Airport',
+  'Bus Stop',
+  'Taxi / Ride-hail Pick-up',
+  'Car Rental',
+  'Ferry Port',
+  'Train / Metro Station',
+  'Parking',
+  'Other',
+];
+
 export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
   {
     id: 'arrival',
@@ -298,6 +309,26 @@ export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
         id: 'dailyNeedsPlaces',
         label: 'Places (title & map link)',
         type: 'array_maps',
+      },
+    ],
+  },
+  {
+    id: 'transportation',
+    title: '21. Transportation',
+    iconName: 'Car',
+    description: 'Getting here and around — airport transfers, taxis, public transport, and parking.',
+    fields: [
+      {
+        id: 'transportationInfo',
+        label: 'Transportation — General Information',
+        type: 'textarea',
+        placeholder: 'Nearest airport, taxi apps, bus routes, car hire tips…',
+      },
+      {
+        id: 'transportationPlaces',
+        label: 'Places (title & map link)',
+        type: 'array_maps',
+        options: HOUSE_GUIDE_TRANSPORTATION_OPTIONS,
       },
     ],
   },

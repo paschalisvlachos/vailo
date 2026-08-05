@@ -20,6 +20,7 @@ import {
   Wrench,
   MessageCircleQuestion,
   ShoppingBag,
+  Car,
   BookOpen,
   ChevronDown,
   X,
@@ -58,6 +59,7 @@ const ICONS: Record<string, ReactNode> = {
   Wrench: <Wrench size={18} />,
   MessageCircleQuestion: <MessageCircleQuestion size={18} />,
   ShoppingBag: <ShoppingBag size={18} />,
+  Car: <Car size={18} />,
 };
 
 type Props = {

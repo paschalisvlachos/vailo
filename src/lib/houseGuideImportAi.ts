@@ -4,6 +4,7 @@ import { ai } from './firebase';
 import { normalizeLocaleCode } from './propertyContentLocales';
 import {
   HOUSE_GUIDE_CATEGORIES,
+  HOUSE_GUIDE_TRANSPORTATION_OPTIONS,
   HOUSE_GUIDE_EMERGENCY_OPTIONS,
   HOUSE_GUIDE_USEFUL_MAP_OPTIONS,
   HOUSE_GUIDE_WASTE_OPTIONS,
@@ -303,6 +304,7 @@ RULES:
 - For array_maps: return items with title and mapsLink (mapsLink may be empty).
 - For array_emergencies: category must be one of: ${HOUSE_GUIDE_EMERGENCY_OPTIONS.join(', ')}.
 - For array_maps in waste/supplies: prefer titles from ${HOUSE_GUIDE_WASTE_OPTIONS.join(', ')} or ${HOUSE_GUIDE_USEFUL_MAP_OPTIONS.join(', ')} when they fit.
+- For array_maps in transportation: prefer titles from ${HOUSE_GUIDE_TRANSPORTATION_OPTIONS.join(', ')} when they fit.
 - For array_faqs: return question / answer pairs.
 - mergeMode: "append" when adding to typical instructions; "replace" only if the source clearly supersedes prior info.
 - confidence: "high" when category+field are obvious; "medium" when reasonable; "low" when ambiguous.

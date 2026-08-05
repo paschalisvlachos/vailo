@@ -9,7 +9,7 @@ import {
   Droplets, BedDouble, ChefHat, Flame, Waves, Wifi, WashingMachine, 
   Trash2, ShieldAlert, Sparkles, Box, Wrench, MessageCircleQuestion,
   Loader2, Save, Plus, MapPin, CheckCircle2, Circle, ArrowRight, X, Edit3,
-  Star, Link2, ShoppingBag
+  Star, Link2, ShoppingBag, Car
 } from 'lucide-react';
 import {
   PORTAL_FEATURED_CAP,
@@ -114,6 +114,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   Wrench,
   MessageCircleQuestion,
   ShoppingBag,
+  Car,
 };
 
 const CATEGORIES: CategoryDef[] = HOUSE_GUIDE_CATEGORIES.map((cat) => ({

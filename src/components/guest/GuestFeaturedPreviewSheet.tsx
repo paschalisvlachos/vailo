@@ -19,6 +19,7 @@ import {
   Wrench,
   MessageCircleQuestion,
   ShoppingBag,
+  Car,
   Bot,
   X,
 } from 'lucide-react';
@@ -51,6 +52,7 @@ const ICONS: Record<string, ReactNode> = {
   Wrench: <Wrench size={20} />,
   MessageCircleQuestion: <MessageCircleQuestion size={20} />,
   ShoppingBag: <ShoppingBag size={20} />,
+  Car: <Car size={20} />,
 };
 
 type Props = {

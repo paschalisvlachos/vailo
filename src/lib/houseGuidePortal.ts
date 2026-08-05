@@ -36,7 +36,8 @@ export type FeaturedKey =
   | 'supplies'
   | 'devices'
   | 'faq'
-  | 'daily-needs';
+  | 'daily-needs'
+  | 'transportation';
 
 export type FeaturedConfig = {
   id: FeaturedKey;
@@ -63,7 +64,8 @@ export type FeaturedConfig = {
     | 'Box'
     | 'Wrench'
     | 'MessageCircleQuestion'
-    | 'ShoppingBag';
+    | 'ShoppingBag'
+    | 'Car';
   /** Admin CategoryDef.id values that feed this featured key. */
   sourceCategoryIds: string[];
 };
@@ -201,6 +203,13 @@ export const FEATURED_CONFIGS: FeaturedConfig[] = [
     description: 'Nearby shops, pharmacy, ATM, and everyday essentials.',
     iconName: 'ShoppingBag',
     sourceCategoryIds: ['dailyNeeds'],
+  },
+  {
+    id: 'transportation',
+    title: 'Transportation',
+    description: 'Airport transfers, taxis, public transport, and parking.',
+    iconName: 'Car',
+    sourceCategoryIds: ['transportation'],
   },
 ];
 

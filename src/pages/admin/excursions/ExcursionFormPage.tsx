@@ -1210,6 +1210,36 @@ export default function ExcursionFormPage() {
                     placeholder="Where guests meet or are picked up"
                   />
                 </div>
+                <div>
+                  <AdminLabel htmlFor="meetingPointLatitude">Meeting latitude *</AdminLabel>
+                  <AdminInput
+                    id="meetingPointLatitude"
+                    name="meetingPointLatitude"
+                    type="number"
+                    step="any"
+                    required
+                    value={formData.meetingPointLatitude}
+                    onChange={handleChange}
+                    placeholder="e.g. 35.3713"
+                    className={fieldErrorClass(Boolean(fieldErrors.meetingPointLatitude))}
+                  />
+                  <FieldError message={fieldErrors.meetingPointLatitude} />
+                </div>
+                <div>
+                  <AdminLabel htmlFor="meetingPointLongitude">Meeting longitude *</AdminLabel>
+                  <AdminInput
+                    id="meetingPointLongitude"
+                    name="meetingPointLongitude"
+                    type="number"
+                    step="any"
+                    required
+                    value={formData.meetingPointLongitude}
+                    onChange={handleChange}
+                    placeholder="e.g. 24.4824"
+                    className={fieldErrorClass(Boolean(fieldErrors.meetingPointLongitude))}
+                  />
+                  <FieldError message={fieldErrors.meetingPointLongitude} />
+                </div>
               </div>
             </section>
           </div>

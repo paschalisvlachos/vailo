@@ -25,7 +25,8 @@ export type ConciergePlaceContext = {
   name: string;
   category: string;
   description?: string;
-  scope?: 'property' | 'area';
+  scope?: 'property' | 'area' | 'neighbor';
+  sourceAreaLabel?: string;
 };
 
 export type ConciergeSearchAnchor = {
@@ -58,7 +59,12 @@ function buildCuratedPlacesBlock(places: ConciergePlaceContext[]): string {
     return 'No Vailo-curated places within this search area — use your regional knowledge with official Google Maps place names only.';
   }
   const lines = places.slice(0, 60).map((p) => {
-    const scope = p.scope === 'area' ? 'area gem' : 'host pick';
+    const scope =
+      p.scope === 'neighbor'
+        ? p.sourceAreaLabel || 'nearby region gem'
+        : p.scope === 'area'
+          ? 'area gem'
+          : 'host pick';
     const desc = p.description?.trim() ? ` — ${p.description.trim()}` : '';
     return `- ${p.name} (${p.category}, ${scope})${desc}`;
   });

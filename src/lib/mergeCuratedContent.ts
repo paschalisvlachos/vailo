@@ -1,29 +1,49 @@
-export type CuratedScope = 'property' | 'area';
+import {
+  type CuratedScope,
+  mergeGuestAreaContent,
+  tagCuratedScope,
+} from './areaNeighborGuestContent';
 
-/** Tag property vs area rows so picks can balance both curated pools. */
-export function tagCuratedScope<T extends Record<string, unknown>>(
+export type { CuratedScope };
+
+/** @deprecated Prefer mergeGuestAreaContent — kept for callers not yet on neighbor pools. */
+export function tagCuratedScopeLegacy<T extends Record<string, unknown>>(
   items: T[] | null | undefined,
-  scope: CuratedScope
-): Array<T & { curatedScope: CuratedScope }> {
-  return (items || []).map((item) => ({ ...item, curatedScope: scope }));
+  scope: Exclude<CuratedScope, 'neighbor'>
+): Array<T & { curatedScope: Exclude<CuratedScope, 'neighbor'> }> {
+  return tagCuratedScope(items, scope) as Array<T & { curatedScope: Exclude<CuratedScope, 'neighbor'> }>;
 }
 
 export function mergeCuratedGems(
   propertyGems: Record<string, unknown>[] | null | undefined,
   areaGems: Record<string, unknown>[] | null | undefined
 ): Array<Record<string, unknown> & { curatedScope: CuratedScope }> {
-  return [
-    ...tagCuratedScope(propertyGems, 'property'),
-    ...tagCuratedScope(areaGems, 'area'),
-  ];
+  return mergeGuestAreaContent({
+    propertyGems,
+    propertyFeatures: [],
+    homeGems: areaGems,
+    homeFeatures: [],
+    homeDiscoveredPlaces: [],
+    homeTrails: [],
+    neighborBundles: [],
+    includeNeighbors: false,
+  }).mergedGems;
 }
 
 export function mergeCuratedFeatures(
   propertyFeatures: Record<string, unknown>[] | null | undefined,
   areaFeatures: Record<string, unknown>[] | null | undefined
 ): Array<Record<string, unknown> & { curatedScope: CuratedScope }> {
-  return [
-    ...tagCuratedScope(propertyFeatures, 'property'),
-    ...tagCuratedScope(areaFeatures, 'area'),
-  ];
+  return mergeGuestAreaContent({
+    propertyGems: [],
+    propertyFeatures,
+    homeGems: [],
+    homeFeatures: areaFeatures,
+    homeDiscoveredPlaces: [],
+    homeTrails: [],
+    neighborBundles: [],
+    includeNeighbors: false,
+  }).mergedFeatures;
 }
+
+export { tagCuratedScope } from './areaNeighborGuestContent';

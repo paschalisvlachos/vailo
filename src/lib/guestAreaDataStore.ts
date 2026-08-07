@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSyncExternalStore } from 'react';
-import { collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   resolvePropertyTypeAreaContext,
@@ -22,15 +22,27 @@ import {
   type LocalTrailRecord,
 } from './localTrailsGuest';
 import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
-import { isGuestVerifiedDiscoveredPlace } from './guestDiscoveredPlaces';
+import { isGuestVerifiedDiscoveredPlace, type GuestDiscoveredPlaceRow } from './guestDiscoveredPlaces';
 import {
-  loadGuestExcursionsForArea,
+  loadGuestExcursionsForListing,
   type GuestExcursionListing,
 } from './guestExcursions';
+import { parseNeighborAreaIds } from './areaNeighbors';
+import {
+  countMergedNeighborItems,
+  countNeighborContent,
+  mergeGuestAreaContent,
+  type NeighborContentBundle,
+} from './areaNeighborGuestContent';
 import { useGuestLocale } from '../context/GuestLocaleContext';
 import { usePropertyContentLocaleSettings } from '../hooks/usePropertyContentLocaleSettings';
 
 export type GemCategoryOption = CategoryOption;
+
+export type NeighborContentStats = {
+  raw: { gems: number; features: number; discoveredPlaces: number; trails: number };
+  merged: { gems: number; features: number; discoveredPlaces: number; trails: number };
+};
 
 export type GuestAreaDataSnapshot = {
   listingAreaCtx: ListingAreaContext | null;
@@ -49,6 +61,8 @@ export type GuestAreaDataSnapshot = {
   discoveredPlaces: any[];
   areaGems: any[];
   areaFeatures: any[];
+  homeDiscoveredPlaces: any[];
+  homeLocalTrails: LocalTrailRecord[];
   localTrails: LocalTrailRecord[];
   mergedGems: any[];
   mergedFeatures: any[];
@@ -57,6 +71,17 @@ export type GuestAreaDataSnapshot = {
   excursionListings: GuestExcursionListing[];
   excursionsLoading: boolean;
   excursionsAvailable: boolean;
+  neighborAreaIds: string[];
+  neighborAreaNames: Record<string, string>;
+  neighborBundles: NeighborContentBundle[];
+  neighborOverlapEnabled: boolean;
+  neighborOverlapDisabledReason: string | null;
+  neighborContentStats: NeighborContentStats;
+};
+
+const emptyNeighborStats: NeighborContentStats = {
+  raw: { gems: 0, features: 0, discoveredPlaces: 0, trails: 0 },
+  merged: { gems: 0, features: 0, discoveredPlaces: 0, trails: 0 },
 };
 
 const emptySnapshot: GuestAreaDataSnapshot = {
@@ -73,6 +98,8 @@ const emptySnapshot: GuestAreaDataSnapshot = {
   discoveredPlaces: [],
   areaGems: [],
   areaFeatures: [],
+  homeDiscoveredPlaces: [],
+  homeLocalTrails: [],
   localTrails: [],
   mergedGems: [],
   mergedFeatures: [],
@@ -81,6 +108,12 @@ const emptySnapshot: GuestAreaDataSnapshot = {
   excursionListings: [],
   excursionsLoading: true,
   excursionsAvailable: false,
+  neighborAreaIds: [],
+  neighborAreaNames: {},
+  neighborBundles: [],
+  neighborOverlapEnabled: false,
+  neighborOverlapDisabledReason: null,
+  neighborContentStats: emptyNeighborStats,
 };
 
 type Listener = () => void;
@@ -112,10 +145,76 @@ export function useGuestAreaData(): GuestAreaDataSnapshot {
 
 type PrefetchProps = {
   property: Record<string, unknown> | null | undefined;
-  propertyType: { country?: string; city?: string } | null | undefined;
+  propertyType: { country?: string; city?: string; latitude?: unknown; longitude?: unknown } | null | undefined;
   propertyGems: any[];
   propertyFeatures: any[];
 };
+
+function parsePropertyCoords(
+  property: Record<string, unknown> | null | undefined,
+  propertyType: PrefetchProps['propertyType']
+): { lat: number; lng: number } | null {
+  const latRaw = propertyType?.latitude ?? property?.latitude;
+  const lngRaw = propertyType?.longitude ?? property?.longitude;
+  const lat = typeof latRaw === 'number' ? latRaw : parseFloat(String(latRaw ?? ''));
+  const lng = typeof lngRaw === 'number' ? lngRaw : parseFloat(String(lngRaw ?? ''));
+  if (isNaN(lat) || isNaN(lng)) return null;
+  return { lat, lng };
+}
+
+function neighborAreaDisplayName(
+  areaId: string,
+  data: Record<string, unknown> | undefined,
+  names: Record<string, string>
+): string {
+  if (names[areaId]?.trim()) return names[areaId].trim();
+  const fromDoc = typeof data?.name === 'string' ? data.name.trim() : '';
+  return fromDoc || areaId;
+}
+
+function publishMergedContent(
+  propertyGems: any[],
+  propertyFeatures: any[],
+  partial?: Partial<GuestAreaDataSnapshot>
+) {
+  const current = getGuestAreaDataSnapshot();
+  const next = { ...current, ...partial };
+  const includeNeighbors = next.neighborOverlapEnabled && next.neighborBundles.length > 0;
+
+  const merged = mergeGuestAreaContent({
+    propertyGems,
+    propertyFeatures,
+    homeGems: next.areaGems,
+    homeFeatures: next.areaFeatures,
+    homeDiscoveredPlaces: next.homeDiscoveredPlaces,
+    homeTrails: next.homeLocalTrails,
+    neighborBundles: next.neighborBundles,
+    includeNeighbors,
+  });
+
+  const rawNeighbor = countNeighborContent(next.neighborBundles);
+
+  patchSnapshot({
+    ...partial,
+    mergedGems: merged.mergedGems,
+    mergedFeatures: merged.mergedFeatures,
+    discoveredPlaces: merged.discoveredPlaces,
+    localTrails: merged.localTrails as LocalTrailRecord[],
+    verifiedDiscoveredPlaces: merged.discoveredPlaces.filter((row) =>
+      isGuestVerifiedDiscoveredPlace(row as GuestDiscoveredPlaceRow)
+    ),
+    guestEligibleTrails: filterGuestEligibleTrails(merged.localTrails as LocalTrailRecord[]),
+    neighborContentStats: {
+      raw: rawNeighbor,
+      merged: {
+        gems: countMergedNeighborItems(merged.mergedGems),
+        features: countMergedNeighborItems(merged.mergedFeatures),
+        discoveredPlaces: countMergedNeighborItems(merged.discoveredPlaces),
+        trails: merged.localTrails.filter((trail) => trail.curatedScope === 'neighbor').length,
+      },
+    },
+  });
+}
 
 /** Starts area listeners + category/excursion prefetch as soon as the portal has type data. */
 export function GuestAreaPrefetcher({
@@ -128,8 +227,12 @@ export function GuestAreaPrefetcher({
   const contentSettings = usePropertyContentLocaleSettings(property);
   const areaData = useGuestAreaData();
   const listingAreaCtx = areaData.listingAreaCtx;
+  const neighborAreaIds = areaData.neighborAreaIds;
+  const neighborAreaNames = areaData.neighborAreaNames;
+  const neighborOverlapEnabled = areaData.neighborOverlapEnabled;
+  const propertyCoords = parsePropertyCoords(property, propertyType);
 
-  const areaKey = `${propertyType?.country ?? ''}|${propertyType?.city ?? ''}|${locale}|${contentSettings.primaryLocale}`;
+  const areaKey = `${propertyType?.country ?? ''}|${propertyType?.city ?? ''}|${locale}|${contentSettings.primaryLocale}|${propertyCoords?.lat ?? 'na'}:${propertyCoords?.lng ?? 'na'}`;
 
   useEffect(() => {
     if (prefetchKey === areaKey) return;
@@ -172,6 +275,11 @@ export function GuestAreaPrefetcher({
           categoryKnowledgeByPrimary: {},
           categoryCatalogDocs: [],
           categoriesLoading: false,
+          neighborAreaIds: [],
+          neighborAreaNames: {},
+          neighborBundles: [],
+          neighborOverlapEnabled: false,
+          neighborOverlapDisabledReason: null,
         });
         return;
       }
@@ -249,16 +357,30 @@ export function GuestAreaPrefetcher({
 
   useEffect(() => {
     if (!listingAreaCtx?.areaId) {
-      patchSnapshot({
+      publishMergedContent(propertyGems, propertyFeatures, {
         discoveredPlaces: [],
         areaGems: [],
         areaFeatures: [],
-        mergedGems: mergeCuratedGems(propertyGems, []),
-        mergedFeatures: mergeCuratedFeatures(propertyFeatures, []),
-        verifiedDiscoveredPlaces: [],
+        homeDiscoveredPlaces: [],
+        homeLocalTrails: [],
+        localTrails: [],
+        neighborAreaIds: [],
+        neighborAreaNames: {},
+        neighborBundles: [],
+        neighborOverlapEnabled: false,
+        neighborOverlapDisabledReason: null,
+        neighborContentStats: emptyNeighborStats,
       });
       return;
     }
+
+    const areaRef = doc(db, 'countries', listingAreaCtx.country, 'areas', listingAreaCtx.areaId);
+    let homeDiscovered: any[] = [];
+    let homeGems: any[] = [];
+    let homeFeatures: any[] = [];
+    let homeTrails: LocalTrailRecord[] = [];
+    let neighborAreaIds: string[] = [];
+    let neighborAreaNames: Record<string, string> = {};
 
     const areaBase = [
       'countries',
@@ -267,37 +389,51 @@ export function GuestAreaPrefetcher({
       listingAreaCtx.areaId,
     ] as const;
 
-    const applyAreaRows = (partial: {
-      discoveredPlaces?: any[];
-      areaGems?: any[];
-      areaFeatures?: any[];
-    }) => {
-      const current = getGuestAreaDataSnapshot();
-      const nextDiscovered = partial.discoveredPlaces ?? current.discoveredPlaces;
-      const nextGems = partial.areaGems ?? current.areaGems;
-      const nextFeatures = partial.areaFeatures ?? current.areaFeatures;
-      patchSnapshot({
-        discoveredPlaces: nextDiscovered,
-        areaGems: nextGems,
-        areaFeatures: nextFeatures,
-        mergedGems: mergeCuratedGems(propertyGems, nextGems),
-        mergedFeatures: mergeCuratedFeatures(propertyFeatures, nextFeatures),
-        verifiedDiscoveredPlaces: nextDiscovered.filter(isGuestVerifiedDiscoveredPlace),
+    const refreshNeighborState = () => {
+      const hasNeighbors = neighborAreaIds.length > 0;
+      const hasCoords = !!propertyCoords;
+      let neighborOverlapEnabled = hasNeighbors && hasCoords;
+      let neighborOverlapDisabledReason: string | null = null;
+
+      if (hasNeighbors && !hasCoords) {
+        neighborOverlapDisabledReason =
+          'Nearby region overlap is configured, but this listing has no map coordinates yet.';
+      }
+
+      publishMergedContent(propertyGems, propertyFeatures, {
+        areaGems: homeGems,
+        areaFeatures: homeFeatures,
+        homeDiscoveredPlaces: homeDiscovered,
+        homeLocalTrails: homeTrails,
+        neighborAreaIds,
+        neighborAreaNames,
+        neighborOverlapEnabled,
+        neighborOverlapDisabledReason,
       });
     };
 
     const unsubs = [
+      onSnapshot(areaRef, (snap) => {
+        neighborAreaIds = parseNeighborAreaIds(snap.exists() ? snap.data() : undefined);
+        refreshNeighborState();
+      }),
       onSnapshot(collection(db, ...areaBase, 'discoveredPlaces'), (snap) => {
-        const places = snap.docs
+        homeDiscovered = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((p: any) => p.status !== 'hidden');
-        applyAreaRows({ discoveredPlaces: places });
+        refreshNeighborState();
       }),
       onSnapshot(collection(db, ...areaBase, 'localGems'), (snap) => {
-        applyAreaRows({ areaGems: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+        homeGems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        refreshNeighborState();
       }),
       onSnapshot(collection(db, ...areaBase, 'areaFeatures'), (snap) => {
-        applyAreaRows({ areaFeatures: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+        homeFeatures = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        refreshNeighborState();
+      }),
+      onSnapshot(collection(db, ...areaBase, 'localTrails'), (snap) => {
+        homeTrails = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
+        refreshNeighborState();
       }),
     ];
 
@@ -307,31 +443,158 @@ export function GuestAreaPrefetcher({
     listingAreaCtx?.country,
     propertyGems,
     propertyFeatures,
+    propertyCoords?.lat,
+    propertyCoords?.lng,
   ]);
 
   useEffect(() => {
-    if (!listingAreaCtx?.areaId) {
-      patchSnapshot({ localTrails: [], guestEligibleTrails: [] });
-      return;
-    }
+    if (!listingAreaCtx?.areaId) return;
 
-    const trailsRef = collection(
-      db,
-      'countries',
-      listingAreaCtx.country,
-      'areas',
-      listingAreaCtx.areaId,
-      'localTrails'
-    );
-    const unsubscribe = onSnapshot(trailsRef, (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
-      patchSnapshot({
-        localTrails: rows,
-        guestEligibleTrails: filterGuestEligibleTrails(rows),
+    let cancelled = false;
+    let neighborBundles: NeighborContentBundle[] = [];
+    const neighborRows = new Map<
+      string,
+      {
+        gems: any[];
+        features: any[];
+        discoveredPlaces: any[];
+        trails: LocalTrailRecord[];
+      }
+    >();
+
+    const publishNeighbors = () => {
+      if (cancelled) return;
+      const current = getGuestAreaDataSnapshot();
+      neighborBundles = current.neighborAreaIds.map((areaId) => {
+        const rows = neighborRows.get(areaId) || {
+          gems: [],
+          features: [],
+          discoveredPlaces: [],
+          trails: [],
+        };
+        return {
+          areaId,
+          areaName: current.neighborAreaNames[areaId] || areaId,
+          gems: rows.gems,
+          features: rows.features,
+          discoveredPlaces: rows.discoveredPlaces,
+          trails: rows.trails,
+        };
       });
-    });
-    return () => unsubscribe();
-  }, [listingAreaCtx?.areaId, listingAreaCtx?.country]);
+
+      publishMergedContent(propertyGems, propertyFeatures, {
+        neighborBundles,
+      });
+    };
+
+    const loadNeighborNames = async (ids: string[]) => {
+      const names: Record<string, string> = {};
+      await Promise.all(
+        ids.map(async (areaId) => {
+          const snap = await getDoc(
+            doc(db, 'countries', listingAreaCtx.country, 'areas', areaId)
+          );
+          names[areaId] = neighborAreaDisplayName(
+            areaId,
+            snap.exists() ? snap.data() : undefined,
+            names
+          );
+        })
+      );
+      if (cancelled) return;
+      patchSnapshot({ neighborAreaNames: names });
+      publishNeighbors();
+    };
+
+    const areaRef = doc(db, 'countries', listingAreaCtx.country, 'areas', listingAreaCtx.areaId);
+    const unsubs: Array<() => void> = [];
+    let activeNeighborIds: string[] = [];
+    let neighborUnsubs: Array<() => void> = [];
+
+    const clearNeighborListeners = () => {
+      neighborUnsubs.forEach((u) => u());
+      neighborUnsubs = [];
+      neighborRows.clear();
+    };
+
+    const attachNeighborListeners = (ids: string[]) => {
+      clearNeighborListeners();
+      if (!propertyCoords || ids.length === 0) {
+        publishNeighbors();
+        return;
+      }
+
+      for (const neighborId of ids) {
+        neighborRows.set(neighborId, {
+          gems: [],
+          features: [],
+          discoveredPlaces: [],
+          trails: [],
+        });
+
+        const base = [
+          'countries',
+          listingAreaCtx.country,
+          'areas',
+          neighborId,
+        ] as const;
+
+        const publishNeighbor = () => publishNeighbors();
+
+        neighborUnsubs.push(
+          onSnapshot(collection(db, ...base, 'discoveredPlaces'), (snap) => {
+            const rows = neighborRows.get(neighborId);
+            if (!rows) return;
+            rows.discoveredPlaces = snap.docs
+              .map((d) => ({ id: d.id, ...d.data() }))
+              .filter((p: any) => p.status !== 'hidden');
+            publishNeighbor();
+          }),
+          onSnapshot(collection(db, ...base, 'localGems'), (snap) => {
+            const rows = neighborRows.get(neighborId);
+            if (!rows) return;
+            rows.gems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            publishNeighbor();
+          }),
+          onSnapshot(collection(db, ...base, 'areaFeatures'), (snap) => {
+            const rows = neighborRows.get(neighborId);
+            if (!rows) return;
+            rows.features = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            publishNeighbor();
+          }),
+          onSnapshot(collection(db, ...base, 'localTrails'), (snap) => {
+            const rows = neighborRows.get(neighborId);
+            if (!rows) return;
+            rows.trails = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
+            publishNeighbor();
+          })
+        );
+      }
+    };
+
+    unsubs.push(
+      onSnapshot(areaRef, (snap) => {
+        const ids = parseNeighborAreaIds(snap.exists() ? snap.data() : undefined);
+        if (ids.join('|') === activeNeighborIds.join('|')) return;
+        activeNeighborIds = ids;
+        void loadNeighborNames(ids);
+        attachNeighborListeners(ids);
+      })
+    );
+
+    return () => {
+      cancelled = true;
+      clearNeighborListeners();
+      unsubs.forEach((u) => u());
+    };
+  }, [
+    listingAreaCtx?.areaId,
+    listingAreaCtx?.country,
+    propertyGems,
+    propertyFeatures,
+    propertyCoords?.lat,
+    propertyCoords?.lng,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -348,7 +611,18 @@ export function GuestAreaPrefetcher({
       }
 
       try {
-        const items = await loadGuestExcursionsForArea(listingAreaCtx);
+        const neighborAreas = neighborOverlapEnabled
+          ? neighborAreaIds.map((areaId) => ({
+              areaId,
+              areaName: neighborAreaNames[areaId] || areaId,
+            }))
+          : [];
+
+        const items = await loadGuestExcursionsForListing({
+          homeArea: listingAreaCtx,
+          neighborAreas,
+          propertyCoords,
+        });
         if (!cancelled) {
           patchSnapshot({
             excursionListings: items,
@@ -372,7 +646,15 @@ export function GuestAreaPrefetcher({
     return () => {
       cancelled = true;
     };
-  }, [listingAreaCtx?.areaId, listingAreaCtx?.country]);
+  }, [
+    listingAreaCtx?.areaId,
+    listingAreaCtx?.country,
+    neighborOverlapEnabled,
+    neighborAreaIds.join('|'),
+    neighborAreaIds.map((id) => neighborAreaNames[id] || id).join('|'),
+    propertyCoords?.lat,
+    propertyCoords?.lng,
+  ]);
 
   useEffect(() => {
     if (areaData.guestEligibleTrails.length === 0) return;

@@ -10,6 +10,7 @@ import type { SavedLocalGemInput } from '../../lib/savedLocalGems';
 export type LocalPickCardItem = Omit<SavedLocalGemInput, 'category'> & {
   category?: string;
   previouslyShown?: boolean;
+  sourceAreaLabel?: string;
 };
 
 type Props = {
@@ -110,6 +111,11 @@ export default function LocalPickCard({
           {item.source === 'database' && (
             <span className="guest-badge bg-vailo-gold/20 text-vailo-gold border border-vailo-gold/25 shrink-0">
               Vailo pick
+            </span>
+          )}
+          {item.sourceAreaLabel && (
+            <span className="guest-badge bg-white/10 text-white/80 border border-white/15 shrink-0">
+              {item.sourceAreaLabel}
             </span>
           )}
         </div>

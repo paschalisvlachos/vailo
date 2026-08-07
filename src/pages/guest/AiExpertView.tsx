@@ -22,6 +22,7 @@ import {
   applyPickVerificationToPlan,
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
+  buildNeighborOnlyBrowseCategories,
   buildWizardGemsOnlyPlan,
   collectUnverifiedMentionsFromPlan,
   effectiveMaxDistanceKm,
@@ -1194,7 +1195,13 @@ export default function AiExpertView({
             name: lg.name,
             category: lg.category,
             description: lg.description,
-            scope: (g.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
+            scope: (g.curatedScope === 'neighbor'
+              ? 'neighbor'
+              : g.curatedScope === 'area'
+                ? 'area'
+                : 'property') as 'property' | 'area' | 'neighbor',
+            sourceAreaLabel:
+              typeof g.sourceAreaLabel === 'string' ? g.sourceAreaLabel : undefined,
           };
         }),
         ...featuresInRange.map((f) => {
@@ -1203,7 +1210,13 @@ export default function AiExpertView({
             name: lf.name,
             category: lf.category,
             description: lf.description,
-            scope: (f.curatedScope === 'area' ? 'area' : 'property') as 'area' | 'property',
+            scope: (f.curatedScope === 'neighbor'
+              ? 'neighbor'
+              : f.curatedScope === 'area'
+                ? 'area'
+                : 'property') as 'property' | 'area' | 'neighbor',
+            sourceAreaLabel:
+              typeof f.sourceAreaLabel === 'string' ? f.sourceAreaLabel : undefined,
           };
         }),
       ].filter((p) => p.name?.trim());
@@ -1541,6 +1554,8 @@ export default function AiExpertView({
       };
     }
 
+    const hardCap = effectiveMaxDistanceKm(maxKmLimit);
+
     const filterItems = (items: any[]) => {
       return items?.map(item => {
         const coords = extractCoords(item);
@@ -1549,7 +1564,7 @@ export default function AiExpertView({
         // property-area gems in a completely different city's search.
         if (!coords) return null;
         return { ...item, calculatedKm: calculateRealisticDrivingDistance(startCoords!.lat, startCoords!.lng, coords.lat, coords.lng) };
-      }).filter(item => item !== null && item.calculatedKm <= maxKmLimit) || [];
+      }).filter(item => item !== null && item.calculatedKm <= hardCap) || [];
     };
 
     const filteredGems = fairSort(filterItems(mergedGems), recentlyShown);
@@ -1880,7 +1895,26 @@ export default function AiExpertView({
           resolveCategoryLabel: resolveCategoryDisplayLabel,
         });
 
-        let initialPlan = mergeTrailCategoriesIntoPlan(gemsPlan, trailCategoryBlocks);
+        const neighborBrowse = buildNeighborOnlyBrowseCategories({
+          mergedGems,
+          homeCategoryPrimaries: nonHikingCategories,
+          maxKm: distanceLimitNum,
+          startCoords,
+          catalogDocs: categoryCatalogDocs,
+          primaryLocale: contentSettings.primaryLocale,
+          guestLocale: locale,
+          recentlyShown,
+          knowledgeByPrimary: categoryKnowledgeByPrimary,
+          resolveCategoryLabel: resolveCategoryDisplayLabel,
+        });
+
+        let initialPlan = mergeTrailCategoriesIntoPlan(
+          {
+            type: 'picks',
+            categories: [...(gemsPlan.categories || []), ...neighborBrowse],
+          },
+          trailCategoryBlocks
+        );
         initialPlan =
           stripExcludedCategoriesFromPlan(initialPlan, excludedLiveLikeLocalPrimaries) ??
           initialPlan;

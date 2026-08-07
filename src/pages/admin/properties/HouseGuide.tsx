@@ -32,7 +32,6 @@ import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
 import {
-  resolveFeaturedDigest,
   resolveFeaturedPreviewLine,
   normalizeLocaleCode,
 } from '../../../lib/propertyContentLocales';

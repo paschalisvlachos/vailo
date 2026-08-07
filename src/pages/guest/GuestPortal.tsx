@@ -805,6 +805,7 @@ function GuestPortalPage({
                       onOpenChange={setPortalMenuOpen}
                       t={t}
                       featuredOnPortal={featuredOnPortal}
+                      previews={featuredPreviews}
                       onFeaturedPreview={setFeaturedPreviewKey}
                       onLiveLikeLocal={openLiveLikeLocal}
                       onAssistant={openAssistant}
@@ -982,6 +983,11 @@ function GuestPortalPage({
               <PropertyEssentials
                 featuredOnPortal={featuredOnPortal}
                 previews={featuredPreviews}
+                guideData={
+                  guide && typeof guide === 'object'
+                    ? (guide as Record<string, unknown>)
+                    : undefined
+                }
                 onAskAssistant={() => setActiveView('assistant')}
               />
 
@@ -1122,6 +1128,9 @@ function GuestPortalPage({
       <GuestFeaturedPreviewSheet
         featuredKey={featuredPreviewKey}
         previews={featuredPreviews}
+        guideData={
+          guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : undefined
+        }
         onClose={() => setFeaturedPreviewKey(null)}
         onAskAssistant={openAssistant}
       />

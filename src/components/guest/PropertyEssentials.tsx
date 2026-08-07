@@ -28,15 +28,17 @@ import {
   getFeaturedConfig,
   type FeaturedKey,
   type FeaturedPreviewsMap,
+  resolveFeaturedDigestForPortal,
 } from '../../lib/houseGuidePortal';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
-import { resolveFeaturedDigest } from '../../lib/propertyContentLocales';
+import { resolveFeaturedPreviewLine, resolveFeaturedDigest } from '../../lib/propertyContentLocales';
 import GuestLinkifiedText from './GuestLinkifiedText';
 
 type Props = {
   featuredOnPortal: FeaturedKey[];
   previews: FeaturedPreviewsMap;
+  guideData?: Record<string, unknown>;
   onAskAssistant: () => void;
 };
 
@@ -66,6 +68,7 @@ const ICONS: Record<string, ReactNode> = {
 export default function PropertyEssentials({
   featuredOnPortal,
   previews,
+  guideData,
   onAskAssistant,
 }: Props) {
   const [openKey, setOpenKey] = useState<FeaturedKey | null>(null);
@@ -94,12 +97,27 @@ export default function PropertyEssentials({
           const cfg = getFeaturedConfig(key);
           if (!cfg) return null;
           const preview = previews?.[key] || {};
-          const digest = resolveFeaturedDigest(
+          const previewLine = resolveFeaturedPreviewLine(
             preview,
             locale,
             contentPrimaryLocale,
             contentReviewedLocales
           );
+          const digest = guideData
+            ? resolveFeaturedDigestForPortal(
+                key,
+                preview,
+                guideData,
+                locale,
+                contentPrimaryLocale,
+                contentReviewedLocales
+              )
+            : resolveFeaturedDigest(
+                preview,
+                locale,
+                contentPrimaryLocale,
+                contentReviewedLocales
+              );
           const icon = ICONS[cfg.iconName] || <Sparkles size={18} />;
           const isOpen = openKey === key;
 
@@ -127,7 +145,12 @@ export default function PropertyEssentials({
                     isOpen ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'
                   }`}
                 >
-                  {cfg.title}
+                  <span className="block">{cfg.title}</span>
+                  {!isOpen && previewLine.trim() && (
+                    <span className="block text-sm font-normal text-gray-500 mt-0.5 line-clamp-2 leading-snug">
+                      {previewLine.trim()}
+                    </span>
+                  )}
                 </span>
                 <div
                   className={`p-1.5 rounded-full transition-all ${

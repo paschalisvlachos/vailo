@@ -4,7 +4,8 @@ import {
   type HouseGuideFieldDef,
 } from './houseGuideCategories';
 import { getGuideTextValue } from './houseGuideLocales';
-import { normalizeLocaleCode } from './propertyContentLocales';
+import { resolveFeaturedDigest, normalizeLocaleCode } from './propertyContentLocales';
+import { ensureSourceUrlsInDigest } from './houseGuidePreviewAi';
 
 /**
  * Maps admin House Guide categories to the "featured keys" that can be
@@ -383,3 +384,23 @@ export type FeaturedPreviewRecord = {
 };
 
 export type FeaturedPreviewsMap = Partial<Record<FeaturedKey, FeaturedPreviewRecord>>;
+
+/** Guest/admin digest with booking & timetable URLs from source when AI omitted them. */
+export function resolveFeaturedDigestForPortal(
+  key: FeaturedKey,
+  record: FeaturedPreviewRecord | undefined,
+  guideData: Record<string, unknown>,
+  locale: string,
+  primaryLocale: string,
+  reviewedLocales?: string[] | null
+): string {
+  const digest = resolveFeaturedDigest(record, locale, primaryLocale, reviewedLocales);
+  const source = buildSourceTextForFeaturedKey(
+    key,
+    guideData,
+    fieldsForHouseGuideCategoryId,
+    locale,
+    primaryLocale
+  );
+  return ensureSourceUrlsInDigest(digest, source);
+}

@@ -27,9 +27,10 @@ import {
   getFeaturedConfig,
   type FeaturedKey,
   type FeaturedPreviewsMap,
+  resolveFeaturedDigestForPortal,
 } from '../../lib/houseGuidePortal';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
-import { resolveFeaturedDigest } from '../../lib/propertyContentLocales';
+import { resolveFeaturedDigest, resolveFeaturedPreviewLine } from '../../lib/propertyContentLocales';
 import GuestLinkifiedText from './GuestLinkifiedText';
 
 const ICONS: Record<string, ReactNode> = {
@@ -58,6 +59,7 @@ const ICONS: Record<string, ReactNode> = {
 type Props = {
   featuredKey: FeaturedKey | null;
   previews: FeaturedPreviewsMap;
+  guideData?: Record<string, unknown>;
   onClose: () => void;
   onAskAssistant: () => void;
 };
@@ -65,6 +67,7 @@ type Props = {
 export default function GuestFeaturedPreviewSheet({
   featuredKey,
   previews,
+  guideData,
   onClose,
   onAskAssistant,
 }: Props) {
@@ -72,16 +75,38 @@ export default function GuestFeaturedPreviewSheet({
 
   const cfg = featuredKey ? getFeaturedConfig(featuredKey) : null;
 
-  const digest = useMemo(() => {
+  const previewLine = useMemo(() => {
     if (!featuredKey || !cfg) return '';
     const preview = previews?.[featuredKey] || {};
-    return resolveFeaturedDigest(
+    return resolveFeaturedPreviewLine(
       preview,
       locale,
       contentPrimaryLocale,
       contentReviewedLocales
     );
   }, [featuredKey, cfg, previews, locale, contentPrimaryLocale, contentReviewedLocales]);
+
+  const digest = useMemo(() => {
+    if (!featuredKey || !cfg) return '';
+    const preview = previews?.[featuredKey] || {};
+    return guideData
+      ? resolveFeaturedDigestForPortal(
+          featuredKey,
+          preview,
+          guideData,
+          locale,
+          contentPrimaryLocale,
+          contentReviewedLocales
+        )
+      : resolveFeaturedDigest(
+          preview,
+          locale,
+          contentPrimaryLocale,
+          contentReviewedLocales
+        );
+  }, [featuredKey, cfg, previews, guideData, locale, contentPrimaryLocale, contentReviewedLocales]);
+
+  const bodyText = previewLine.trim() || digest;
 
   if (!featuredKey || !cfg) return null;
 
@@ -130,9 +155,9 @@ export default function GuestFeaturedPreviewSheet({
         </div>
 
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-          {digest ? (
+          {bodyText ? (
             <GuestLinkifiedText
-              text={digest}
+              text={bodyText}
               className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
             />
           ) : (

@@ -37,6 +37,7 @@ import AreaFeatures from "./pages/admin/area/AreaFeatures";
 import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
 import AreaLocalTrails from "./pages/admin/area/AreaLocalTrails";
 import AreaRadar from "./pages/admin/area/AreaRadar";
+import AreaNeighborPreview from "./pages/admin/area/AreaNeighborPreview";
 import ExcursionProvidersPage from "./pages/admin/excursions/ExcursionProvidersPage";
 import ExcursionProviderFormPage from "./pages/admin/excursions/ExcursionProviderFormPage";
 import ExcursionProviderPortalHome from "./pages/admin/excursions/ExcursionProviderPortalHome";
@@ -191,6 +192,7 @@ export default function App() {
           <Route path="area/:country/:area/discovered-places" element={<PlatformAdminOnly><AreaDiscoveredPlaces /></PlatformAdminOnly>} />
           <Route path="area/:country/:area/area-radar" element={<PlatformAdminOnly><AreaRadar /></PlatformAdminOnly>} />
           <Route path="area/:country/:area/local-trails" element={<PlatformAdminOnly><AreaLocalTrails /></PlatformAdminOnly>} />
+          <Route path="area/:country/:area/overlap-preview" element={<PlatformAdminOnly><AreaNeighborPreview /></PlatformAdminOnly>} />
 
           <Route path="excursions/providers" element={<PlatformAdminOnly><ExcursionProvidersPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/add" element={<PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly>} />

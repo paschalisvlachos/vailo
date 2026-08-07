@@ -25,6 +25,7 @@ export type ConciergePickItem = {
   googlePlaceId?: string;
   latitude?: number;
   longitude?: number;
+  sourceAreaLabel?: string;
 };
 
 type PoolEntry = {
@@ -37,6 +38,8 @@ type PoolEntry = {
   latitude?: number;
   longitude?: number;
   alternateTitles?: string[];
+  curatedScope?: 'property' | 'area' | 'neighbor';
+  sourceAreaLabel?: string;
 };
 
 export type ProcessedConciergeRecommendations = {
@@ -149,6 +152,14 @@ export function buildConciergeMatchPool(params: {
       alternateTitles: Array.isArray(row.alternateTitles)
         ? row.alternateTitles.map((t) => String(t || '').trim()).filter(Boolean)
         : undefined,
+      curatedScope:
+        row.curatedScope === 'neighbor'
+          ? 'neighbor'
+          : row.curatedScope === 'area'
+            ? 'area'
+            : 'property',
+      sourceAreaLabel:
+        typeof row.sourceAreaLabel === 'string' ? row.sourceAreaLabel.trim() || undefined : undefined,
     });
   };
 
@@ -185,6 +196,7 @@ function poolEntryToPick(entry: PoolEntry): ConciergePickItem {
     googlePlaceId: entry.googlePlaceId,
     latitude: entry.latitude,
     longitude: entry.longitude,
+    sourceAreaLabel: entry.sourceAreaLabel,
   };
 }
 

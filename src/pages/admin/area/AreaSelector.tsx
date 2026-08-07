@@ -18,8 +18,10 @@ import {
   Radar,
   Footprints,
   ScanSearch,
+  Link2,
 } from 'lucide-react';
 import AreaLanguagesCard from '../../../components/admin/AreaLanguagesCard';
+import AreaNeighborsCard from '../../../components/admin/AreaNeighborsCard';
 import { loadCountryNames } from '../../../lib/countryNames';
 import AdminPageHeader, {
   AdminCard,
@@ -38,6 +40,7 @@ const MODULES = [
   { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review AI-imported venues from guest plans' },
   { id: 'area-radar', title: 'Area Radar', icon: ScanSearch, desc: 'Draw a region on the map and bulk-scout new places' },
   { id: 'local-trails', title: 'Local Trails', icon: Footprints, desc: 'Sync hiking trails from AllTrails for this area' },
+  { id: 'overlap-preview', title: 'Overlap preview', icon: Link2, desc: 'Preview home vs nearby guest content for a property pin' },
   { id: 'features-categories', title: 'Features Categories', icon: Layers, desc: 'Category structure for local features' },
   { id: 'features', title: 'Master Features', icon: Briefcase, desc: 'Car rentals, chefs, transfers, and more' },
   { id: 'features-photos', title: 'Features Photos', icon: ImageIcon, desc: 'Default stock photos for features' },
@@ -211,11 +214,17 @@ export default function AreaSelector() {
       </AdminSection>
 
       {isReady && (
-        <div className="mb-8">
+        <div className="mb-8 space-y-6">
           <AreaLanguagesCard
             country={selectedCountry}
             areaId={selectedArea.id}
             areaName={selectedArea.name}
+          />
+          <AreaNeighborsCard
+            country={selectedCountry}
+            areaId={selectedArea.id}
+            areaName={selectedArea.name}
+            allAreas={dbAreas}
           />
         </div>
       )}

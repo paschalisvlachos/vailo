@@ -122,7 +122,8 @@ type DbPickRow = {
   longitude?: number;
   isLegitPick: boolean;
   previouslyShown: boolean;
-  curatedScope?: 'property' | 'area' | 'discovered';
+  curatedScope?: 'property' | 'area' | 'neighbor' | 'discovered';
+  sourceAreaLabel?: string;
   alternateTitles?: string[];
 };
 
@@ -195,6 +196,7 @@ function rowToPick(row: DbPickRow): FlexiblePickItem {
     isLegitPick: row.isLegitPick,
     previouslyShown: row.previouslyShown,
     curatedScope: row.curatedScope || 'property',
+    sourceAreaLabel: row.sourceAreaLabel,
     alternateTitles: row.alternateTitles,
   };
 }
@@ -241,15 +243,26 @@ function mapDbItem(
     isLegitPick: !!item.isLegitPick,
     previouslyShown: !!(key && recentlyShown.has(key)),
     curatedScope:
-      item.curatedScope === 'area'
-        ? 'area'
-        : item.curatedScope === 'discovered'
-          ? 'discovered'
-          : 'property',
+      item.curatedScope === 'neighbor'
+        ? 'neighbor'
+        : item.curatedScope === 'area'
+          ? 'area'
+          : item.curatedScope === 'discovered'
+            ? 'discovered'
+            : 'property',
+    sourceAreaLabel:
+      typeof item.sourceAreaLabel === 'string' ? item.sourceAreaLabel : undefined,
     alternateTitles: Array.isArray(item.alternateTitles)
       ? item.alternateTitles.map(String)
       : undefined,
   };
+}
+
+function curatedScopeRank(scope: DbPickRow['curatedScope']): number {
+  if (scope === 'property') return 0;
+  if (scope === 'area') return 1;
+  if (scope === 'neighbor') return 2;
+  return 3;
 }
 
 function sortRowsForFairness(rows: DbPickRow[]): DbPickRow[] {
@@ -257,6 +270,9 @@ function sortRowsForFairness(rows: DbPickRow[]): DbPickRow[] {
     .map((row) => ({ row, rng: Math.random() }))
     .sort((a, b) => {
       if (a.row.isLegitPick !== b.row.isLegitPick) return a.row.isLegitPick ? -1 : 1;
+      const scopeDiff =
+        curatedScopeRank(a.row.curatedScope) - curatedScopeRank(b.row.curatedScope);
+      if (scopeDiff !== 0) return scopeDiff;
       const bandDiff = distanceBand(a.row.distanceKm) - distanceBand(b.row.distanceKm);
       if (bandDiff !== 0) return bandDiff;
       const aScore = a.rng + (a.row.previouslyShown ? STALE_PENALTY : 0);
@@ -568,12 +584,16 @@ function selectCuratedFromPool(
     });
 }
 
-/** DISPLAY order — nearest first. Applied to the already-selected items. */
+/** DISPLAY order — nearest first; home area before neighbor at similar distance. */
 function sortPickItems(items: FlexiblePickItem[]): FlexiblePickItem[] {
   return [...items].sort((a, b) => {
     const aBeyond = a.beyondRadius ? 1 : 0;
     const bBeyond = b.beyondRadius ? 1 : 0;
     if (aBeyond !== bBeyond) return aBeyond - bBeyond;
+    const scopeDiff =
+      curatedScopeRank(a.curatedScope as DbPickRow['curatedScope']) -
+      curatedScopeRank(b.curatedScope as DbPickRow['curatedScope']);
+    if (scopeDiff !== 0) return scopeDiff;
     const ak = parseDistanceKm(a);
     const bk = parseDistanceKm(b);
     if (ak != null && bk != null) return ak - bk;
@@ -598,6 +618,10 @@ function sortPickItemsForSelection(items: FlexiblePickItem[]): FlexiblePickItem[
       const aBeyond = a.item.beyondRadius ? 1 : 0;
       const bBeyond = b.item.beyondRadius ? 1 : 0;
       if (aBeyond !== bBeyond) return aBeyond - bBeyond;
+      const scopeDiff =
+        curatedScopeRank(a.item.curatedScope as DbPickRow['curatedScope']) -
+        curatedScopeRank(b.item.curatedScope as DbPickRow['curatedScope']);
+      if (scopeDiff !== 0) return scopeDiff;
       const aLegit = a.item.isLegitPick ? 0 : 1;
       const bLegit = b.item.isLegitPick ? 0 : 1;
       if (aLegit !== bLegit) return aLegit - bLegit;
@@ -634,7 +658,11 @@ export function explainAiPickShowability(
   if (item.source === 'database' || item.source === 'property' || item.isProperty === true) {
     const scope =
       item.source === 'database'
-        ? `database (${item.curatedScope === 'area' ? 'area local gem' : 'property local gem'})`
+        ? item.curatedScope === 'neighbor'
+          ? `database (nearby region${item.sourceAreaLabel ? `: ${item.sourceAreaLabel}` : ''})`
+          : item.curatedScope === 'area'
+            ? 'database (area local gem)'
+            : 'database (property local gem)'
         : item.source || 'property';
     return { showable: true, reason: `curated — always showable (${scope})` };
   }
@@ -999,11 +1027,13 @@ export function buildFlexiblePicksPromptSection(
       beyondRadiusCount: beyond.length,
       propertyWithinCount: within.filter((r) => r.curatedScope === 'property').length,
       areaWithinCount: within.filter((r) => r.curatedScope === 'area').length,
+      neighborWithinCount: within.filter((r) => r.curatedScope === 'neighbor').length,
       discoveredWithinCount: within.filter((r) => r.curatedScope === 'discovered').length,
       withinRadius: within.slice(0, 8).map((r) => ({
         name: r.name,
         distanceKm: Number(r.distanceKm.toFixed(1)),
         curatedScope: r.curatedScope || 'property',
+        sourceAreaLabel: r.sourceAreaLabel || null,
         isLegitPick: r.isLegitPick,
         description: r.description,
         photoUrl: r.photoUrl,
@@ -1014,6 +1044,7 @@ export function buildFlexiblePicksPromptSection(
         name: r.name,
         distanceKm: Number(r.distanceKm.toFixed(1)),
         curatedScope: r.curatedScope || 'property',
+        sourceAreaLabel: r.sourceAreaLabel || null,
         isLegitPick: r.isLegitPick,
         description: r.description,
         photoUrl: r.photoUrl,
@@ -1088,38 +1119,10 @@ function mapGemToRow(
   item: Record<string, unknown>,
   category: string,
   startCoords: { lat: number; lng: number },
+  maxKm: number,
   recentlyShown: Set<string>
 ): DbPickRow | null {
-  const coords = extractCoords(item);
-  if (!coords) return null;
-
-  const distanceKm = drivingKm(startCoords.lat, startCoords.lng, coords.lat, coords.lng);
-  const key = pickKeyForItem({
-    name: String(item.businessName || item.name || ''),
-    googlePlaceId: item.googlePlaceId as string | undefined,
-    googleMapsUrl: item.googleMapsUrl as string | undefined,
-    latitude: coords.lat,
-    longitude: coords.lng,
-  });
-
-  return {
-    name: String(item.businessName || item.name || ''),
-    category,
-    distanceKm,
-    beyondRadius: false,
-    description: String(item.description || ''),
-    photoUrl: String(item.photoUrl || ''),
-    googleMapsUrl: String(item.googleMapsUrl || ''),
-    googlePlaceId: String(item.googlePlaceId || ''),
-    latitude: coords.lat,
-    longitude: coords.lng,
-    isLegitPick: !!item.isLegitPick,
-    previouslyShown: !!(key && recentlyShown.has(key)),
-    curatedScope: item.curatedScope === 'area' ? 'area' : 'property',
-    alternateTitles: Array.isArray(item.alternateTitles)
-      ? item.alternateTitles.map(String)
-      : undefined,
-  };
+  return mapDbItem(item, category, startCoords, maxKm, recentlyShown);
 }
 
 function selectWizardGemsForCategory(
@@ -1195,7 +1198,7 @@ export function buildWizardGemsOnlyPlan(params: {
               (p) => p.trim().toLowerCase() === cat.trim().toLowerCase()
             );
       if (!belongs) continue;
-      const row = mapGemToRow(gem, cat, startCoords, recentlyShown);
+      const row = mapGemToRow(gem, cat, startCoords, maxKm, recentlyShown);
       if (row) rows.push(row);
     }
 
@@ -1209,4 +1212,93 @@ export function buildWizardGemsOnlyPlan(params: {
   });
 
   return { type: 'picks', categories: categoriesOut };
+}
+
+function gemMatchesHomeCategory(
+  gem: Record<string, unknown>,
+  homeCategoryPrimaries: string[],
+  catalogDocs: Record<string, unknown>[],
+  primaryLocale: string,
+  guestLocale?: string
+): boolean {
+  return homeCategoryPrimaries.some((cat) =>
+    catalogDocs.length > 0
+      ? gemBelongsToCategory(gem, cat, catalogDocs, primaryLocale, guestLocale)
+      : gemCategoryPrimaries(gem, [], primaryLocale, guestLocale).some(
+          (primary) => primary.trim().toLowerCase() === cat.trim().toLowerCase()
+        )
+  );
+}
+
+/**
+ * Neighbor gems whose categories are not in the home wizard — browse-only section.
+ * Each group uses the gem's own category label; cards carry `Nearby · {area}`.
+ */
+export function buildNeighborOnlyBrowseCategories(params: {
+  mergedGems: Record<string, unknown>[];
+  homeCategoryPrimaries: string[];
+  maxKm: number;
+  startCoords: { lat: number; lng: number } | null;
+  catalogDocs: Record<string, unknown>[];
+  primaryLocale: string;
+  guestLocale?: string;
+  recentlyShown: Set<string>;
+  knowledgeByPrimary?: Record<string, string>;
+  resolveCategoryLabel?: (primary: string) => string;
+}): Array<{ categoryName: string; items: FlexiblePickItem[] }> {
+  if (!params.startCoords) return [];
+
+  const grouped = new Map<string, DbPickRow[]>();
+
+  for (const gem of params.mergedGems || []) {
+    if (gem.curatedScope !== 'neighbor') continue;
+    if (
+      gemMatchesHomeCategory(
+        gem,
+        params.homeCategoryPrimaries,
+        params.catalogDocs,
+        params.primaryLocale,
+        params.guestLocale
+      )
+    ) {
+      continue;
+    }
+
+    const catPrimaries = gemCategoryPrimaries(
+      gem,
+      params.catalogDocs,
+      params.primaryLocale,
+      params.guestLocale
+    );
+    const categoryPrimary = catPrimaries[0] || String(gem.category || 'Nearby picks').trim() || 'Nearby picks';
+    const catLimitKm = categoryDistanceLimitKm(
+      params.maxKm,
+      categoryPrimary,
+      params.knowledgeByPrimary || {}
+    );
+    const row = mapDbItem(
+      gem,
+      categoryPrimary,
+      params.startCoords,
+      catLimitKm,
+      params.recentlyShown
+    );
+    if (!row) continue;
+
+    const list = grouped.get(categoryPrimary) || [];
+    list.push(row);
+    grouped.set(categoryPrimary, list);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([categoryPrimary, rows]) => {
+      const unique = dedupeDbRows(rows);
+      const items = sortPickItems(unique.map((row) => rowToPick(row)));
+      if (items.length === 0) return null;
+      return {
+        categoryName: params.resolveCategoryLabel?.(categoryPrimary) ?? categoryPrimary,
+        items,
+      };
+    })
+    .filter((entry): entry is { categoryName: string; items: FlexiblePickItem[] } => !!entry);
 }

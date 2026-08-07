@@ -84,6 +84,8 @@ export type Excursion = {
   cutoffHoursBefore?: number;
   advanceBookingDaysMax?: number;
   meetingPoint?: string;
+  meetingPointLatitude?: number;
+  meetingPointLongitude?: number;
   programBreakdown?: string;
   programDetails?: string;
   participationRequirements?: string;
@@ -123,6 +125,8 @@ export type ExcursionFormData = {
   cutoffHoursBefore: string;
   advanceBookingDaysMax: string;
   meetingPoint: string;
+  meetingPointLatitude: string;
+  meetingPointLongitude: string;
   programBreakdown: string;
   programDetails: string;
   participationRequirements: string;
@@ -159,6 +163,8 @@ export const EMPTY_EXCURSION_FORM: ExcursionFormData = {
   cutoffHoursBefore: '24',
   advanceBookingDaysMax: '90',
   meetingPoint: '',
+  meetingPointLatitude: '',
+  meetingPointLongitude: '',
   programBreakdown: '',
   programDetails: '',
   participationRequirements: '',
@@ -544,6 +550,10 @@ export function excursionFormFromDoc(data: Record<string, unknown>): ExcursionFo
     advanceBookingDaysMax:
       data.advanceBookingDaysMax != null ? String(data.advanceBookingDaysMax) : '90',
     meetingPoint: String(data.meetingPoint || ''),
+    meetingPointLatitude:
+      data.meetingPointLatitude != null ? String(data.meetingPointLatitude) : '',
+    meetingPointLongitude:
+      data.meetingPointLongitude != null ? String(data.meetingPointLongitude) : '',
     programBreakdown: String(data.programBreakdown || ''),
     programDetails: String(data.programDetails || ''),
     participationRequirements: String(data.participationRequirements || ''),
@@ -575,6 +585,8 @@ export function excursionPayloadFromForm(
   const advanceBookingDaysMax = parseInt(form.advanceBookingDaysMax, 10);
   const commissionPercent = parseFloat(form.platformCommissionPercent);
   const fixedCommission = parseFloat(form.fixedCommissionAmount);
+  const meetingLat = parseFloat(form.meetingPointLatitude);
+  const meetingLng = parseFloat(form.meetingPointLongitude);
 
   const payload: Omit<Excursion, 'id'> = {
     providerId,
@@ -611,6 +623,8 @@ export function excursionPayloadFromForm(
       ? advanceBookingDaysMax
       : undefined,
     meetingPoint: form.meetingPoint.trim() || undefined,
+    meetingPointLatitude: Number.isFinite(meetingLat) ? meetingLat : undefined,
+    meetingPointLongitude: Number.isFinite(meetingLng) ? meetingLng : undefined,
     programBreakdown: form.programBreakdown.trim() || undefined,
     programDetails: richTextFieldPayload(form.programDetails),
     participationRequirements: form.participationRequirements.trim() || undefined,
@@ -725,6 +739,34 @@ export function validateExcursionForm(
         message: 'Enter duration in minutes for hourly excursions.',
       });
     }
+  }
+
+  const meetingLat = parseFloat(form.meetingPointLatitude);
+  if (
+    !form.meetingPointLatitude.trim() ||
+    !Number.isFinite(meetingLat) ||
+    meetingLat < -90 ||
+    meetingLat > 90
+  ) {
+    errors.push({
+      field: 'meetingPointLatitude',
+      label: 'Meeting latitude',
+      message: 'Valid meeting latitude is required.',
+    });
+  }
+
+  const meetingLng = parseFloat(form.meetingPointLongitude);
+  if (
+    !form.meetingPointLongitude.trim() ||
+    !Number.isFinite(meetingLng) ||
+    meetingLng < -180 ||
+    meetingLng > 180
+  ) {
+    errors.push({
+      field: 'meetingPointLongitude',
+      label: 'Meeting longitude',
+      message: 'Valid meeting longitude is required.',
+    });
   }
 
   const minP = parseInt(form.minParticipants, 10);

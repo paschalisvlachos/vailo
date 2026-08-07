@@ -65,7 +65,7 @@ function ExcursionDetailSheet({
   onBook: () => void;
 }) {
   const { track } = useGuestAnalytics();
-  const { excursion, providerName, providerLogoUrl, providerId } = listing;
+  const { excursion, providerName, providerLogoUrl, providerId, sourceAreaLabel } = listing;
   const lowestPrice = excursionLowestAdultPrice(excursion);
   const galleryPhotos = useMemo(() => excursionGalleryPhotoUrls(excursion), [excursion]);
   const priceLabel =
@@ -177,6 +177,18 @@ function ExcursionDetailSheet({
                       {cat}
                     </span>
                   ))}
+                  {sourceAreaLabel && (
+                    <span className="guest-badge bg-white/10 backdrop-blur-md border border-white/15 text-white/85">
+                      {sourceAreaLabel}
+                    </span>
+                  )}
+                </div>
+              )}
+              {!excursion.categories?.length && sourceAreaLabel && (
+                <div className="absolute top-4 left-4 right-16 flex flex-wrap gap-1.5">
+                  <span className="guest-badge bg-white/10 backdrop-blur-md border border-white/15 text-white/85">
+                    {sourceAreaLabel}
+                  </span>
                 </div>
               )}
               <div className="absolute bottom-0 inset-x-0 px-6 pb-6 pt-16">
@@ -502,7 +514,7 @@ export default function GuestExcursions({
               <ExcursionImpressionTracker excursions={impressionExcursions}>
               <div className="space-y-2">
                 {filtered.map((listing) => {
-            const { excursion, providerName, providerId } = listing;
+            const { excursion, providerName, providerId, sourceAreaLabel } = listing;
             const impressionId = excursion.id
               ? buildExcursionImpressionKey(providerId, excursion.id)
               : '';
@@ -518,10 +530,17 @@ export default function GuestExcursions({
 
             return (
               <div key={`${listing.providerId}-${excursion.id}`}>
-                <span className="guest-badge inline-flex items-center gap-1.5 rounded-md bg-[#0B4F5C]/8 text-[#0B4F5C] mb-1">
-                  <CatIcon size={12} />
-                  {category}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span className="guest-badge inline-flex items-center gap-1.5 rounded-md bg-[#0B4F5C]/8 text-[#0B4F5C]">
+                    <CatIcon size={12} />
+                    {category}
+                  </span>
+                  {sourceAreaLabel && (
+                    <span className="guest-badge rounded-md bg-[#0B4F5C]/5 text-[#0B4F5C]/75 border border-[#0B4F5C]/10">
+                      {sourceAreaLabel}
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => setSelected(listing)}

@@ -17,6 +17,7 @@ type PickItem = {
   latitude?: number;
   longitude?: number;
   navigateUrl?: string;
+  sourceAreaLabel?: string;
 };
 
 type UnverifiedMention = {

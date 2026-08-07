@@ -61,6 +61,7 @@ export type TrailPickItem = {
   allTrailsId?: string;
   distanceKm?: number;
   previouslyShown?: boolean;
+  sourceAreaLabel?: string;
 };
 
 /** Match area category names like "Hiking & Trails". */
@@ -146,6 +147,11 @@ export function localTrailToPickItem(
     ? `Further · ${distanceKm.toFixed(1)} km`
     : `${distanceKm.toFixed(1)} km`;
 
+  const trailRecord = trail as LocalTrailRecord & {
+    sourceAreaLabel?: string;
+    curatedScope?: string;
+  };
+
   return {
     itemType: 'trail',
     title: trail.name.trim() || 'Trail',
@@ -153,6 +159,7 @@ export function localTrailToPickItem(
     estimatedDistance,
     beyondRadius,
     source: 'trail',
+    sourceAreaLabel: trailRecord.sourceAreaLabel,
     photoUrl: allTrailsPhotoUrl(trail.allTrailsId, trail.photoUrl),
     latitude: coords.lat,
     longitude: coords.lng,

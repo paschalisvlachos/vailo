@@ -21,6 +21,7 @@ import {
   pairedFeaturedKeyForCategory,
   shortContentHash,
   type FeaturedKey,
+  resolveFeaturedDigestForPortal,
   type FeaturedPreviewRecord,
   type FeaturedPreviewsMap,
 } from '../../../lib/houseGuidePortal';
@@ -986,11 +987,16 @@ export default function HouseGuide() {
           normalizeLocaleCode(contentLocale) || normalizeLocaleCode(localeSettings.primaryLocale);
         const primaryCode = normalizeLocaleCode(localeSettings.primaryLocale);
         const isPrimaryContentTab = previewCode === primaryCode;
-        const localeDigestDirect = (previewRecord.digestByLocale?.[previewCode] || '').trim();
         const localeChipDirect = (previewRecord.previewLineByLocale?.[previewCode] || '').trim();
-        const localePreviewDigest = isPrimaryContentTab
-          ? resolveFeaturedDigest(previewRecord, contentLocale, localeSettings.primaryLocale)
-          : localeDigestDirect;
+        const localePreviewDigest = featuredKey
+          ? resolveFeaturedDigestForPortal(
+              featuredKey,
+              previewRecord,
+              formData as Record<string, unknown>,
+              contentLocale,
+              localeSettings.primaryLocale
+            )
+          : '';
         const localePreviewChip = isPrimaryContentTab
           ? resolveFeaturedPreviewLine(previewRecord, contentLocale, localeSettings.primaryLocale)
           : localeChipDirect;

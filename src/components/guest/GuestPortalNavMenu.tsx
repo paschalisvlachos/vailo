@@ -38,7 +38,10 @@ import {
   featuredKeyCategoryDescription,
   getFeaturedConfig,
   type FeaturedKey,
+  type FeaturedPreviewsMap,
 } from '../../lib/houseGuidePortal';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { resolveFeaturedPreviewLine } from '../../lib/propertyContentLocales';
 
 const MENU_BACKDROP_Z = GUEST_PORTAL_Z.navBackdrop;
 const MENU_DRAWER_Z = GUEST_PORTAL_Z.navDrawer;
@@ -86,6 +89,7 @@ type Props = {
   onAssistant: () => void;
   onFeaturedPreview: (key: FeaturedKey) => void;
   featuredOnPortal: FeaturedKey[];
+  previews?: FeaturedPreviewsMap;
   onExcursions?: () => void;
   showExcursions?: boolean;
   onSavedLocalGems: () => void;
@@ -100,12 +104,14 @@ export default function GuestPortalNavMenu({
   onAssistant,
   onFeaturedPreview,
   featuredOnPortal,
+  previews,
   onExcursions,
   showExcursions = false,
   onSavedLocalGems,
   savedLocalGemsMenuSub,
 }: Props) {
   const close = () => onOpenChange(false);
+  const { locale, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
 
   useBodyScrollLock(open);
 
@@ -206,11 +212,19 @@ export default function GuestPortalNavMenu({
                     const cfg = getFeaturedConfig(key);
                     if (!cfg) return null;
                     const icon = FEATURED_ICONS[cfg.iconName] || <BookOpen size={20} />;
+                    const previewLine = resolveFeaturedPreviewLine(
+                      previews?.[key],
+                      locale,
+                      contentPrimaryLocale,
+                      contentReviewedLocales
+                    );
+                    const sub =
+                      previewLine.trim() || featuredKeyCategoryDescription(key);
                     return (
                       <li key={key} className={index === 0 ? 'pt-2' : undefined}>
                         <MenuRow
                           label={cfg.title}
-                          sub={featuredKeyCategoryDescription(key)}
+                          sub={sub}
                           icon={icon}
                           iconVariant="featured"
                           showStar

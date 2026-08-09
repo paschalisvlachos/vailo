@@ -15,6 +15,7 @@ import GuestLocalServices from '../../components/guest/GuestLocalServices';
 import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
 import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
+import GuestExcursionsPromoCard from '../../components/guest/GuestExcursionsPromoCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
@@ -62,7 +63,7 @@ import { useSavedLocalGems } from '../../hooks/useSavedLocalGems';
 
 const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
-  MapPin, Globe, CloudSun, ChevronDown, Navigation, 
+  MapPin, Globe, ChevronDown, Navigation, 
   Star, Sparkles,
   Wifi, Copy, Check, Map, Clock, Award
 } from 'lucide-react';
@@ -391,14 +392,10 @@ function GuestPortalPage({
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
   const {
-    excursionsAvailable,
     excursionListings,
     excursionsLoading,
     listingAreaCtx,
   } = useGuestAreaData();
-
-  // NEW: Dynamic Weather State
-  const [weather, setWeather] = useState<{temp: number, max: number, min: number, city: string} | null>(null);
   const guestLoadKeyRef = useRef<string | null>(null);
 
   const handleSessionGranted = useCallback(
@@ -562,40 +559,7 @@ function GuestPortalPage({
     }
   }, [resolving, error, property, typeData, propertySlug, typeSlug, typeId, navigate]);
 
-  // NEW: Fetch Dynamic Weather when Property Data Loads
-  useEffect(() => {
-    const fetchWeather = async () => {
-      let lat = parseFloat(typeData?.latitude || property?.latitude);
-      let lon = parseFloat(typeData?.longitude || property?.longitude);
-      const displayCity = typeData?.city || typeData?.area || property?.city || property?.area || 'Local Area';
-
-      // Fallback coordinates (Chania) just in case the property coords are missing
-      if (isNaN(lat) || isNaN(lon)) {
-        lat = 35.5138;
-        lon = 24.0180;
-      }
-
-      try {
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
-        const data = await res.json();
-        
-        if (data?.current_weather && data?.daily) {
-          setWeather({
-            temp: Math.round(data.current_weather.temperature),
-            max: Math.round(data.daily.temperature_2m_max[0]),
-            min: Math.round(data.daily.temperature_2m_min[0]),
-            city: displayCity
-          });
-        }
-      } catch (err) {
-        console.error("Weather fetch error:", err);
-      }
-    };
-
-    if (property || typeData) {
-      fetchWeather();
-    }
-  }, [property, typeData]);
+  const showExcursionsPromo = Boolean(listingAreaCtx?.areaId);
 
   const wifiName = typeData?.wifiName || guide?.wifiName || property?.wifiName;
   const wifiPassword = typeData?.wifiPassword || guide?.wifiPassword || property?.wifiPassword;
@@ -809,10 +773,7 @@ function GuestPortalPage({
                       onFeaturedPreview={setFeaturedPreviewKey}
                       onLiveLikeLocal={openLiveLikeLocal}
                       onAssistant={openAssistant}
-                      showExcursions={
-                        excursionsAvailable ||
-                        (excursionsLoading && Boolean(listingAreaCtx?.areaId))
-                      }
+                      showExcursions={showExcursionsPromo}
                       onExcursions={openExcursions}
                       onSavedLocalGems={openSavedLocalGems}
                       savedLocalGemsMenuSub={savedLocalGemsMenuSub}
@@ -894,32 +855,17 @@ function GuestPortalPage({
               </div>
             </section>
 
-            {/* Weather, Wi‑Fi, Google — equal spacing */}
+            {/* Excursions promo, Wi‑Fi, Google — equal spacing */}
             <div className={`mx-auto px-4 sm:px-5 relative z-20 w-full flex flex-col gap-3 mt-3 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
-              <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">
-                <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#FFF8E7] to-[#FBEBB5] flex items-center justify-center shrink-0 shadow-inner">
-                      <CloudSun className="text-[#C5A059] w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="font-luxury text-xl sm:text-2xl text-[#0B4F5C] leading-none font-medium">
-                        {weather ? `${weather.temp}°` : '—°'}
-                      </p>
-                      <p className="text-sm text-gray-500 font-semibold tracking-wider uppercase mt-1 flex items-center">
-                        <MapPin size={12} className="mr-1 text-[#C5A059]" />
-                        {weather ? weather.city : 'Loading…'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right pl-4 border-l border-gray-100">
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-0.5">Today</p>
-                    <p className="text-base font-luxury text-[#0B4F5C] font-medium">
-                      {weather ? `${weather.max}° / ${weather.min}°` : '— / —'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              {showExcursionsPromo && (
+                <GuestExcursionsPromoCard
+                  locale={locale}
+                  listings={excursionListings}
+                  loading={excursionsLoading && excursionListings.length === 0}
+                  onOpen={openExcursions}
+                  t={t}
+                />
+              )}
 
               {wifiName && (
                 <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">

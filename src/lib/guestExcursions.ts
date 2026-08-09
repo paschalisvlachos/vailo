@@ -83,7 +83,9 @@ function shouldIncludeExcursion(
     return scope === 'home';
   }
   const meeting = excursionMeetingCoords(excursion);
-  if (!meeting) return false;
+  if (!meeting) {
+    return scope === 'home';
+  }
   return excursionWithinRadius(excursion, propertyCoords, maxKm);
 }
 

@@ -42,7 +42,8 @@ function inferGroup(key: string): GuestUiStringGroup {
     key === 'thingsToKnow' ||
     key.startsWith('googleRating') ||
     key.startsWith('rateOn') ||
-    key.startsWith('reviewsOn')
+    key.startsWith('reviewsOn') ||
+    key.startsWith('excursionsPromo')
   ) {
     return 'portal';
   }

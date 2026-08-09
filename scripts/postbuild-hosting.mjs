@@ -64,6 +64,11 @@ if (existsSync(websiteDir)) {
     const src = join(websiteDir, name);
     if (existsSync(src)) cpSync(src, join(dist, name));
   }
+
+  const screenshotsDir = join(websiteDir, 'screenshots');
+  if (existsSync(screenshotsDir)) {
+    cpSync(screenshotsDir, join(dist, 'screenshots'), { recursive: true });
+  }
 }
 
 console.log('postbuild-hosting: marketing → dist/index.html, SPA → dist/app/');

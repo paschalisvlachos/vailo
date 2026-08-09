@@ -47,7 +47,20 @@ if (existsSync(marketingIndex)) {
 
 const websiteDir = join(publicDir, 'website');
 if (existsSync(websiteDir)) {
-  for (const name of ['favicon.ico', 'robots.txt', 'guest-portal-mockup.png']) {
+  const distWebsiteDir = join(dist, 'website');
+  mkdirSync(distWebsiteDir, { recursive: true });
+
+  const i18nDir = join(websiteDir, 'i18n');
+  if (existsSync(i18nDir)) {
+    cpSync(i18nDir, join(distWebsiteDir, 'i18n'), { recursive: true });
+  }
+
+  const i18nJs = join(websiteDir, 'i18n.js');
+  if (existsSync(i18nJs)) {
+    cpSync(i18nJs, join(distWebsiteDir, 'i18n.js'));
+  }
+
+  for (const name of ['favicon.ico', 'robots.txt', 'sitemap.xml', 'guest-portal-mockup.png']) {
     const src = join(websiteDir, name);
     if (existsSync(src)) cpSync(src, join(dist, name));
   }

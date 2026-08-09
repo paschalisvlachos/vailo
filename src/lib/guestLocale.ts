@@ -75,7 +75,13 @@ export type GuestLocaleKey =
   | 'savedLocalGemSaveLabel'
   | 'savedLocalGemSavedLabel'
   | 'savedLocalGemRemoveLabel'
-  | 'savedLocalGemsNoMatch';
+  | 'savedLocalGemsNoMatch'
+  | 'excursionsPromoTitle'
+  | 'excursionsPromoSub'
+  | 'excursionsPromoFrom'
+  | 'excursionsPromoCta'
+  | 'excursionsPromoLoading'
+  | 'excursionsPromoSubEmpty';
 
 export { BUILTIN_PORTAL_MESSAGES } from './guestPortalBuiltin';
 

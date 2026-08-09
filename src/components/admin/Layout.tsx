@@ -12,6 +12,8 @@ import {
   BookOpen,
   Menu,
   X,
+  PanelLeft,
+  PanelLeftClose,
   Compass,
   MapPin,
   ClipboardList,
@@ -28,6 +30,16 @@ import { scopeFromRoute, scopeKey, isExcursionProvider, isAgent, isOwner, format
 import AdminScopeBar from './AdminScopeBar';
 import VailoMark from '../guest/VailoMark';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
+
+const SIDEBAR_COLLAPSED_KEY = 'vailo_admin_sidebar_collapsed';
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 type NavItem = {
   icon: typeof LayoutDashboard;
@@ -71,6 +83,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const mailboxUnreadCount = useAdminInboxUnreadCount(isPlatformAdmin);
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!isScopedUser || !activeScope) return;
@@ -224,7 +249,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-vailo-surface">
-      <aside className="hidden lg:flex w-[17.5rem] bg-gradient-to-b from-vailo-teal to-vailo-teal-hover flex-col shrink-0 fixed inset-y-0 left-0 z-40 shadow-[4px_0_24px_-8px_rgba(5,31,38,0.35)]">
+      <aside
+        className={`hidden lg:flex w-[17.5rem] bg-gradient-to-b from-vailo-teal to-vailo-teal-hover flex-col shrink-0 fixed inset-y-0 left-0 z-40 shadow-[4px_0_24px_-8px_rgba(5,31,38,0.35)] transition-transform duration-300 ease-out ${
+          sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="absolute top-4 right-4 p-2 rounded-xl text-white/55 hover:text-white hover:bg-white/10 transition-colors"
+          aria-label="Hide admin menu"
+          title="Hide menu"
+        >
+          <PanelLeftClose size={18} />
+        </button>
         {sidebarContent}
       </aside>
 
@@ -253,16 +291,32 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {sidebarContent}
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-[17.5rem]">
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ease-out ${
+          sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-[17.5rem]'
+        }`}
+      >
         <header className="sticky top-0 z-30 h-14 sm:h-[4.25rem] border-b border-gray-200/70 bg-white/92 backdrop-blur-lg flex items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-10 shrink-0">
-          <button
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            className="lg:hidden p-2 -ml-1 rounded-xl text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
-            aria-label="Open menu"
-          >
-            <Menu size={22} />
-          </button>
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden p-2 -ml-1 rounded-xl text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu size={22} />
+            </button>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="hidden lg:flex p-2 -ml-1 rounded-xl text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+              aria-label={sidebarCollapsed ? 'Show admin menu' : 'Hide admin menu'}
+              aria-expanded={!sidebarCollapsed}
+              title={sidebarCollapsed ? 'Show menu' : 'Hide menu'}
+            >
+              {sidebarCollapsed ? <PanelLeft size={22} /> : <PanelLeftClose size={22} />}
+            </button>
+          </div>
 
           <div className="hidden lg:flex items-center gap-2 text-sm text-gray-500">
             <span className="h-1.5 w-1.5 rounded-full bg-vailo-gold" />

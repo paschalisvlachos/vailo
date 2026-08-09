@@ -1,10 +1,6 @@
 import { useMemo } from 'react';
 import { ChevronRight, Compass } from 'lucide-react';
 import type { GuestExcursionListing } from '../../lib/guestExcursions';
-import {
-  excursionLowestAdultPrice,
-  formatExcursionPrice,
-} from '../../lib/excursion';
 import { formatGuestUiString } from '../../lib/platformGuestUiStrings';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
 
@@ -27,15 +23,6 @@ export default function GuestExcursionsPromoCard({
     const withPhoto = listings.find((l) => l.excursion.heroPhotoUrl?.trim());
     return withPhoto ?? listings[0] ?? null;
   }, [listings]);
-
-  const priceLabel = useMemo(() => {
-    if (!featured) return null;
-    const lowest = excursionLowestAdultPrice(featured.excursion);
-    if (lowest == null) return null;
-    return formatExcursionPrice(lowest, featured.excursion.currency, {
-      from: false,
-    });
-  }, [featured]);
 
   const subtitle = loading
     ? t('excursionsPromoLoading')
@@ -69,25 +56,15 @@ export default function GuestExcursionsPromoCard({
               </div>
             )}
           </div>
-          <div className="min-w-0">
-            <p className="font-luxury text-xl sm:text-2xl text-[#0B4F5C] leading-none font-medium truncate">
+          <div className="min-w-0 text-left">
+            <p className="font-luxury text-base font-semibold text-[#0B4F5C] leading-tight tracking-wide">
               {t('excursionsPromoTitle')}
             </p>
-            <p className="text-sm text-gray-500 font-medium mt-1 truncate">{subtitle}</p>
+            <p className="text-sm text-gray-500 font-medium mt-0.5 leading-snug">{subtitle}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 pl-3 border-l border-gray-100 shrink-0">
-          <div className="text-right hidden sm:block min-w-[4.5rem]">
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
-              {priceLabel ? t('excursionsPromoFrom') : t('excursionsPromoCta')}
-            </p>
-            <p className="text-sm font-luxury text-[#0B4F5C] font-medium leading-tight">
-              {loading ? '…' : priceLabel ?? t('excursionsPromoCta')}
-            </p>
-          </div>
-          <div className="h-9 w-9 rounded-xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/12 flex items-center justify-center text-[#0B4F5C]/75 group-hover:bg-[#0B4F5C]/12 transition-colors">
-            <ChevronRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
-          </div>
+        <div className="h-9 w-9 shrink-0 rounded-xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/12 flex items-center justify-center text-[#0B4F5C]/75 group-hover:bg-[#0B4F5C]/12 transition-colors">
+          <ChevronRight size={18} className="group-hover:translate-x-0.5 transition-transform" />
         </div>
       </div>
     </button>

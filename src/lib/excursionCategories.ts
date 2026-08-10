@@ -15,12 +15,23 @@ export const EXCURSION_CATEGORY_OPTIONS: ExcursionCategoryOption[] = [
   { id: 'sightseeing', label: 'Sightseeing' },
   { id: 'adventure', label: 'Adventure & sports' },
   { id: 'family', label: 'Family friendly' },
-  { id: 'private', label: 'Private tour' },
-  { id: 'group', label: 'Group tour' },
   { id: 'transfer', label: 'Transfer & transport' },
   { id: 'wellness', label: 'Wellness & relaxation' },
   { id: 'photography', label: 'Photography tour' },
 ];
+
+/** Legacy category ids/labels — tour type comes from pricing model, not categories. */
+export const EXCURSION_TOUR_TYPE_CATEGORY_IDS = ['private', 'group'] as const;
+
+export function isExcursionTourTypeCategory(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    (EXCURSION_TOUR_TYPE_CATEGORY_IDS as readonly string[]).includes(normalized) ||
+    normalized === 'private tour' ||
+    normalized === 'group tour'
+  );
+}
 
 export function excursionCategoryLabel(id: string): string | undefined {
   return EXCURSION_CATEGORY_OPTIONS.find((o) => o.id === id)?.label;

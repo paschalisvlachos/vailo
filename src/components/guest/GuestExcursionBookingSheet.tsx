@@ -44,6 +44,7 @@ import {
 import { createExcursionBookingRecord } from '../../lib/excursionBookingService';
 import type { GuestExcursionListing } from '../../lib/guestExcursions';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { getOrCreateAnonymousVisitorId } from '../../lib/guestAnonymousVisitor';
 import type { GuestPortalBookingAttribution } from '../../lib/excursionBooking';
 
@@ -157,7 +158,8 @@ export default function GuestExcursionBookingSheet({
   onClose,
 }: Props) {
   const { track, subjectKind, session } = useGuestAnalytics();
-  const { providerId, excursion, providerName } = listing;
+  const { t } = useGuestLocale();
+  const { providerId, excursion, providerName, providerUsefulInfo } = listing;
   const excursionId = excursion.id!;
 
   const portalAttribution = useMemo((): GuestPortalBookingAttribution | undefined => {
@@ -414,18 +416,28 @@ export default function GuestExcursionBookingSheet({
 
         <div className="overflow-y-auto flex-1 overscroll-contain px-5 pb-4">
           {successStatus ? (
-            <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-6 py-8 text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#0B4F5C]/10 text-[#0B4F5C]">
-                <CheckCircle2 size={36} strokeWidth={1.75} />
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-6 py-8 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-[#0B4F5C]/10 text-[#0B4F5C]">
+                  <CheckCircle2 size={36} strokeWidth={1.75} />
+                </div>
+                <p className="font-luxury text-2xl text-[#051F26] mb-3">
+                  {successStatus === 'confirmed' ? 'Booking confirmed' : 'Request received'}
+                </p>
+                <p className="text-[15px] text-gray-600 leading-[1.7] max-w-sm mx-auto">
+                  {successStatus === 'confirmed'
+                    ? `Your place on ${excursion.title} is reserved. ${providerName} may reach out with meeting details shortly.`
+                    : `We've sent your request for ${excursion.title} to ${providerName}. You'll hear back once it's confirmed.`}
+                </p>
               </div>
-              <p className="font-luxury text-2xl text-[#051F26] mb-3">
-                {successStatus === 'confirmed' ? 'Booking confirmed' : 'Request received'}
-              </p>
-              <p className="text-[15px] text-gray-600 leading-[1.7] max-w-sm mx-auto">
-                {successStatus === 'confirmed'
-                  ? `Your place on ${excursion.title} is reserved. ${providerName} may reach out with meeting details shortly.`
-                  : `We've sent your request for ${excursion.title} to ${providerName}. You'll hear back once it's confirmed.`}
-              </p>
+              {providerUsefulInfo?.trim() && (
+                <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-5 py-4 text-left">
+                  <p className="guest-eyebrow mb-2">{t('excursionProviderUsefulInfo')}</p>
+                  <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
+                    {providerUsefulInfo.trim()}
+                  </p>
+                </div>
+              )}
             </div>
           ) : availabilityLoading ? (
             <div className="rounded-2xl bg-white border border-gray-100 shadow-sm px-6 py-12 text-center">

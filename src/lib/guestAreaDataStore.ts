@@ -25,6 +25,7 @@ import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
 import { isGuestVerifiedDiscoveredPlace, type GuestDiscoveredPlaceRow } from './guestDiscoveredPlaces';
 import {
   loadGuestExcursionsForListing,
+  prefetchGuestExcursionCatalog,
   type GuestExcursionListing,
 } from './guestExcursions';
 import { parseNeighborAreaIds } from './areaNeighbors';
@@ -233,6 +234,10 @@ export function GuestAreaPrefetcher({
   const propertyCoords = parsePropertyCoords(property, propertyType);
 
   const areaKey = `${propertyType?.country ?? ''}|${propertyType?.city ?? ''}|${locale}|${contentSettings.primaryLocale}|${propertyCoords?.lat ?? 'na'}:${propertyCoords?.lng ?? 'na'}`;
+
+  useEffect(() => {
+    prefetchGuestExcursionCatalog();
+  }, []);
 
   useEffect(() => {
     if (prefetchKey === areaKey) return;
@@ -600,7 +605,6 @@ export function GuestAreaPrefetcher({
     let cancelled = false;
 
     async function loadExcursions() {
-      patchSnapshot({ excursionsLoading: true });
       if (!listingAreaCtx) {
         patchSnapshot({
           excursionListings: [],
@@ -610,26 +614,46 @@ export function GuestAreaPrefetcher({
         return;
       }
 
-      try {
-        const neighborAreas = neighborOverlapEnabled
-          ? neighborAreaIds.map((areaId) => ({
-              areaId,
-              areaName: neighborAreaNames[areaId] || areaId,
-            }))
-          : [];
+      prefetchGuestExcursionCatalog();
+      patchSnapshot({ excursionsLoading: true });
 
-        const items = await loadGuestExcursionsForListing({
-          homeArea: listingAreaCtx,
-          neighborAreas,
-          propertyCoords,
+      const baseParams = {
+        homeArea: listingAreaCtx,
+        propertyCoords,
+      };
+
+      try {
+        const homeItems = await loadGuestExcursionsForListing({
+          ...baseParams,
+          neighborAreas: [],
         });
-        if (!cancelled) {
-          patchSnapshot({
-            excursionListings: items,
-            excursionsLoading: false,
-            excursionsAvailable: items.length > 0,
-          });
-        }
+        if (cancelled) return;
+
+        const waitingForNeighbors =
+          neighborOverlapEnabled && neighborAreaIds.length > 0;
+        patchSnapshot({
+          excursionListings: homeItems,
+          excursionsLoading: waitingForNeighbors,
+          excursionsAvailable: homeItems.length > 0,
+        });
+
+        if (!waitingForNeighbors) return;
+
+        const neighborAreas = neighborAreaIds.map((areaId) => ({
+          areaId,
+          areaName: neighborAreaNames[areaId] || areaId,
+        }));
+        const fullItems = await loadGuestExcursionsForListing({
+          ...baseParams,
+          neighborAreas,
+        });
+        if (cancelled) return;
+
+        patchSnapshot({
+          excursionListings: fullItems,
+          excursionsLoading: false,
+          excursionsAvailable: fullItems.length > 0,
+        });
       } catch (error) {
         console.error(error);
         if (!cancelled) {
@@ -651,7 +675,6 @@ export function GuestAreaPrefetcher({
     listingAreaCtx?.country,
     neighborOverlapEnabled,
     neighborAreaIds.join('|'),
-    neighborAreaIds.map((id) => neighborAreaNames[id] || id).join('|'),
     propertyCoords?.lat,
     propertyCoords?.lng,
   ]);

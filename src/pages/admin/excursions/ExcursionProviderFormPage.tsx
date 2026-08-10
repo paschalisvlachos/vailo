@@ -33,6 +33,10 @@ import {
   portalProviderBookingsPath,
 } from '../../../lib/excursionBooking';
 import {
+  adminProviderDetailsPath,
+  portalProviderDetailsPath,
+} from '../../../lib/excursionProviderDetails';
+import {
   findExcursionProviderAllocationConflict,
   normalizeLinkedOwnerIds,
 } from '../../../lib/excursionProviderPortal';
@@ -409,6 +413,16 @@ export default function ExcursionProviderFormPage() {
         action={
           isEdit && docId ? (
             <div className="flex flex-wrap gap-2">
+              <AdminButtonLink
+                to={adminPath(
+                  portalMode
+                    ? portalProviderDetailsPath(docId)
+                    : adminProviderDetailsPath(docId)
+                )}
+                variant="secondary"
+              >
+                Provider details
+              </AdminButtonLink>
               <AdminButtonLink
                 to={adminPath(
                   portalMode

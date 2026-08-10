@@ -1,5 +1,7 @@
 /** Excursion operator business — platform-managed catalog (Step 1). */
 
+import type { ExcursionProviderFleetEntry } from './excursionProviderDetails';
+
 export type ExcursionProviderStatus = 'draft' | 'active' | 'suspended';
 
 export type ExcursionProviderCommissionType = 'percent' | 'fixed_per_booking' | 'per_excursion';
@@ -80,6 +82,12 @@ export type ExcursionProvider = {
   internalNotes?: string;
   /** Linked `owners` doc ids with role excursion_provider (Step 2). */
   linkedOwnerIds?: string[];
+  /** Shared about text for all excursions (admin-only display for now). */
+  excursionAbout?: string;
+  /** Departure point, practical notes, etc. */
+  excursionUsefulInfo?: string;
+  /** Boats, vehicles, or vessels in the provider fleet. */
+  excursionFleet?: ExcursionProviderFleetEntry[];
   createdAt?: string;
   updatedAt?: string;
 };

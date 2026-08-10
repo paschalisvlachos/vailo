@@ -81,7 +81,21 @@ export type GuestLocaleKey =
   | 'excursionsPromoFrom'
   | 'excursionsPromoCta'
   | 'excursionsPromoLoading'
-  | 'excursionsPromoSubEmpty';
+  | 'excursionsPromoSubEmpty'
+  | 'excursionAudiencePublic'
+  | 'excursionAudiencePrivate'
+  | 'excursionAudienceAll'
+  | 'excursionSortByPrice'
+  | 'excursionProviderUsefulInfo'
+  | 'excursionProviderAbout'
+  | 'excursionProviderFleet'
+  | 'excursionProviderFleetSpecs'
+  | 'excursionProviderDetailsTap'
+  | 'excursionProviderDetailsHide'
+  | 'excursionProviderFleetSpecsTap'
+  | 'excursionProviderFleetSpecsHide'
+  | 'excursionReadMore'
+  | 'excursionReadLess';
 
 export { BUILTIN_PORTAL_MESSAGES } from './guestPortalBuiltin';
 

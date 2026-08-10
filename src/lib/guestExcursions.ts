@@ -1,4 +1,11 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import {
+  collection,
+  collectionGroup,
+  getDocs,
+  query,
+  where,
+  type QueryDocumentSnapshot,
+} from 'firebase/firestore';
 import { db } from './firebase';
 import type { Excursion } from './excursion';
 import { excursionFromDoc } from './excursion';
@@ -9,6 +16,8 @@ import {
   normalizeOperatingRegions,
   providerOperatesInArea,
 } from './excursionProvider';
+import type { ExcursionProviderFleetEntry } from './excursionProviderDetails';
+import { guestProviderDetailsFromDoc } from './excursionProviderDetails';
 import { effectiveMaxDistanceKm } from './flexiblePicks';
 import { formatNeighborAreaLabel } from './areaNeighborGuestContent';
 
@@ -18,6 +27,9 @@ export type GuestExcursionListing = {
   providerId: string;
   providerName: string;
   providerLogoUrl?: string;
+  providerAbout?: string;
+  providerUsefulInfo?: string;
+  providerFleet?: ExcursionProviderFleetEntry[];
   excursion: Excursion;
   curatedScope?: GuestExcursionCuratedScope;
   sourceAreaId?: string;
@@ -34,7 +46,18 @@ export type LoadGuestExcursionsParams = {
   maxRadiusKm?: number;
 };
 
+type ProviderMeta = {
+  operatingRegions: ReturnType<typeof normalizeOperatingRegions>;
+  providerName: string;
+  providerLogoUrl?: string;
+  providerAbout?: string;
+  providerUsefulInfo?: string;
+  providerFleet?: ExcursionProviderFleetEntry[];
+};
+
 const excursionListingsCache = new Map<string, Promise<GuestExcursionListing[]>>();
+let activeProvidersPromise: Promise<Map<string, ProviderMeta>> | null = null;
+let publishedExcursionsPromise: Promise<QueryDocumentSnapshot[]> | null = null;
 
 type AreaTarget = {
   ctx: ListingAreaContext;
@@ -79,13 +102,14 @@ function shouldIncludeExcursion(
   propertyCoords: { lat: number; lng: number } | null,
   maxKm: number
 ): boolean {
-  if (!propertyCoords) {
-    return scope === 'home';
-  }
+  // Home listings come from providers assigned to the property's area — no distance gate.
+  if (scope === 'home') return true;
+
+  if (!propertyCoords) return false;
+
   const meeting = excursionMeetingCoords(excursion);
-  if (!meeting) {
-    return scope === 'home';
-  }
+  if (!meeting) return false;
+
   return excursionWithinRadius(excursion, propertyCoords, maxKm);
 }
 
@@ -127,66 +151,139 @@ function buildAreaTargets(
   return targets;
 }
 
-async function loadGuestExcursionsUncached(
-  params: LoadGuestExcursionsParams
-): Promise<GuestExcursionListing[]> {
-  const { homeArea, neighborAreas = [], propertyCoords } = params;
-  const maxKm = effectiveMaxDistanceKm(params.maxRadiusKm ?? GUEST_EXCURSION_RADIUS_KM);
-  const targets = buildAreaTargets(homeArea, neighborAreas, propertyCoords);
+function providerIdFromExcursionDoc(excDoc: QueryDocumentSnapshot): string | null {
+  const providerRef = excDoc.ref.parent.parent;
+  return providerRef?.id ?? null;
+}
 
-  const providersSnap = await getDocs(
-    query(collection(db, EXCURSION_PROVIDER_COLLECTION), where('status', '==', 'active'))
+async function loadActiveProviderMeta(): Promise<Map<string, ProviderMeta>> {
+  if (!activeProvidersPromise) {
+    activeProvidersPromise = getDocs(
+      query(collection(db, EXCURSION_PROVIDER_COLLECTION), where('status', '==', 'active'))
+    )
+      .then((snap) => {
+        const byId = new Map<string, ProviderMeta>();
+        for (const providerDoc of snap.docs) {
+          const data = providerDoc.data() as Record<string, unknown>;
+          const details = guestProviderDetailsFromDoc(data);
+          byId.set(providerDoc.id, {
+            operatingRegions: normalizeOperatingRegions(data),
+            providerName: String(data.businessName || 'Provider'),
+            providerLogoUrl: String(data.logoUrl || '').trim() || undefined,
+            providerAbout: details.about,
+            providerUsefulInfo: details.usefulInfo,
+            providerFleet: details.fleet,
+          });
+        }
+        return byId;
+      })
+      .catch((error) => {
+        activeProvidersPromise = null;
+        throw error;
+      });
+  }
+  return activeProvidersPromise;
+}
+
+async function loadPublishedExcursionDocs(): Promise<QueryDocumentSnapshot[]> {
+  if (!publishedExcursionsPromise) {
+    publishedExcursionsPromise = getDocs(
+      query(collectionGroup(db, EXCURSION_SUBCOLLECTION), where('status', '==', 'published'))
+    )
+      .then((snap) => snap.docs)
+      .catch((error) => {
+        publishedExcursionsPromise = null;
+        throw error;
+      });
+  }
+  return publishedExcursionsPromise;
+}
+
+async function loadPublishedExcursionDocsForProviders(
+  providerIds: string[]
+): Promise<QueryDocumentSnapshot[]> {
+  if (providerIds.length === 0) return [];
+
+  const snaps = await Promise.all(
+    providerIds.map((providerId) =>
+      getDocs(
+        query(
+          collection(db, EXCURSION_PROVIDER_COLLECTION, providerId, EXCURSION_SUBCOLLECTION),
+          where('status', '==', 'published')
+        )
+      )
+    )
   );
 
+  return snaps.flatMap((snap) => snap.docs);
+}
+
+function buildMatchingProviderTargets(
+  providers: Map<string, ProviderMeta>,
+  targets: AreaTarget[]
+): Map<string, AreaTarget[]> {
+  const matching = new Map<string, AreaTarget[]>();
+
+  for (const [providerId, meta] of providers) {
+    const providerTargets = targets.filter((target) =>
+      providerOperatesInArea({ operatingRegions: meta.operatingRegions }, target.ctx.country, target.ctx.areaId)
+    );
+    if (providerTargets.length > 0) {
+      matching.set(providerId, providerTargets);
+    }
+  }
+
+  return matching;
+}
+
+function listingsFromDocs(
+  excursionDocs: QueryDocumentSnapshot[],
+  matchingProviders: Map<string, AreaTarget[]>,
+  providers: Map<string, ProviderMeta>,
+  propertyCoords: { lat: number; lng: number } | null,
+  maxKm: number
+): GuestExcursionListing[] {
   const byKey = new Map<string, GuestExcursionListing>();
 
-  await Promise.all(
-    providersSnap.docs.map(async (providerDoc) => {
-      const data = providerDoc.data() as Record<string, unknown>;
-      const operatingRegions = normalizeOperatingRegions(data);
-      const providerName = String(data.businessName || 'Provider');
-      const providerLogoUrl = String(data.logoUrl || '').trim() || undefined;
+  for (const excDoc of excursionDocs) {
+    const providerId = providerIdFromExcursionDoc(excDoc);
+    if (!providerId) continue;
 
-      const matchingTargets = targets.filter((target) =>
-        providerOperatesInArea({ operatingRegions }, target.ctx.country, target.ctx.areaId)
-      );
-      if (matchingTargets.length === 0) return;
+    const matchingTargets = matchingProviders.get(providerId);
+    if (!matchingTargets?.length) continue;
 
-      const excursionsSnap = await getDocs(
-        collection(db, EXCURSION_PROVIDER_COLLECTION, providerDoc.id, EXCURSION_SUBCOLLECTION)
-      );
+    const provider = providers.get(providerId);
+    if (!provider) continue;
 
-      for (const excDoc of excursionsSnap.docs) {
-        const excursion = excursionFromDoc(excDoc.id, excDoc.data());
-        if (excursion.status !== 'published') continue;
+    const excursion = excursionFromDoc(excDoc.id, excDoc.data());
 
-        let chosenTarget: AreaTarget | null = null;
-        for (const target of matchingTargets) {
-          if (shouldIncludeExcursion(excursion, target.scope, propertyCoords, maxKm)) {
-            chosenTarget = target;
-            break;
-          }
-        }
-        if (!chosenTarget) continue;
-
-        const listing: GuestExcursionListing = {
-          providerId: providerDoc.id,
-          providerName,
-          providerLogoUrl,
-          excursion: { ...excursion, providerId: providerDoc.id },
-          curatedScope: chosenTarget.scope,
-          sourceAreaId:
-            chosenTarget.scope === 'neighbor' ? chosenTarget.ctx.areaId : undefined,
-          sourceAreaLabel:
-            chosenTarget.scope === 'neighbor'
-              ? formatNeighborAreaLabel(chosenTarget.areaName)
-              : undefined,
-        };
-
-        byKey.set(excursionDedupeKey(providerDoc.id, excursion), listing);
+    let chosenTarget: AreaTarget | null = null;
+    for (const target of matchingTargets) {
+      if (shouldIncludeExcursion(excursion, target.scope, propertyCoords, maxKm)) {
+        chosenTarget = target;
+        break;
       }
-    })
-  );
+    }
+    if (!chosenTarget) continue;
+
+    const listing: GuestExcursionListing = {
+      providerId,
+      providerName: provider.providerName,
+      providerLogoUrl: provider.providerLogoUrl,
+      providerAbout: provider.providerAbout,
+      providerUsefulInfo: provider.providerUsefulInfo,
+      providerFleet: provider.providerFleet,
+      excursion: { ...excursion, providerId },
+      curatedScope: chosenTarget.scope,
+      sourceAreaId: chosenTarget.scope === 'neighbor' ? chosenTarget.ctx.areaId : undefined,
+      sourceAreaLabel:
+        chosenTarget.scope === 'neighbor'
+          ? formatNeighborAreaLabel(chosenTarget.areaName)
+          : undefined,
+    };
+
+    byKey.set(excursionDedupeKey(providerId, excursion), listing);
+  }
 
   return Array.from(byKey.values()).sort((a, b) => {
     const scopeOrder = (scope?: GuestExcursionCuratedScope) => (scope === 'neighbor' ? 1 : 0);
@@ -196,13 +293,48 @@ async function loadGuestExcursionsUncached(
   });
 }
 
+async function loadGuestExcursionsUncached(
+  params: LoadGuestExcursionsParams
+): Promise<GuestExcursionListing[]> {
+  const { homeArea, neighborAreas = [], propertyCoords } = params;
+  const maxKm = effectiveMaxDistanceKm(params.maxRadiusKm ?? GUEST_EXCURSION_RADIUS_KM);
+  const targets = buildAreaTargets(homeArea, neighborAreas, propertyCoords);
+
+  const providers = await loadActiveProviderMeta();
+
+  const matchingProviders = buildMatchingProviderTargets(providers, targets);
+  if (matchingProviders.size === 0) return [];
+
+  let excursionDocs: QueryDocumentSnapshot[];
+  try {
+    excursionDocs = await loadPublishedExcursionDocs();
+  } catch (error) {
+    console.warn(
+      'Guest excursions: collection group query failed, falling back to provider queries.',
+      error
+    );
+    excursionDocs = await loadPublishedExcursionDocsForProviders([...matchingProviders.keys()]);
+  }
+
+  return listingsFromDocs(
+    excursionDocs,
+    matchingProviders,
+    providers,
+    propertyCoords,
+    maxKm
+  );
+}
+
 export async function loadGuestExcursionsForListing(
   params: LoadGuestExcursionsParams
 ): Promise<GuestExcursionListing[]> {
   const cacheKey = excursionCacheKey(params);
   let pending = excursionListingsCache.get(cacheKey);
   if (!pending) {
-    pending = loadGuestExcursionsUncached(params);
+    pending = loadGuestExcursionsUncached(params).catch((error) => {
+      excursionListingsCache.delete(cacheKey);
+      throw error;
+    });
     excursionListingsCache.set(cacheKey, pending);
   }
   return pending;
@@ -216,4 +348,10 @@ export async function loadGuestExcursionsForArea(
     homeArea: ctx,
     propertyCoords: null,
   });
+}
+
+/** Warm shared Firestore caches during portal boot. Safe to call without awaiting. */
+export function prefetchGuestExcursionCatalog(): void {
+  void loadActiveProviderMeta().catch(() => undefined);
+  void loadPublishedExcursionDocs().catch(() => undefined);
 }

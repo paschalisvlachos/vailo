@@ -23,6 +23,9 @@ export type ExcursionTravelStyle =
 /** Per-person tiers vs one total price for the booking (any group size). */
 export type ExcursionPricingModel = 'per_person' | 'flat_rate';
 
+/** Admin list tag derived from pricing model (not stored separately). */
+export type ExcursionAudienceTag = 'public' | 'private';
+
 export type ExcursionParticipantPrices = {
   adult: number;
   child?: number;
@@ -243,6 +246,20 @@ export function excursionStatusLabel(status: ExcursionStatus): string {
     default:
       return 'Draft';
   }
+}
+
+export function excursionAudienceTag(
+  excursion: Pick<Excursion, 'pricingModel'>
+): ExcursionAudienceTag {
+  return excursion.pricingModel === 'flat_rate' ? 'private' : 'public';
+}
+
+export function excursionAudienceTagLabel(tag: ExcursionAudienceTag): string {
+  return tag === 'private' ? 'Private tour' : 'Group tour';
+}
+
+export function excursionAudienceTagAdminLabel(tag: ExcursionAudienceTag): string {
+  return tag === 'private' ? 'Private' : 'Group';
 }
 
 export function excursionTravelStyleLabel(

@@ -6,9 +6,11 @@ import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 type Props = {
   photos: string[];
   title?: string;
+  /** Omit outer card/title when nested inside another section. */
+  embedded?: boolean;
 };
 
-export default function ExcursionPhotoGallery({ photos, title }: Props) {
+export default function ExcursionPhotoGallery({ photos, title, embedded = false }: Props) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   useBodyScrollLock(activeIndex != null);
@@ -25,8 +27,7 @@ export default function ExcursionPhotoGallery({ photos, title }: Props) {
 
   return (
     <>
-      <div className="rounded-2xl bg-white border border-gray-100 px-5 py-5 shadow-sm">
-        <h3 className="font-luxury text-lg text-[#051F26] font-medium mb-3">More photos</h3>
+      {embedded ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           {photos.map((url, index) => (
             <button
@@ -40,7 +41,24 @@ export default function ExcursionPhotoGallery({ photos, title }: Props) {
             </button>
           ))}
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl bg-white border border-gray-100 px-5 py-5 shadow-sm">
+          <h3 className="font-luxury text-lg text-[#051F26] font-medium mb-3">More photos</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {photos.map((url, index) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0B4F5C]/40"
+                aria-label={`View photo ${index + 1} of ${photos.length}`}
+              >
+                <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {activeIndex != null && (
         <div

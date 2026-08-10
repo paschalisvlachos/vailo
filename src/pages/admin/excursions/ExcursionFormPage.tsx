@@ -767,8 +767,8 @@ export default function ExcursionFormPage() {
                   </AdminSelect>
                   <p className="text-xs text-gray-500 mt-1">
                     {formData.pricingModel === 'flat_rate'
-                      ? 'Guests pay one total price whether they book alone or as a group.'
-                      : 'Price is calculated from the number of adults, children, etc.'}
+                      ? 'Guests pay one total price whether they book alone or as a group. Tagged Private in lists.'
+                      : 'Price is calculated from the number of adults, children, etc. Tagged Group in lists.'}
                   </p>
                 </div>
                 <div>

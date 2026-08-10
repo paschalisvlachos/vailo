@@ -42,6 +42,7 @@ import ExcursionProvidersPage from "./pages/admin/excursions/ExcursionProvidersP
 import ExcursionProviderFormPage from "./pages/admin/excursions/ExcursionProviderFormPage";
 import ExcursionProviderPortalHome from "./pages/admin/excursions/ExcursionProviderPortalHome";
 import ExcursionsListPage from "./pages/admin/excursions/ExcursionsListPage";
+import ExcursionProviderDetailsPage from "./pages/admin/excursions/ExcursionProviderDetailsPage";
 import ExcursionFormPage from "./pages/admin/excursions/ExcursionFormPage";
 import ExcursionAvailabilityPage from "./pages/admin/excursions/ExcursionAvailabilityPage";
 import ExcursionDiscountsListPage from "./pages/admin/excursions/ExcursionDiscountsListPage";
@@ -199,6 +200,7 @@ export default function App() {
           <Route path="excursions/providers/:id/edit" element={<PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/:providerId/bookings" element={<PlatformAdminOnly><ExcursionBookingsListPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/:providerId/excursions" element={<PlatformAdminOnly><ExcursionsListPage /></PlatformAdminOnly>} />
+          <Route path="excursions/providers/:providerId/details" element={<PlatformAdminOnly><ExcursionProviderDetailsPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/:providerId/excursions/add" element={<PlatformAdminOnly><ExcursionFormPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/:providerId/excursions/:excursionId/edit" element={<PlatformAdminOnly><ExcursionFormPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/:providerId/excursions/:excursionId/availability" element={<PlatformAdminOnly><ExcursionAvailabilityPage /></PlatformAdminOnly>} />
@@ -213,6 +215,7 @@ export default function App() {
           <Route path="excursion-portal/:providerId" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionProviderFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
           <Route path="excursion-portal/:providerId/bookings" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
           <Route path="excursion-portal/:providerId/excursions" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionsListPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
+          <Route path="excursion-portal/:providerId/details" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionProviderDetailsPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
           <Route path="excursion-portal/:providerId/excursions/add" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
           <Route path="excursion-portal/:providerId/excursions/:excursionId/edit" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
           <Route path="excursion-portal/:providerId/excursions/:excursionId/availability" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionAvailabilityPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />

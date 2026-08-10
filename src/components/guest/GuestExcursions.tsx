@@ -3,8 +3,11 @@ import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   ArrowLeft,
+  ArrowUpDown,
+  Anchor,
   Calendar,
   Check,
+  ChevronDown,
   Clock,
   Compass,
   Loader2,
@@ -15,21 +18,27 @@ import {
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 import { resolvePropertyTypeAreaContext } from '../../lib/listingAreaContext';
 import {
+  excursionAudienceTag,
   excursionDurationLabel,
   excursionGalleryPhotoUrls,
   excursionLowestAdultPrice,
   excursionTravelStyleLabel,
   formatExcursionPrice,
+  type ExcursionAudienceTag,
 } from '../../lib/excursion';
 import {
   loadGuestExcursionsForArea,
   type GuestExcursionListing,
 } from '../../lib/guestExcursions';
 import GuestExcursionBookingSheet from './GuestExcursionBookingSheet';
+import ExcursionTourTypeBadge from './ExcursionTourTypeBadge';
 import ExcursionImpressionTracker from './ExcursionImpressionTracker';
 import ExcursionPhotoGallery from './ExcursionPhotoGallery';
+import { isExcursionTourTypeCategory } from '../../lib/excursionCategories';
+import type { ExcursionProviderFleetEntry } from '../../lib/excursionProviderDetails';
 import { richTextFieldHtml } from '../../lib/legalHtml';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { buildExcursionImpressionKey } from '../../lib/guestAnalytics';
 
 type Props = {
@@ -55,6 +64,176 @@ type DetailSection = {
   variant?: 'list' | 'prose' | 'html' | 'check' | 'cross';
 };
 
+function splitProseParagraphs(text: string): string[] {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) return [];
+  return normalized
+    .split(/\n\s*\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+function htmlParagraphsFromContent(content: string): string[] {
+  const html = richTextFieldHtml(content);
+  if (typeof document !== 'undefined') {
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    const fromTags = Array.from(container.querySelectorAll('p'))
+      .map((node) => node.textContent?.trim() || '')
+      .filter(Boolean);
+    if (fromTags.length > 0) return fromTags;
+    const plain = container.textContent?.trim();
+    return plain ? splitProseParagraphs(plain) : [];
+  }
+  return splitProseParagraphs(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
+function CollapsibleExcursionText({
+  content,
+  variant,
+}: {
+  content: string;
+  variant: 'prose' | 'html';
+}) {
+  const { t } = useGuestLocale();
+  const [expanded, setExpanded] = useState(false);
+  const paragraphs = useMemo(
+    () => (variant === 'html' ? htmlParagraphsFromContent(content) : splitProseParagraphs(content)),
+    [content, variant]
+  );
+  const hasMore = paragraphs.length > 1;
+  const fullHtml = variant === 'html' ? richTextFieldHtml(content) : null;
+
+  if (paragraphs.length === 0) return null;
+
+  if (!hasMore) {
+    if (variant === 'html' && fullHtml) {
+      return (
+        <div
+          className="legal-document-content text-[15px] text-gray-700 leading-[1.7]"
+          dangerouslySetInnerHTML={{ __html: fullHtml }}
+        />
+      );
+    }
+    return (
+      <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">{paragraphs[0]}</p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {expanded ? (
+        variant === 'html' && fullHtml ? (
+          <div
+            className="legal-document-content text-[15px] text-gray-700 leading-[1.7]"
+            dangerouslySetInnerHTML={{ __html: fullHtml }}
+          />
+        ) : (
+          <div className="space-y-3">
+            {paragraphs.map((paragraph) => (
+              <p
+                key={paragraph}
+                className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap"
+              >
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )
+      ) : (
+        <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
+          {paragraphs[0]}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setExpanded((open) => !open)}
+        className="text-sm font-semibold text-[#0B4F5C] hover:text-[#083A43] transition-colors"
+      >
+        {expanded ? t('excursionReadLess') : t('excursionReadMore')}
+      </button>
+    </div>
+  );
+}
+
+function ProviderFleetItem({
+  fleet,
+  specsLabel,
+}: {
+  fleet: ExcursionProviderFleetEntry;
+  specsLabel: string;
+}) {
+  const { t } = useGuestLocale();
+  const [specsOpen, setSpecsOpen] = useState(false);
+  const subtitle = [fleet.model, fleet.yearBuilt ? `Since ${fleet.yearBuilt}` : '']
+    .filter(Boolean)
+    .join(' · ');
+  const photos = fleet.photoUrls ?? [];
+  const specifications = fleet.specifications ?? [];
+  const hasSpecs = specifications.length > 0;
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-[#F8FAFA] px-4 py-4 space-y-4">
+      <div>
+        <h4 className="font-luxury text-base text-[#051F26] font-medium">{fleet.name}</h4>
+        {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+      </div>
+
+      {photos.length > 0 && (
+        <ExcursionPhotoGallery photos={photos} title={fleet.name} embedded />
+      )}
+
+      {fleet.description?.trim() && (
+        <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
+          {fleet.description.trim()}
+        </p>
+      )}
+
+      {hasSpecs && (
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setSpecsOpen((open) => !open)}
+            aria-expanded={specsOpen}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#0B4F5C]/[0.03] active:bg-[#0B4F5C]/[0.06]"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#051F26]">{specsLabel}</p>
+              <p className="text-xs font-medium text-[#0B4F5C] mt-0.5">
+                {specsOpen
+                  ? t('excursionProviderFleetSpecsHide')
+                  : t('excursionProviderFleetSpecsTap')}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-full bg-[#0B4F5C]/8 text-[#0B4F5C] transition-transform duration-200 ${
+                specsOpen ? 'rotate-180' : ''
+              }`}
+              aria-hidden
+            >
+              <ChevronDown size={16} strokeWidth={2.25} />
+            </span>
+          </button>
+
+          {specsOpen && (
+            <dl className="divide-y divide-gray-100 border-t border-gray-100">
+              {specifications.map((spec) => (
+                <div
+                  key={`${spec.label}-${spec.value}`}
+                  className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-3 px-4 py-3 text-sm"
+                >
+                  <dt className="text-gray-500">{spec.label || '—'}</dt>
+                  <dd className="text-[#051F26] font-medium text-right">{spec.value || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExcursionDetailSheet({
   listing,
   onClose,
@@ -65,7 +244,15 @@ function ExcursionDetailSheet({
   onBook: () => void;
 }) {
   const { track } = useGuestAnalytics();
-  const { excursion, providerName, providerLogoUrl, providerId, sourceAreaLabel } = listing;
+  const { t } = useGuestLocale();
+  const { excursion, providerName, providerLogoUrl, providerId, sourceAreaLabel, providerAbout, providerUsefulInfo, providerFleet } = listing;
+  const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
+  const hasProviderDetails = Boolean(
+    providerAbout?.trim() ||
+      providerUsefulInfo?.trim() ||
+      (providerFleet && providerFleet.length > 0) ||
+      providerLogoUrl
+  );
   const lowestPrice = excursionLowestAdultPrice(excursion);
   const galleryPhotos = useMemo(() => excursionGalleryPhotoUrls(excursion), [excursion]);
   const priceLabel =
@@ -167,30 +354,24 @@ function ExcursionDetailSheet({
               >
                 <X size={18} />
               </button>
-              {(excursion.categories?.length ?? 0) > 0 && (
-                <div className="absolute top-4 left-4 right-16 flex flex-wrap gap-1.5">
-                  {excursion.categories!.map((cat) => (
-                    <span
-                      key={cat}
-                      className="guest-badge bg-white/15 backdrop-blur-md border border-white/20 text-white"
-                    >
-                      {cat}
-                    </span>
-                  ))}
-                  {sourceAreaLabel && (
-                    <span className="guest-badge bg-white/10 backdrop-blur-md border border-white/15 text-white/85">
-                      {sourceAreaLabel}
-                    </span>
-                  )}
-                </div>
-              )}
-              {!excursion.categories?.length && sourceAreaLabel && (
-                <div className="absolute top-4 left-4 right-16 flex flex-wrap gap-1.5">
+              <div className="absolute top-4 left-4 right-16 flex flex-wrap gap-1.5">
+                <ExcursionTourTypeBadge excursion={excursion} t={t} variant="hero" />
+                {(excursion.categories ?? [])
+                  .filter((cat) => !isExcursionTourTypeCategory(cat))
+                  .map((cat) => (
+                  <span
+                    key={cat}
+                    className="guest-badge bg-white/15 backdrop-blur-md border border-white/20 text-white"
+                  >
+                    {cat}
+                  </span>
+                ))}
+                {sourceAreaLabel && (
                   <span className="guest-badge bg-white/10 backdrop-blur-md border border-white/15 text-white/85">
                     {sourceAreaLabel}
                   </span>
-                </div>
-              )}
+                )}
+              </div>
               <div className="absolute bottom-0 inset-x-0 px-6 pb-6 pt-16">
                 {excursion.subtitle && (
                   <p className="guest-eyebrow text-[#C5A059]/95 mb-2">{excursion.subtitle}</p>
@@ -207,6 +388,7 @@ function ExcursionDetailSheet({
 
             <div className="relative -mt-5 mx-5 mb-6">
               <div className="rounded-2xl bg-white border border-gray-100 shadow-[0_8px_30px_rgba(11,79,92,0.08)] px-4 py-4 flex flex-wrap items-center gap-3">
+                <ExcursionTourTypeBadge excursion={excursion} t={t} />
                 <span className="inline-flex items-center gap-2 text-sm text-[#051F26]">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0B4F5C]/8 text-[#0B4F5C]">
                     <Clock size={16} />
@@ -229,6 +411,94 @@ function ExcursionDetailSheet({
           </div>
 
           <div className="px-6 pb-32 space-y-6">
+            {hasProviderDetails && (
+              <div className="rounded-2xl bg-white border border-[#0B4F5C]/15 shadow-[0_8px_30px_rgba(11,79,92,0.08)] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setProviderDetailsOpen((open) => !open)}
+                  aria-expanded={providerDetailsOpen}
+                  className="w-full flex items-center gap-4 p-5 text-left transition-colors hover:bg-[#0B4F5C]/[0.03] active:bg-[#0B4F5C]/[0.06]"
+                >
+                  {providerLogoUrl ? (
+                    <div className="shrink-0 h-24 w-32 sm:h-28 sm:w-36 rounded-2xl bg-[#F8FAFA] border border-gray-100 flex items-center justify-center p-3 shadow-sm">
+                      <img
+                        src={providerLogoUrl}
+                        alt={providerName}
+                        className="max-h-full max-w-full w-auto object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="shrink-0 h-24 w-24 sm:h-28 sm:w-28 rounded-2xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/10 flex items-center justify-center text-[#0B4F5C]">
+                      <Anchor size={32} strokeWidth={1.5} />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="guest-eyebrow text-[#0B4F5C]/80 mb-1">{t('excursionProviderAbout')}</p>
+                    <p className="font-luxury text-xl text-[#051F26] font-medium leading-tight">
+                      {providerName}
+                    </p>
+                    <p className="text-sm font-semibold text-[#0B4F5C] mt-2">
+                      {providerDetailsOpen
+                        ? t('excursionProviderDetailsHide')
+                        : t('excursionProviderDetailsTap')}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 flex h-10 w-10 items-center justify-center rounded-full bg-[#0B4F5C]/8 text-[#0B4F5C] transition-transform duration-200 ${
+                      providerDetailsOpen ? 'rotate-180' : ''
+                    }`}
+                    aria-hidden
+                  >
+                    <ChevronDown size={20} strokeWidth={2.25} />
+                  </span>
+                </button>
+
+                {providerDetailsOpen && (
+                  <div className="px-5 pb-5 pt-0 space-y-5 border-t border-gray-100">
+                    {providerUsefulInfo?.trim() && (
+                      <div className="pt-5">
+                        <p className="guest-eyebrow mb-2">{t('excursionProviderUsefulInfo')}</p>
+                        <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
+                          {providerUsefulInfo.trim()}
+                        </p>
+                      </div>
+                    )}
+
+                    {providerAbout?.trim() && (
+                      <div className={providerUsefulInfo?.trim() ? '' : 'pt-5'}>
+                        <h3 className="font-luxury text-lg text-[#051F26] font-medium mb-3">
+                          {t('excursionProviderAbout')} {providerName}
+                        </h3>
+                        <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
+                          {providerAbout.trim()}
+                        </p>
+                      </div>
+                    )}
+
+                    {providerFleet && providerFleet.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0B4F5C]/8 text-[#0B4F5C]">
+                            <Anchor size={16} />
+                          </span>
+                          <h3 className="font-luxury text-lg text-[#051F26] font-medium">
+                            {t('excursionProviderFleet')}
+                          </h3>
+                        </div>
+                        {providerFleet.map((fleet, index) => (
+                          <ProviderFleetItem
+                            key={`${fleet.name}-${index}`}
+                            fleet={fleet}
+                            specsLabel={t('excursionProviderFleetSpecs')}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {excursion.meetingPoint && (
               <div className="rounded-2xl bg-white border border-gray-100 px-5 py-4 shadow-sm">
                 <p className="guest-eyebrow mb-2">Meeting point</p>
@@ -279,29 +549,16 @@ function ExcursionDetailSheet({
                     ))}
                   </ul>
                 ) : section.variant === 'html' ? (
-                  <div
-                    className="legal-document-content text-[15px] text-gray-700 leading-[1.7]"
-                    dangerouslySetInnerHTML={{
-                      __html: richTextFieldHtml(section.content as string),
-                    }}
-                  />
+                  <CollapsibleExcursionText content={section.content as string} variant="html" />
                 ) : (
-                  <p className="text-[15px] text-gray-700 leading-[1.7] whitespace-pre-wrap">
-                    {section.content}
-                  </p>
+                  <CollapsibleExcursionText
+                    content={section.content as string}
+                    variant="prose"
+                  />
                 )}
               </div>
             ))}
 
-            {providerLogoUrl && (
-              <div className="flex justify-center pt-2">
-                <img
-                  src={providerLogoUrl}
-                  alt={providerName}
-                  className="h-14 max-w-[200px] w-auto object-contain"
-                />
-              </div>
-            )}
           </div>
         </div>
 
@@ -339,6 +596,7 @@ export default function GuestExcursions({
   onOverlayOpenChange,
 }: Props) {
   const { track } = useGuestAnalytics();
+  const { t } = useGuestLocale();
   const usePrefetch = prefetchedListings !== undefined;
   const [listings, setListings] = useState<GuestExcursionListing[]>(
     () => prefetchedListings ?? []
@@ -347,6 +605,8 @@ export default function GuestExcursions({
     usePrefetch ? Boolean(prefetchedLoading) : true
   );
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [tourTypeFilter, setTourTypeFilter] = useState<'all' | ExcursionAudienceTag>('all');
+  const [sortByPrice, setSortByPrice] = useState(false);
   const [selected, setSelected] = useState<GuestExcursionListing | null>(null);
   const [bookingListing, setBookingListing] = useState<GuestExcursionListing | null>(null);
 
@@ -396,27 +656,58 @@ export default function GuestExcursions({
     prefetchedLoading,
   ]);
 
+  const tourTypeCounts = useMemo(
+    () => ({
+      all: listings.length,
+      public: listings.filter((l) => excursionAudienceTag(l.excursion) === 'public').length,
+      private: listings.filter((l) => excursionAudienceTag(l.excursion) === 'private').length,
+    }),
+    [listings]
+  );
+
+  const tourTypeFiltered = useMemo(() => {
+    if (tourTypeFilter === 'all') return listings;
+    return listings.filter((l) => excursionAudienceTag(l.excursion) === tourTypeFilter);
+  }, [listings, tourTypeFilter]);
+
   const categories = useMemo(
     () => [
       'All',
       ...Array.from(
-        new Set(listings.flatMap((l) => l.excursion.categories || []).filter(Boolean))
+        new Set(
+          tourTypeFiltered
+            .flatMap((l) => l.excursion.categories || [])
+            .filter(Boolean)
+            .filter((cat) => !isExcursionTourTypeCategory(cat))
+        )
       ),
     ],
-    [listings]
+    [tourTypeFiltered]
   );
 
-  const filtered = useMemo(
-    () =>
-      categoryFilter === 'All'
-        ? listings
-        : listings.filter((l) => l.excursion.categories?.includes(categoryFilter)),
-    [listings, categoryFilter]
-  );
+  const filtered = useMemo(() => {
+    if (categoryFilter === 'All') return tourTypeFiltered;
+    return tourTypeFiltered.filter((l) => l.excursion.categories?.includes(categoryFilter));
+  }, [tourTypeFiltered, categoryFilter]);
+
+  const displayed = useMemo(() => {
+    if (!sortByPrice) return filtered;
+    return [...filtered].sort((a, b) => {
+      const priceA = excursionLowestAdultPrice(a.excursion);
+      const priceB = excursionLowestAdultPrice(b.excursion);
+      if (priceA == null && priceB == null) {
+        return a.excursion.title.localeCompare(b.excursion.title);
+      }
+      if (priceA == null) return 1;
+      if (priceB == null) return -1;
+      if (priceA !== priceB) return priceA - priceB;
+      return a.excursion.title.localeCompare(b.excursion.title);
+    });
+  }, [filtered, sortByPrice]);
 
   const impressionExcursions = useMemo(
     () =>
-      filtered
+      displayed
         .filter((l) => l.excursion.id)
         .map((l) => ({
           id: buildExcursionImpressionKey(l.providerId, l.excursion.id!),
@@ -425,7 +716,7 @@ export default function GuestExcursions({
           providerId: l.providerId,
           providerName: l.providerName,
         })),
-    [filtered]
+    [displayed]
   );
 
   const trackBookingStart = (listing: GuestExcursionListing) => {
@@ -492,8 +783,36 @@ export default function GuestExcursions({
                 providers
               </p>
 
+              {(tourTypeCounts.public > 0 || tourTypeCounts.private > 0) && (
+                <div className="flex flex-wrap gap-1.5 pb-3">
+                  {(
+                    [
+                      ['all', t('excursionAudienceAll')],
+                      ['public', t('excursionAudiencePublic')],
+                      ['private', t('excursionAudiencePrivate')],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setTourTypeFilter(value);
+                        setCategoryFilter('All');
+                      }}
+                      className={`guest-pill whitespace-nowrap rounded-full text-sm uppercase tracking-wider font-semibold transition-all ${
+                        tourTypeFilter === value
+                          ? 'bg-[#0B4F5C] text-white shadow-md'
+                          : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#0B4F5C]/30'
+                      }`}
+                    >
+                      {label} ({tourTypeCounts[value]})
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {categories.length > 1 && (
-                <div className="flex flex-wrap gap-1.5 pb-4">
+                <div className="flex flex-wrap gap-1.5 pb-3">
                   {categories.map((cat) => (
                     <button
                       key={cat}
@@ -511,14 +830,39 @@ export default function GuestExcursions({
                 </div>
               )}
 
+              <div className="pb-4">
+                <button
+                  type="button"
+                  onClick={() => setSortByPrice((active) => !active)}
+                  aria-pressed={sortByPrice}
+                  className={`guest-pill inline-flex items-center gap-1.5 whitespace-nowrap rounded-full text-sm font-semibold transition-all ${
+                    sortByPrice
+                      ? 'bg-[#0B4F5C] text-white shadow-md'
+                      : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#0B4F5C]/30'
+                  }`}
+                >
+                  <ArrowUpDown size={14} className={sortByPrice ? 'text-white/90' : 'text-[#0B4F5C]/70'} />
+                  {t('excursionSortByPrice')}
+                </button>
+              </div>
+
               <ExcursionImpressionTracker excursions={impressionExcursions}>
+              {displayed.length === 0 ? (
+                <div className="text-center py-12 px-4 text-sm text-gray-500">
+                  {tourTypeFilter === 'all'
+                    ? 'No experiences match this filter.'
+                    : `No ${(tourTypeFilter === 'private' ? t('excursionAudiencePrivate') : t('excursionAudiencePublic')).toLowerCase()} experiences match this filter.`}
+                </div>
+              ) : (
               <div className="space-y-2">
-                {filtered.map((listing) => {
+                {displayed.map((listing) => {
             const { excursion, providerName, providerId, sourceAreaLabel } = listing;
             const impressionId = excursion.id
               ? buildExcursionImpressionKey(providerId, excursion.id)
               : '';
-            const category = excursion.categories?.[0] || 'Excursion';
+            const category =
+              excursion.categories?.find((cat) => !isExcursionTourTypeCategory(cat)) ||
+              'Excursion';
             const CatIcon = categoryIcon(category);
             const lowestPrice = excursionLowestAdultPrice(excursion);
             const priceLabel =
@@ -531,6 +875,7 @@ export default function GuestExcursions({
             return (
               <div key={`${listing.providerId}-${excursion.id}`}>
                 <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <ExcursionTourTypeBadge excursion={excursion} t={t} />
                   <span className="guest-badge inline-flex items-center gap-1.5 rounded-md bg-[#0B4F5C]/8 text-[#0B4F5C]">
                     <CatIcon size={12} />
                     {category}
@@ -585,6 +930,7 @@ export default function GuestExcursions({
             );
                 })}
               </div>
+              )}
               </ExcursionImpressionTracker>
             </>
           )}

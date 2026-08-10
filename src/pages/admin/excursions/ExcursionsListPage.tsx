@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { collection, deleteDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { Compass, MapPin, Plus, Pencil, Trash2, CalendarDays, Percent, ClipboardList } from 'lucide-react';
+import { Compass, MapPin, Plus, Pencil, Trash2, CalendarDays, Percent, ClipboardList, Info } from 'lucide-react';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import { useAdminSession } from '../../../context/AdminSessionContext';
@@ -14,6 +14,8 @@ import {
 import {
   adminExcursionAddPath,
   adminExcursionEditPath,
+  excursionAudienceTag,
+  excursionAudienceTagAdminLabel,
   excursionDurationLabel,
   excursionFromDoc,
   excursionLowestAdultPrice,
@@ -26,8 +28,13 @@ import {
   portalExcursionAddPath,
   portalExcursionEditPath,
   type Excursion,
+  type ExcursionAudienceTag,
   type ExcursionStatus,
 } from '../../../lib/excursion';
+import {
+  adminProviderDetailsPath,
+  portalProviderDetailsPath,
+} from '../../../lib/excursionProviderDetails';
 import { formatExcursionCategoriesSummary } from '../../../lib/excursionCategories';
 import {
   adminExcursionAvailabilityPath,
@@ -61,6 +68,21 @@ function StatusBadge({ status }: { status: ExcursionStatus }) {
   );
 }
 
+function TourTypeBadge({ excursion }: { excursion: Pick<Excursion, 'pricingModel'> }) {
+  const tag = excursionAudienceTag(excursion);
+  const styles =
+    tag === 'public'
+      ? 'bg-sky-50 text-sky-800 border-sky-100'
+      : 'bg-violet-50 text-violet-800 border-violet-100';
+  return (
+    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${styles}`}>
+      {excursionAudienceTagAdminLabel(tag)}
+    </span>
+  );
+}
+
+type TourTypeFilter = 'all' | ExcursionAudienceTag;
+
 export default function ExcursionsListPage() {
   const { providerId } = useParams<{ providerId: string }>();
   const location = useLocation();
@@ -73,6 +95,7 @@ export default function ExcursionsListPage() {
   const [showCommissionColumn, setShowCommissionColumn] = useState(false);
   const [excursions, setExcursions] = useState<Excursion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tourTypeFilter, setTourTypeFilter] = useState<TourTypeFilter>('all');
 
   const listBackPath = portalMode
     ? adminPath(`/excursion-portal/${providerId}`)
@@ -80,6 +103,12 @@ export default function ExcursionsListPage() {
 
   const addPath = providerId
     ? adminPath(portalMode ? portalExcursionAddPath(providerId) : adminExcursionAddPath(providerId))
+    : '#';
+
+  const detailsPath = providerId
+    ? adminPath(
+        portalMode ? portalProviderDetailsPath(providerId) : adminProviderDetailsPath(providerId)
+      )
     : '#';
 
   useEffect(() => {
@@ -179,6 +208,20 @@ export default function ExcursionsListPage() {
     [excursions]
   );
 
+  const filtered = useMemo(() => {
+    if (tourTypeFilter === 'all') return sorted;
+    return sorted.filter((excursion) => excursionAudienceTag(excursion) === tourTypeFilter);
+  }, [sorted, tourTypeFilter]);
+
+  const tourTypeCounts = useMemo(
+    () => ({
+      all: sorted.length,
+      public: sorted.filter((excursion) => excursionAudienceTag(excursion) === 'public').length,
+      private: sorted.filter((excursion) => excursionAudienceTag(excursion) === 'private').length,
+    }),
+    [sorted]
+  );
+
   if (!providerId) {
     navigate(adminPath('/excursions/providers'));
     return null;
@@ -200,9 +243,14 @@ export default function ExcursionsListPage() {
             : 'Manage bookable excursion products'
         }
         action={
-          <AdminButtonLink to={addPath}>
-            <Plus size={18} /> Add excursion
-          </AdminButtonLink>
+          <div className="flex flex-wrap gap-2">
+            <AdminButtonLink to={detailsPath} variant="secondary">
+              <Info size={18} /> Provider details
+            </AdminButtonLink>
+            <AdminButtonLink to={addPath}>
+              <Plus size={18} /> Add excursion
+            </AdminButtonLink>
+          </div>
         }
       />
 
@@ -219,6 +267,34 @@ export default function ExcursionsListPage() {
         />
       ) : (
         <AdminCard className="overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-wrap gap-2">
+            {(
+              [
+                ['all', 'All'],
+                ['public', 'Group'],
+                ['private', 'Private'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTourTypeFilter(value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  tourTypeFilter === value
+                    ? 'bg-vailo-teal text-white border-vailo-teal'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-vailo-teal/40'
+                }`}
+              >
+                {label} ({tourTypeCounts[value]})
+              </button>
+            ))}
+          </div>
+          {filtered.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-500">
+              No {tourTypeFilter === 'private' ? 'private' : 'group'} excursions match this
+              filter.
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -233,13 +309,14 @@ export default function ExcursionsListPage() {
                     <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Commission</th>
                   )}
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Status</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Tour type</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600 text-right">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((excursion) => (
+                {filtered.map((excursion) => (
                   <tr
                     key={excursion.id}
                     className="border-b border-gray-50 hover:bg-vailo-surface-elevated/50 transition-colors"
@@ -301,6 +378,9 @@ export default function ExcursionsListPage() {
                       <StatusBadge status={excursion.status} />
                     </td>
                     <td className="px-4 sm:px-6 py-4">
+                      <TourTypeBadge excursion={excursion} />
+                    </td>
+                    <td className="px-4 sm:px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <Link
                           to={bookingsPath(excursion.id!)}
@@ -345,6 +425,7 @@ export default function ExcursionsListPage() {
               </tbody>
             </table>
           </div>
+          )}
         </AdminCard>
       )}
     </div>

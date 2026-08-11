@@ -27,7 +27,7 @@ export function httpsCallableMessage(error: unknown, fallback: string): string {
     }
 
     if (code === 'functions/not-found') {
-      return msg || fallback;
+      return msg || 'This feature is not deployed yet. Deploy the partner agreement cloud functions and try again.';
     }
 
     if (code === 'functions/permission-denied') {

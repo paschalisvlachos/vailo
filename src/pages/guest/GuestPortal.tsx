@@ -18,6 +18,7 @@ import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard'
 import GuestExcursionsPromoCard from '../../components/guest/GuestExcursionsPromoCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
+import GuestPreArrivalShell from '../../components/guest/GuestPreArrivalShell';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
 import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
 import GuestFeaturedPreviewSheet from '../../components/guest/GuestFeaturedPreviewSheet';
@@ -46,7 +47,8 @@ import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
-import { isGuestPortalAccessRequired, type GuestPortalSession } from '../../lib/guestAccess';
+import { isGuestPortalAccessRequired, readGuestPortalSession, type GuestPortalSession } from '../../lib/guestAccess';
+import { isPreArrivalPortalView, markPreArrivalViewIntent, resolvePreArrivalPortalView, GUEST_PRE_ARRIVAL_VIEW } from '../../lib/guestPreArrival';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   GuestAreaPrefetcher,
@@ -362,6 +364,7 @@ function GuestPortalPage({
   const typeIdFromQuery = searchParams.get('typeId') || searchParams.get('type');
   const inviteTokenFromQuery = searchParams.get('invite');
   const adminPreviewFromQuery = searchParams.get('adminPreview') === '1';
+  const preArrivalViewFromUrl = isPreArrivalPortalView(searchParams.get('view'));
   const isMobileFramePreview =
     adminPreviewFromQuery && searchParams.get('previewFrame') === 'mobile';
 
@@ -397,13 +400,72 @@ function GuestPortalPage({
     listingAreaCtx,
   } = useGuestAreaData();
   const guestLoadKeyRef = useRef<string | null>(null);
+  const [guestSession, setGuestSession] = useState<GuestPortalSession | null>(() =>
+    readGuestPortalSession()
+  );
 
   const handleSessionGranted = useCallback(
     (session: GuestPortalSession) => {
+      setGuestSession(session);
       onSessionLocale?.(session.guestLocale?.trim() || null);
     },
     [onSessionLocale]
   );
+
+  const activeGuestSession = guestSession ?? readGuestPortalSession();
+
+  const preArrivalView = useMemo(
+    () =>
+      preArrivalViewFromUrl ||
+      resolvePreArrivalPortalView(searchParams.get('view'), propertyId, typeId),
+    [searchParams, propertyId, typeId, preArrivalViewFromUrl]
+  );
+
+  useEffect(() => {
+    if (preArrivalViewFromUrl && propertyId && typeId) {
+      markPreArrivalViewIntent(propertyId, typeId);
+    }
+  }, [preArrivalViewFromUrl, propertyId, typeId]);
+
+  useEffect(() => {
+    if (!propertyId || !typeId || resolving) return;
+    if (
+      resolvePreArrivalPortalView(null, propertyId, typeId) &&
+      !isPreArrivalPortalView(searchParams.get('view'))
+    ) {
+      const next = new URLSearchParams(searchParams);
+      next.set('view', GUEST_PRE_ARRIVAL_VIEW);
+      navigate({ search: `?${next.toString()}` }, { replace: true });
+    }
+  }, [propertyId, typeId, resolving, searchParams, navigate]);
+
+  const preArrivalBooking = useMemo(() => {
+    const bookingId = activeGuestSession?.bookingId;
+    if (!bookingId || !typeData?.syncedBookings) return null;
+    const list = typeData.syncedBookings as Array<{
+      id?: string;
+      start?: string;
+      end?: string;
+      guestName?: string;
+      guestPhone?: string;
+      guestWhatsapp?: string;
+      guestEmail?: string;
+      preArrivalComplete?: boolean;
+      preArrivalSubmission?: import('../../lib/syncedBooking').PreArrivalSubmission;
+    }>;
+    const match = list.find((b) => b.id === bookingId);
+    if (!match) return null;
+    return {
+      start: match.start,
+      end: match.end,
+      guestName: match.guestName,
+      guestPhone: match.guestPhone,
+      guestWhatsapp: match.guestWhatsapp,
+      guestEmail: match.guestEmail,
+      preArrivalComplete: match.preArrivalComplete,
+      preArrivalSubmission: match.preArrivalSubmission,
+    };
+  }, [activeGuestSession?.bookingId, typeData?.syncedBookings]);
 
   const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
@@ -554,10 +616,27 @@ function GuestPortalPage({
     const canonicalType = getTypePublicSlug(typeData);
     if (!canonicalProperty || !canonicalType) return;
     if (propertySlug !== canonicalProperty || typeSlug !== canonicalType) {
-      const qs = typeId ? `?typeId=${encodeURIComponent(typeId)}` : '';
-      navigate(`/${canonicalProperty}/${canonicalType}${qs}`, { replace: true });
+      const qs = new URLSearchParams(searchParams);
+      if (typeId && !qs.has('typeId') && !qs.has('type')) {
+        qs.set('typeId', typeId);
+      }
+      const qsString = qs.toString();
+      navigate(
+        `/${canonicalProperty}/${canonicalType}${qsString ? `?${qsString}` : ''}`,
+        { replace: true }
+      );
     }
-  }, [resolving, error, property, typeData, propertySlug, typeSlug, typeId, navigate]);
+  }, [
+    resolving,
+    error,
+    property,
+    typeData,
+    propertySlug,
+    typeSlug,
+    typeId,
+    navigate,
+    searchParams,
+  ]);
 
   const showExcursionsPromo = Boolean(listingAreaCtx?.areaId);
 
@@ -1134,6 +1213,28 @@ function GuestPortalPage({
       portalMain
     );
 
+  const preArrivalShell =
+    preArrivalView && activeGuestSession && property && propertyId && typeId ? (
+      <GuestPreArrivalShell
+        session={activeGuestSession}
+        propertyId={propertyId}
+        typeId={typeId}
+        propertyName={property?.propertyName || 'Property'}
+        unitName={typeData?.propertyTypeName || 'Unit'}
+        guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
+        locale={locale}
+        contentPrimaryLocale={contentPrimaryLocale}
+        transferOffer={property?.preArrivalTransferOffer}
+        booking={preArrivalBooking}
+      />
+    ) : null;
+
+  const gatedContent = preArrivalView ? (
+    preArrivalShell ?? <GuestPortalLoadingScreen status="Loading pre-arrival check-in…" />
+  ) : (
+    portalContent
+  );
+
   if (isGuestPortalAccessRequired(property) && propertyId && typeId) {
     return (
       <GuestPortalAccessGate
@@ -1143,10 +1244,12 @@ function GuestPortalPage({
         adminPreview={adminPreviewFromQuery}
         onSessionGranted={handleSessionGranted}
       >
-        {portalContent}
+        {gatedContent}
       </GuestPortalAccessGate>
     );
   }
+
+  if (preArrivalShell) return preArrivalShell;
 
   return portalContent;
 }

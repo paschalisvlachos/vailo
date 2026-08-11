@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Users, Plus, Pencil, Trash2, Mail, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { collection, collectionGroup, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -8,13 +8,23 @@ import { adminPath } from '../../lib/adminRoutes';
 import { formatOwnerRoleLabel, ownerRoleBadgeClass } from '../../lib/adminAccess';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { ownersVisibleInCrm } from '../../lib/agentOwners';
+import {
+  agreementKindLabel,
+  formatPartnerAgreementDate,
+  ownerRoleToAgreementKind,
+  partnerAgreementStatusLabel,
+  type PartnerAgreementRecord,
+} from '../../lib/partnerAgreement';
+import { sendPartnerAgreementInviteCallable } from '../../lib/partnerAgreementCallables';
+import { httpsCallableMessage } from '../../lib/callableError';
 import AdminPageHeader, {
+  AdminButton,
   AdminButtonLink,
   AdminCard,
   AdminEmptyState,
 } from '../../components/admin/AdminPageHeader';
 
-interface Owner {
+interface Owner extends PartnerAgreementRecord {
   id: string;
   fullName: string;
   email: string;
@@ -59,6 +69,129 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
+function AgreementDateHint({ owner }: { owner: Owner }) {
+  const [open, setOpen] = useState(false);
+  const accepted = owner.partnerAgreementAcceptedAt;
+  const invited = owner.partnerAgreementInviteSentAt;
+
+  let detail = '';
+  if (accepted) {
+    detail = `Accepted ${formatPartnerAgreementDate(accepted)}`;
+  } else if (invited) {
+    detail = `Invite sent ${formatPartnerAgreementDate(invited)}`;
+  }
+
+  if (!detail) return null;
+
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 bg-white text-[10px] font-bold leading-none text-gray-500 hover:border-vailo-teal hover:text-vailo-teal"
+        aria-label="Agreement date details"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        !
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute left-1/2 top-full z-20 mt-2 w-max max-w-[220px] -translate-x-1/2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-lg after:absolute after:-top-1.5 after:left-1/2 after:h-3 after:w-3 after:-translate-x-1/2 after:rotate-45 after:border after:border-gray-200 after:border-b-0 after:border-r-0 after:bg-white"
+        >
+          {detail}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function AgreementStatusCell({ owner }: { owner: Owner }) {
+  const kind = ownerRoleToAgreementKind(owner.role);
+  if (!kind) {
+    return <span className="text-sm text-gray-400">—</span>;
+  }
+
+  const status = partnerAgreementStatusLabel(owner);
+  const accepted = Boolean(owner.partnerAgreementAcceptedAt);
+
+  return (
+    <div className="flex items-center gap-1">
+      <span
+        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${
+          accepted
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+            : owner.partnerAgreementInviteSentAt
+              ? 'bg-amber-50 text-amber-800 border-amber-100'
+              : 'bg-gray-50 text-gray-600 border-gray-200'
+        }`}
+      >
+        {status}
+      </span>
+      <AgreementDateHint owner={owner} />
+    </div>
+  );
+}
+
+function AgreementSendButton({
+  owner,
+  sending,
+  onSend,
+  className = '',
+}: {
+  owner: Owner;
+  sending: boolean;
+  onSend: () => void;
+  className?: string;
+}) {
+  const label = owner.partnerAgreementInviteSentAt ? 'Resend' : 'Send';
+
+  return (
+    <AdminButton
+      type="button"
+      variant="secondary"
+      className={`!py-0.5 !px-1.5 !gap-1 !rounded-lg text-[11px] font-semibold whitespace-nowrap ${className}`}
+      disabled={sending}
+      onClick={onSend}
+    >
+      {sending ? (
+        <>
+          <Loader2 size={12} className="animate-spin" /> Sending…
+        </>
+      ) : (
+        <>
+          <Mail size={12} /> {label}
+        </>
+      )}
+    </AdminButton>
+  );
+}
+
+function AgreementColumn({
+  owner,
+  sending,
+  onSend,
+}: {
+  owner: Owner;
+  sending: boolean;
+  onSend: () => void;
+}) {
+  if (!ownerRoleToAgreementKind(owner.role)) {
+    return <span className="text-sm text-gray-400">—</span>;
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <AgreementStatusCell owner={owner} />
+      <AgreementSendButton owner={owner} sending={sending} onSend={onSend} />
+    </div>
+  );
+}
+
 export default function OwnersPage() {
   const toast = useToast();
   const { profile, isPlatformAdmin, isAgent } = useAdminSession();
@@ -66,6 +199,7 @@ export default function OwnersPage() {
   const [managedPropertyCounts, setManagedPropertyCounts] = useState<Record<string, number>>({});
   const [allocatedTypeCounts, setAllocatedTypeCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [sendingInviteOwnerId, setSendingInviteOwnerId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubOwners = onSnapshot(collection(db, 'owners'), (snapshot) => {
@@ -111,6 +245,31 @@ export default function OwnersPage() {
         console.error('Error deleting owner:', error);
         toast.error('Failed to delete owner.');
       }
+    }
+  };
+
+  const handleSendAgreementInvite = async (owner: Owner) => {
+    const kind = ownerRoleToAgreementKind(owner.role);
+    if (!kind) return;
+
+    const resend = Boolean(owner.partnerAgreementInviteSentAt);
+    const prompt = resend
+      ? `Send another agreement invitation to ${owner.email}? Any previous link will stop working until they accept the new one.`
+      : `Send ${agreementKindLabel(kind).toLowerCase()} invitation to ${owner.email}?`;
+
+    if (!window.confirm(prompt)) return;
+
+    setSendingInviteOwnerId(owner.id);
+    try {
+      const result = await sendPartnerAgreementInviteCallable(owner.id);
+      toast.success(`Agreement invitation sent to ${result.email}.`);
+    } catch (error) {
+      console.error('sendPartnerAgreementInvite:', error);
+      toast.error(
+        httpsCallableMessage(error, 'Could not send agreement invitation.')
+      );
+    } finally {
+      setSendingInviteOwnerId(null);
     }
   };
 
@@ -178,6 +337,15 @@ export default function OwnersPage() {
                         listings allocated
                       </span>
                     </div>
+                    {isPlatformAdmin && ownerRoleToAgreementKind(owner.role) && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <AgreementColumn
+                          owner={owner}
+                          sending={sendingInviteOwnerId === owner.id}
+                          onSend={() => handleSendAgreementInvite(owner)}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1 shrink-0">
                     <Link
@@ -215,6 +383,7 @@ export default function OwnersPage() {
                     <th className="text-center" title="Allocated owner on individual property listings">
                       Listings allocated
                     </th>
+                    {isPlatformAdmin && <th>Agreement</th>}
                     {isPlatformAdmin && <th>Role</th>}
                     <th>Status</th>
                     <th className="text-right">Actions</th>
@@ -242,6 +411,15 @@ export default function OwnersPage() {
                           title="Property listings where this user is the allocated owner"
                         />
                       </td>
+                      {isPlatformAdmin && (
+                        <td className="whitespace-nowrap">
+                          <AgreementColumn
+                            owner={owner}
+                            sending={sendingInviteOwnerId === owner.id}
+                            onSend={() => handleSendAgreementInvite(owner)}
+                          />
+                        </td>
+                      )}
                       {isPlatformAdmin && (
                         <td>
                           <RoleBadge role={owner.role} />

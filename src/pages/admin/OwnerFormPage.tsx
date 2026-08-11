@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { collection, collectionGroup, addDoc, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { Loader2, Mail } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { adminPath } from '../../lib/adminRoutes';
@@ -8,6 +9,14 @@ import { normalizeOwnerRole } from '../../lib/adminAccess';
 import { canAgentManageOwnerRecord } from '../../lib/agentOwners';
 import { provisionOwnerAuth } from '../../lib/provisionOwnerAuth';
 import { useAdminSession } from '../../context/AdminSessionContext';
+import {
+  agreementKindLabel,
+  formatPartnerAgreementDate,
+  ownerRoleToAgreementKind,
+  partnerAgreementStatusLabel,
+} from '../../lib/partnerAgreement';
+import { sendPartnerAgreementInviteCallable } from '../../lib/partnerAgreementCallables';
+import { httpsCallableMessage } from '../../lib/callableError';
 import {
   AdminBackHeader,
   AdminButton,
@@ -50,6 +59,10 @@ export default function OwnerFormPage() {
   const [loading, setLoading] = useState(isEdit);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [originalEmail, setOriginalEmail] = useState('');
+  const [agreementInviteSentAt, setAgreementInviteSentAt] = useState<string | null>(null);
+  const [agreementAcceptedAt, setAgreementAcceptedAt] = useState<string | null>(null);
+  const [agreementKind, setAgreementKind] = useState<string | null>(null);
+  const [sendingAgreementInvite, setSendingAgreementInvite] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -85,6 +98,9 @@ export default function OwnerFormPage() {
           status: data.status || 'active',
           password: '',
         });
+        setAgreementInviteSentAt(data.partnerAgreementInviteSentAt || null);
+        setAgreementAcceptedAt(data.partnerAgreementAcceptedAt || null);
+        setAgreementKind(data.partnerAgreementKind || ownerRoleToAgreementKind(data.role));
       } catch (error) {
         console.error('Error loading owner:', error);
         toast.error('Failed to load owner.');
@@ -289,6 +305,87 @@ export default function OwnerFormPage() {
             </section>
 
             <hr className="border-gray-100" />
+
+            {isPlatformAdmin && isEdit && ownerRoleToAgreementKind(formData.role) && (
+              <>
+                <section>
+                  <h3 className="admin-section-title border-0 pb-0 mb-4">Partner agreement</h3>
+                  <div className="rounded-xl border border-gray-100 bg-vailo-surface-elevated/60 p-4 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">Agreement</p>
+                        <p className="font-medium text-vailo-dark">
+                          {agreementKindLabel(agreementKind as 'property_owner' | 'agency' | 'excursion_provider')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">Status</p>
+                        <p className="font-medium text-vailo-dark">
+                          {partnerAgreementStatusLabel({
+                            partnerAgreementInviteSentAt: agreementInviteSentAt || undefined,
+                            partnerAgreementAcceptedAt: agreementAcceptedAt || undefined,
+                          })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold uppercase text-gray-500 mb-1">Accepted at</p>
+                        <p className="font-medium text-vailo-dark">
+                          {agreementAcceptedAt
+                            ? formatPartnerAgreementDate(agreementAcceptedAt)
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+                    {agreementInviteSentAt && !agreementAcceptedAt && (
+                      <p className="text-xs text-gray-500">
+                        Invitation sent {formatPartnerAgreementDate(agreementInviteSentAt)}
+                      </p>
+                    )}
+                    <AdminButton
+                      type="button"
+                      variant="secondary"
+                      disabled={sendingAgreementInvite}
+                      onClick={async () => {
+                        if (!id) return;
+                        const kind = ownerRoleToAgreementKind(formData.role);
+                        if (!kind) return;
+                        const resend = Boolean(agreementInviteSentAt);
+                        const prompt = resend
+                          ? `Send another agreement invitation to ${formData.email}?`
+                          : `Send ${agreementKindLabel(kind).toLowerCase()} invitation to ${formData.email}?`;
+                        if (!window.confirm(prompt)) return;
+                        setSendingAgreementInvite(true);
+                        try {
+                          const result = await sendPartnerAgreementInviteCallable(id);
+                          setAgreementInviteSentAt(result.inviteSentAt);
+                          setAgreementAcceptedAt(null);
+                          setAgreementKind(result.agreementKind);
+                          toast.success(`Agreement invitation sent to ${result.email}.`);
+                        } catch (error) {
+                          toast.error(
+                            httpsCallableMessage(error, 'Could not send agreement invitation.')
+                          );
+                        } finally {
+                          setSendingAgreementInvite(false);
+                        }
+                      }}
+                    >
+                      {sendingAgreementInvite ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" /> Sending…
+                        </>
+                      ) : (
+                        <>
+                          <Mail size={16} />{' '}
+                          {agreementInviteSentAt ? 'Resend agreement invite' : 'Send agreement invite'}
+                        </>
+                      )}
+                    </AdminButton>
+                  </div>
+                </section>
+                <hr className="border-gray-100" />
+              </>
+            )}
 
             <section>
               <h3 className="admin-section-title border-0 pb-0 mb-4">Account Settings</h3>

@@ -1,6 +1,8 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const axios = require("axios");
 const { resolveCallerOwnerProfile } = require("./platformAdmin");
+const { resendApiKey } = require("./resendInbox");
+const { deliverGuestInviteForBooking, isAutoInviteEligible } = require("./guestAutoInvite");
 
 function normalizeICalUrl(url) {
   const trimmed = String(url || "").trim();
@@ -96,6 +98,7 @@ function isSplitHandledICalEvent(existingBookings, iCalEvent) {
 function applyIncrementalICalSync(existingBookings, iCalEvents) {
   const updated = existingBookings.map((b) => ({ ...b }));
   let added = 0;
+  const addedBookings = [];
 
   for (const iCalEvent of iCalEvents) {
     if (isSplitHandledICalEvent(updated, iCalEvent)) {
@@ -110,12 +113,14 @@ function applyIncrementalICalSync(existingBookings, iCalEvents) {
         provider: iCalEvent.provider ?? existing.provider,
       });
     } else {
-      updated.push(omitUndefined(iCalEvent));
+      const row = omitUndefined(iCalEvent);
+      updated.push(row);
+      addedBookings.push(row);
       added += 1;
     }
   }
 
-  return { bookings: updated, added, total: updated.length };
+  return { bookings: updated, added, total: updated.length, addedBookings };
 }
 
 function omitUndefined(obj) {
@@ -200,14 +205,22 @@ async function requirePropertyCalendarAccess(request, firestore, propertyId) {
   throw new HttpsError("permission-denied", "You do not have access to this property.");
 }
 
-function registerICalSync({ firestore, firebaseExports }) {
-  firebaseExports.syncPropertyTypeICal = onCall(async (request) => {
+function registerICalSync({ firestore, logger, firebaseExports }) {
+  firebaseExports.syncPropertyTypeICal = onCall(
+    {
+      region: "us-central1",
+      secrets: [resendApiKey],
+    },
+    async (request) => {
     const { propertyId, typeId, iCalUrl } = request.data || {};
     if (!propertyId || !typeId || !iCalUrl) {
       throw new HttpsError("invalid-argument", "propertyId, typeId, and iCalUrl are required.");
     }
 
     await requirePropertyCalendarAccess(request, firestore, propertyId);
+
+    const propSnap = await firestore.collection("properties").doc(propertyId).get();
+    const property = propSnap.exists ? propSnap.data() : {};
 
     const typeRef = firestore
       .collection("properties")
@@ -226,7 +239,7 @@ function registerICalSync({ firestore, firebaseExports }) {
       ? typeSnap.data().syncedBookings
       : [];
 
-    const { bookings: syncedBookings, added, total } = applyIncrementalICalSync(
+    const { bookings: syncedBookings, added, total, addedBookings } = applyIncrementalICalSync(
       existingBookings,
       events
     );
@@ -240,7 +253,30 @@ function registerICalSync({ firestore, firebaseExports }) {
       { merge: true }
     );
 
-    return { ok: true, count: total, added };
+    let autoInvitesSent = 0;
+    if (property.autoSendGuestInviteWhenReady && addedBookings.length > 0) {
+      const typeData = typeSnap.data();
+      for (const booking of addedBookings) {
+        if (!booking?.id || !isAutoInviteEligible(property, booking)) continue;
+        const result = await deliverGuestInviteForBooking(
+          firestore,
+          logger,
+          resendApiKey.value(),
+          {
+            propertyId,
+            typeId,
+            bookingId: booking.id,
+            property,
+            typeData,
+            bookings: syncedBookings,
+            typeRef,
+          }
+        );
+        if (result.sent) autoInvitesSent += 1;
+      }
+    }
+
+    return { ok: true, count: total, added, autoInvitesSent };
   });
 }
 

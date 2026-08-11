@@ -826,6 +826,28 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
 
     return { session };
   });
+
+  exp.maybeAutoSendGuestInvite = onCall(
+    { region: "us-central1", secrets: [resendApiKey] },
+    async (request) => {
+      const { propertyId, typeId, bookingId } = request.data || {};
+      if (!propertyId || !typeId || !bookingId) {
+        throw new HttpsError("invalid-argument", "Missing booking reference.");
+      }
+
+      await requirePropertyGuestInviteAccess(request, firestore, propertyId);
+
+      const { tryAutoSendGuestInviteForBooking } = require("./guestAutoInvite");
+      const result = await tryAutoSendGuestInviteForBooking(
+        firestore,
+        logger,
+        resendApiKey.value(),
+        { propertyId, typeId, bookingId }
+      );
+
+      return result;
+    }
+  );
 }
 
-module.exports = { registerGuestPortalAccess };
+module.exports = { registerGuestPortalAccess, requirePropertyGuestInviteAccess };

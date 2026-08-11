@@ -15,6 +15,10 @@ service firebase.storage {
     // Make sure to write security rules for your app before that time, or else
     // all client requests to your Storage bucket will be denied until you Update
     // your rules
+  match /guestIdDocuments/{allPaths=**} {
+    allow read, write: if false;
+  }
+
     match /{allPaths=**} {
       allow read, write: if request.time < timestamp.date(2027, 1, 1);
     }

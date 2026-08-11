@@ -50,6 +50,7 @@ import ExcursionDiscountFormPage from "./pages/admin/excursions/ExcursionDiscoun
 import ExcursionBookingsListPage from "./pages/admin/excursions/ExcursionBookingsListPage";
 import ExcursionBookingFormPage from "./pages/admin/excursions/ExcursionBookingFormPage";
 import ExcursionBookingDetailPage from "./pages/admin/excursions/ExcursionBookingDetailPage";
+import PartnerAgreementPage from "./pages/PartnerAgreementPage";
 import AiGaps from "./pages/admin/properties/AiGaps";
 import HouseGuests from "./pages/admin/properties/HouseGuests";
 import PropertyTesters from "./pages/admin/properties/PropertyTesters";
@@ -226,6 +227,8 @@ export default function App() {
           <Route path="excursion-portal/:providerId/excursions/:excursionId/bookings/add" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingFormPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
           <Route path="excursion-portal/:providerId/excursions/:excursionId/bookings/:bookingId" element={<ExcursionPortalGuard><ExcursionProviderAccessGuard><ExcursionBookingDetailPage /></ExcursionProviderAccessGuard></ExcursionPortalGuard>} />
         </Route>
+
+        <Route path="/partner-agreement" element={<PartnerAgreementPage />} />
 
         {/* Guest portal (vailo.app/:property/:unit) — after /admin routes */}
         <Route

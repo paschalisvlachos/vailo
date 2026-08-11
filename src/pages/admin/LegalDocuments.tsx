@@ -20,10 +20,6 @@ import { useToast } from '../../context/ToastContext';
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
 import {
-  filterDocumentsForLocale,
-  resolveLegalHtmlForLocale,
-} from '../../lib/platformLegal';
-import {
   legalPlainTextLength,
   normalizeLegalContentForEditor,
   sanitizeLegalHtml,
@@ -31,14 +27,36 @@ import {
 import {
   createLegalId,
   DEFAULT_LEGAL_CATEGORY,
+  filterDocumentsForLocale,
   isLockedLegalCategory,
   LEGAL_CATEGORY_ID,
   LEGAL_CATEGORY_NAME,
   legalCategoryDisplayName,
+  PLATFORM_AGREEMENT_KINDS,
+  resolveAgreementForKind,
+  resolveLegalHtmlForLocale,
   serializeCategoriesForFirestore,
   type LegalCategory,
   type LegalFileDocument,
+  type PlatformAgreementKind,
 } from '../../lib/platformLegal';
+import { getPlatformAgreementTemplate, getPlatformLegalTemplate } from '../../lib/platformLegalDefaults';
+
+function emptyAgreementState(): Record<PlatformAgreementKind, string> {
+  return {
+    property_owner: '',
+    agency: '',
+    excursion_provider: '',
+  };
+}
+
+function emptyAgreementDirtyState(): Record<PlatformAgreementKind, boolean> {
+  return {
+    property_owner: false,
+    agency: false,
+    excursion_provider: false,
+  };
+}
 
 type MainTab = 'published' | 'agreement' | string;
 
@@ -64,14 +82,16 @@ export default function LegalDocuments() {
   const [contentLocale, setContentLocale] = useState('en');
   const [privacyPolicy, setPrivacyPolicy] = useState('');
   const [termsOfUse, setTermsOfUse] = useState('');
-  const [agreement, setAgreement] = useState('');
+  const [agreements, setAgreements] = useState(emptyAgreementState);
+  const [activeAgreementKind, setActiveAgreementKind] =
+    useState<PlatformAgreementKind>('property_owner');
   const [categories, setCategories] = useState<LegalCategory[]>([DEFAULT_LEGAL_CATEGORY]);
   const [isSavingPublished, setIsSavingPublished] = useState(false);
   const [isSavingAgreement, setIsSavingAgreement] = useState(false);
   const [isSavingCategories, setIsSavingCategories] = useState(false);
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
   const [publishedDirty, setPublishedDirty] = useState(false);
-  const [agreementDirty, setAgreementDirty] = useState(false);
+  const [agreementDirtyByKind, setAgreementDirtyByKind] = useState(emptyAgreementDirtyState);
   const [categoriesDirty, setCategoriesDirty] = useState(false);
   const privacyEditorRef = useRef<RichTextEditorHandle>(null);
   const termsEditorRef = useRef<RichTextEditorHandle>(null);
@@ -81,12 +101,11 @@ export default function LegalDocuments() {
   const storedPrivacyChars = legalPlainTextLength(content.privacyPolicy);
   const storedTermsChars = legalPlainTextLength(content.termsOfUse);
   const storedAgreementChars = legalPlainTextLength(
-    resolveLegalHtmlForLocale(
-      content.agreementByLocale,
-      content.agreement,
-      contentLocale
-    )
+    resolveAgreementForKind(content, activeAgreementKind, contentLocale)
   );
+  const activeAgreementDirty = agreementDirtyByKind[activeAgreementKind];
+  const anyAgreementDirty = Object.values(agreementDirtyByKind).some(Boolean);
+  const activeAgreementMeta = PLATFORM_AGREEMENT_KINDS.find((k) => k.id === activeAgreementKind);
 
   const legalCategory = categories.find((c) => c.id === LEGAL_CATEGORY_ID);
   const customCategories = categories.filter((c) => c.id !== LEGAL_CATEGORY_ID);
@@ -124,25 +143,28 @@ export default function LegalDocuments() {
     contentLocale,
   ]);
 
-  /** Load agreement for the selected language unless the admin has unsaved edits. */
+  /** Load agreements for the selected language unless that kind has unsaved edits. */
   useEffect(() => {
-    if (loading || agreementDirty) return;
+    if (loading) return;
     const code = contentLocale.trim().toLowerCase() || 'en';
-    setAgreement(
-      normalizeLegalContentForEditor(
-        resolveLegalHtmlForLocale(
-          content.agreementByLocale,
-          content.agreement,
-          code
-        )
-      )
-    );
+    setAgreements((prev) => {
+      const next = { ...prev };
+      for (const kind of PLATFORM_AGREEMENT_KINDS) {
+        if (agreementDirtyByKind[kind.id]) continue;
+        next[kind.id] = normalizeLegalContentForEditor(
+          resolveAgreementForKind(content, kind.id, code)
+        );
+      }
+      return next;
+    });
   }, [
     loading,
+    content,
+    content.agreementsByKind,
     content.agreement,
     content.agreementByLocale,
     editorSyncKey,
-    agreementDirty,
+    agreementDirtyByKind,
     contentLocale,
   ]);
 
@@ -165,13 +187,26 @@ export default function LegalDocuments() {
     setTermsOfUse(sanitizeLegalHtml(termsEditorRef.current?.getHtml() ?? termsOfUse));
   };
 
-  const syncAgreementFromEditor = () => {
-    setAgreement(sanitizeLegalHtml(agreementEditorRef.current?.getHtml() ?? agreement));
+  const syncActiveAgreementFromEditor = () => {
+    const html = sanitizeLegalHtml(
+      agreementEditorRef.current?.getHtml() ?? agreements[activeAgreementKind]
+    );
+    setAgreements((prev) => ({ ...prev, [activeAgreementKind]: html }));
+    return html;
+  };
+
+  const switchAgreementKind = (nextKind: PlatformAgreementKind) => {
+    if (nextKind === activeAgreementKind) return;
+    const html = syncActiveAgreementFromEditor();
+    if (html !== agreements[activeAgreementKind]) {
+      setAgreementDirtyByKind((prev) => ({ ...prev, [activeAgreementKind]: true }));
+    }
+    setActiveAgreementKind(nextKind);
   };
 
   const switchTab = (tab: MainTab) => {
     if (activeTab === 'published') syncPublishedFromEditors();
-    if (activeTab === 'agreement') syncAgreementFromEditor();
+    if (activeTab === 'agreement') syncActiveAgreementFromEditor();
     setActiveTab(tab);
   };
 
@@ -182,14 +217,20 @@ export default function LegalDocuments() {
   };
 
   const handleSavePublished = async () => {
-    syncPublishedFromEditors();
-    const privacyHtml = sanitizeLegalHtml(privacyPolicy);
-    const termsHtml = sanitizeLegalHtml(termsOfUse);
+    const privacyHtml = sanitizeLegalHtml(
+      privacyEditorRef.current?.getHtml() ?? privacyPolicy
+    );
+    const termsHtml = sanitizeLegalHtml(
+      termsEditorRef.current?.getHtml() ?? termsOfUse
+    );
 
     if (!legalPlainTextLength(privacyHtml) && !legalPlainTextLength(termsHtml)) {
       toast.warning('Add content to at least one published page before saving.');
       return;
     }
+
+    setPrivacyPolicy(privacyHtml);
+    setTermsOfUse(termsHtml);
 
     setIsSavingPublished(true);
     try {
@@ -221,22 +262,31 @@ export default function LegalDocuments() {
   };
 
   const handleSaveAgreement = async () => {
-    syncAgreementFromEditor();
-    const agreementHtml = sanitizeLegalHtml(agreement);
+    const kind = activeAgreementKind;
+    const agreementHtml = syncActiveAgreementFromEditor();
     const code = contentLocale.trim().toLowerCase() || 'en';
-    const agreementByLocale = {
-      ...(content.agreementByLocale || {}),
+    const existingByKind = content.agreementsByKind || {};
+    const kindByLocale = {
+      ...(existingByKind[kind] || {}),
       [code]: agreementHtml,
     };
-    const payload: Record<string, unknown> = { agreementByLocale };
-    if (code === 'en') {
+    const agreementsByKind = {
+      ...existingByKind,
+      [kind]: kindByLocale,
+    };
+    const payload: Record<string, unknown> = { agreementsByKind };
+    if (kind === 'property_owner' && code === 'en') {
       payload.agreement = agreementHtml;
+      payload.agreementByLocale = kindByLocale;
     }
 
     setIsSavingAgreement(true);
     try {
-      await persistLegal(payload, `Agreement saved (${code}).`);
-      setAgreementDirty(false);
+      await persistLegal(
+        payload,
+        `${activeAgreementMeta?.label || 'Agreement'} saved (${code}).`
+      );
+      setAgreementDirtyByKind((prev) => ({ ...prev, [kind]: false }));
     } catch (err) {
       console.error('save agreement:', err);
       toast.error('Could not save. Please try again.');
@@ -340,15 +390,64 @@ export default function LegalDocuments() {
 
   const trySetContentLocale = (next: string) => {
     if (next === contentLocale) return;
-    if (publishedDirty || agreementDirty) {
+    if (publishedDirty || anyAgreementDirty) {
       const ok = window.confirm(
         'Discard unsaved published or agreement edits and switch language?'
       );
       if (!ok) return;
       setPublishedDirty(false);
-      setAgreementDirty(false);
+      setAgreementDirtyByKind(emptyAgreementDirtyState());
     }
+    if (activeTab === 'agreement') syncActiveAgreementFromEditor();
     setContentLocale(next);
+  };
+
+  const loadPublishedTemplate = () => {
+    const code = contentLocale.trim().toLowerCase() || 'en';
+    if (code !== 'en') {
+      toast.warning(
+        'Built-in templates are in English. Switch editing language to English (en) or translate manually.'
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        'Replace Privacy Policy and Terms of Use with the current English platform template? Unsaved editor content will be overwritten.'
+      )
+    ) {
+      return;
+    }
+    setPrivacyPolicy(
+      normalizeLegalContentForEditor(getPlatformLegalTemplate('en', 'privacyPolicy'))
+    );
+    setTermsOfUse(
+      normalizeLegalContentForEditor(getPlatformLegalTemplate('en', 'termsOfUse'))
+    );
+    setPublishedDirty(true);
+  };
+
+  const loadAgreementTemplate = () => {
+    const code = contentLocale.trim().toLowerCase() || 'en';
+    if (code !== 'en') {
+      toast.warning(
+        'Built-in templates are in English. Switch editing language to English (en) or translate manually.'
+      );
+      return;
+    }
+    if (
+      !window.confirm(
+        `Replace the ${activeAgreementMeta?.label || 'agreement'} editor with the current English template? Unsaved editor content will be overwritten.`
+      )
+    ) {
+      return;
+    }
+    setAgreements((prev) => ({
+      ...prev,
+      [activeAgreementKind]: normalizeLegalContentForEditor(
+        getPlatformAgreementTemplate('en', activeAgreementKind)
+      ),
+    }));
+    setAgreementDirtyByKind((prev) => ({ ...prev, [activeAgreementKind]: true }));
   };
 
   const updateDocumentTitle = (
@@ -451,7 +550,7 @@ export default function LegalDocuments() {
     <div className="admin-page">
       <AdminPageHeader
         title="Legal Documents"
-        description="Published pages for guests, owner agreement text, and downloadable files by category."
+        description="Published pages for guests, partner agreements by category, and downloadable files."
         icon={<FileText size={26} />}
         action={
           <AdminButton variant="secondary" onClick={addCategory}>
@@ -547,13 +646,40 @@ export default function LegalDocuments() {
       </div>
 
       <AdminCard className={`p-6 ${activeTab === 'agreement' ? '' : 'hidden'}`}>
-        <div className="mb-6">
-          <h3 className="text-sm font-bold text-vailo-dark">Agreement</h3>
-          <p className="text-xs text-gray-500 mt-1">
-            Owner or partner agreement text per language. Stored separately from guest Privacy Policy and
-            Terms of Use.
-          </p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-vailo-dark">Agreements</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Platform agreements per partner type and language — separate from guest Privacy Policy
+              and Terms of Use.
+            </p>
+          </div>
+          <AdminButton type="button" variant="secondary" onClick={loadAgreementTemplate} disabled={loading}>
+            Load English template
+          </AdminButton>
         </div>
+
+        <div className="flex flex-wrap gap-1 bg-vailo-surface-elevated p-1 rounded-lg mb-4">
+          {PLATFORM_AGREEMENT_KINDS.map((kind) => (
+            <button
+              key={kind.id}
+              type="button"
+              onClick={() => switchAgreementKind(kind.id)}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                activeAgreementKind === kind.id
+                  ? 'bg-white text-vailo-teal shadow-sm'
+                  : 'text-gray-500 hover:text-vailo-teal'
+              }`}
+            >
+              {kind.label}
+              {agreementDirtyByKind[kind.id] ? ' *' : ''}
+            </button>
+          ))}
+        </div>
+
+        {activeAgreementMeta && (
+          <p className="text-xs text-gray-500 mb-4">{activeAgreementMeta.description}</p>
+        )}
 
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-gray-500 py-12 justify-center">
@@ -562,14 +688,14 @@ export default function LegalDocuments() {
           </div>
         ) : (
           <RichTextEditor
-            key={`agreement-${editorSyncKey}-${contentLocale}`}
+            key={`agreement-${activeAgreementKind}-${contentLocale}`}
             ref={agreementEditorRef}
-            value={agreement}
+            value={agreements[activeAgreementKind]}
             onChange={(html) => {
-              setAgreement(html);
-              setAgreementDirty(true);
+              setAgreements((prev) => ({ ...prev, [activeAgreementKind]: html }));
+              setAgreementDirtyByKind((prev) => ({ ...prev, [activeAgreementKind]: true }));
             }}
-            placeholder="Enter agreement content…"
+            placeholder={`Enter ${activeAgreementMeta?.label.toLowerCase() || 'agreement'} content…`}
             minHeight={360}
           />
         )}
@@ -577,8 +703,8 @@ export default function LegalDocuments() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6 pt-6 border-t border-gray-100">
           <div className="text-xs text-gray-500 space-y-1">
             <p>
-              Editor: {legalPlainTextLength(agreement).toLocaleString()} chars
-              {agreementDirty ? ' · Unsaved changes' : ''}
+              Editor: {legalPlainTextLength(agreements[activeAgreementKind]).toLocaleString()} chars
+              {activeAgreementDirty ? ' · Unsaved changes' : ''}
             </p>
             {!loading && storedAgreementChars > 0 && (
               <p className="text-vailo-teal">
@@ -588,26 +714,31 @@ export default function LegalDocuments() {
           </div>
           <AdminButton
             onClick={handleSaveAgreement}
-            disabled={isSavingAgreement || loading || !agreementDirty}
+            disabled={isSavingAgreement || loading || !activeAgreementDirty}
             className="shrink-0"
           >
             {isSavingAgreement ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            Save agreement
+            Save {activeAgreementMeta?.label.toLowerCase() || 'agreement'}
           </AdminButton>
         </div>
       </AdminCard>
 
       <AdminCard className={`p-6 ${activeTab === 'published' ? '' : 'hidden'}`}>
-        <div className="mb-6">
-          <h3 className="text-sm font-bold text-vailo-dark">Published pages</h3>
-          <p className="text-xs text-gray-500 mt-1">
-            Privacy Policy and Terms of Use for guests — one version per language (see language bar above).
-          </p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-vailo-dark">Published pages</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Privacy Policy and Terms of Use for guests — one version per language (see language bar above).
+            </p>
+          </div>
+          <AdminButton type="button" variant="secondary" onClick={loadPublishedTemplate} disabled={loading}>
+            Load English templates
+          </AdminButton>
         </div>
 
         <PublishedEditors
           loading={loading}
-          editorSyncKey={editorSyncKey}
+          contentLocale={contentLocale}
           privacyPolicy={privacyPolicy}
           termsOfUse={termsOfUse}
           privacyEditorRef={privacyEditorRef}
@@ -850,7 +981,7 @@ export default function LegalDocuments() {
 
 function PublishedEditors({
   loading,
-  editorSyncKey,
+  contentLocale,
   privacyPolicy,
   termsOfUse,
   privacyEditorRef,
@@ -860,7 +991,7 @@ function PublishedEditors({
   updatedAt,
 }: {
   loading: boolean;
-  editorSyncKey: number;
+  contentLocale: string;
   privacyPolicy: string;
   termsOfUse: string;
   privacyEditorRef: React.RefObject<RichTextEditorHandle | null>;
@@ -869,6 +1000,7 @@ function PublishedEditors({
   onTermsChange: (html: string) => void;
   updatedAt: Date | null;
 }) {
+  const localeKey = contentLocale.trim().toLowerCase() || 'en';
   const [subTab, setSubTab] = useState<'privacy' | 'terms'>('privacy');
 
   return (
@@ -907,7 +1039,7 @@ function PublishedEditors({
         <>
           <div className={subTab === 'privacy' ? 'block' : 'hidden'}>
             <RichTextEditor
-              key={`privacy-${editorSyncKey}`}
+              key={`privacy-${localeKey}`}
               ref={privacyEditorRef}
               value={privacyPolicy}
               onChange={onPrivacyChange}
@@ -916,7 +1048,7 @@ function PublishedEditors({
           </div>
           <div className={subTab === 'terms' ? 'block' : 'hidden'}>
             <RichTextEditor
-              key={`terms-${editorSyncKey}`}
+              key={`terms-${localeKey}`}
               ref={termsEditorRef}
               value={termsOfUse}
               onChange={onTermsChange}

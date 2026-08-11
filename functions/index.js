@@ -1884,11 +1884,14 @@ exports.provisionOwnerAuth = onCall(
 const { registerGuestPortalAccess } = require("./guestPortalAccess");
 registerGuestPortalAccess({ firestore, logger, firebaseExports: exports });
 
+const { registerGuestPreArrival } = require("./guestPreArrival");
+registerGuestPreArrival({ firestore, firebaseExports: exports });
+
 const { registerGuestPortalAnalytics } = require("./guestPortalAnalytics");
 registerGuestPortalAnalytics({ firestore, firebaseExports: exports });
 
 const { registerICalSync } = require("./icalSync");
-registerICalSync({ firestore, firebaseExports: exports });
+registerICalSync({ firestore, logger, firebaseExports: exports });
 
 const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
 registerGuestApplianceGuide({ firestore, firebaseExports: exports });
@@ -1899,6 +1902,9 @@ registerGuestAssistantEscalation({ firestore, logger, firebaseExports: exports }
 const { registerPostStayThankYou } = require("./postStayThankYou");
 registerPostStayThankYou({ firestore, logger, firebaseExports: exports });
 
+const { registerGuestPreArrivalPurge } = require("./guestPreArrivalPurge");
+registerGuestPreArrivalPurge({ firestore, logger, firebaseExports: exports });
+
 const { registerMarketingContact } = require("./marketingContact");
 registerMarketingContact({ firestore, logger, firebaseExports: exports });
 
@@ -1907,3 +1913,6 @@ registerResendInbox({ firestore, logger, firebaseExports: exports });
 
 const { registerStagingSync } = require("./stagingSync");
 registerStagingSync({ firestore, firebaseExports: exports });
+
+const { registerPartnerAgreement } = require("./partnerAgreement");
+registerPartnerAgreement({ firestore, firebaseExports: exports });

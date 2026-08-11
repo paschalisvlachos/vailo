@@ -9,6 +9,7 @@
     "build:staging": "node scripts/buildCodeKnowledgeIndex.mjs && tsc -b && vite build --mode staging && node scripts/postbuild-hosting.mjs",
     "build:code-index": "node scripts/buildCodeKnowledgeIndex.mjs",
     "seed:staging": "node scripts/seed-staging.mjs",
+    "seed:legal": "node scripts/seedPlatformLegal.mjs",
     "clone:staging": "node scripts/clone-prod-to-staging.mjs",
     "provision:staging-login": "node scripts/provision-staging-login.mjs",
     "deploy:staging": "firebase deploy --only hosting --project staging",

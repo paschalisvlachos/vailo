@@ -4,6 +4,7 @@ import type { GuestApplianceGuideRequest, GuestApplianceGuideResponse } from './
 import type { GuestAnalyticsEventInput } from './guestAnalytics';
 import type { GuestClientDevice } from './guestDeviceInfo';
 import type { GuestPortalSession } from './guestAccess';
+import type { PreArrivalSubmission } from './syncedBooking';
 
 type SessionPayload = { session: GuestPortalSession };
 
@@ -191,6 +192,91 @@ export type AssistantEscalationResult = {
   previewMode?: boolean;
   hostNotifyStatus?: string;
 };
+
+export async function submitPreArrivalCheckInCallable(params: {
+  propertyId: string;
+  typeId: string;
+  sessionId: string;
+  expectedArrivalTime: string;
+  guestCount: number;
+  contactPhone: string;
+  contactEmail?: string;
+  dateOfBirth?: string;
+  specialRequests?: string;
+  acceptedHouseRules: boolean;
+  houseRulesLocale?: string;
+  transferRequested?: boolean;
+  idDocumentBase64?: string;
+  idDocumentContentType?: string;
+}): Promise<{
+  previewMode?: boolean;
+  preArrivalComplete: boolean;
+  preArrivalSubmittedAt: string;
+  submission: PreArrivalSubmission;
+}> {
+  const res = await call<{
+    previewMode?: boolean;
+    preArrivalComplete: boolean;
+    preArrivalSubmittedAt: string;
+    submission: PreArrivalSubmission;
+  }>('submitPreArrivalCheckIn')({
+    propertyId: params.propertyId,
+    typeId: params.typeId,
+    sessionId: params.sessionId,
+    expectedArrivalTime: params.expectedArrivalTime,
+    guestCount: params.guestCount,
+    contactPhone: params.contactPhone,
+    contactEmail: params.contactEmail || undefined,
+    dateOfBirth: params.dateOfBirth || undefined,
+    specialRequests: params.specialRequests || undefined,
+    acceptedHouseRules: params.acceptedHouseRules,
+    houseRulesLocale: params.houseRulesLocale || undefined,
+    transferRequested: params.transferRequested === true,
+    idDocumentBase64: params.idDocumentBase64 || undefined,
+    idDocumentContentType: params.idDocumentContentType || undefined,
+  });
+  return res.data;
+}
+
+export async function maybeAutoSendGuestInviteCallable(params: {
+  propertyId: string;
+  typeId: string;
+  bookingId: string;
+}): Promise<{ sent: boolean; reason?: string; guestEmail?: string }> {
+  const res = await call<{ sent: boolean; reason?: string; guestEmail?: string }>(
+    'maybeAutoSendGuestInvite'
+  )({
+    propertyId: params.propertyId,
+    typeId: params.typeId,
+    bookingId: params.bookingId,
+  });
+  return res.data;
+}
+
+export async function getPreArrivalIdDocumentForAdminCallable(params: {
+  propertyId: string;
+  typeId: string;
+  bookingId: string;
+}): Promise<{
+  contentBase64: string;
+  contentType: string;
+  filename: string;
+  uploadedAt?: string | null;
+  sizeBytes?: number;
+}> {
+  const res = await call<{
+    contentBase64: string;
+    contentType: string;
+    filename: string;
+    uploadedAt?: string | null;
+    sizeBytes?: number;
+  }>('getPreArrivalIdDocumentForAdmin')({
+    propertyId: params.propertyId,
+    typeId: params.typeId,
+    bookingId: params.bookingId,
+  });
+  return res.data;
+}
 
 export async function escalateAssistantQuestionCallable(params: {
   propertyId: string;

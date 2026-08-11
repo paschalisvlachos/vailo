@@ -5,6 +5,7 @@ export type ICalSyncResult = {
   ok: boolean;
   count: number;
   added: number;
+  autoInvitesSent?: number;
 };
 
 export async function syncPropertyTypeICalCallable(
@@ -20,11 +21,15 @@ export async function syncPropertyTypeICalCallable(
 }
 
 export function formatICalSyncSuccessMessage(result: ICalSyncResult): string {
-  const { added, count } = result;
-  if (added === 0) {
-    return `Calendar synced — no new reservations (${count} total).`;
+  const { added, count, autoInvitesSent = 0 } = result;
+  const base =
+    added === 0
+      ? `Calendar synced — no new reservations (${count} total).`
+      : `Calendar synced — ${added} new reservation${added === 1 ? '' : 's'} added (${count} total).`;
+  if (autoInvitesSent > 0) {
+    return `${base} ${autoInvitesSent} invitation email${autoInvitesSent === 1 ? '' : 's'} sent automatically.`;
   }
-  return `Calendar synced — ${added} new reservation${added === 1 ? '' : 's'} added (${count} total).`;
+  return base;
 }
 
 /** User-facing message from Firebase callable errors. */

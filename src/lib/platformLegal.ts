@@ -18,17 +18,48 @@ export type LegalCategory = {
   documents: LegalFileDocument[];
 };
 
+export type PlatformAgreementKind = 'property_owner' | 'agency' | 'excursion_provider';
+
+export const PLATFORM_AGREEMENT_KINDS: readonly {
+  id: PlatformAgreementKind;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: 'property_owner',
+    label: 'Property owner',
+    description: 'Hosts and managers who own or operate listed properties and units.',
+  },
+  {
+    id: 'agency',
+    label: 'Agency',
+    description: 'Agencies that manage multiple properties on behalf of property owners.',
+  },
+  {
+    id: 'excursion_provider',
+    label: 'Excursion provider',
+    description: 'Partners who list excursions and experiences in the guest portal.',
+  },
+];
+
+export type PlatformAgreementsByKind = Partial<
+  Record<PlatformAgreementKind, Record<string, string>>
+>;
+
 export type PlatformLegalContent = {
-  /** @deprecated Legacy single-language HTML; treated as English. */
+  /** @deprecated Legacy single-language HTML; treated as English property-owner agreement. */
   privacyPolicy: string;
   /** @deprecated Legacy single-language HTML; treated as English. */
   termsOfUse: string;
-  /** @deprecated Legacy single-language HTML; treated as English. */
+  /** @deprecated Legacy property-owner agreement; use agreementsByKind.property_owner. */
   agreement: string;
   /** Per-locale published HTML (BCP-47 short codes, e.g. en, el). */
   privacyPolicyByLocale?: Record<string, string>;
   termsOfUseByLocale?: Record<string, string>;
+  /** @deprecated Legacy property-owner agreement by locale. */
   agreementByLocale?: Record<string, string>;
+  /** Partner agreements by kind and locale. */
+  agreementsByKind?: PlatformAgreementsByKind;
   categories: LegalCategory[];
   updatedAt: Date | null;
 };
@@ -151,6 +182,34 @@ export function resolveLegalHtmlForLocale(
   return legacy || '';
 }
 
+function parseAgreementsByKind(raw: unknown): PlatformAgreementsByKind | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: PlatformAgreementsByKind = {};
+  for (const kind of PLATFORM_AGREEMENT_KINDS) {
+    const localeMap = parseLocaleHtmlMap((raw as Record<string, unknown>)[kind.id]);
+    if (localeMap) out[kind.id] = localeMap;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+export function resolveAgreementForKind(
+  content: Pick<
+    PlatformLegalContent,
+    'agreementsByKind' | 'agreement' | 'agreementByLocale'
+  >,
+  kind: PlatformAgreementKind,
+  locale: string
+): string {
+  const byKind = content.agreementsByKind?.[kind];
+  if (byKind && Object.keys(byKind).length > 0) {
+    return resolveLegalHtmlForLocale(byKind, '', locale);
+  }
+  if (kind === 'property_owner') {
+    return resolveLegalHtmlForLocale(content.agreementByLocale, content.agreement, locale);
+  }
+  return '';
+}
+
 export function parsePlatformLegal(data: Record<string, unknown> | undefined): PlatformLegalContent {
   if (!data) return EMPTY_PLATFORM_LEGAL;
   const updatedAt = data.updatedAt;
@@ -177,6 +236,14 @@ export function parsePlatformLegal(data: Record<string, unknown> | undefined): P
     agreementByLocale = { ...(agreementByLocale || {}), en: legacyAgreement };
   }
 
+  let agreementsByKind = parseAgreementsByKind(data.agreementsByKind);
+  if (!agreementsByKind?.property_owner && (legacyAgreement.trim() || agreementByLocale)) {
+    agreementsByKind = {
+      ...(agreementsByKind || {}),
+      property_owner: agreementByLocale || (legacyAgreement.trim() ? { en: legacyAgreement } : {}),
+    };
+  }
+
   return {
     privacyPolicy: legacyPrivacy,
     termsOfUse: legacyTerms,
@@ -184,6 +251,7 @@ export function parsePlatformLegal(data: Record<string, unknown> | undefined): P
     termsOfUseByLocale,
     agreement: legacyAgreement,
     agreementByLocale,
+    agreementsByKind,
     categories: parsed.length > 0 ? parsed : [DEFAULT_LEGAL_CATEGORY],
     updatedAt:
       updatedAt && typeof updatedAt === 'object' && 'toDate' in updatedAt

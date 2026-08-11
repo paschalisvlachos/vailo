@@ -6,6 +6,7 @@ import {
   EMPTY_PLATFORM_LEGAL,
   LEGAL_CATEGORY_ID,
   parsePlatformLegal,
+  resolveAgreementForKind,
   resolveLegalCategoryDocuments,
   resolveLegalHtmlForLocale,
   type LegalFileDocument,
@@ -49,11 +50,12 @@ export function usePlatformLegal(locale?: string) {
         content.termsOfUse,
         code
       ),
-      agreement: resolveLegalHtmlForLocale(
-        content.agreementByLocale,
-        content.agreement,
-        code
-      ),
+      agreement: resolveAgreementForKind(content, 'property_owner', code),
+      agreements: {
+        property_owner: resolveAgreementForKind(content, 'property_owner', code),
+        agency: resolveAgreementForKind(content, 'agency', code),
+        excursion_provider: resolveAgreementForKind(content, 'excursion_provider', code),
+      },
       legalFiles: resolveLegalCategoryDocuments(
         content.categories,
         LEGAL_CATEGORY_ID,

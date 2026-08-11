@@ -62,6 +62,13 @@ export type PropertyRecord = {
   createdAt?: string;
   guestPortalAccessRequired?: boolean;
   reservationSplitEnabled?: boolean;
+  preArrivalTransferOffer?: {
+    enabled?: boolean;
+    label?: string;
+    priceEur?: number;
+    paymentNote?: string;
+  };
+  autoSendGuestInviteWhenReady?: boolean;
   contentPrimaryLocale?: string;
   contentEnabledLocales?: string[];
 };

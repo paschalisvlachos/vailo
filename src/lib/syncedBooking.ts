@@ -1,5 +1,34 @@
 import type { GuestAccessSource, GuestInviteStatus } from './guestAccess';
 
+export type PreArrivalIdDocument = {
+  uploadedAt: string;
+  /** Internal Storage path — encrypted blob, no public URL. */
+  storagePath: string;
+  contentType: string;
+  sizeBytes?: number;
+  encryptionKeyVersion?: string;
+};
+
+export type PreArrivalSubmission = {
+  submittedAt: string;
+  expectedArrivalTime: string;
+  guestCount: number;
+  contactPhone: string;
+  contactEmail?: string;
+  /** ISO date YYYY-MM-DD */
+  dateOfBirth?: string;
+  specialRequests?: string;
+  acceptedHouseRulesAt: string;
+  houseRulesLocale?: string;
+  idDocument?: PreArrivalIdDocument;
+  transferRequested?: boolean;
+  transferOffer?: {
+    label: string;
+    priceEur: number;
+    paymentNote?: string;
+  };
+};
+
 export type SyncedBooking = {
   id?: string;
   start?: string;
@@ -34,6 +63,10 @@ export type SyncedBooking = {
   postStayThankYouResendId?: string | null;
   /** 1-based index within splitGroupId. */
   splitPartIndex?: number;
+  /** Guest completed pre-arrival check-in form. */
+  preArrivalComplete?: boolean;
+  preArrivalSubmittedAt?: string;
+  preArrivalSubmission?: PreArrivalSubmission;
 };
 
 export type SplitBookingPart = { start: string; end: string };
@@ -228,6 +261,9 @@ export function mergeSyncedBookingFromExisting(
     portalAccessUntil: existing.portalAccessUntil,
     accessSource: existing.accessSource,
     portalAccessRevokedAt: existing.portalAccessRevokedAt,
+    preArrivalComplete: existing.preArrivalComplete,
+    preArrivalSubmittedAt: existing.preArrivalSubmittedAt,
+    preArrivalSubmission: existing.preArrivalSubmission,
   };
 }
 

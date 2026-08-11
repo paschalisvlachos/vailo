@@ -16,6 +16,7 @@ import {
 import { resetPropertyBookingsInDateRange } from '../../../lib/resetPropertyBookings';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
 import { formatICalSyncError, formatICalSyncSuccessMessage, syncPropertyTypeICalCallable } from '../../../lib/icalSync';
+import { maybeTriggerAutoGuestInvite } from '../../../lib/autoGuestInvite';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw, Eraser } from 'lucide-react';
 
 function bookingStatusLabel(status: ReturnType<typeof getBookingInvitationStatus>): string {
@@ -41,7 +42,10 @@ function bookingBorderClass(status: ReturnType<typeof getBookingInvitationStatus
 }
 
 export default function Calendar() {
-  const { propertyId } = useOutletContext<{ propertyId: string }>();
+  const { propertyId, property } = useOutletContext<{
+    propertyId: string;
+    property: { autoSendGuestInviteWhenReady?: boolean };
+  }>();
   const toast = useToast();
   const { languages } = usePlatformLanguages();
 
@@ -149,7 +153,17 @@ export default function Calendar() {
     try {
       const typeRef = doc(db, 'properties', propertyId, 'propertyTypes', selectedTypeId);
       await setDoc(typeRef, { syncedBookings: updatedBookings }, { merge: true });
-      toast.success('Guest details saved. View them under House Guests.');
+      const autoInvite = await maybeTriggerAutoGuestInvite({
+        property,
+        propertyId,
+        typeId: selectedTypeId,
+        bookingId: target.id,
+      });
+      toast.success(
+        autoInvite.sent
+          ? 'Guest details saved and invitation email sent automatically.'
+          : 'Guest details saved. View them under House Guests.'
+      );
       setDetailsBooking(null);
     } catch (error) {
       console.error('Error saving guest details', error);

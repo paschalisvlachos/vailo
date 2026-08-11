@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Users } from 'lucide-react';
 import GuestWhatsAppLink from '../../../components/admin/GuestWhatsAppLink';
@@ -36,11 +36,8 @@ export default function HouseGuests() {
           House Guests
         </h2>
         <p className="text-sm text-gray-500 mt-1">
-          Guests appear here after you save their details from the{' '}
-          <Link to="../calendar" className="text-vailo-teal font-semibold hover:underline">
-            Calendar
-          </Link>{' '}
-          (name, email, and language required).
+          Guest CRM from completed reservation details and pre-arrival check-in. Returning guests
+          are matched by email or phone.
         </p>
       </div>
 
@@ -76,6 +73,12 @@ export default function HouseGuests() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                     Dates
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Pre-arrival
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    Transfer
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -102,7 +105,34 @@ export default function HouseGuests() {
                       {guest.unitName}
                     </td>
                     <td className="px-4 py-3.5 text-sm font-medium text-gray-900 whitespace-nowrap tabular-nums">
-                      {guest.dateRange}
+                      <div>{guest.dateRange}</div>
+                      {guest.returningGuest && (
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-vailo-teal mt-1">
+                          Returning guest · {guest.priorStayCount} stays
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">
+                      {guest.preArrivalComplete ? (
+                        <span className="inline-flex flex-col">
+                          <span className="font-semibold text-[#0B4F5C]">Submitted</span>
+                          {guest.expectedArrivalTime && (
+                            <span className="text-xs text-gray-500">{guest.expectedArrivalTime}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">
+                      {guest.transferRequested ? (
+                        <span>
+                          {guest.transferLabel}
+                          {guest.transferPriceLabel ? ` · ${guest.transferPriceLabel}` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

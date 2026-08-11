@@ -1,0 +1,491 @@
+const crypto = require("crypto");
+const admin = require("firebase-admin");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
+const {
+  getBookingById,
+  isBookingPortalAccessAllowed,
+} = require("./guestPortalBookingAccess");
+const { requirePropertyGuestInviteAccess } = require("./guestPortalAccess");
+const { upsertGuestProfileFromPreArrival } = require("./guestCrm");
+const {
+  encryptBuffer,
+  decryptBuffer,
+  ID_DOCUMENT_KEY_VERSION,
+} = require("./guestIdDocumentCrypto");
+
+const idDocEncryptionKey = defineSecret("GUEST_ID_DOCUMENT_ENCRYPTION_KEY");
+
+const PRE_ARRIVAL_SPECIAL_REQUESTS_MAX = 2000;
+const PRE_ARRIVAL_GUEST_COUNT_MAX = 30;
+const PRE_ARRIVAL_ID_MAX_BYTES = 5 * 1024 * 1024;
+const PRE_ARRIVAL_TRANSFER_PRICE_MAX = 9999;
+const ALLOWED_ID_CONTENT_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
+
+async function getSession(firestore, propertyId, sessionId) {
+  const snap = await firestore
+    .collection("properties")
+    .doc(propertyId)
+    .collection("guestPortalSessions")
+    .doc(sessionId)
+    .get();
+  if (!snap.exists) return null;
+  return { sessionId: snap.id, ...snap.data() };
+}
+
+async function requireGuestSession(firestore, propertyId, typeId, sessionId) {
+  if (!propertyId || !typeId || !sessionId) {
+    throw new HttpsError("invalid-argument", "Missing session parameters.");
+  }
+  const session = await getSession(firestore, propertyId, sessionId);
+  if (!session || session.typeId !== typeId) {
+    throw new HttpsError("permission-denied", "Invalid session.");
+  }
+  if (Date.now() > new Date(session.accessUntil).getTime()) {
+    throw new HttpsError("permission-denied", "Session expired.");
+  }
+  if (session.source === "admin_preview" || session.source === "tester") {
+    return { session, previewMode: true };
+  }
+  if (!session.bookingId) {
+    throw new HttpsError("failed-precondition", "No booking linked to session.");
+  }
+  const booking = await getBookingById(
+    firestore,
+    propertyId,
+    typeId,
+    session.bookingId
+  );
+  if (!isBookingPortalAccessAllowed(booking)) {
+    throw new HttpsError("permission-denied", "Booking access not allowed.");
+  }
+  return { session, previewMode: false, booking };
+}
+
+function matchesBooking(b, bookingId) {
+  return b.id && bookingId && b.id === bookingId;
+}
+
+function patchBookingInList(bookings, bookingId, patch) {
+  return bookings.map((b) => (matchesBooking(b, bookingId) ? { ...b, ...patch } : b));
+}
+
+async function persistBookings(typeRef, bookings) {
+  await typeRef.set({ syncedBookings: bookings }, { merge: true });
+}
+
+function validateSubmissionInput(data) {
+  const expectedArrivalTime = String(data.expectedArrivalTime || "").trim();
+  if (!expectedArrivalTime || !/^\d{2}:\d{2}$/.test(expectedArrivalTime)) {
+    throw new HttpsError("invalid-argument", "Expected arrival time is required.");
+  }
+
+  const guestCount = Number(data.guestCount);
+  if (!Number.isFinite(guestCount) || guestCount < 1) {
+    throw new HttpsError("invalid-argument", "Guest count must be at least 1.");
+  }
+  if (guestCount > PRE_ARRIVAL_GUEST_COUNT_MAX) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Guest count cannot exceed ${PRE_ARRIVAL_GUEST_COUNT_MAX}.`
+    );
+  }
+
+  const contactPhone = String(data.contactPhone || "").trim();
+  if (contactPhone.length < 6) {
+    throw new HttpsError("invalid-argument", "A valid contact phone is required.");
+  }
+
+  const specialRequests = String(data.specialRequests || "").trim();
+  if (specialRequests.length > PRE_ARRIVAL_SPECIAL_REQUESTS_MAX) {
+    throw new HttpsError("invalid-argument", "Special requests are too long.");
+  }
+
+  if (data.acceptedHouseRules !== true) {
+    throw new HttpsError("invalid-argument", "House rules must be accepted.");
+  }
+
+  const contactEmail = String(data.contactEmail || "").trim();
+  if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+    throw new HttpsError("invalid-argument", "Contact email is not valid.");
+  }
+
+  const dateOfBirth = String(data.dateOfBirth || "").trim();
+  if (dateOfBirth) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
+      throw new HttpsError("invalid-argument", "Date of birth must be YYYY-MM-DD.");
+    }
+    const dobDate = new Date(`${dateOfBirth}T12:00:00`);
+    if (Number.isNaN(dobDate.getTime()) || dobDate.getTime() > Date.now()) {
+      throw new HttpsError("invalid-argument", "Date of birth is not valid.");
+    }
+  }
+
+  return {
+    expectedArrivalTime,
+    guestCount: Math.round(guestCount),
+    contactPhone,
+    contactEmail: contactEmail || undefined,
+    dateOfBirth: dateOfBirth || undefined,
+    specialRequests: specialRequests || undefined,
+    houseRulesLocale: String(data.houseRulesLocale || "").trim() || undefined,
+    transferRequested: data.transferRequested === true,
+  };
+}
+
+function normalizeTransferOffer(raw) {
+  const enabled = raw?.enabled === true;
+  const label = String(raw?.label || "Transfer from port / airport").trim();
+  const price = Number(raw?.priceEur);
+  const priceEur =
+    Number.isFinite(price) && price >= 0 && price <= PRE_ARRIVAL_TRANSFER_PRICE_MAX
+      ? Math.round(price * 100) / 100
+      : 0;
+  const paymentNote = String(raw?.paymentNote || "Pay in cash on arrival").trim();
+  return {
+    enabled,
+    label: label || "Transfer from port / airport",
+    priceEur,
+    paymentNote: paymentNote || "Pay in cash on arrival",
+  };
+}
+
+function resolveTransferFields(data, property) {
+  const offer = normalizeTransferOffer(property?.preArrivalTransferOffer);
+  const requested = data.transferRequested === true;
+  if (!requested) {
+    return {};
+  }
+  if (!offer.enabled) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Transfer is not offered for this property."
+    );
+  }
+  return {
+    transferRequested: true,
+    transferOffer: {
+      label: offer.label,
+      priceEur: offer.priceEur,
+      paymentNote: offer.paymentNote,
+    },
+  };
+}
+
+function parseIdDocumentUpload(data) {
+  const base64 = String(data.idDocumentBase64 || "").trim();
+  if (!base64) return null;
+
+  const contentType = String(data.idDocumentContentType || "").trim().toLowerCase();
+  if (!ALLOWED_ID_CONTENT_TYPES.has(contentType)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Unsupported ID document type. Use JPEG, PNG, WebP, or PDF."
+    );
+  }
+
+  let buffer;
+  try {
+    buffer = Buffer.from(base64, "base64");
+  } catch {
+    throw new HttpsError("invalid-argument", "Invalid ID document data.");
+  }
+
+  if (!buffer.length) {
+    throw new HttpsError("invalid-argument", "ID document is empty.");
+  }
+  if (buffer.length > PRE_ARRIVAL_ID_MAX_BYTES) {
+    throw new HttpsError("invalid-argument", "ID document is too large (max 5 MB).");
+  }
+
+  return { buffer, contentType };
+}
+
+function guestIdDocumentStoragePath(propertyId, typeId, bookingId) {
+  return `guestIdDocuments/${propertyId}/${typeId}/${bookingId}/${crypto.randomUUID()}.enc`;
+}
+
+async function deleteStorageObjectIfExists(storagePath) {
+  if (!storagePath) return;
+  try {
+    const bucket = admin.storage().bucket();
+    await bucket.file(storagePath).delete({ ignoreNotFound: true });
+  } catch {
+    /* ignore cleanup errors */
+  }
+}
+
+async function storeEncryptedIdDocument(plainBuffer, contentType, storagePath, encryptionKeyRaw) {
+  const { encrypted, keyVersion } = encryptBuffer(plainBuffer, encryptionKeyRaw);
+  const bucket = admin.storage().bucket();
+  await bucket.file(storagePath).save(encrypted, {
+    metadata: {
+      contentType: "application/octet-stream",
+      metadata: {
+        vailoEncrypted: "true",
+        vailoOriginalContentType: contentType,
+        vailoKeyVersion: keyVersion,
+      },
+    },
+  });
+  return keyVersion;
+}
+
+async function resolveIdDocumentForSubmission(data, options) {
+  const upload = parseIdDocumentUpload(data);
+  if (!upload) {
+    return options.existingIdDocument || undefined;
+  }
+
+  if (options.previewMode) {
+    return {
+      uploadedAt: new Date().toISOString(),
+      storagePath: `preview/${options.bookingId || "guest"}/id-document.enc`,
+      contentType: upload.contentType,
+      sizeBytes: upload.buffer.length,
+      encryptionKeyVersion: ID_DOCUMENT_KEY_VERSION,
+    };
+  }
+
+  const encryptionKey =
+    idDocEncryptionKey.value() || process.env.GUEST_ID_DOCUMENT_ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    throw new HttpsError(
+      "failed-precondition",
+      "ID document upload is not configured on the server."
+    );
+  }
+
+  const storagePath = guestIdDocumentStoragePath(
+    options.propertyId,
+    options.typeId,
+    options.bookingId
+  );
+  const keyVersion = await storeEncryptedIdDocument(
+    upload.buffer,
+    upload.contentType,
+    storagePath,
+    encryptionKey
+  );
+
+  if (options.existingIdDocument?.storagePath) {
+    await deleteStorageObjectIfExists(options.existingIdDocument.storagePath);
+  }
+
+  return {
+    uploadedAt: new Date().toISOString(),
+    storagePath,
+    contentType: upload.contentType,
+    sizeBytes: upload.buffer.length,
+    encryptionKeyVersion: keyVersion,
+  };
+}
+
+function registerGuestPreArrival({ firestore, firebaseExports }) {
+  if (!firebaseExports) {
+    throw new Error("registerGuestPreArrival requires firebaseExports");
+  }
+
+  firebaseExports.submitPreArrivalCheckIn = onCall(
+    {
+      region: "us-central1",
+      enforceAppCheck: false,
+      secrets: [idDocEncryptionKey],
+    },
+    async (request) => {
+      const data = request.data || {};
+      const propertyId = String(data.propertyId || "").trim();
+      const typeId = String(data.typeId || "").trim();
+      const sessionId = String(data.sessionId || "").trim();
+
+      if (!propertyId || !typeId || !sessionId) {
+        throw new HttpsError("invalid-argument", "Missing pre-arrival parameters.");
+      }
+
+      const input = validateSubmissionInput(data);
+      const { session, previewMode, booking } = await requireGuestSession(
+        firestore,
+        propertyId,
+        typeId,
+        sessionId
+      );
+
+      const propSnap = await firestore.collection("properties").doc(propertyId).get();
+      const property = propSnap.exists ? propSnap.data() : {};
+      const transferFields = resolveTransferFields(data, property);
+
+      const bookingId = session.bookingId;
+
+      let existingIdDocument;
+      if (!previewMode && bookingId) {
+        const typeSnap = await firestore
+          .collection("properties")
+          .doc(propertyId)
+          .collection("propertyTypes")
+          .doc(typeId)
+          .get();
+        const bookings = typeSnap.exists ? typeSnap.data().syncedBookings || [] : [];
+        const target = bookings.find((b) => matchesBooking(b, bookingId));
+        existingIdDocument = target?.preArrivalSubmission?.idDocument;
+      }
+
+      const idDocument = await resolveIdDocumentForSubmission(data, {
+        previewMode,
+        propertyId,
+        typeId,
+        bookingId: bookingId || "preview",
+        existingIdDocument,
+      });
+
+      const now = new Date().toISOString();
+      const submission = {
+        submittedAt: now,
+        expectedArrivalTime: input.expectedArrivalTime,
+        guestCount: input.guestCount,
+        contactPhone: input.contactPhone,
+        contactEmail: input.contactEmail,
+        dateOfBirth: input.dateOfBirth,
+        specialRequests: input.specialRequests,
+        acceptedHouseRulesAt: now,
+        houseRulesLocale: input.houseRulesLocale,
+        ...(idDocument ? { idDocument } : {}),
+        ...transferFields,
+      };
+
+      if (previewMode) {
+        return {
+          previewMode: true,
+          preArrivalComplete: true,
+          preArrivalSubmittedAt: now,
+          submission,
+        };
+      }
+
+      const typeRef = firestore
+        .collection("properties")
+        .doc(propertyId)
+        .collection("propertyTypes")
+        .doc(typeId);
+      const typeSnap = await typeRef.get();
+      if (!typeSnap.exists) {
+        throw new HttpsError("not-found", "Unit not found.");
+      }
+
+      const bookings = typeSnap.data().syncedBookings || [];
+      const target = bookings.find((b) => matchesBooking(b, bookingId));
+      if (!target) {
+        throw new HttpsError("not-found", "Booking not found.");
+      }
+
+      const updated = patchBookingInList(bookings, bookingId, {
+        preArrivalComplete: true,
+        preArrivalSubmittedAt: now,
+        preArrivalSubmission: submission,
+        guestPhone: input.contactPhone,
+        guestWhatsapp: input.contactPhone,
+        ...(input.contactEmail ? { guestEmail: input.contactEmail } : {}),
+      });
+
+      await persistBookings(typeRef, updated);
+
+      await upsertGuestProfileFromPreArrival(firestore, {
+        propertyId,
+        typeId,
+        unitName: typeSnap.data()?.propertyTypeName || "",
+        booking: {
+          ...target,
+          guestPhone: input.contactPhone,
+          guestWhatsapp: input.contactPhone,
+          ...(input.contactEmail ? { guestEmail: input.contactEmail } : {}),
+        },
+        submission,
+      });
+
+      return {
+        preArrivalComplete: true,
+        preArrivalSubmittedAt: now,
+        submission,
+        bookingId,
+        guestName: target.guestName || booking?.guestName || session.guestName || null,
+      };
+    }
+  );
+
+  firebaseExports.getPreArrivalIdDocumentForAdmin = onCall(
+    {
+      region: "us-central1",
+      enforceAppCheck: false,
+      secrets: [idDocEncryptionKey],
+    },
+    async (request) => {
+      const data = request.data || {};
+      const propertyId = String(data.propertyId || "").trim();
+      const typeId = String(data.typeId || "").trim();
+      const bookingId = String(data.bookingId || "").trim();
+
+      if (!propertyId || !typeId || !bookingId) {
+        throw new HttpsError("invalid-argument", "Missing booking reference.");
+      }
+
+      await requirePropertyGuestInviteAccess(request, firestore, propertyId);
+
+      const booking = await getBookingById(firestore, propertyId, typeId, bookingId);
+      if (!booking) {
+        throw new HttpsError("not-found", "Booking not found.");
+      }
+
+      const idDocument = booking.preArrivalSubmission?.idDocument;
+      const storagePath = String(idDocument?.storagePath || "").trim();
+      if (!storagePath || storagePath.startsWith("preview/")) {
+        throw new HttpsError("not-found", "No ID document on file for this reservation.");
+      }
+
+      const encryptionKey =
+        idDocEncryptionKey.value() || process.env.GUEST_ID_DOCUMENT_ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        throw new HttpsError(
+          "failed-precondition",
+          "ID document decryption is not configured on the server."
+        );
+      }
+
+      const bucket = admin.storage().bucket();
+      const file = bucket.file(storagePath);
+      const [exists] = await file.exists();
+      if (!exists) {
+        throw new HttpsError("not-found", "ID document file not found.");
+      }
+
+      const [encryptedBuffer] = await file.download();
+      const plain = decryptBuffer(Buffer.from(encryptedBuffer), encryptionKey);
+      const contentType =
+        idDocument.contentType ||
+        file.metadata?.metadata?.vailoOriginalContentType ||
+        "application/octet-stream";
+
+      const ext =
+        contentType === "application/pdf"
+          ? "pdf"
+          : contentType === "image/png"
+            ? "png"
+            : contentType === "image/webp"
+              ? "webp"
+              : "jpg";
+
+      return {
+        contentBase64: plain.toString("base64"),
+        contentType,
+        filename: `guest-id-${bookingId.slice(0, 8)}.${ext}`,
+        uploadedAt: idDocument.uploadedAt || null,
+        sizeBytes: plain.length,
+      };
+    }
+  );
+}
+
+module.exports = { registerGuestPreArrival, idDocEncryptionKey };

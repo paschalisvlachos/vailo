@@ -5,16 +5,25 @@ import { submitPreArrivalCheckInCallable } from '../../lib/guestPortalCallables'
 import type { GuestPortalSession } from '../../lib/guestAccess';
 import {
   PRE_ARRIVAL_SPECIAL_REQUESTS_MAX,
-  PRE_ARRIVAL_ID_UPLOAD_GUIDANCE,
-  readFileAsBase64,
-  validatePreArrivalIdFile,
-  applyTransferToSubmission,
+  PRE_ARRIVAL_IDENTITY_GUIDANCE,
+  PRE_ARRIVAL_ID_DOCUMENT_TYPES,
+  buildPreArrivalIdDetailsPayload,
   buildPreArrivalSubmissionPayload,
   formatPreArrivalDateDisplay,
+  formatPreArrivalIdDetailsSummary,
   formatPreArrivalTimeDisplay,
   getPreArrivalHouseRulesText,
+  isPreArrivalFormSubmittable,
   preArrivalFormDefaults,
+  preArrivalIdDetailsFromSubmission,
+  preArrivalIdInputModeFromSubmission,
+  readFileAsBase64,
   validatePreArrivalForm,
+  validatePreArrivalIdentity,
+  validatePreArrivalIdDetails,
+  applyTransferToSubmission,
+  type PreArrivalIdDetailsInput,
+  type PreArrivalIdInputMode,
 } from '../../lib/preArrivalSubmission';
 import {
   formatPreArrivalTransferPrice,
@@ -80,10 +89,30 @@ export default function GuestPreArrivalForm({
   );
   const [editing, setEditing] = useState(!(existingSubmission && preArrivalComplete));
   const [idFile, setIdFile] = useState<File | null>(null);
+  const [idInputMode, setIdInputMode] = useState<PreArrivalIdInputMode>(() =>
+    preArrivalIdInputModeFromSubmission(existingSubmission)
+  );
+  const [idDetails, setIdDetails] = useState<PreArrivalIdDetailsInput>(() =>
+    preArrivalIdDetailsFromSubmission(existingSubmission)
+  );
   const idInputRef = useRef<HTMLInputElement>(null);
 
   const storedIdDocument = submitted?.idDocument || existingSubmission?.idDocument;
+  const storedIdDetails = submitted?.idDetails || existingSubmission?.idDetails;
   const idOnFile = Boolean(storedIdDocument?.storagePath) && !idFile;
+  const idDetailsOnFile = Boolean(storedIdDetails) && idInputMode === 'manual';
+
+  const canSubmit = useMemo(
+    () =>
+      isPreArrivalFormSubmittable(form, {
+        idInputMode,
+        idFile,
+        idDetails,
+        hasStoredIdDocument: Boolean(storedIdDocument?.storagePath),
+        hasStoredIdDetails: Boolean(storedIdDetails),
+      }),
+    [form, idInputMode, idFile, idDetails, storedIdDocument, storedIdDetails]
+  );
 
   const previewOnly =
     session.source === 'admin_preview' || session.source === 'tester';
@@ -98,9 +127,15 @@ export default function GuestPreArrivalForm({
       return;
     }
 
-    const idValidationError = validatePreArrivalIdFile(idFile);
-    if (idValidationError) {
-      setError(idValidationError);
+    const identityError = validatePreArrivalIdentity({
+      idInputMode,
+      idFile,
+      idDetails,
+      hasStoredIdDocument: Boolean(storedIdDocument?.storagePath),
+      hasStoredIdDetails: Boolean(storedIdDetails),
+    });
+    if (identityError) {
+      setError(identityError);
       return;
     }
 
@@ -118,8 +153,14 @@ export default function GuestPreArrivalForm({
           sizeBytes: idFile.size,
           encryptionKeyVersion: 'v1',
         };
+        delete localSubmission.idDetails;
+      } else if (idInputMode === 'manual' && !validatePreArrivalIdDetails(idDetails)) {
+        localSubmission.idDetails = buildPreArrivalIdDetailsPayload(idDetails);
+        delete localSubmission.idDocument;
       } else if (existingSubmission?.idDocument) {
         localSubmission.idDocument = existingSubmission.idDocument;
+      } else if (existingSubmission?.idDetails) {
+        localSubmission.idDetails = existingSubmission.idDetails;
       }
       setSubmitted(localSubmission);
       setEditing(false);
@@ -136,7 +177,7 @@ export default function GuestPreArrivalForm({
     try {
       let idDocumentBase64: string | undefined;
       let idDocumentContentType: string | undefined;
-      if (idFile) {
+      if (idInputMode === 'upload' && idFile) {
         idDocumentBase64 = await readFileAsBase64(idFile);
         idDocumentContentType = idFile.type;
       }
@@ -156,6 +197,15 @@ export default function GuestPreArrivalForm({
         transferRequested: form.transferRequested,
         idDocumentBase64,
         idDocumentContentType,
+        idDocumentType:
+          idInputMode === 'manual' ? idDetails.documentType || undefined : undefined,
+        idDocumentNumber:
+          idInputMode === 'manual' ? idDetails.documentNumber.trim() || undefined : undefined,
+        idIssuingCountry:
+          idInputMode === 'manual' ? idDetails.issuingCountry.trim() || undefined : undefined,
+        idIssueDate: idInputMode === 'manual' ? idDetails.issueDate.trim() || undefined : undefined,
+        idExpiryDate:
+          idInputMode === 'manual' ? idDetails.expiryDate.trim() || undefined : undefined,
       });
       setSubmitted(result.submission);
       setIdFile(null);
@@ -231,6 +281,14 @@ export default function GuestPreArrivalForm({
                   <dd className="font-medium text-emerald-700">Uploaded securely</dd>
                 </div>
               )}
+              {submitted.idDetails && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">ID details</dt>
+                  <dd className="font-medium text-right">
+                    {formatPreArrivalIdDetailsSummary(submitted.idDetails)}
+                  </dd>
+                </div>
+              )}
             </dl>
             <button
               type="button"
@@ -243,6 +301,8 @@ export default function GuestPreArrivalForm({
                     submission: submitted,
                   })
                 );
+                setIdInputMode(preArrivalIdInputModeFromSubmission(submitted));
+                setIdDetails(preArrivalIdDetailsFromSubmission(submitted));
                 setIdFile(null);
                 setEditing(true);
               }}
@@ -397,64 +457,197 @@ export default function GuestPreArrivalForm({
             </span>
             <div>
               <p className="text-sm font-semibold text-[#051F26]">
-                ID document <span className="font-normal text-gray-400">(optional)</span>
+                Identity verification <span className="text-red-500">*</span>
               </p>
               <ul className="mt-2 space-y-1.5 text-xs text-gray-500 leading-relaxed list-disc pl-4">
-                <li>
-                  <span className="font-medium text-gray-600">Format:</span>{' '}
-                  {PRE_ARRIVAL_ID_UPLOAD_GUIDANCE.formats}
-                </li>
-                <li>
-                  <span className="font-medium text-gray-600">Max size:</span>{' '}
-                  {PRE_ARRIVAL_ID_UPLOAD_GUIDANCE.maxSizeLabel}
-                </li>
+                <li>Upload your ID document or enter the details manually — one is required.</li>
+                {idInputMode === 'upload' && (
+                  <>
+                    <li>
+                      <span className="font-medium text-gray-600">Format:</span>{' '}
+                      {PRE_ARRIVAL_IDENTITY_GUIDANCE.formats}
+                    </li>
+                    <li>
+                      <span className="font-medium text-gray-600">Max size:</span>{' '}
+                      {PRE_ARRIVAL_IDENTITY_GUIDANCE.maxSizeLabel}
+                    </li>
+                  </>
+                )}
                 <li>
                   <span className="font-medium text-gray-600">Privacy:</span>{' '}
-                  {PRE_ARRIVAL_ID_UPLOAD_GUIDANCE.gdprSummary}
+                  {PRE_ARRIVAL_IDENTITY_GUIDANCE.gdprSummary}
                 </li>
               </ul>
             </div>
           </div>
 
-          <input
-            ref={idInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf"
-            className="sr-only"
-            onChange={(e) => {
-              const file = e.target.files?.[0] || null;
-              setIdFile(file);
-              setError(null);
-            }}
-          />
-
-          {idFile ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#0B4F5C]/15 bg-white px-3 py-2.5">
-              <p className="text-sm text-gray-700 truncate">{idFile.name}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setIdFile(null);
-                  if (idInputRef.current) idInputRef.current.value = '';
-                }}
-                className="text-xs font-semibold text-gray-500 hover:text-red-600 shrink-0"
-              >
-                Remove
-              </button>
-            </div>
-          ) : idOnFile ? (
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2.5 text-sm text-emerald-800">
-              ID document on file. Upload a new photo to replace it.
-            </div>
-          ) : (
+          <div className="flex gap-1 bg-white p-1 rounded-lg mb-4 border border-gray-100">
             <button
               type="button"
-              onClick={() => idInputRef.current?.click()}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-[#0B4F5C]/25 bg-white px-4 py-3 text-sm font-semibold text-[#0B4F5C] hover:bg-[#0B4F5C]/[0.03] transition-colors"
+              onClick={() => {
+                setIdInputMode('upload');
+                setError(null);
+              }}
+              className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
+                idInputMode === 'upload'
+                  ? 'bg-[#0B4F5C]/8 text-[#0B4F5C]'
+                  : 'text-gray-500 hover:text-[#0B4F5C]'
+              }`}
             >
-              <Upload size={16} />
-              Choose photo or PDF
+              Upload ID
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIdInputMode('manual');
+                setIdFile(null);
+                if (idInputRef.current) idInputRef.current.value = '';
+                setError(null);
+              }}
+              className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
+                idInputMode === 'manual'
+                  ? 'bg-[#0B4F5C]/8 text-[#0B4F5C]'
+                  : 'text-gray-500 hover:text-[#0B4F5C]'
+              }`}
+            >
+              Enter details
+            </button>
+          </div>
+
+          {idInputMode === 'upload' ? (
+            <>
+              <input
+                ref={idInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setIdFile(file);
+                  setError(null);
+                }}
+              />
+
+              {idFile ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-[#0B4F5C]/15 bg-white px-3 py-2.5">
+                  <p className="text-sm text-gray-700 truncate">{idFile.name}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIdFile(null);
+                      if (idInputRef.current) idInputRef.current.value = '';
+                    }}
+                    className="text-xs font-semibold text-gray-500 hover:text-red-600 shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : idOnFile ? (
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2.5 text-sm text-emerald-800">
+                  ID document on file. Upload a new photo to replace it.
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => idInputRef.current?.click()}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-[#0B4F5C]/25 bg-white px-4 py-3 text-sm font-semibold text-[#0B4F5C] hover:bg-[#0B4F5C]/[0.03] transition-colors"
+                >
+                  <Upload size={16} />
+                  Choose photo or PDF
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3">
+              {idDetailsOnFile && (
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2.5 text-sm text-emerald-800">
+                  ID details on file. Update the fields below to replace them.
+                </div>
+              )}
+              <div>
+                <label htmlFor="pre-arrival-id-type" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Document type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="pre-arrival-id-type"
+                  value={idDetails.documentType}
+                  onChange={(e) =>
+                    setIdDetails((prev) => ({
+                      ...prev,
+                      documentType: e.target.value as PreArrivalIdDetailsInput['documentType'],
+                    }))
+                  }
+                  className="guest-input w-full border border-gray-200 text-gray-900 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+                >
+                  <option value="">Select document type</option>
+                  {PRE_ARRIVAL_ID_DOCUMENT_TYPES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="pre-arrival-id-number" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Document number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="pre-arrival-id-number"
+                  type="text"
+                  value={idDetails.documentNumber}
+                  onChange={(e) =>
+                    setIdDetails((prev) => ({ ...prev, documentNumber: e.target.value }))
+                  }
+                  placeholder="As shown on your ID"
+                  className="guest-input w-full border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+                />
+              </div>
+              <div>
+                <label htmlFor="pre-arrival-id-country" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Issuing country <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="pre-arrival-id-country"
+                  type="text"
+                  value={idDetails.issuingCountry}
+                  onChange={(e) =>
+                    setIdDetails((prev) => ({ ...prev, issuingCountry: e.target.value }))
+                  }
+                  placeholder="e.g. Greece"
+                  className="guest-input w-full border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="pre-arrival-id-issue-date" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    Issue date <span className="font-normal text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    id="pre-arrival-id-issue-date"
+                    type="date"
+                    value={idDetails.issueDate}
+                    onChange={(e) =>
+                      setIdDetails((prev) => ({ ...prev, issueDate: e.target.value }))
+                    }
+                    className="guest-input w-full border border-gray-200 text-gray-900 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pre-arrival-id-expiry-date" className="block text-xs font-semibold text-gray-600 mb-1.5">
+                    Expiry date <span className="font-normal text-gray-400">(optional)</span>
+                  </label>
+                  <input
+                    id="pre-arrival-id-expiry-date"
+                    type="date"
+                    value={idDetails.expiryDate}
+                    onChange={(e) =>
+                      setIdDetails((prev) => ({ ...prev, expiryDate: e.target.value }))
+                    }
+                    className="guest-input w-full border border-gray-200 text-gray-900 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+                  />
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
@@ -494,8 +687,8 @@ export default function GuestPreArrivalForm({
 
       <button
         type="submit"
-        disabled={submitting}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0B4F5C] px-4 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-[#083A43] disabled:opacity-60 transition-colors"
+        disabled={submitting || !canSubmit}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0B4F5C] px-4 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-[#083A43] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
       >
         {submitting ? (
           <>

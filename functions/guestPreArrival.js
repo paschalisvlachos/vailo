@@ -26,6 +26,7 @@ const ALLOWED_ID_CONTENT_TYPES = new Set([
   "image/webp",
   "application/pdf",
 ]);
+const ALLOWED_ID_DOCUMENT_TYPES = new Set(["passport", "national_id", "other"]);
 
 async function getSession(firestore, propertyId, sessionId) {
   const snap = await firestore
@@ -206,6 +207,116 @@ function parseIdDocumentUpload(data) {
   return { buffer, contentType };
 }
 
+function parseOptionalIsoDate(value, label, options = {}) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new HttpsError("invalid-argument", `${label} must be YYYY-MM-DD.`);
+  }
+  const date = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    throw new HttpsError("invalid-argument", `${label} is not valid.`);
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const time = date.getTime();
+  if (options.allowFuture === false && time > today.getTime()) {
+    throw new HttpsError("invalid-argument", `${label} cannot be in the future.`);
+  }
+  if (options.allowPast === false && time < today.getTime()) {
+    throw new HttpsError("invalid-argument", `${label} cannot be in the past.`);
+  }
+  return trimmed;
+}
+
+function parseIdDetailsInput(data) {
+  const documentType = String(data.idDocumentType || "").trim();
+  const documentNumber = String(data.idDocumentNumber || "").trim();
+  const issuingCountry = String(data.idIssuingCountry || "").trim();
+  const issueDate = parseOptionalIsoDate(data.idIssueDate, "Issue date", {
+    allowFuture: false,
+  });
+  const expiryDate = parseOptionalIsoDate(data.idExpiryDate, "Expiry date", {
+    allowPast: false,
+  });
+
+  if (!documentType && !documentNumber && !issuingCountry && !issueDate && !expiryDate) {
+    return null;
+  }
+
+  if (!ALLOWED_ID_DOCUMENT_TYPES.has(documentType)) {
+    throw new HttpsError("invalid-argument", "Please choose a valid ID document type.");
+  }
+  if (documentNumber.length < 3) {
+    throw new HttpsError("invalid-argument", "Please enter your ID document number.");
+  }
+  if (documentNumber.length > 40) {
+    throw new HttpsError("invalid-argument", "ID document number is too long.");
+  }
+  if (issuingCountry.length < 2) {
+    throw new HttpsError("invalid-argument", "Please enter the country that issued your ID.");
+  }
+  if (issuingCountry.length > 80) {
+    throw new HttpsError("invalid-argument", "Issuing country name is too long.");
+  }
+  if (issueDate && expiryDate && issueDate >= expiryDate) {
+    throw new HttpsError("invalid-argument", "Expiry date must be after the issue date.");
+  }
+
+  return {
+    documentType,
+    documentNumber,
+    issuingCountry,
+    ...(issueDate ? { issueDate } : {}),
+    ...(expiryDate ? { expiryDate } : {}),
+  };
+}
+
+async function resolveIdentityForSubmission(data, options) {
+  const upload = parseIdDocumentUpload(data);
+  const manual = parseIdDetailsInput(data);
+
+  if (upload && manual) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Provide either an ID upload or ID details, not both."
+    );
+  }
+
+  let idDocument = options.existingIdDocument;
+  let idDetails = options.existingIdDetails;
+
+  if (upload) {
+    idDocument = await resolveIdDocumentForSubmission(data, options);
+    idDetails = undefined;
+    if (options.existingIdDocument?.storagePath) {
+      await deleteStorageObjectIfExists(options.existingIdDocument.storagePath);
+    }
+    return { idDocument, idDetails };
+  }
+
+  if (manual) {
+    idDetails = {
+      ...manual,
+      recordedAt: new Date().toISOString(),
+    };
+    idDocument = undefined;
+    if (options.existingIdDocument?.storagePath) {
+      await deleteStorageObjectIfExists(options.existingIdDocument.storagePath);
+    }
+    return { idDocument, idDetails };
+  }
+
+  if (!idDocument && !idDetails) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Please upload an ID document or enter your ID details."
+    );
+  }
+
+  return { idDocument, idDetails };
+}
+
 function guestIdDocumentStoragePath(propertyId, typeId, bookingId) {
   return `guestIdDocuments/${propertyId}/${typeId}/${bookingId}/${crypto.randomUUID()}.enc`;
 }
@@ -322,6 +433,7 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
       const bookingId = session.bookingId;
 
       let existingIdDocument;
+      let existingIdDetails;
       if (!previewMode && bookingId) {
         const typeSnap = await firestore
           .collection("properties")
@@ -332,14 +444,16 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
         const bookings = typeSnap.exists ? typeSnap.data().syncedBookings || [] : [];
         const target = bookings.find((b) => matchesBooking(b, bookingId));
         existingIdDocument = target?.preArrivalSubmission?.idDocument;
+        existingIdDetails = target?.preArrivalSubmission?.idDetails;
       }
 
-      const idDocument = await resolveIdDocumentForSubmission(data, {
+      const { idDocument, idDetails } = await resolveIdentityForSubmission(data, {
         previewMode,
         propertyId,
         typeId,
         bookingId: bookingId || "preview",
         existingIdDocument,
+        existingIdDetails,
       });
 
       const now = new Date().toISOString();
@@ -354,6 +468,7 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
         acceptedHouseRulesAt: now,
         houseRulesLocale: input.houseRulesLocale,
         ...(idDocument ? { idDocument } : {}),
+        ...(idDetails ? { idDetails } : {}),
         ...transferFields,
       };
 

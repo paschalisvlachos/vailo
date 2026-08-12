@@ -1,5 +1,5 @@
 import { getGuideTextValue } from './houseGuideLocales';
-import type { PreArrivalSubmission } from './syncedBooking';
+import type { PreArrivalIdDetails, PreArrivalSubmission } from './syncedBooking';
 import type { PreArrivalTransferOffer } from './preArrivalSettings';
 
 export const PRE_ARRIVAL_SPECIAL_REQUESTS_MAX = 2000;
@@ -9,12 +9,39 @@ export const PRE_ARRIVAL_ID_MAX_MB = 5;
 export const PRE_ARRIVAL_ID_FORMAT_LABEL = 'JPEG, PNG, WebP, or PDF';
 export const PRE_ARRIVAL_ID_GDPR_RETENTION_DAYS = 7;
 
-/** Guest-facing ID upload guidance (size, format, retention). */
-export const PRE_ARRIVAL_ID_UPLOAD_GUIDANCE = {
+/** Guest-facing identity guidance (upload or manual entry). */
+export const PRE_ARRIVAL_IDENTITY_GUIDANCE = {
   formats: PRE_ARRIVAL_ID_FORMAT_LABEL,
   maxSizeLabel: `${PRE_ARRIVAL_ID_MAX_MB} MB`,
-  gdprSummary: `Your ID is encrypted and used only for legal check-in requirements. Identity details and ID images are automatically deleted ${PRE_ARRIVAL_ID_GDPR_RETENTION_DAYS} days after checkout, in line with GDPR data-minimisation.`,
+  gdprSummary: `Your identity document or details are used only for legal check-in requirements. Identity data and ID images are automatically deleted ${PRE_ARRIVAL_ID_GDPR_RETENTION_DAYS} days after checkout, in line with GDPR data-minimisation.`,
 } as const;
+
+/** @deprecated Use PRE_ARRIVAL_IDENTITY_GUIDANCE */
+export const PRE_ARRIVAL_ID_UPLOAD_GUIDANCE = PRE_ARRIVAL_IDENTITY_GUIDANCE;
+
+export const PRE_ARRIVAL_ID_DOCUMENT_TYPES = [
+  { value: 'passport', label: 'Passport' },
+  { value: 'national_id', label: 'National ID card' },
+  { value: 'other', label: 'Other ID document' },
+] as const;
+
+export type PreArrivalIdInputMode = 'upload' | 'manual';
+
+export type PreArrivalIdDetailsInput = {
+  documentType: '' | PreArrivalIdDetails['documentType'];
+  documentNumber: string;
+  issuingCountry: string;
+  issueDate: string;
+  expiryDate: string;
+};
+
+export const EMPTY_PRE_ARRIVAL_ID_DETAILS: PreArrivalIdDetailsInput = {
+  documentType: '',
+  documentNumber: '',
+  issuingCountry: '',
+  issueDate: '',
+  expiryDate: '',
+};
 
 export const PRE_ARRIVAL_ID_ALLOWED_TYPES = [
   'image/jpeg',
@@ -49,6 +76,23 @@ function isValidOptionalDateOfBirth(value: string): boolean {
   const today = new Date();
   today.setHours(23, 59, 59, 999);
   return date.getTime() <= today.getTime();
+}
+
+function isValidOptionalIsoDate(
+  value: string,
+  options?: { allowFuture?: boolean; allowPast?: boolean }
+): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return false;
+  const date = new Date(`${trimmed}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const time = date.getTime();
+  if (options?.allowFuture === false && time > today.getTime()) return false;
+  if (options?.allowPast === false && time < today.getTime()) return false;
+  return true;
 }
 
 export function getPreArrivalHouseRulesText(
@@ -111,6 +155,157 @@ export function validatePreArrivalIdFile(file: File | null | undefined): string 
     return 'ID document must be 5 MB or smaller.';
   }
   return null;
+}
+
+export function formatPreArrivalIdDocumentTypeLabel(
+  documentType: PreArrivalIdDetails['documentType'] | '' | undefined
+): string {
+  const match = PRE_ARRIVAL_ID_DOCUMENT_TYPES.find((item) => item.value === documentType);
+  return match?.label || 'ID document';
+}
+
+export function validatePreArrivalIdDetails(input: PreArrivalIdDetailsInput): string | null {
+  const documentType = input.documentType;
+  const documentNumber = input.documentNumber.trim();
+  const issuingCountry = input.issuingCountry.trim();
+
+  if (!documentType) {
+    return 'Please choose your ID document type.';
+  }
+  if (documentNumber.length < 3) {
+    return 'Please enter your ID document number.';
+  }
+  if (documentNumber.length > 40) {
+    return 'ID document number is too long.';
+  }
+  if (issuingCountry.length < 2) {
+    return 'Please enter the country that issued your ID.';
+  }
+  if (issuingCountry.length > 80) {
+    return 'Issuing country name is too long.';
+  }
+
+  const issueDate = input.issueDate.trim();
+  if (!isValidOptionalIsoDate(issueDate, { allowFuture: false })) {
+    return 'Please enter a valid issue date, or leave it empty.';
+  }
+
+  const expiryDate = input.expiryDate.trim();
+  if (!isValidOptionalIsoDate(expiryDate, { allowPast: false })) {
+    return 'Please enter a valid expiry date, or leave it empty.';
+  }
+
+  if (issueDate && expiryDate && issueDate >= expiryDate) {
+    return 'Expiry date must be after the issue date.';
+  }
+
+  return null;
+}
+
+export function preArrivalIdDetailsFromSubmission(
+  submission?: PreArrivalSubmission | null
+): PreArrivalIdDetailsInput {
+  const details = submission?.idDetails;
+  if (!details) return { ...EMPTY_PRE_ARRIVAL_ID_DETAILS };
+  return {
+    documentType: details.documentType,
+    documentNumber: details.documentNumber,
+    issuingCountry: details.issuingCountry,
+    issueDate: details.issueDate || '',
+    expiryDate: details.expiryDate || '',
+  };
+}
+
+export function preArrivalIdInputModeFromSubmission(
+  submission?: PreArrivalSubmission | null
+): PreArrivalIdInputMode {
+  if (submission?.idDetails) return 'manual';
+  if (submission?.idDocument) return 'upload';
+  return 'upload';
+}
+
+export function buildPreArrivalIdDetailsPayload(
+  input: PreArrivalIdDetailsInput
+): PreArrivalIdDetails {
+  const issueDate = input.issueDate.trim();
+  const expiryDate = input.expiryDate.trim();
+  return {
+    documentType: input.documentType as PreArrivalIdDetails['documentType'],
+    documentNumber: input.documentNumber.trim(),
+    issuingCountry: input.issuingCountry.trim(),
+    ...(issueDate ? { issueDate } : {}),
+    ...(expiryDate ? { expiryDate } : {}),
+    recordedAt: new Date().toISOString(),
+  };
+}
+
+export function formatPreArrivalIdDetailsSummary(
+  details: PreArrivalIdDetails | undefined | null
+): string {
+  if (!details) return '';
+  const parts = [
+    formatPreArrivalIdDocumentTypeLabel(details.documentType),
+    details.documentNumber,
+    details.issuingCountry,
+  ];
+  if (details.issueDate) {
+    parts.push(`issued ${formatPreArrivalDateDisplay(details.issueDate)}`);
+  }
+  if (details.expiryDate) {
+    parts.push(`expires ${formatPreArrivalDateDisplay(details.expiryDate)}`);
+  }
+  return parts.join(' · ');
+}
+
+export function isPreArrivalFormSubmittable(
+  form: PreArrivalFormInput,
+  options: {
+    idInputMode: PreArrivalIdInputMode;
+    idFile: File | null;
+    idDetails: PreArrivalIdDetailsInput;
+    hasStoredIdDocument: boolean;
+    hasStoredIdDetails: boolean;
+  }
+): boolean {
+  if (validatePreArrivalForm(form)) return false;
+
+  if (options.idInputMode === 'upload') {
+    if (options.idFile) return !validatePreArrivalIdFile(options.idFile);
+    return options.hasStoredIdDocument;
+  }
+
+  const manualStarted =
+    Boolean(options.idDetails.documentType) ||
+    options.idDetails.documentNumber.trim().length > 0 ||
+    options.idDetails.issuingCountry.trim().length > 0;
+
+  if (manualStarted) return !validatePreArrivalIdDetails(options.idDetails);
+  return options.hasStoredIdDetails;
+}
+
+export function validatePreArrivalIdentity(
+  options: {
+    idInputMode: PreArrivalIdInputMode;
+    idFile: File | null;
+    idDetails: PreArrivalIdDetailsInput;
+    hasStoredIdDocument: boolean;
+    hasStoredIdDetails: boolean;
+  }
+): string | null {
+  if (options.idInputMode === 'upload') {
+    if (options.idFile) return validatePreArrivalIdFile(options.idFile);
+    if (options.hasStoredIdDocument) return null;
+    return 'Please upload your ID document or switch to enter ID details.';
+  }
+
+  const manualStarted =
+    Boolean(options.idDetails.documentType) ||
+    options.idDetails.documentNumber.trim().length > 0 ||
+    options.idDetails.issuingCountry.trim().length > 0;
+
+  if (manualStarted) return validatePreArrivalIdDetails(options.idDetails);
+  if (options.hasStoredIdDetails) return null;
+  return 'Please enter your ID details or switch to upload a document.';
 }
 
 export function readFileAsBase64(file: File): Promise<string> {

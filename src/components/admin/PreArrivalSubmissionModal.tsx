@@ -5,6 +5,7 @@ import { httpsCallableMessage } from '../../lib/callableError';
 import { formatGuestStayLabel } from '../../lib/guestInviteEmailTemplate';
 import {
   formatPreArrivalDateDisplay,
+  formatPreArrivalIdDetailsSummary,
   formatPreArrivalTimeDisplay,
 } from '../../lib/preArrivalSubmission';
 import { formatPreArrivalTransferPrice } from '../../lib/preArrivalSettings';
@@ -58,6 +59,7 @@ export default function PreArrivalSubmissionModal({
   const submission = booking.preArrivalSubmission as PreArrivalSubmission;
   const guestName = booking.guestName?.trim() || booking.summary?.trim() || 'Guest';
   const hasIdDocument = Boolean(submission.idDocument?.storagePath);
+  const hasIdDetails = Boolean(submission.idDetails?.documentNumber);
 
   const [idLoading, setIdLoading] = useState(false);
   const [idError, setIdError] = useState<string | null>(null);
@@ -263,6 +265,12 @@ export default function PreArrivalSubmissionModal({
                       })} · ${submission.idDocument.contentType || 'file'}`
                     : 'On file (encrypted)'
                 }
+              />
+            )}
+            {hasIdDetails && submission.idDetails && (
+              <DetailRow
+                label="ID details"
+                value={formatPreArrivalIdDetailsSummary(submission.idDetails)}
               />
             )}
           </dl>

@@ -1,6 +1,7 @@
 import type { PreArrivalSubmission, SyncedBooking } from './syncedBooking';
 import {
   formatPreArrivalDateDisplay,
+  formatPreArrivalIdDetailsSummary,
   formatPreArrivalTimeDisplay,
   PRE_ARRIVAL_ID_GDPR_RETENTION_DAYS,
 } from './preArrivalSubmission';
@@ -72,6 +73,10 @@ export function buildPreArrivalDeclarationHtml(options: {
           })
         : ''
     ),
+    row(
+      'ID details',
+      submission.idDetails ? formatPreArrivalIdDetailsSummary(submission.idDetails) : ''
+    ),
   ]
     .filter(Boolean)
     .join('');
@@ -86,6 +91,11 @@ export function buildPreArrivalDeclarationHtml(options: {
       ? `<section class="section">
         <h2>Identity document</h2>
         <p class="muted">An encrypted ID document is on file. Download it separately from the admin pre-arrival view.</p>
+      </section>`
+      : submission.idDetails
+        ? `<section class="section">
+        <h2>Identity details</h2>
+        <p class="muted">ID details were submitted manually for legal check-in.</p>
       </section>`
       : '';
 

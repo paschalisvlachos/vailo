@@ -208,6 +208,11 @@ export async function submitPreArrivalCheckInCallable(params: {
   transferRequested?: boolean;
   idDocumentBase64?: string;
   idDocumentContentType?: string;
+  idDocumentType?: string;
+  idDocumentNumber?: string;
+  idIssuingCountry?: string;
+  idIssueDate?: string;
+  idExpiryDate?: string;
 }): Promise<{
   previewMode?: boolean;
   preArrivalComplete: boolean;
@@ -234,6 +239,11 @@ export async function submitPreArrivalCheckInCallable(params: {
     transferRequested: params.transferRequested === true,
     idDocumentBase64: params.idDocumentBase64 || undefined,
     idDocumentContentType: params.idDocumentContentType || undefined,
+    idDocumentType: params.idDocumentType || undefined,
+    idDocumentNumber: params.idDocumentNumber || undefined,
+    idIssuingCountry: params.idIssuingCountry || undefined,
+    idIssueDate: params.idIssueDate || undefined,
+    idExpiryDate: params.idExpiryDate || undefined,
   });
   return res.data;
 }

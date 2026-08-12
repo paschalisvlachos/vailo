@@ -9,6 +9,17 @@ export type PreArrivalIdDocument = {
   encryptionKeyVersion?: string;
 };
 
+export type PreArrivalIdDetails = {
+  documentType: 'passport' | 'national_id' | 'other';
+  documentNumber: string;
+  issuingCountry: string;
+  /** ISO date YYYY-MM-DD */
+  issueDate?: string;
+  /** ISO date YYYY-MM-DD */
+  expiryDate?: string;
+  recordedAt: string;
+};
+
 export type PreArrivalSubmission = {
   submittedAt: string;
   expectedArrivalTime: string;
@@ -21,6 +32,7 @@ export type PreArrivalSubmission = {
   acceptedHouseRulesAt: string;
   houseRulesLocale?: string;
   idDocument?: PreArrivalIdDocument;
+  idDetails?: PreArrivalIdDetails;
   transferRequested?: boolean;
   transferOffer?: {
     label: string;

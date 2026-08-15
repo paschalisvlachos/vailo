@@ -28,6 +28,46 @@ const ALLOWED_ID_CONTENT_TYPES = new Set([
 ]);
 const ALLOWED_ID_DOCUMENT_TYPES = new Set(["passport", "national_id", "other"]);
 
+/** Firestore rejects explicit undefined — strip before writes. */
+function omitUndefinedDeep(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)) {
+    return value.map((item) => omitUndefinedDeep(item));
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (val === undefined) continue;
+      out[key] = omitUndefinedDeep(val);
+    }
+    return out;
+  }
+  return value;
+}
+
+function buildPreArrivalSubmissionRecord(input, extras = {}) {
+  return omitUndefinedDeep({
+    submittedAt: extras.submittedAt,
+    expectedArrivalTime: input.expectedArrivalTime,
+    guestCount: input.guestCount,
+    contactPhone: input.contactPhone,
+    acceptedHouseRulesAt: extras.acceptedHouseRulesAt,
+    ...(input.contactEmail ? { contactEmail: input.contactEmail } : {}),
+    ...(input.dateOfBirth ? { dateOfBirth: input.dateOfBirth } : {}),
+    ...(input.specialRequests ? { specialRequests: input.specialRequests } : {}),
+    ...(input.houseRulesLocale ? { houseRulesLocale: input.houseRulesLocale } : {}),
+    ...(extras.idDocument ? { idDocument: extras.idDocument } : {}),
+    ...(extras.idDetails ? { idDetails: extras.idDetails } : {}),
+    ...(extras.transferRequested
+      ? {
+          transferRequested: true,
+          ...(extras.transferOffer ? { transferOffer: extras.transferOffer } : {}),
+        }
+      : {}),
+  });
+}
+
 async function getSession(firestore, propertyId, sessionId) {
   const snap = await firestore
     .collection("properties")
@@ -409,6 +449,7 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
       secrets: [idDocEncryptionKey],
     },
     async (request) => {
+      try {
       const data = request.data || {};
       const propertyId = String(data.propertyId || "").trim();
       const typeId = String(data.typeId || "").trim();
@@ -457,20 +498,14 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
       });
 
       const now = new Date().toISOString();
-      const submission = {
+      const submission = buildPreArrivalSubmissionRecord(input, {
         submittedAt: now,
-        expectedArrivalTime: input.expectedArrivalTime,
-        guestCount: input.guestCount,
-        contactPhone: input.contactPhone,
-        contactEmail: input.contactEmail,
-        dateOfBirth: input.dateOfBirth,
-        specialRequests: input.specialRequests,
         acceptedHouseRulesAt: now,
-        houseRulesLocale: input.houseRulesLocale,
-        ...(idDocument ? { idDocument } : {}),
-        ...(idDetails ? { idDetails } : {}),
-        ...transferFields,
-      };
+        idDocument,
+        idDetails,
+        transferRequested: transferFields.transferRequested === true,
+        transferOffer: transferFields.transferOffer,
+      });
 
       if (previewMode) {
         return {
@@ -528,6 +563,14 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
         bookingId,
         guestName: target.guestName || booking?.guestName || session.guestName || null,
       };
+      } catch (error) {
+        if (error instanceof HttpsError) throw error;
+        console.error("submitPreArrivalCheckIn failed:", error);
+        throw new HttpsError(
+          "internal",
+          error?.message || "Could not save your check-in. Please try again."
+        );
+      }
     }
   );
 

@@ -19,6 +19,7 @@ import GuestExcursionsPromoCard from '../../components/guest/GuestExcursionsProm
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
 import GuestPreArrivalShell from '../../components/guest/GuestPreArrivalShell';
+import GuestOpenPreArrivalFlow from '../../components/guest/GuestOpenPreArrivalFlow';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
 import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
 import GuestFeaturedPreviewSheet from '../../components/guest/GuestFeaturedPreviewSheet';
@@ -48,7 +49,8 @@ import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import { isGuestPortalAccessRequired, readGuestPortalSession, type GuestPortalSession } from '../../lib/guestAccess';
-import { isPreArrivalPortalView, markPreArrivalViewIntent, resolvePreArrivalPortalView, GUEST_PRE_ARRIVAL_VIEW } from '../../lib/guestPreArrival';
+import { isPreArrivalPortalView, markPreArrivalViewIntent, resolvePreArrivalPortalView, clearPreArrivalViewIntent, GUEST_PRE_ARRIVAL_VIEW } from '../../lib/guestPreArrival';
+import { isPreArrivalCheckInEnabled } from '../../lib/preArrivalSettings';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   GuestAreaPrefetcher,
@@ -412,6 +414,10 @@ function GuestPortalPage({
     [onSessionLocale]
   );
 
+  const handleSessionCleared = useCallback(() => {
+    setGuestSession(null);
+  }, []);
+
   const activeGuestSession = guestSession ?? readGuestPortalSession();
 
   const preArrivalView = useMemo(
@@ -421,6 +427,14 @@ function GuestPortalPage({
     [searchParams, propertyId, typeId, preArrivalViewFromUrl]
   );
 
+  const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
+
+  const preArrivalViewActive = preArrivalView && preArrivalCheckInEnabled;
+
+  /** Open portal check-in: dates only, no personal invite token. */
+  const isOpenPreArrivalFlow =
+    preArrivalViewActive && !inviteTokenFromQuery && !adminPreviewFromQuery;
+
   useEffect(() => {
     if (preArrivalViewFromUrl && propertyId && typeId) {
       markPreArrivalViewIntent(propertyId, typeId);
@@ -428,7 +442,22 @@ function GuestPortalPage({
   }, [preArrivalViewFromUrl, propertyId, typeId]);
 
   useEffect(() => {
-    if (!propertyId || !typeId || resolving) return;
+    if (!propertyId || !typeId || preArrivalCheckInEnabled) return;
+    if (
+      isPreArrivalPortalView(searchParams.get('view')) ||
+      resolvePreArrivalPortalView(null, propertyId, typeId)
+    ) {
+      clearPreArrivalViewIntent(propertyId, typeId);
+      if (isPreArrivalPortalView(searchParams.get('view'))) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('view');
+        navigate({ search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
+      }
+    }
+  }, [propertyId, typeId, preArrivalCheckInEnabled, searchParams, navigate]);
+
+  useEffect(() => {
+    if (!propertyId || !typeId || resolving || !preArrivalCheckInEnabled) return;
     if (
       resolvePreArrivalPortalView(null, propertyId, typeId) &&
       !isPreArrivalPortalView(searchParams.get('view'))
@@ -447,6 +476,8 @@ function GuestPortalPage({
       start?: string;
       end?: string;
       guestName?: string;
+      summary?: string;
+      guestCountry?: string;
       guestPhone?: string;
       guestWhatsapp?: string;
       guestEmail?: string;
@@ -459,6 +490,8 @@ function GuestPortalPage({
       start: match.start,
       end: match.end,
       guestName: match.guestName,
+      summary: match.summary,
+      guestCountry: match.guestCountry,
       guestPhone: match.guestPhone,
       guestWhatsapp: match.guestWhatsapp,
       guestEmail: match.guestEmail,
@@ -1214,7 +1247,12 @@ function GuestPortalPage({
     );
 
   const preArrivalShell =
-    preArrivalView && activeGuestSession && property && propertyId && typeId ? (
+    preArrivalViewActive &&
+    !isOpenPreArrivalFlow &&
+    activeGuestSession &&
+    property &&
+    propertyId &&
+    typeId ? (
       <GuestPreArrivalShell
         session={activeGuestSession}
         propertyId={propertyId}
@@ -1229,13 +1267,53 @@ function GuestPortalPage({
       />
     ) : null;
 
-  const gatedContent = preArrivalView ? (
-    preArrivalShell ?? <GuestPortalLoadingScreen status="Loading pre-arrival check-in…" />
-  ) : (
-    portalContent
-  );
+  const openPreArrivalFlow =
+    isOpenPreArrivalFlow && property && propertyId && typeId ? (
+      <GuestOpenPreArrivalFlow
+        propertyId={propertyId}
+        typeId={typeId}
+        propertyName={property?.propertyName || 'Property'}
+        unitName={typeData?.propertyTypeName || 'Unit'}
+        guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
+        locale={locale}
+        contentPrimaryLocale={contentPrimaryLocale}
+        transferOffer={property?.preArrivalTransferOffer}
+        syncedBookings={
+          Array.isArray(typeData?.syncedBookings)
+            ? (typeData.syncedBookings as Array<{
+                id?: string;
+                start?: string;
+                end?: string;
+                guestName?: string;
+                guestPhone?: string;
+                guestWhatsapp?: string;
+                guestEmail?: string;
+                preArrivalComplete?: boolean;
+                preArrivalSubmission?: import('../../lib/syncedBooking').PreArrivalSubmission;
+              }>)
+            : null
+        }
+        guestSession={guestSession}
+        onSessionGranted={handleSessionGranted}
+        onSessionCleared={handleSessionCleared}
+      />
+    ) : null;
 
-  if (isGuestPortalAccessRequired(property) && propertyId && typeId) {
+  const preArrivalContent = preArrivalViewActive
+    ? openPreArrivalFlow ??
+      preArrivalShell ?? (
+        <GuestPortalLoadingScreen status="Loading pre-arrival check-in…" />
+      )
+    : null;
+
+  const gatedContent = preArrivalViewActive ? preArrivalContent : portalContent;
+
+  if (
+    isGuestPortalAccessRequired(property) &&
+    propertyId &&
+    typeId &&
+    !isOpenPreArrivalFlow
+  ) {
     return (
       <GuestPortalAccessGate
         propertyId={propertyId}
@@ -1249,7 +1327,7 @@ function GuestPortalPage({
     );
   }
 
-  if (preArrivalShell) return preArrivalShell;
+  if (preArrivalView) return preArrivalContent;
 
   return portalContent;
 }

@@ -22,6 +22,10 @@ export type PreArrivalIdDetails = {
 
 export type PreArrivalSubmission = {
   submittedAt: string;
+  guestFirstName?: string;
+  guestLastName?: string;
+  /** Nationality / country of residence — optional. */
+  guestCountry?: string;
   expectedArrivalTime: string;
   guestCount: number;
   contactPhone: string;
@@ -52,6 +56,8 @@ export type SyncedBooking = {
   guestWhatsapp?: string;
   guestPhone?: string;
   guestLocale?: string;
+  /** Guest nationality / country of residence from check-in. */
+  guestCountry?: string;
   guestDetailsComplete?: boolean;
   isInvited?: boolean;
   /** ISO timestamp — updated on send / re-invite (delivery TBD). */
@@ -91,6 +97,35 @@ export function isPropertyReservationSplitEnabled(
 
 export function isSplitBookingPart(booking: SyncedBooking | null | undefined): boolean {
   return Boolean(booking?.splitGroupId && booking.splitPartIndex);
+}
+
+/** iCal block / closed dates — not a real guest name for guest-facing UI. */
+export function isPlaceholderBookingGuestName(name: string | null | undefined): boolean {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return true;
+  const lower = trimmed.toLowerCase();
+  return (
+    lower.includes('closed') ||
+    lower.includes('blocked') ||
+    lower.includes('not available') ||
+    lower.includes('unavailable') ||
+    lower === 'blocked date'
+  );
+}
+
+/** First real guest name from booking fields, or null when only placeholders exist. */
+export function resolveGuestDisplayName(options: {
+  guestName?: string | null;
+  summary?: string | null;
+  sessionGuestName?: string | null;
+}): string | null {
+  for (const value of [options.guestName, options.summary, options.sessionGuestName]) {
+    const trimmed = String(value || '').trim();
+    if (trimmed && !isPlaceholderBookingGuestName(trimmed)) {
+      return trimmed;
+    }
+  }
+  return null;
 }
 
 export function isBookingGuestDetailsComplete(booking: SyncedBooking): boolean {
@@ -263,6 +298,7 @@ export function mergeSyncedBookingFromExisting(
     guestWhatsapp: existing.guestWhatsapp ?? existing.guestPhone,
     guestPhone: existing.guestPhone,
     guestLocale: existing.guestLocale,
+    guestCountry: existing.guestCountry,
     guestDetailsComplete: existing.guestDetailsComplete,
     inviteToken: existing.inviteToken,
     invitePasswordHash: existing.invitePasswordHash,

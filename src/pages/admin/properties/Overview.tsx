@@ -37,6 +37,7 @@ import PropertyLanguagesCard from '../../../components/admin/PropertyLanguagesCa
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { PROPERTY_ASSIGNMENT_ROLES } from '../../../lib/adminAccess';
 import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
+import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
 import { isPropertyReservationSplitEnabled } from '../../../lib/syncedBooking';
 
 interface OwnerOption {
@@ -60,6 +61,7 @@ type FormData = {
   phone: string;
   guestPortalAccessRequired: boolean;
   reservationSplitEnabled: boolean;
+  preArrivalCheckInEnabled: boolean;
 };
 
 function buildFormFromProperty(property: PropertyRecord): FormData {
@@ -75,6 +77,7 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     phone: '',
     guestPortalAccessRequired: isGuestPortalAccessRequired(property),
     reservationSplitEnabled: isPropertyReservationSplitEnabled(property),
+    preArrivalCheckInEnabled: isPreArrivalCheckInEnabled(property),
   };
 }
 
@@ -222,6 +225,7 @@ export default function Overview() {
         );
         propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
         propertyPatch.reservationSplitEnabled = formData.reservationSplitEnabled;
+        propertyPatch.preArrivalCheckInEnabled = formData.preArrivalCheckInEnabled;
       }
       await updateDoc(doc(db, 'properties', propertyId), propertyPatch);
       if (formData.ownerId) {
@@ -540,6 +544,43 @@ export default function Overview() {
                 This setting is managed by your Vailo administrator.
               </p>
             ) : null}
+          </div>
+        )}
+      </AdminCard>
+
+      <AdminCard className="p-6">
+        <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-4">
+          Online check-in
+        </h3>
+        <p className="text-sm text-gray-500 mb-4">
+          When enabled, pre-arrival check-in links appear in guest invitations, the open portal
+          invitation, and the Check-ins tab. When disabled, guests only receive the standard guest
+          portal link.
+        </p>
+        {isEditing && isPlatformAdmin ? (
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="preArrivalCheckInEnabled"
+              checked={formData.preArrivalCheckInEnabled}
+              onChange={handleChange}
+              className="mt-1 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
+            />
+            <span className="text-sm text-gray-700">
+              <span className="font-semibold text-gray-900">Enable online check-in</span>
+              <span className="block text-gray-500 mt-1">
+                Guests can complete pre-arrival details before arrival. Turn off if you handle
+                check-in another way.
+              </span>
+            </span>
+          </label>
+        ) : (
+          <div className="text-sm text-gray-700">
+            {isPreArrivalCheckInEnabled(property) ? (
+              <AdminBadge variant="teal">Check-in enabled</AdminBadge>
+            ) : (
+              <span className="text-gray-500">Check-in disabled</span>
+            )}
           </div>
         )}
       </AdminCard>

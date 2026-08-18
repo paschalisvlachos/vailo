@@ -7,6 +7,7 @@ import {
   formatPreArrivalDateDisplay,
   formatPreArrivalIdDetailsSummary,
   formatPreArrivalTimeDisplay,
+  guestFullNameFromSubmission,
 } from '../../lib/preArrivalSubmission';
 import { formatPreArrivalTransferPrice } from '../../lib/preArrivalSettings';
 import {
@@ -28,6 +29,7 @@ type Props = {
     | 'end'
     | 'guestEmail'
     | 'guestPhone'
+    | 'guestCountry'
     | 'preArrivalSubmission'
     | 'preArrivalSubmittedAt'
   >;
@@ -57,7 +59,11 @@ export default function PreArrivalSubmissionModal({
   onClose,
 }: Props) {
   const submission = booking.preArrivalSubmission as PreArrivalSubmission;
-  const guestName = booking.guestName?.trim() || booking.summary?.trim() || 'Guest';
+  const guestName =
+    guestFullNameFromSubmission(submission) ||
+    booking.guestName?.trim() ||
+    booking.summary?.trim() ||
+    'Guest';
   const hasIdDocument = Boolean(submission.idDocument?.storagePath);
   const hasIdDetails = Boolean(submission.idDetails?.documentNumber);
 
@@ -122,7 +128,9 @@ export default function PreArrivalSubmissionModal({
         submission,
         idImageDataUrl,
       });
-      openPreArrivalDeclarationPrint(html);
+      openPreArrivalDeclarationPrint(html, {
+        filename: `pre-arrival-declaration-${guestName.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'guest'}.html`,
+      });
     } catch (err) {
       setIdError(
         err instanceof Error ? err.message : 'Could not open print dialog for declaration PDF.'
@@ -199,6 +207,9 @@ export default function PreArrivalSubmissionModal({
             {exportingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
             Export declaration PDF
           </button>
+          <span className="text-[11px] text-gray-500">
+            Opens print — choose &quot;Save as PDF&quot; in the dialog.
+          </span>
           {hasIdDocument && (
             <>
               {!idPreview && (
@@ -232,6 +243,11 @@ export default function PreArrivalSubmissionModal({
 
         <div className="flex-1 overflow-y-auto p-5">
           <dl>
+            <DetailRow
+              label="Guest name"
+              value={guestFullNameFromSubmission(submission) || guestName}
+            />
+            <DetailRow label="Country" value={submission.guestCountry || booking.guestCountry || ''} />
             <DetailRow
               label="Expected arrival"
               value={formatPreArrivalTimeDisplay(submission.expectedArrivalTime)}

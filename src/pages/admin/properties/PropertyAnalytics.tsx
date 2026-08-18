@@ -20,6 +20,7 @@ import type {
   GuestStayAnalyticsEvent,
 } from '../../../lib/guestAnalytics';
 import { formatBookingDateRange } from '../../../lib/syncedBooking';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 
 function deviceDisplayLabel(row: GuestAnalyticsDeviceFields): string {
   if (row.lastDeviceLabel) return row.lastDeviceLabel;
@@ -118,7 +119,11 @@ export default function PropertyAnalytics() {
   const [propertyTypes, setPropertyTypes] = useState<
     { id: string; propertyTypeName?: string }[]
   >([]);
-  const [filterTypeId, setFilterTypeId] = useState('all');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id), [propertyTypes]);
+  const { listingId: filterTypeId, setListingId: setFilterTypeId } = usePropertyListingQuery({
+    allowAll: true,
+    validTypeIds: propertyTypeIds,
+  });
   const [sortBy, setSortBy] = useState<AnalyticsSort>('stay_desc');
   const [bookingSummaries, setBookingSummaries] = useState<Row[]>([]);
   const [anonymousSummaries, setAnonymousSummaries] = useState<Row[]>([]);

@@ -7,6 +7,7 @@ import {
   Home,
   Building,
   CalendarCheck,
+  ClipboardCheck,
   Calendar as CalendarIcon,
   MapPin,
   Leaf,
@@ -27,12 +28,15 @@ import {
   isTabAllowedForAccess,
   type PropertyAccessMode,
 } from '../../../lib/adminAccess';
+import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
 import { adminPath } from '../../../lib/adminRoutes';
+import { propertyListingQuerySuffix } from '../../../hooks/usePropertyListingQuery';
 
 const TABS = [
   { name: 'Overview', path: '', icon: Home, badgeKey: null },
   { name: 'Property Listings', path: 'types', icon: Building, badgeKey: null },
   { name: 'Reservations', path: 'reservations', icon: CalendarCheck, badgeKey: null },
+  { name: 'Check-ins', path: 'check-ins', icon: ClipboardCheck, badgeKey: null },
   { name: 'Calendar', path: 'calendar', icon: CalendarIcon, badgeKey: null },
   { name: 'Local Gems', path: 'local-gems', icon: MapPin, badgeKey: null },
   { name: 'Green Score', path: 'green-score', icon: Leaf, badgeKey: null },
@@ -62,6 +66,8 @@ export type PropertyRecord = {
   createdAt?: string;
   guestPortalAccessRequired?: boolean;
   reservationSplitEnabled?: boolean;
+  /** When false, check-in links and flows are hidden for this property. */
+  preArrivalCheckInEnabled?: boolean;
   preArrivalTransferOffer?: {
     enabled?: boolean;
     label?: string;
@@ -143,8 +149,14 @@ export default function PropertyLayout() {
   }, [propertyAccess, searchParams]);
 
   const visibleTabs = useMemo(
-    () => TABS.filter((tab) => isTabAllowedForAccess(tab.path, propertyAccess)),
-    [propertyAccess]
+    () =>
+      TABS.filter((tab) => {
+        if (tab.path === 'check-ins' && !isPreArrivalCheckInEnabled(property)) {
+          return false;
+        }
+        return isTabAllowedForAccess(tab.path, propertyAccess);
+      }),
+    [propertyAccess, property]
   );
 
   const currentSegment = location.pathname.split(`${adminPath(`/properties/${id}`)}/`)[1]?.split('/')[0] ?? '';
@@ -229,12 +241,13 @@ export default function PropertyLayout() {
             </p>
             <div className="flex xl:flex-col gap-1.5 overflow-x-auto admin-scroll-x pb-1 xl:pb-0 -mx-1 px-1 xl:mx-0 xl:px-0 xl:bg-white xl:border xl:border-gray-100 xl:rounded-2xl xl:p-2 xl:shadow-[0_2px_16px_-6px_rgba(11,79,92,0.1)]">
               {visibleTabs.map((tab) => {
+                const listingSuffix = propertyListingQuerySuffix(
+                  lockedListingId || searchParams.get('listing')
+                );
                 const to =
-                  tab.path === 'types' || tab.path === 'house-guide'
-                    ? lockedListingId
-                      ? `${tab.path}?listing=${lockedListingId}`
-                      : tab.path
-                    : tab.path;
+                  tab.path === ''
+                    ? listingSuffix || ''
+                    : `${tab.path}${listingSuffix}`;
                 return (
                   <NavLink
                     key={tab.name}

@@ -48,3 +48,11 @@ export function isAutoSendGuestInviteWhenReady(
 ): boolean {
   return property?.autoSendGuestInviteWhenReady === true;
 }
+
+/** Online pre-arrival check-in is enabled unless explicitly turned off on the property. */
+export function isPreArrivalCheckInEnabled(
+  property: { preArrivalCheckInEnabled?: boolean } | null | undefined
+): boolean {
+  if (property?.preArrivalCheckInEnabled === undefined) return true;
+  return property.preArrivalCheckInEnabled !== false;
+}

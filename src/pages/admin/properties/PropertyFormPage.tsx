@@ -179,6 +179,7 @@ export default function PropertyFormPage() {
           area: formData.area,
           city: formData.area,
           guestPortalAccessRequired: GUEST_PORTAL_ACCESS_REQUIRED_DEFAULT,
+          preArrivalCheckInEnabled: true,
           createdAt: new Date().toISOString(),
         });
         navigate(adminPath(`/properties/${ref.id}`));

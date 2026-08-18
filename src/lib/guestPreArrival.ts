@@ -87,6 +87,11 @@ export function preArrivalUrlFromInviteUrl(inviteUrl: string): string {
   }
 }
 
+/** Open portal listing URL with pre-arrival check-in view (no invite token). */
+export function buildOpenPreArrivalPortalUrl(portalUrl: string): string {
+  return preArrivalUrlFromInviteUrl(portalUrl);
+}
+
 export function buildPreArrivalClipboardText(options: {
   guestName: string;
   stayRangeLabel: string;

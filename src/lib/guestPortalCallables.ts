@@ -138,6 +138,60 @@ export async function activateGuestOnSiteAccessCallable(
   return res.data;
 }
 
+export async function resolvePreArrivalBookingByDatesCallable(params: {
+  propertyId: string;
+  typeId: string;
+  checkIn: string;
+  checkOut: string;
+  existingSessionId?: string | null;
+  selectedTypeId?: string;
+  selectedBookingId?: string;
+}): Promise<ResolvePreArrivalBookingByDatesResult> {
+  const res = await call<ResolvePreArrivalBookingByDatesResult>(
+    'resolvePreArrivalBookingByDates'
+  )({
+    propertyId: params.propertyId,
+    typeId: params.typeId,
+    checkIn: params.checkIn,
+    checkOut: params.checkOut,
+    existingSessionId: params.existingSessionId || undefined,
+    selectedTypeId: params.selectedTypeId || undefined,
+    selectedBookingId: params.selectedBookingId || undefined,
+  });
+  return res.data;
+}
+
+export type PreArrivalListingOption = {
+  typeId: string;
+  typeName: string;
+  bookingId: string;
+};
+
+export type ResolvePreArrivalBookingByDatesResult =
+  | (SessionPayload & {
+      bookingId?: string;
+      reused?: boolean;
+      checkIn?: string;
+      checkOut?: string;
+    })
+  | {
+      needsListingChoice: true;
+      listingOptions: PreArrivalListingOption[];
+      checkIn: string;
+      checkOut: string;
+    };
+
+export function isPreArrivalListingChoiceResult(
+  result: ResolvePreArrivalBookingByDatesResult
+): result is {
+  needsListingChoice: true;
+  listingOptions: PreArrivalListingOption[];
+  checkIn: string;
+  checkOut: string;
+} {
+  return 'needsListingChoice' in result && result.needsListingChoice === true;
+}
+
 export async function grantAdminGuestPortalPreviewCallable(
   propertyId: string,
   typeId: string
@@ -197,6 +251,9 @@ export async function submitPreArrivalCheckInCallable(params: {
   propertyId: string;
   typeId: string;
   sessionId: string;
+  guestFirstName: string;
+  guestLastName: string;
+  guestCountry?: string;
   expectedArrivalTime: string;
   guestCount: number;
   contactPhone: string;
@@ -205,6 +262,7 @@ export async function submitPreArrivalCheckInCallable(params: {
   specialRequests?: string;
   acceptedHouseRules: boolean;
   houseRulesLocale?: string;
+  guestLocale?: string;
   transferRequested?: boolean;
   idDocumentBase64?: string;
   idDocumentContentType?: string;
@@ -228,6 +286,9 @@ export async function submitPreArrivalCheckInCallable(params: {
     propertyId: params.propertyId,
     typeId: params.typeId,
     sessionId: params.sessionId,
+    guestFirstName: params.guestFirstName.trim(),
+    guestLastName: params.guestLastName.trim(),
+    guestCountry: params.guestCountry?.trim() || undefined,
     expectedArrivalTime: params.expectedArrivalTime,
     guestCount: params.guestCount,
     contactPhone: params.contactPhone,
@@ -236,6 +297,7 @@ export async function submitPreArrivalCheckInCallable(params: {
     specialRequests: params.specialRequests || undefined,
     acceptedHouseRules: params.acceptedHouseRules,
     houseRulesLocale: params.houseRulesLocale || undefined,
+    guestLocale: params.guestLocale || params.houseRulesLocale || undefined,
     transferRequested: params.transferRequested === true,
     idDocumentBase64: params.idDocumentBase64 || undefined,
     idDocumentContentType: params.idDocumentContentType || undefined,
@@ -281,6 +343,21 @@ export async function getPreArrivalIdDocumentForAdminCallable(params: {
     uploadedAt?: string | null;
     sizeBytes?: number;
   }>('getPreArrivalIdDocumentForAdmin')({
+    propertyId: params.propertyId,
+    typeId: params.typeId,
+    bookingId: params.bookingId,
+  });
+  return res.data;
+}
+
+export async function removePreArrivalCheckInForAdminCallable(params: {
+  propertyId: string;
+  typeId: string;
+  bookingId: string;
+}): Promise<{ removed: boolean; bookingId: string }> {
+  const res = await call<{ removed: boolean; bookingId: string }>(
+    'removePreArrivalCheckInForAdmin'
+  )({
     propertyId: params.propertyId,
     typeId: params.typeId,
     bookingId: params.bookingId,

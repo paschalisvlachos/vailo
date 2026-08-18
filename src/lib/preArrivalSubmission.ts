@@ -51,6 +51,9 @@ export const PRE_ARRIVAL_ID_ALLOWED_TYPES = [
 ] as const;
 
 export type PreArrivalFormInput = {
+  guestFirstName: string;
+  guestLastName: string;
+  guestCountry: string;
   expectedArrivalTime: string;
   guestCount: number;
   contactPhone: string;
@@ -60,6 +63,38 @@ export type PreArrivalFormInput = {
   acceptedHouseRules: boolean;
   transferRequested: boolean;
 };
+
+export function buildGuestFullName(firstName: string, lastName: string): string {
+  return `${firstName.trim()} ${lastName.trim()}`.trim();
+}
+
+export function splitGuestNameForForm(name?: string | null): {
+  guestFirstName: string;
+  guestLastName: string;
+} {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) {
+    return { guestFirstName: '', guestLastName: '' };
+  }
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) {
+    return { guestFirstName: parts[0], guestLastName: '' };
+  }
+  return {
+    guestFirstName: parts[0],
+    guestLastName: parts.slice(1).join(' '),
+  };
+}
+
+export function guestFullNameFromSubmission(
+  submission?: PreArrivalSubmission | null
+): string {
+  if (!submission) return '';
+  if (submission.guestFirstName && submission.guestLastName) {
+    return buildGuestFullName(submission.guestFirstName, submission.guestLastName);
+  }
+  return '';
+}
 
 function isValidOptionalEmail(value: string): boolean {
   const trimmed = value.trim();
@@ -108,6 +143,23 @@ export function getPreArrivalHouseRulesText(
 }
 
 export function validatePreArrivalForm(input: PreArrivalFormInput): string | null {
+  const firstName = input.guestFirstName.trim();
+  const lastName = input.guestLastName.trim();
+  if (firstName.length < 2) {
+    return 'Please enter your first name.';
+  }
+  if (lastName.length < 2) {
+    return 'Please enter your surname.';
+  }
+  if (firstName.length > 80 || lastName.length > 80) {
+    return 'Name is too long.';
+  }
+
+  const country = input.guestCountry.trim();
+  if (country.length > 80) {
+    return 'Country name is too long.';
+  }
+
   const time = input.expectedArrivalTime.trim();
   if (!time || !/^\d{2}:\d{2}$/.test(time)) {
     return 'Please choose your expected arrival time.';
@@ -221,7 +273,7 @@ export function preArrivalIdInputModeFromSubmission(
 ): PreArrivalIdInputMode {
   if (submission?.idDetails) return 'manual';
   if (submission?.idDocument) return 'upload';
-  return 'upload';
+  return 'manual';
 }
 
 export function buildPreArrivalIdDetailsPayload(
@@ -354,6 +406,9 @@ export function buildPreArrivalSubmissionPayload(
   const dob = input.dateOfBirth.trim();
   return {
     submittedAt: now,
+    guestFirstName: input.guestFirstName.trim(),
+    guestLastName: input.guestLastName.trim(),
+    ...(input.guestCountry.trim() ? { guestCountry: input.guestCountry.trim() } : {}),
     expectedArrivalTime: input.expectedArrivalTime.trim(),
     guestCount: Math.round(Number(input.guestCount)),
     contactPhone: input.contactPhone.trim(),
@@ -389,12 +444,20 @@ export function formatPreArrivalTimeDisplay(time?: string): string {
 }
 
 export function preArrivalFormDefaults(options: {
+  guestName?: string;
   guestPhone?: string;
   guestWhatsapp?: string;
   guestEmail?: string;
+  guestCountry?: string;
   submission?: PreArrivalSubmission | null;
 }): PreArrivalFormInput {
   const existing = options.submission;
+  const fromName = existing
+    ? {
+        guestFirstName: existing.guestFirstName || '',
+        guestLastName: existing.guestLastName || '',
+      }
+    : splitGuestNameForForm(options.guestName);
   const phone =
     existing?.contactPhone?.trim() ||
     options.guestPhone?.trim() ||
@@ -403,6 +466,9 @@ export function preArrivalFormDefaults(options: {
   const email = existing?.contactEmail?.trim() || options.guestEmail?.trim() || '';
 
   return {
+    guestFirstName: fromName.guestFirstName,
+    guestLastName: fromName.guestLastName,
+    guestCountry: existing?.guestCountry?.trim() || '',
     expectedArrivalTime: existing?.expectedArrivalTime || '',
     guestCount: existing?.guestCount && existing.guestCount > 0 ? existing.guestCount : 2,
     contactPhone: phone,

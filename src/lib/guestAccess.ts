@@ -31,7 +31,12 @@ export function getGuestPortalPublicOrigin(): string {
   return 'https://vailo.app';
 }
 
-export type GuestAccessSource = 'invite' | 'on_site' | 'tester' | 'admin_preview';
+export type GuestAccessSource =
+  | 'invite'
+  | 'on_site'
+  | 'tester'
+  | 'admin_preview'
+  | 'pre_arrival_dates';
 
 export type GuestInviteStatus = 'not_sent' | 'waiting' | 'opened';
 
@@ -124,6 +129,17 @@ export function sessionMatchesUnit(
   typeId: string
 ): boolean {
   return session.propertyId === propertyId && session.typeId === typeId;
+}
+
+/** Open date check-in may resolve to a different listing under the same property. */
+export function sessionMatchesOpenPreArrivalContext(
+  session: GuestPortalSession,
+  propertyId: string,
+  portalTypeId: string
+): boolean {
+  if (session.propertyId !== propertyId) return false;
+  if (session.source === 'pre_arrival_dates') return true;
+  return session.typeId === portalTypeId;
 }
 
 /** Guest name for booking forms — skips admin preview / tester placeholder names. */

@@ -7,6 +7,7 @@ const {
   isBookingPortalAccessAllowed,
 } = require("./guestPortalBookingAccess");
 const { requirePropertyGuestInviteAccess } = require("./guestPortalAccess");
+const { stripPreArrivalFields } = require("./guestPreArrivalPurge");
 const { upsertGuestProfileFromPreArrival } = require("./guestCrm");
 const {
   encryptBuffer,
@@ -49,10 +50,13 @@ function omitUndefinedDeep(value) {
 function buildPreArrivalSubmissionRecord(input, extras = {}) {
   return omitUndefinedDeep({
     submittedAt: extras.submittedAt,
+    guestFirstName: input.guestFirstName,
+    guestLastName: input.guestLastName,
     expectedArrivalTime: input.expectedArrivalTime,
     guestCount: input.guestCount,
     contactPhone: input.contactPhone,
     acceptedHouseRulesAt: extras.acceptedHouseRulesAt,
+    ...(input.guestCountry ? { guestCountry: input.guestCountry } : {}),
     ...(input.contactEmail ? { contactEmail: input.contactEmail } : {}),
     ...(input.dateOfBirth ? { dateOfBirth: input.dateOfBirth } : {}),
     ...(input.specialRequests ? { specialRequests: input.specialRequests } : {}),
@@ -120,7 +124,87 @@ async function persistBookings(typeRef, bookings) {
   await typeRef.set({ syncedBookings: bookings }, { merge: true });
 }
 
+function isPreArrivalCheckInEnabled(property) {
+  if (property?.preArrivalCheckInEnabled === undefined) return true;
+  return property.preArrivalCheckInEnabled !== false;
+}
+
+function buildBookingAfterPreArrivalRemoval(booking) {
+  const submission = booking?.preArrivalSubmission || null;
+  const cleared = stripPreArrivalFields(booking);
+
+  if (!submission) {
+    return { ...cleared, guestDetailsComplete: false };
+  }
+
+  const checkInGuestName =
+    submission.guestFirstName && submission.guestLastName
+      ? `${String(submission.guestFirstName).trim()} ${String(submission.guestLastName).trim()}`.trim()
+      : "";
+
+  if (checkInGuestName && String(cleared.guestName || "").trim() === checkInGuestName) {
+    delete cleared.guestName;
+  }
+
+  const phone = String(submission.contactPhone || "").trim();
+  if (phone) {
+    if (String(cleared.guestPhone || "").trim() === phone) delete cleared.guestPhone;
+    if (String(cleared.guestWhatsapp || "").trim() === phone) delete cleared.guestWhatsapp;
+  }
+
+  const email = String(submission.contactEmail || "").trim();
+  if (email && String(cleared.guestEmail || "").trim() === email) {
+    delete cleared.guestEmail;
+  }
+
+  const country = String(submission.guestCountry || "").trim();
+  if (country && String(cleared.guestCountry || "").trim() === country) {
+    delete cleared.guestCountry;
+  }
+
+  cleared.guestDetailsComplete = false;
+  return cleared;
+}
+
+async function deleteStoredIdDocument(storagePath) {
+  const path = String(storagePath || "").trim();
+  if (!path || path.startsWith("preview/")) {
+    return { deleted: false, skipped: true };
+  }
+
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(path);
+  const [exists] = await file.exists();
+  if (!exists) {
+    return { deleted: false, missing: true };
+  }
+  await file.delete();
+  return { deleted: true };
+}
+
 function validateSubmissionInput(data) {
+  const guestFirstName = String(data.guestFirstName || "").trim();
+  const guestLastName = String(data.guestLastName || "").trim();
+  if (guestFirstName.length < 2) {
+    throw new HttpsError("invalid-argument", "First name is required.");
+  }
+  if (guestLastName.length < 2) {
+    throw new HttpsError("invalid-argument", "Surname is required.");
+  }
+  if (guestFirstName.length > 80 || guestLastName.length > 80) {
+    throw new HttpsError("invalid-argument", "Name is too long.");
+  }
+
+  const guestCountry = String(data.guestCountry || "").trim();
+  if (guestCountry.length > 80) {
+    throw new HttpsError("invalid-argument", "Country name is too long.");
+  }
+
+  const guestLocale = String(data.guestLocale || data.houseRulesLocale || "").trim();
+  if (!guestLocale) {
+    throw new HttpsError("invalid-argument", "Guest language is required.");
+  }
+
   const expectedArrivalTime = String(data.expectedArrivalTime || "").trim();
   if (!expectedArrivalTime || !/^\d{2}:\d{2}$/.test(expectedArrivalTime)) {
     throw new HttpsError("invalid-argument", "Expected arrival time is required.");
@@ -168,6 +252,10 @@ function validateSubmissionInput(data) {
   }
 
   return {
+    guestFirstName,
+    guestLastName,
+    guestCountry: guestCountry || undefined,
+    guestLocale,
     expectedArrivalTime,
     guestCount: Math.round(guestCount),
     contactPhone,
@@ -469,6 +557,12 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
 
       const propSnap = await firestore.collection("properties").doc(propertyId).get();
       const property = propSnap.exists ? propSnap.data() : {};
+      if (!previewMode && !isPreArrivalCheckInEnabled(property)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Online check-in is not enabled for this property."
+        );
+      }
       const transferFields = resolveTransferFields(data, property);
 
       const bookingId = session.bookingId;
@@ -532,13 +626,19 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
         throw new HttpsError("not-found", "Booking not found.");
       }
 
+      const guestName = `${input.guestFirstName} ${input.guestLastName}`.trim();
+
       const updated = patchBookingInList(bookings, bookingId, {
         preArrivalComplete: true,
         preArrivalSubmittedAt: now,
         preArrivalSubmission: submission,
+        guestName,
         guestPhone: input.contactPhone,
         guestWhatsapp: input.contactPhone,
+        guestLocale: input.guestLocale,
+        guestDetailsComplete: true,
         ...(input.contactEmail ? { guestEmail: input.contactEmail } : {}),
+        ...(input.guestCountry ? { guestCountry: input.guestCountry } : {}),
       });
 
       await persistBookings(typeRef, updated);
@@ -549,9 +649,13 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
         unitName: typeSnap.data()?.propertyTypeName || "",
         booking: {
           ...target,
+          guestName,
           guestPhone: input.contactPhone,
           guestWhatsapp: input.contactPhone,
+          guestLocale: input.guestLocale,
+          guestDetailsComplete: true,
           ...(input.contactEmail ? { guestEmail: input.contactEmail } : {}),
+          ...(input.guestCountry ? { guestCountry: input.guestCountry } : {}),
         },
         submission,
       });
@@ -641,6 +745,80 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
         filename: `guest-id-${bookingId.slice(0, 8)}.${ext}`,
         uploadedAt: idDocument.uploadedAt || null,
         sizeBytes: plain.length,
+      };
+    }
+  );
+
+  firebaseExports.removePreArrivalCheckInForAdmin = onCall(
+    {
+      region: "us-central1",
+      enforceAppCheck: false,
+    },
+    async (request) => {
+      const data = request.data || {};
+      const propertyId = String(data.propertyId || "").trim();
+      const typeId = String(data.typeId || "").trim();
+      const bookingId = String(data.bookingId || "").trim();
+
+      if (!propertyId || !typeId || !bookingId) {
+        throw new HttpsError("invalid-argument", "Missing booking reference.");
+      }
+
+      await requirePropertyGuestInviteAccess(request, firestore, propertyId);
+
+      const typeRef = firestore
+        .collection("properties")
+        .doc(propertyId)
+        .collection("propertyTypes")
+        .doc(typeId);
+      const typeSnap = await typeRef.get();
+      if (!typeSnap.exists) {
+        throw new HttpsError("not-found", "Unit not found.");
+      }
+
+      const bookings = typeSnap.data().syncedBookings || [];
+      const target = bookings.find((b) => matchesBooking(b, bookingId));
+      if (!target) {
+        throw new HttpsError("not-found", "Booking not found.");
+      }
+
+      if (
+        !target.preArrivalComplete &&
+        !target.preArrivalSubmittedAt &&
+        !target.preArrivalSubmission
+      ) {
+        throw new HttpsError("failed-precondition", "This booking has no check-in to remove.");
+      }
+
+      const storagePath = target.preArrivalSubmission?.idDocument?.storagePath;
+      if (storagePath) {
+        try {
+          await deleteStoredIdDocument(storagePath);
+        } catch (err) {
+          console.error("removePreArrivalCheckInForAdmin: storage delete failed", {
+            propertyId,
+            typeId,
+            bookingId,
+            storagePath,
+            error: err?.message || String(err),
+          });
+          throw new HttpsError(
+            "internal",
+            "Could not delete the stored ID document. Try again or contact support."
+          );
+        }
+      }
+
+      const clearedBooking = buildBookingAfterPreArrivalRemoval(target);
+      const updated = bookings.map((b) =>
+        matchesBooking(b, bookingId) ? clearedBooking : b
+      );
+
+      await persistBookings(typeRef, updated);
+
+      return {
+        removed: true,
+        bookingId,
       };
     }
   );

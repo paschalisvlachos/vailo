@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -27,11 +27,13 @@ import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRe
 import {
   buildPreArrivalClipboardText,
   buildPreArrivalPortalUrl,
+  buildOpenPreArrivalPortalUrl,
   stayRangeLabelFromBooking,
 } from '../../../lib/guestPreArrival';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../../lib/whatsappLink';
 import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
 import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
+import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
   buildSplitBookingsFromOriginal,
@@ -52,6 +54,7 @@ import {
   type SyncedBooking,
 } from '../../../lib/syncedBooking';
 import { resetPropertyBookingsInDateRange } from '../../../lib/resetPropertyBookings';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 import {
   Calendar as CalendarIcon,
   Plus,
@@ -81,6 +84,7 @@ export default function Reservations() {
       urlSlug?: string;
       guestPortalAccessRequired?: boolean;
       reservationSplitEnabled?: boolean;
+      preArrivalCheckInEnabled?: boolean;
       preArrivalTransferOffer?: import('../../../lib/preArrivalSettings').PreArrivalTransferOffer;
       autoSendGuestInviteWhenReady?: boolean;
     };
@@ -88,10 +92,15 @@ export default function Reservations() {
   }>();
   const toast = useToast();
   const { languages } = usePlatformLanguages();
+  const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
 
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
-  const [filterTypeId, setFilterTypeId] = useState<string>('all');
-  
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
+  const { listingId: filterTypeId, setListingId: setFilterTypeId } = usePropertyListingQuery({
+    allowAll: true,
+    validTypeIds: propertyTypeIds,
+  });
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -148,7 +157,7 @@ export default function Reservations() {
       typeId: pt.id,
       typeName: pt.propertyTypeName
     }))
-  ).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()); 
+  ).sort((a, b) => String(b.start || '').localeCompare(String(a.start || '')));
 
   const displayedBookings = filterTypeId === 'all' 
     ? allBookings 
@@ -206,6 +215,8 @@ export default function Reservations() {
       propertyName: property.propertyName || 'Your stay',
       unitName: type.propertyTypeName || 'Your unit',
       portalUrl: url,
+      preArrivalUrl: preArrivalCheckInEnabled ? buildOpenPreArrivalPortalUrl(url) : undefined,
+      preArrivalCheckInEnabled,
       hostLabel: property.propertyName,
       accessRequired: isGuestPortalAccessRequired(property),
     });
@@ -527,6 +538,7 @@ export default function Reservations() {
       accessPassword: secrets?.password,
       inviteToken: secrets?.token || booking.inviteToken,
       logoUrl: `${window.location.origin}/vailoLogo.png`,
+      preArrivalCheckInEnabled,
     });
   };
 
@@ -601,6 +613,7 @@ export default function Reservations() {
   };
 
   const handleCopyPreArrivalLink = async (booking: ReservationRow) => {
+    if (!preArrivalCheckInEnabled) return;
     if (!isBookingGuestDetailsComplete(booking)) {
       toast.warning('Add guest details before copying a pre-arrival link.');
       return;
@@ -873,7 +886,9 @@ export default function Reservations() {
 
   return (
     <div className="admin-page">
-      <PreArrivalSettingsCard propertyId={propertyId} property={property} />
+      {preArrivalCheckInEnabled && (
+        <PreArrivalSettingsCard propertyId={propertyId} property={property} />
+      )}
 
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -999,7 +1014,7 @@ export default function Reservations() {
                             Thank-you email sent
                           </div>
                         )}
-                        {booking.preArrivalComplete && (
+                        {preArrivalCheckInEnabled && booking.preArrivalComplete && (
                           <div className="text-[10px] font-bold text-[#0B4F5C] mt-1 uppercase tracking-wide">
                             Pre-arrival submitted
                           </div>
@@ -1070,7 +1085,9 @@ export default function Reservations() {
                             </button>
                           )}
 
-                          {booking.preArrivalComplete && booking.preArrivalSubmission && (
+                          {preArrivalCheckInEnabled &&
+                            booking.preArrivalComplete &&
+                            booking.preArrivalSubmission && (
                             <button
                               type="button"
                               onClick={() => setPreArrivalViewBooking(booking)}
@@ -1082,7 +1099,7 @@ export default function Reservations() {
                             </button>
                           )}
 
-                          {detailsComplete && (
+                          {preArrivalCheckInEnabled && detailsComplete && (
                             <button
                               type="button"
                               onClick={() => void handleCopyPreArrivalLink(booking)}
@@ -1315,6 +1332,7 @@ export default function Reservations() {
               : emailPreviewBooking.inviteToken
           }
           detailsComplete={isBookingGuestDetailsComplete(emailPreviewBooking)}
+          preArrivalCheckInEnabled={preArrivalCheckInEnabled}
           onClose={() => setEmailPreviewBooking(null)}
         />
       )}

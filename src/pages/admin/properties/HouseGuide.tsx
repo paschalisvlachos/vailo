@@ -31,6 +31,7 @@ import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 import {
   resolveFeaturedPreviewLine,
   normalizeLocaleCode,
@@ -137,11 +138,10 @@ export default function HouseGuide() {
   const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
 
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
 
   useEffect(() => {
     setContentLocale(localeSettings.primaryLocale);
-  }, [localeSettings.primaryLocale, selectedTypeId]);
+  }, [localeSettings.primaryLocale]);
   
   // --- STATE MANAGEMENT ---
   const [formData, setFormData] = useState<FormData>({});
@@ -162,6 +162,15 @@ export default function HouseGuide() {
     return propertyTypes.filter((t) => propertyAccess.typeIds.includes(t.id));
   }, [propertyTypes, isListingOnly, propertyAccess]);
 
+  const allowedTypeIds = useMemo(
+    () => allowedPropertyTypes.map((type) => type.id),
+    [allowedPropertyTypes]
+  );
+  const { listingId: selectedTypeId, setListingId: setSelectedTypeId } = usePropertyListingQuery({
+    validTypeIds: allowedTypeIds,
+    lockedListingId,
+  });
+
   // 1. Fetch Property Types
   useEffect(() => {
     if (!propertyId) return;
@@ -171,20 +180,6 @@ export default function HouseGuide() {
     });
     return () => unsubscribe();
   }, [propertyId]);
-
-  useEffect(() => {
-    if (lockedListingId) {
-      setSelectedTypeId(lockedListingId);
-      return;
-    }
-    if (allowedPropertyTypes.length > 0) {
-      setSelectedTypeId((prev) =>
-        prev && allowedPropertyTypes.some((t) => t.id === prev)
-          ? prev
-          : allowedPropertyTypes[0].id
-      );
-    }
-  }, [lockedListingId, allowedPropertyTypes]);
 
   // 2. Fetch Data
   useEffect(() => {

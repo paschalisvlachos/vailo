@@ -3,16 +3,19 @@ import { Car, CheckCircle2, Loader2, Shield, Upload } from 'lucide-react';
 import { httpsCallableMessage } from '../../lib/callableError';
 import { submitPreArrivalCheckInCallable } from '../../lib/guestPortalCallables';
 import type { GuestPortalSession } from '../../lib/guestAccess';
+import { getSortedCountryNames } from '../../lib/countryNames';
 import {
   PRE_ARRIVAL_SPECIAL_REQUESTS_MAX,
   PRE_ARRIVAL_IDENTITY_GUIDANCE,
   PRE_ARRIVAL_ID_DOCUMENT_TYPES,
+  buildGuestFullName,
   buildPreArrivalIdDetailsPayload,
   buildPreArrivalSubmissionPayload,
   formatPreArrivalDateDisplay,
   formatPreArrivalIdDetailsSummary,
   formatPreArrivalTimeDisplay,
   getPreArrivalHouseRulesText,
+  guestFullNameFromSubmission,
   isPreArrivalFormSubmittable,
   preArrivalFormDefaults,
   preArrivalIdDetailsFromSubmission,
@@ -40,6 +43,7 @@ type Props = {
   guide?: Record<string, unknown> | null;
   locale: string;
   contentPrimaryLocale: string;
+  guestName?: string;
   guestPhone?: string;
   guestWhatsapp?: string;
   guestEmail?: string;
@@ -56,6 +60,7 @@ export default function GuestPreArrivalForm({
   guide,
   locale,
   contentPrimaryLocale,
+  guestName,
   guestPhone,
   guestWhatsapp,
   guestEmail,
@@ -74,8 +79,11 @@ export default function GuestPreArrivalForm({
     [guide, locale, contentPrimaryLocale]
   );
 
+  const countryOptions = useMemo(() => getSortedCountryNames(), []);
+
   const [form, setForm] = useState(() =>
     preArrivalFormDefaults({
+      guestName,
       guestPhone,
       guestWhatsapp,
       guestEmail,
@@ -186,6 +194,9 @@ export default function GuestPreArrivalForm({
         propertyId,
         typeId,
         sessionId: session.sessionId,
+        guestFirstName: form.guestFirstName,
+        guestLastName: form.guestLastName,
+        guestCountry: form.guestCountry.trim() || undefined,
         expectedArrivalTime: form.expectedArrivalTime,
         guestCount: form.guestCount,
         contactPhone: form.contactPhone,
@@ -194,6 +205,7 @@ export default function GuestPreArrivalForm({
         specialRequests: form.specialRequests,
         acceptedHouseRules: form.acceptedHouseRules,
         houseRulesLocale: locale,
+        guestLocale: locale,
         transferRequested: form.transferRequested,
         idDocumentBase64,
         idDocumentContentType,
@@ -232,6 +244,19 @@ export default function GuestPreArrivalForm({
               {previewOnly ? ' (Preview only — not saved.)' : ''}
             </p>
             <dl className="mt-4 space-y-2 text-sm text-gray-700">
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Guest</dt>
+                <dd className="font-medium text-right">
+                  {guestFullNameFromSubmission(submitted) ||
+                    buildGuestFullName(form.guestFirstName, form.guestLastName)}
+                </dd>
+              </div>
+              {submitted.guestCountry && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Country</dt>
+                  <dd className="font-medium text-right">{submitted.guestCountry}</dd>
+                </div>
+              )}
               <div className="flex justify-between gap-4">
                 <dt className="text-gray-500">Arrival time</dt>
                 <dd className="font-medium tabular-nums">
@@ -319,9 +344,59 @@ export default function GuestPreArrivalForm({
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-5">
       <div className="rounded-2xl border border-gray-100 bg-white px-5 py-6 shadow-sm space-y-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="pre-arrival-first-name" className="block text-sm font-semibold text-[#051F26] mb-2">
+              First name <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="pre-arrival-first-name"
+              type="text"
+              autoComplete="given-name"
+              required
+              value={form.guestFirstName}
+              onChange={(e) => setForm((prev) => ({ ...prev, guestFirstName: e.target.value }))}
+              className="guest-input w-full border border-gray-200 text-gray-900 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+            />
+          </div>
+          <div>
+            <label htmlFor="pre-arrival-last-name" className="block text-sm font-semibold text-[#051F26] mb-2">
+              Surname <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="pre-arrival-last-name"
+              type="text"
+              autoComplete="family-name"
+              required
+              value={form.guestLastName}
+              onChange={(e) => setForm((prev) => ({ ...prev, guestLastName: e.target.value }))}
+              className="guest-input w-full border border-gray-200 text-gray-900 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="pre-arrival-country" className="block text-sm font-semibold text-[#051F26] mb-2">
+            Country <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <select
+            id="pre-arrival-country"
+            value={form.guestCountry}
+            onChange={(e) => setForm((prev) => ({ ...prev, guestCountry: e.target.value }))}
+            className="guest-input w-full border border-gray-200 text-gray-900 bg-white focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+          >
+            <option value="">Select country</option>
+            {countryOptions.map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div>
           <label htmlFor="pre-arrival-time" className="block text-sm font-semibold text-[#051F26] mb-2">
-            Expected arrival time
+            Expected arrival time <span className="text-red-500">*</span>
           </label>
           <input
             id="pre-arrival-time"
@@ -335,7 +410,7 @@ export default function GuestPreArrivalForm({
 
         <div>
           <label htmlFor="pre-arrival-guests" className="block text-sm font-semibold text-[#051F26] mb-2">
-            Number of guests
+            Number of guests <span className="text-red-500">*</span>
           </label>
           <input
             id="pre-arrival-guests"
@@ -356,7 +431,7 @@ export default function GuestPreArrivalForm({
 
         <div>
           <label htmlFor="pre-arrival-phone" className="block text-sm font-semibold text-[#051F26] mb-2">
-            Mobile phone
+            Mobile phone <span className="text-red-500">*</span>
           </label>
           <input
             id="pre-arrival-phone"
@@ -460,7 +535,7 @@ export default function GuestPreArrivalForm({
                 Identity verification <span className="text-red-500">*</span>
               </p>
               <ul className="mt-2 space-y-1.5 text-xs text-gray-500 leading-relaxed list-disc pl-4">
-                <li>Upload your ID document or enter the details manually — one is required.</li>
+                <li>Enter your ID details manually or upload a photo of your ID — one is required.</li>
                 {idInputMode === 'upload' && (
                   <>
                     <li>
@@ -481,21 +556,7 @@ export default function GuestPreArrivalForm({
             </div>
           </div>
 
-          <div className="flex gap-1 bg-white p-1 rounded-lg mb-4 border border-gray-100">
-            <button
-              type="button"
-              onClick={() => {
-                setIdInputMode('upload');
-                setError(null);
-              }}
-              className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
-                idInputMode === 'upload'
-                  ? 'bg-[#0B4F5C]/8 text-[#0B4F5C]'
-                  : 'text-gray-500 hover:text-[#0B4F5C]'
-              }`}
-            >
-              Upload ID
-            </button>
+          <div className="flex items-center gap-2 mb-4 bg-white p-1.5 rounded-lg border border-gray-100">
             <button
               type="button"
               onClick={() => {
@@ -511,6 +572,26 @@ export default function GuestPreArrivalForm({
               }`}
             >
               Enter details
+            </button>
+            <span
+              className="shrink-0 px-1 text-[11px] font-bold uppercase tracking-wide text-gray-400"
+              aria-hidden="true"
+            >
+              or
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIdInputMode('upload');
+                setError(null);
+              }}
+              className={`flex-1 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
+                idInputMode === 'upload'
+                  ? 'bg-[#0B4F5C]/8 text-[#0B4F5C]'
+                  : 'text-gray-500 hover:text-[#0B4F5C]'
+              }`}
+            >
+              Upload ID
             </button>
           </div>
 
@@ -673,7 +754,8 @@ export default function GuestPreArrivalForm({
               className="mt-1 h-4 w-4 rounded border-gray-300 text-[#0B4F5C] focus:ring-[#0B4F5C]/20"
             />
             <span className="text-sm text-gray-700 leading-relaxed">
-              I have read and accept the house rules for this property.
+              I have read and accept the house rules for this property.{' '}
+              <span className="text-red-500">*</span>
             </span>
           </label>
         </div>

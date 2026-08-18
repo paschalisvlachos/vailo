@@ -269,7 +269,7 @@ const FRIENDLY_COUNTRY_LABELS: Record<string, string> = {
 };
 
 /** Sorted country list for admin selects (replaces deprecated restcountries v3.1). */
-export function loadCountryNames(): Promise<string[]> {
+export function getSortedCountryNames(): string[] {
   const seen = new Set<string>();
   const names: string[] = [];
   for (const raw of COUNTRY_NAMES) {
@@ -278,5 +278,10 @@ export function loadCountryNames(): Promise<string[]> {
     seen.add(label);
     names.push(label);
   }
-  return Promise.resolve(names.sort((a, b) => a.localeCompare(b)));
+  return names.sort((a, b) => a.localeCompare(b));
+}
+
+/** Sorted country list for admin selects (replaces deprecated restcountries v3.1). */
+export function loadCountryNames(): Promise<string[]> {
+  return Promise.resolve(getSortedCountryNames());
 }

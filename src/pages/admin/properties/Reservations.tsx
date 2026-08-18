@@ -27,6 +27,7 @@ import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRe
 import {
   buildPreArrivalClipboardText,
   buildPreArrivalPortalUrl,
+  buildOpenPreArrivalPortalUrl,
   stayRangeLabelFromBooking,
 } from '../../../lib/guestPreArrival';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../../lib/whatsappLink';
@@ -148,7 +149,7 @@ export default function Reservations() {
       typeId: pt.id,
       typeName: pt.propertyTypeName
     }))
-  ).sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()); 
+  ).sort((a, b) => String(b.start || '').localeCompare(String(a.start || '')));
 
   const displayedBookings = filterTypeId === 'all' 
     ? allBookings 
@@ -206,6 +207,7 @@ export default function Reservations() {
       propertyName: property.propertyName || 'Your stay',
       unitName: type.propertyTypeName || 'Your unit',
       portalUrl: url,
+      preArrivalUrl: buildOpenPreArrivalPortalUrl(url),
       hostLabel: property.propertyName,
       accessRequired: isGuestPortalAccessRequired(property),
     });

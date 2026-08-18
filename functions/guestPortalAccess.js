@@ -14,6 +14,7 @@ const {
 const {
   getBookingById,
   isBookingPortalAccessAllowed,
+  resolveBookingGuestDisplayName,
 } = require("./guestPortalBookingAccess");
 
 function parseIsoDay(iso) {
@@ -32,6 +33,35 @@ function isWithinBookingStayDates(today, start, end) {
   if (!s || !e) return false;
   const t = today.getTime();
   return t >= s.getTime() && t <= e.getTime();
+}
+
+function normalizeBookingDay(iso) {
+  return String(iso || "").trim().slice(0, 10);
+}
+
+function bookingMatchesExactDates(booking, checkIn, checkOut) {
+  if (!booking?.start || !booking?.end) return false;
+  return (
+    normalizeBookingDay(booking.start) === normalizeBookingDay(checkIn) &&
+    normalizeBookingDay(booking.end) === normalizeBookingDay(checkOut)
+  );
+}
+
+function parseGuestCheckInDates(checkIn, checkOut) {
+  const checkInDay = normalizeBookingDay(checkIn);
+  const checkOutDay = normalizeBookingDay(checkOut);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkInDay) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOutDay)) {
+    throw new HttpsError("invalid-argument", "Please enter valid check-in and check-out dates.");
+  }
+  const start = parseIsoDay(checkInDay);
+  const end = parseIsoDay(checkOutDay);
+  if (!start || !end) {
+    throw new HttpsError("invalid-argument", "Please enter valid check-in and check-out dates.");
+  }
+  if (end.getTime() <= start.getTime()) {
+    throw new HttpsError("invalid-argument", "Check-out must be after check-in.");
+  }
+  return { checkInDay, checkOutDay };
 }
 
 function portalAccessUntilFromEnd(end) {
@@ -682,6 +712,98 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
     });
 
     return { session };
+  });
+
+  exp.resolvePreArrivalBookingByDates = onCall(async (request) => {
+    const { propertyId, typeId, checkIn, checkOut, existingSessionId } = request.data || {};
+    if (!propertyId || !typeId) {
+      throw new HttpsError("invalid-argument", "Missing property or unit.");
+    }
+
+    const { checkInDay, checkOutDay } = parseGuestCheckInDates(checkIn, checkOut);
+
+    const propSnap = await firestore.collection("properties").doc(propertyId).get();
+    if (!propSnap.exists) throw new HttpsError("not-found", "Property not found.");
+
+    const typeRef = firestore
+      .collection("properties")
+      .doc(propertyId)
+      .collection("propertyTypes")
+      .doc(typeId);
+    const typeSnap = await typeRef.get();
+    if (!typeSnap.exists) throw new HttpsError("not-found", "Unit not found.");
+
+    const bookings = typeSnap.data().syncedBookings || [];
+    const matched = bookings.filter(
+      (b) =>
+        isBookingPortalAccessAllowed(b) &&
+        bookingMatchesExactDates(b, checkInDay, checkOutDay)
+    );
+
+    if (existingSessionId) {
+      const existing = await getSession(firestore, propertyId, existingSessionId);
+      const matchedBookingIds = new Set(matched.map((b) => b.id).filter(Boolean));
+      if (
+        existing &&
+        existing.typeId === typeId &&
+        existing.bookingId &&
+        matchedBookingIds.has(existing.bookingId) &&
+        Date.now() < new Date(existing.accessUntil).getTime()
+      ) {
+        const bookingAccess = await houseGuestBookingAllowsAccess(firestore, existing);
+        if (bookingAccess.allowed) {
+          return {
+            session: formatSessionPayload(existing),
+            reused: true,
+            bookingId: existing.bookingId,
+          };
+        }
+      }
+    }
+
+    if (matched.length === 0) {
+      throw new HttpsError(
+        "not-found",
+        "We could not find a reservation for those dates on this property. Please check your dates or contact your host."
+      );
+    }
+    if (matched.length > 1) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Multiple reservations match those dates. Please contact your host."
+      );
+    }
+
+    const booking = matched[0];
+    const now = new Date().toISOString();
+    const accessUntil =
+      booking.portalAccessUntil || portalAccessUntilFromEnd(booking.end);
+    if (!accessUntil) {
+      throw new HttpsError("failed-precondition", "Invalid stay dates on booking.");
+    }
+
+    const updated = patchBookingInList(bookings, booking.id, {
+      portalAccessUntil: accessUntil,
+      accessSource: booking.accessSource || "pre_arrival_dates",
+    });
+    await persistBookings(typeRef, updated);
+
+    const session = await createSession(firestore, {
+      propertyId,
+      typeId,
+      bookingId: booking.id,
+      accessUntil,
+      source: "pre_arrival_dates",
+      guestName: resolveBookingGuestDisplayName(booking),
+      guestLocale: booking.guestLocale || null,
+    });
+
+    return {
+      session,
+      bookingId: booking.id,
+      checkIn: checkInDay,
+      checkOut: checkOutDay,
+    };
   });
 
   exp.activateGuestOnSiteAccess = onCall(async (request) => {

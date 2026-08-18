@@ -3,6 +3,7 @@ import {
   formatPreArrivalDateDisplay,
   formatPreArrivalIdDetailsSummary,
   formatPreArrivalTimeDisplay,
+  guestFullNameFromSubmission,
   PRE_ARRIVAL_ID_GDPR_RETENTION_DAYS,
 } from './preArrivalSubmission';
 import { formatPreArrivalTransferPrice } from './preArrivalSettings';
@@ -27,14 +28,18 @@ export function buildPreArrivalDeclarationHtml(options: {
   unitName: string;
   booking: Pick<
     SyncedBooking,
-    'guestName' | 'summary' | 'start' | 'end' | 'guestEmail' | 'guestPhone'
+    'guestName' | 'summary' | 'start' | 'end' | 'guestEmail' | 'guestPhone' | 'guestCountry'
   >;
   submission: PreArrivalSubmission;
   generatedAt?: string;
   idImageDataUrl?: string | null;
 }): string {
   const { propertyName, unitName, booking, submission } = options;
-  const guestName = booking.guestName?.trim() || booking.summary?.trim() || 'Guest';
+  const guestName =
+    guestFullNameFromSubmission(submission) ||
+    booking.guestName?.trim() ||
+    booking.summary?.trim() ||
+    'Guest';
   const stayLabel = formatGuestStayLabel(propertyName, unitName);
   const stayRange = formatBookingDateRange(booking.start, booking.end);
   const generatedAt =
@@ -50,6 +55,7 @@ export function buildPreArrivalDeclarationHtml(options: {
   const rows = [
     row('Property', stayLabel),
     row('Guest', guestName),
+    row('Country', submission.guestCountry || booking.guestCountry || ''),
     row('Stay', stayRange),
     row('Submitted', submittedAt),
     row('Expected arrival', formatPreArrivalTimeDisplay(submission.expectedArrivalTime)),
@@ -141,18 +147,74 @@ export function buildPreArrivalDeclarationHtml(options: {
 </html>`;
 }
 
-export function openPreArrivalDeclarationPrint(html: string): void {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) {
-    throw new Error('Pop-up blocked. Allow pop-ups to export the declaration PDF.');
+export function downloadPreArrivalDeclarationHtml(html: string, filename?: string): void {
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || 'pre-arrival-declaration.html';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Opens the browser print dialog (Save as PDF) without a pop-up window. */
+export function openPreArrivalDeclarationPrint(
+  html: string,
+  options?: { filename?: string }
+): void {
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('title', 'Pre-arrival declaration print');
+  iframe.style.cssText =
+    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+  document.body.appendChild(iframe);
+
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!win || !doc) {
+    iframe.remove();
+    downloadPreArrivalDeclarationHtml(html, options?.filename);
+    return;
   }
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.onload = () => {
-    printWindow.print();
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  const cleanup = () => {
+    window.setTimeout(() => iframe.remove(), 500);
   };
+
+  const triggerPrint = () => {
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      downloadPreArrivalDeclarationHtml(html, options?.filename);
+    } finally {
+      cleanup();
+    }
+  };
+
+  const images = Array.from(doc.querySelectorAll('img'));
+  if (images.length === 0) {
+    triggerPrint();
+    return;
+  }
+
+  let pending = images.length;
+  const done = () => {
+    pending -= 1;
+    if (pending <= 0) triggerPrint();
+  };
+  for (const img of images) {
+    if (img.complete) done();
+    else {
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+    }
+  }
 }
 
 export function downloadBase64File(

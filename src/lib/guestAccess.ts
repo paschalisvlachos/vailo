@@ -31,7 +31,12 @@ export function getGuestPortalPublicOrigin(): string {
   return 'https://vailo.app';
 }
 
-export type GuestAccessSource = 'invite' | 'on_site' | 'tester' | 'admin_preview';
+export type GuestAccessSource =
+  | 'invite'
+  | 'on_site'
+  | 'tester'
+  | 'admin_preview'
+  | 'pre_arrival_dates';
 
 export type GuestInviteStatus = 'not_sent' | 'waiting' | 'opened';
 

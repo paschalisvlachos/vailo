@@ -142,6 +142,8 @@ export type OpenPortalInvitePayload = {
   propertyName: string;
   unitName: string;
   portalUrl: string;
+  /** Open check-in URL (portal + view=preArrival), no invite token. */
+  preArrivalUrl?: string;
   hostLabel?: string;
   /** When true, guest portal uses invite/password gate. */
   accessRequired?: boolean;
@@ -159,9 +161,11 @@ export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayl
     ? `Your private guest portal for ${property} is ready. Your host will share access details for your stay.`
     : `Your guest portal for ${property} is ready — open it anytime during your stay. No access code is required.`;
 
+  const checkInUrl = payload.preArrivalUrl?.trim() || '';
+
   const accessNote = accessRequired
-    ? 'Open the link when you arrive — your host will provide your personal access password or invitation.'
-    : 'Save the link on your phone for quick access to your house guide, local tips, and the Vailo assistant.';
+    ? 'Open the guest portal link when you arrive — your host will provide your personal access password or invitation.'
+    : 'Save the guest portal link on your phone for quick access to your house guide, local tips, and the Vailo assistant.';
 
   const lines = [
     'Hello,',
@@ -172,19 +176,19 @@ export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayl
     '',
     unit ? `Accommodation: ${unit}` : '',
     '',
-    'Open your portal:',
-    url,
-    '',
-    accessNote,
-    '',
-    'Warm regards,',
-    host || 'Your host',
-    '',
-    '—',
-    'Powered by Vailo',
-  ].filter(Boolean);
+  ];
 
-  return lines.join('\n');
+  if (checkInUrl) {
+    lines.push(
+      'Before you arrive — complete your online check-in (enter your stay dates):',
+      checkInUrl,
+      ''
+    );
+  }
+
+  lines.push('Open your guest portal:', url, '', accessNote, '', 'Warm regards,', host || 'Your host', '', '—', 'Powered by Vailo');
+
+  return lines.filter(Boolean).join('\n');
 }
 
 /** Short WhatsApp invitation — link, password, and Vailo portal benefits (admin → guest). */

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarDays, Home } from 'lucide-react';
-import { formatBookingDateRange } from '../../lib/syncedBooking';
+import { formatBookingDateRange, resolveGuestDisplayName } from '../../lib/syncedBooking';
+import { guestFullNameFromSubmission } from '../../lib/preArrivalSubmission';
 import type { GuestPortalSession } from '../../lib/guestAccess';
 import { isPreArrivalPortalView, clearPreArrivalViewIntent } from '../../lib/guestPreArrival';
 import type { PreArrivalSubmission } from '../../lib/syncedBooking';
@@ -11,6 +12,8 @@ type BookingSummary = {
   start?: string;
   end?: string;
   guestName?: string;
+  summary?: string;
+  guestCountry?: string;
   guestPhone?: string;
   guestWhatsapp?: string;
   guestEmail?: string;
@@ -29,6 +32,8 @@ type Props = {
   contentPrimaryLocale: string;
   transferOffer?: import('../../lib/preArrivalSettings').PreArrivalTransferOffer | null;
   booking?: BookingSummary | null;
+  /** Open date lookup flow — lets guest re-enter stay dates. */
+  onChangeDates?: () => void;
 };
 
 export default function GuestPreArrivalShell({
@@ -42,15 +47,25 @@ export default function GuestPreArrivalShell({
   contentPrimaryLocale,
   transferOffer,
   booking,
+  onChangeDates,
 }: Props) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const guestName = useMemo(() => {
-    const fromBooking = booking?.guestName?.trim();
-    if (fromBooking) return fromBooking;
-    return session.guestName?.trim() || 'Guest';
-  }, [booking?.guestName, session.guestName]);
+    const fromSubmission = guestFullNameFromSubmission(booking?.preArrivalSubmission);
+    if (fromSubmission) return fromSubmission;
+    return resolveGuestDisplayName({
+      guestName: booking?.guestName,
+      summary: booking?.summary,
+      sessionGuestName: session.guestName,
+    });
+  }, [
+    booking?.guestName,
+    booking?.summary,
+    booking?.preArrivalSubmission,
+    session.guestName,
+  ]);
 
   const stayLabel = formatBookingDateRange(booking?.start, booking?.end);
 
@@ -72,7 +87,7 @@ export default function GuestPreArrivalShell({
         <div className="rounded-[28px] bg-[#0B4F5C] text-white px-6 py-8 shadow-[0_24px_80px_rgba(5,31,38,0.25)]">
           <p className="guest-eyebrow text-[#C5A059]/95 mb-2">Pre-arrival check-in</p>
           <h1 className="font-luxury text-[1.75rem] leading-tight font-medium">
-            Welcome, {guestName}
+            {guestName ? `Welcome, ${guestName}` : 'Welcome'}
           </h1>
           <p className="text-sm text-white/75 mt-3 leading-relaxed">
             Complete your details before arrival for{' '}
@@ -80,9 +95,20 @@ export default function GuestPreArrivalShell({
             {unitName ? ` · ${unitName}` : ''}.
           </p>
           {stayLabel && (
-            <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/15 px-3 py-1.5 text-sm text-white/90">
-              <CalendarDays size={15} />
-              {stayLabel}
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/15 px-3 py-1.5 text-sm text-white/90">
+                <CalendarDays size={15} />
+                {stayLabel}
+              </div>
+              {onChangeDates && (
+                <button
+                  type="button"
+                  onClick={onChangeDates}
+                  className="text-sm font-semibold text-[#C5A059] hover:text-[#d4b06a] underline underline-offset-2"
+                >
+                  Wrong dates?
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -94,6 +120,7 @@ export default function GuestPreArrivalShell({
           guide={guide}
           locale={locale}
           contentPrimaryLocale={contentPrimaryLocale}
+          guestName={booking?.guestName}
           guestPhone={booking?.guestPhone}
           guestWhatsapp={booking?.guestWhatsapp}
           guestEmail={booking?.guestEmail}

@@ -16,6 +16,7 @@ import LocalGems from "./pages/admin/properties/LocalGems";
 import GreenScore from "./pages/admin/properties/GreenScore";
 import Calendar from "./pages/admin/properties/Calendar";
 import Reservations from "./pages/admin/properties/Reservations";
+import CheckIns from "./pages/admin/properties/CheckIns";
 import HouseGuide from "./pages/admin/properties/HouseGuide";
 import Features from "./pages/admin/properties/Features";
 import Billing from "./pages/admin/Billing";
@@ -161,6 +162,7 @@ export default function App() {
             <Route path="green-score" element={<GreenScore />} />
             <Route path="calendar" element={<Calendar />} />
             <Route path="reservations" element={<Reservations />} />
+            <Route path="check-ins" element={<CheckIns />} />
             <Route path="house-guide" element={<HouseGuide />} />
             <Route path="features" element={<Features />} />
             <Route path="guest-issues" element={<GuestIssues />} />

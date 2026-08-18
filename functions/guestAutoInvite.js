@@ -6,6 +6,7 @@ const {
   formatBookingDateRange,
   buildGuestInviteEmailFromContext,
   deliverGuestInviteEmail,
+  isPreArrivalCheckInEnabled,
 } = require("./guestInviteEmail");
 
 function parseIsoDay(iso) {
@@ -135,6 +136,8 @@ async function deliverGuestInviteForBooking(
     accessPassword: password,
     reinvite: Boolean(reinvite),
     hostLabel: propertyName,
+    preArrivalCheckInEnabled: isPreArrivalCheckInEnabled(property),
+    preArrivalComplete: Boolean(target.preArrivalComplete),
   });
 
   const updated = patchBookingInList(bookings, bookingId, {

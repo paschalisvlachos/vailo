@@ -613,7 +613,7 @@ export default function Reservations() {
   };
 
   const handleCopyPreArrivalLink = async (booking: ReservationRow) => {
-    if (!preArrivalCheckInEnabled) return;
+    if (!preArrivalCheckInEnabled || booking.preArrivalComplete) return;
     if (!isBookingGuestDetailsComplete(booking)) {
       toast.warning('Add guest details before copying a pre-arrival link.');
       return;
@@ -1099,7 +1099,7 @@ export default function Reservations() {
                             </button>
                           )}
 
-                          {preArrivalCheckInEnabled && detailsComplete && (
+                          {preArrivalCheckInEnabled && detailsComplete && !booking.preArrivalComplete && (
                             <button
                               type="button"
                               onClick={() => void handleCopyPreArrivalLink(booking)}

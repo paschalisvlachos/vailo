@@ -43,8 +43,19 @@ function preArrivalUrlFromInviteUrl(inviteUrl) {
   }
 }
 
+function isPreArrivalCheckInEnabled(property) {
+  if (property?.preArrivalCheckInEnabled === undefined) return true;
+  return property.preArrivalCheckInEnabled !== false;
+}
+
+function shouldIncludePreArrivalInviteLink(payload) {
+  if (payload.preArrivalCheckInEnabled === false) return false;
+  if (payload.preArrivalComplete === true) return false;
+  return true;
+}
+
 function resolvePreArrivalUrl(payload) {
-  if (payload.preArrivalCheckInEnabled === false) return "";
+  if (!shouldIncludePreArrivalInviteLink(payload)) return "";
   const explicit = String(payload.preArrivalUrl || "").trim();
   if (explicit) return explicit;
   return preArrivalUrlFromInviteUrl(payload.inviteUrl);
@@ -141,8 +152,9 @@ function buildGuestInviteEmailText(payload) {
     "",
   ];
   appendGuestInviteLinkLines(lines, payload);
+  const preArrivalUrl = resolvePreArrivalUrl(payload);
   lines.push(
-    "Access password (same for both links):",
+    preArrivalUrl ? "Access password (same for both links):" : "Access password:",
     payload.accessPassword,
     "",
     "Enter this password when prompted. Keep it private — it is personal to your reservation.",
@@ -249,7 +261,11 @@ function buildGuestInviteEmailHtml(payload) {
                   </td>
                 </tr>
               </table>
-              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">Use either link on your phone or computer. When prompted, enter the password exactly as shown — the same password works for both. Please keep it private — it is linked to your reservation.</p>
+              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">${
+                preArrivalUrlRaw
+                  ? "Use either link on your phone or computer. When prompted, enter the password exactly as shown — the same password works for both. Please keep it private — it is linked to your reservation."
+                  : "Open the link on your phone or computer. When prompted, enter the password exactly as shown. Please keep it private — it is linked to your reservation."
+              }</p>
               <p style="margin:0;font-size:15px;line-height:1.6;color:#051F26;">Warm regards,<br /><span style="color:#0B4F5C;font-weight:600;">${host}</span></p>
             </td>
           </tr>
@@ -280,6 +296,12 @@ function buildGuestInviteEmailHtml(payload) {
 function buildGuestInviteEmailFromContext(context) {
   const propertyName = String(context.propertyName || "").trim() || "Your stay";
   const inviteUrl = String(context.inviteUrl || "").trim();
+  const preArrivalCheckInEnabled = context.preArrivalCheckInEnabled !== false;
+  const preArrivalComplete = context.preArrivalComplete === true;
+  const includeCheckIn = shouldIncludePreArrivalInviteLink({
+    preArrivalCheckInEnabled,
+    preArrivalComplete,
+  });
   return {
     guestName: String(context.guestName || "").trim() || "Guest",
     guestEmail: String(context.guestEmail || "").trim(),
@@ -287,11 +309,11 @@ function buildGuestInviteEmailFromContext(context) {
     unitName: String(context.unitName || "").trim(),
     stayRangeLabel: String(context.stayRangeLabel || "").trim(),
     inviteUrl,
-    preArrivalUrl:
-      context.preArrivalCheckInEnabled === false
-        ? ""
-        : String(context.preArrivalUrl || "").trim() || preArrivalUrlFromInviteUrl(inviteUrl),
-    preArrivalCheckInEnabled: context.preArrivalCheckInEnabled !== false,
+    preArrivalUrl: includeCheckIn
+      ? String(context.preArrivalUrl || "").trim() || preArrivalUrlFromInviteUrl(inviteUrl)
+      : "",
+    preArrivalCheckInEnabled: includeCheckIn,
+    preArrivalComplete,
     accessPassword: String(context.accessPassword || "").trim(),
     reinvite: Boolean(context.reinvite),
     hostLabel: String(context.hostLabel || "").trim() || propertyName,
@@ -344,6 +366,7 @@ module.exports = {
   getTypePublicSlug,
   buildInvitePortalUrl,
   formatBookingDateRange,
+  isPreArrivalCheckInEnabled,
   buildGuestInviteEmailFromContext,
   buildGuestInviteEmailSubject,
   deliverGuestInviteEmail,

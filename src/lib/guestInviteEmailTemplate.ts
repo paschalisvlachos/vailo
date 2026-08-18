@@ -3,6 +3,7 @@
 import { getGuestPortalPublicOrigin, buildInvitePortalUrl } from './guestAccess';
 import { formatGuestSlug, getTypePublicSlug } from './guestPortalSlug';
 import { buildPreArrivalPortalUrl, preArrivalUrlFromInviteUrl } from './guestPreArrival';
+import { shouldIncludePreArrivalInviteLink } from './preArrivalSettings';
 import { formatBookingDateRange } from './syncedBooking';
 
 const PREVIEW_PASSWORD_PLACEHOLDER = '••••-••••';
@@ -36,6 +37,8 @@ export type GuestInviteEmailPayload = {
   preArrivalUrl?: string;
   /** When false, pre-arrival links are omitted from invitation copy. */
   preArrivalCheckInEnabled?: boolean;
+  /** When true, pre-arrival links are omitted (guest already checked in). */
+  preArrivalComplete?: boolean;
   accessPassword: string;
   /** First invite vs refreshed credentials */
   reinvite?: boolean;
@@ -91,8 +94,9 @@ export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): str
     '',
   ];
   appendGuestInviteLinkLines(lines, payload);
+  const preArrivalUrl = resolvePreArrivalUrl(payload);
   lines.push(
-    'Access password (same for both links):',
+    preArrivalUrl ? 'Access password (same for both links):' : 'Access password:',
     payload.accessPassword,
     '',
     'Enter this password when prompted. Keep it private — it is personal to your reservation.',
@@ -113,7 +117,14 @@ function invitePasswordIsPlaceholder(password: string): boolean {
 }
 
 function resolvePreArrivalUrl(payload: GuestInviteEmailPayload): string {
-  if (payload.preArrivalCheckInEnabled === false) return '';
+  if (
+    !shouldIncludePreArrivalInviteLink({
+      preArrivalCheckInEnabled: payload.preArrivalCheckInEnabled,
+      preArrivalComplete: payload.preArrivalComplete,
+    })
+  ) {
+    return '';
+  }
   return payload.preArrivalUrl?.trim() || preArrivalUrlFromInviteUrl(payload.inviteUrl);
 }
 
@@ -228,7 +239,7 @@ export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload
 
   if (!passwordIsPlaceholder) {
     lines.push(
-      'Access password (same for both links):',
+      preArrivalUrl ? 'Access password (same for both links):' : 'Access password:',
       payload.accessPassword.trim(),
       '',
       'Enter it when prompted. Keep it private.'
@@ -334,7 +345,11 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
                   </td>
                 </tr>
               </table>
-              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">Use either link on your phone or computer. When prompted, enter the password exactly as shown — the same password works for both. Please keep it private — it is linked to your reservation.</p>
+              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">${
+                preArrivalUrlRaw
+                  ? 'Use either link on your phone or computer. When prompted, enter the password exactly as shown — the same password works for both. Please keep it private — it is linked to your reservation.'
+                  : 'Open the link on your phone or computer. When prompted, enter the password exactly as shown. Please keep it private — it is linked to your reservation.'
+              }</p>
               <p style="margin:0;font-size:15px;line-height:1.6;color:#051F26;">Warm regards,<br /><span style="color:#0B4F5C;font-weight:600;">${host}</span></p>
             </td>
           </tr>
@@ -383,6 +398,7 @@ export type GuestInviteEmailBookingContext = {
   end?: string;
   guestLocale?: string;
   inviteToken?: string;
+  preArrivalComplete?: boolean;
 };
 
 export function buildGuestInviteEmailPayloadFromBooking(context: {
@@ -437,7 +453,10 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
     inviteUrl = `${origin}/…`;
   }
 
-  const checkInEnabled = context.preArrivalCheckInEnabled !== false;
+  const checkInEnabled = shouldIncludePreArrivalInviteLink({
+    preArrivalCheckInEnabled: context.preArrivalCheckInEnabled,
+    preArrivalComplete: booking.preArrivalComplete,
+  });
 
   return {
     guestName: booking.guestName?.trim() || booking.summary?.trim() || 'Guest',
@@ -448,6 +467,7 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
     inviteUrl,
     preArrivalUrl: checkInEnabled ? preArrivalUrl : '',
     preArrivalCheckInEnabled: checkInEnabled,
+    preArrivalComplete: booking.preArrivalComplete === true,
     accessPassword: context.accessPassword?.trim() || PREVIEW_PASSWORD_PLACEHOLDER,
     reinvite: context.reinvite,
     hostLabel: propertyName.trim() || undefined,

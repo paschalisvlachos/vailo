@@ -514,6 +514,7 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
         reinvite: Boolean(reinvite),
         hostLabel: propertyName,
         preArrivalCheckInEnabled: isPreArrivalCheckInEnabled(property),
+        preArrivalComplete: Boolean(target.preArrivalComplete),
       });
 
       const updated = patchBookingInList(bookings, bookingId, {

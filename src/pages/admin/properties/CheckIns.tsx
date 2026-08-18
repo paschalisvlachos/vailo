@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Navigate, useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ClipboardCheck, Eye, Filter, Loader2, Trash2 } from 'lucide-react';
 import PreArrivalSubmissionModal from '../../../components/admin/PreArrivalSubmissionModal';
@@ -7,6 +7,7 @@ import { useToast } from '../../../context/ToastContext';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { db } from '../../../lib/firebase';
 import { removePreArrivalCheckInForAdminCallable } from '../../../lib/guestPortalCallables';
+import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
 import { formatPreArrivalTimeDisplay } from '../../../lib/preArrivalSubmission';
 import {
   formatBookingDateRange,
@@ -14,6 +15,7 @@ import {
   resolveGuestDisplayName,
   type SyncedBooking,
 } from '../../../lib/syncedBooking';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 import type { PropertyOutletContext } from './PropertyLayout';
 
 type CheckInRow = SyncedBooking & { typeId: string; typeName: string };
@@ -35,7 +37,11 @@ export default function CheckIns() {
   const [propertyTypes, setPropertyTypes] = useState<
     { id: string; propertyTypeName?: string; syncedBookings?: SyncedBooking[] }[]
   >([]);
-  const [filterTypeId, setFilterTypeId] = useState<string>('all');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id), [propertyTypes]);
+  const { listingId: filterTypeId, setListingId: setFilterTypeId } = usePropertyListingQuery({
+    allowAll: true,
+    validTypeIds: propertyTypeIds,
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [viewBooking, setViewBooking] = useState<CheckInRow | null>(null);
   const [removingKey, setRemovingKey] = useState<string | null>(null);
@@ -81,6 +87,10 @@ export default function CheckIns() {
     const complete = rows.filter((r) => r.preArrivalComplete).length;
     return { complete, pending: rows.length - complete, total: rows.length };
   }, [rows]);
+
+  if (!isPreArrivalCheckInEnabled(property)) {
+    return <Navigate to="../reservations" replace />;
+  }
 
   const handleRemoveCheckIn = async (row: CheckInRow) => {
     if (!row.id) {

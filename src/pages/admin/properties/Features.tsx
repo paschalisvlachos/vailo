@@ -21,6 +21,7 @@ import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { usePropertyContentLocaleSettings } from '../../../hooks/usePropertyContentLocaleSettings';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 import {
   categoryPrimaryName,
   resolveCategoryLabel,
@@ -37,7 +38,10 @@ export default function Features() {
   
   const [propertyAreaContext, setPropertyAreaContext] = useState<{country: string, areaId: string, areaName: string} | null>(null);
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
+  const { listingId: selectedTypeId, setListingId: setSelectedTypeId } = usePropertyListingQuery({
+    validTypeIds: propertyTypeIds,
+  });
   
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
@@ -251,12 +255,9 @@ export default function Features() {
     const unsubTypes = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
       const typesData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setPropertyTypes(typesData);
-      if (typesData.length > 0 && !selectedTypeId) {
-        setSelectedTypeId(typesData[0].id);
-      }
     });
     return () => unsubTypes();
-  }, [propertyId, selectedTypeId]);
+  }, [propertyId]);
 
   useEffect(() => {
     if (!propertyId || migrationDone || propertyTypes.length === 0) return;

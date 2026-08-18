@@ -34,6 +34,8 @@ export type GuestInviteEmailPayload = {
   inviteUrl: string;
   /** Same credentials as inviteUrl, with view=preArrival */
   preArrivalUrl?: string;
+  /** When false, pre-arrival links are omitted from invitation copy. */
+  preArrivalCheckInEnabled?: boolean;
   accessPassword: string;
   /** First invite vs refreshed credentials */
   reinvite?: boolean;
@@ -111,6 +113,7 @@ function invitePasswordIsPlaceholder(password: string): boolean {
 }
 
 function resolvePreArrivalUrl(payload: GuestInviteEmailPayload): string {
+  if (payload.preArrivalCheckInEnabled === false) return '';
   return payload.preArrivalUrl?.trim() || preArrivalUrlFromInviteUrl(payload.inviteUrl);
 }
 
@@ -144,6 +147,8 @@ export type OpenPortalInvitePayload = {
   portalUrl: string;
   /** Open check-in URL (portal + view=preArrival), no invite token. */
   preArrivalUrl?: string;
+  /** When false, check-in link is omitted from open portal invitation copy. */
+  preArrivalCheckInEnabled?: boolean;
   hostLabel?: string;
   /** When true, guest portal uses invite/password gate. */
   accessRequired?: boolean;
@@ -161,7 +166,8 @@ export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayl
     ? `Your private guest portal for ${property} is ready. Your host will share access details for your stay.`
     : `Your guest portal for ${property} is ready — open it anytime during your stay. No access code is required.`;
 
-  const checkInUrl = payload.preArrivalUrl?.trim() || '';
+  const checkInUrl =
+    payload.preArrivalCheckInEnabled === false ? '' : payload.preArrivalUrl?.trim() || '';
 
   const accessNote = accessRequired
     ? 'Open the guest portal link when you arrive — your host will provide your personal access password or invitation.'
@@ -392,6 +398,8 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
   accessPassword?: string;
   inviteToken?: string;
   logoUrl?: string;
+  /** When false, preArrivalUrl is cleared in the payload. */
+  preArrivalCheckInEnabled?: boolean;
 }): GuestInviteEmailPayload {
   const { booking, propertyName, unitName, typeId } = context;
   const origin = (context.origin || getGuestPortalPublicOrigin()).replace(/\/$/, '');
@@ -429,6 +437,8 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
     inviteUrl = `${origin}/…`;
   }
 
+  const checkInEnabled = context.preArrivalCheckInEnabled !== false;
+
   return {
     guestName: booking.guestName?.trim() || booking.summary?.trim() || 'Guest',
     guestEmail: booking.guestEmail?.trim() || '',
@@ -436,7 +446,8 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
     unitName: unitName.trim(),
     stayRangeLabel: formatBookingDateRange(booking.start, booking.end),
     inviteUrl,
-    preArrivalUrl,
+    preArrivalUrl: checkInEnabled ? preArrivalUrl : '',
+    preArrivalCheckInEnabled: checkInEnabled,
     accessPassword: context.accessPassword?.trim() || PREVIEW_PASSWORD_PLACEHOLDER,
     reinvite: context.reinvite,
     hostLabel: propertyName.trim() || undefined,

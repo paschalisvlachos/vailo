@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -8,6 +8,7 @@ import {
   Thermometer, Lightbulb, Ban, Car, Bike, Sprout, CloudRain, Waves, 
   Store, Users, HeartHandshake, Bus, FileText
 } from 'lucide-react';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 
 // Max 6 points for Energy Class
 const ENERGY_SCORES: Record<string, number> = {
@@ -19,7 +20,10 @@ export default function GreenScore() {
   const toast = useToast();
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
+  const { listingId: selectedTypeId, setListingId: setSelectedTypeId } = usePropertyListingQuery({
+    validTypeIds: propertyTypeIds,
+  });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentScore, setCurrentScore] = useState(0);
@@ -59,10 +63,9 @@ export default function GreenScore() {
     const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
       const typesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPropertyTypes(typesData);
-      if (typesData.length > 0 && !selectedTypeId) setSelectedTypeId(typesData[0].id);
     });
     return () => unsubscribe();
-  }, [propertyId, selectedTypeId]);
+  }, [propertyId]);
 
   // 2. Fetch Green Score for selected Type
   useEffect(() => {

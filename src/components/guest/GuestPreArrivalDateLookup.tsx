@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { httpsCallableMessage } from '../../lib/callableError';
 import {
@@ -11,7 +11,11 @@ import {
   isCompleteDayMonthYear,
   parseDayMonthYearToIso,
 } from '../../lib/guestStayDateInput';
-import { resolvePreArrivalBookingByDatesCallable } from '../../lib/guestPortalCallables';
+import {
+  isPreArrivalListingChoiceResult,
+  resolvePreArrivalBookingByDatesCallable,
+  type PreArrivalListingOption,
+} from '../../lib/guestPortalCallables';
 
 type Props = {
   propertyId: string;
@@ -37,12 +41,26 @@ export default function GuestPreArrivalDateLookup({
 }: Props) {
   const [checkInDisplay, setCheckInDisplay] = useState('');
   const [checkOutDisplay, setCheckOutDisplay] = useState('');
+  const [listingOptions, setListingOptions] = useState<PreArrivalListingOption[] | null>(null);
+  const [selectedListingKey, setSelectedListingKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const checkInComplete = isCompleteDayMonthYear(checkInDisplay);
   const checkOutComplete = isCompleteDayMonthYear(checkOutDisplay);
-  const canSubmit = checkInComplete && checkOutComplete && !submitting;
+  const datesReady = checkInComplete && checkOutComplete;
+  const needsListingChoice = listingOptions !== null && listingOptions.length > 0;
+
+  const canSubmit = useMemo(() => {
+    if (submitting || !datesReady) return false;
+    if (needsListingChoice) return Boolean(selectedListingKey);
+    return true;
+  }, [submitting, datesReady, needsListingChoice, selectedListingKey]);
+
+  const selectedListing = useMemo(() => {
+    if (!needsListingChoice || !selectedListingKey) return null;
+    return listingOptions.find((option) => `${option.typeId}:${option.bookingId}` === selectedListingKey) ?? null;
+  }, [needsListingChoice, listingOptions, selectedListingKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,15 +84,42 @@ export default function GuestPreArrivalDateLookup({
     setError(null);
     try {
       const stored = readGuestPortalSession();
-      const { session } = await resolvePreArrivalBookingByDatesCallable({
+      const result = await resolvePreArrivalBookingByDatesCallable({
         propertyId,
         typeId,
         checkIn,
         checkOut,
-        existingSessionId: stored?.sessionId,
+        existingSessionId: needsListingChoice ? undefined : stored?.sessionId,
+        selectedTypeId: selectedListing?.typeId,
+        selectedBookingId: selectedListing?.bookingId,
       });
-      writeGuestPortalSession(session);
-      onSessionGranted(session);
+
+      if (isPreArrivalListingChoiceResult(result)) {
+        setListingOptions(result.listingOptions);
+        setSelectedListingKey((prev) => {
+          if (
+            prev &&
+            result.listingOptions.some(
+              (option) => `${option.typeId}:${option.bookingId}` === prev
+            )
+          ) {
+            return prev;
+          }
+          if (result.listingOptions.length === 1) {
+            return `${result.listingOptions[0].typeId}:${result.listingOptions[0].bookingId}`;
+          }
+          return prev;
+        });
+        return;
+      }
+
+      if (!result.session) {
+        setError('We could not start your check-in. Please try again.');
+        return;
+      }
+
+      writeGuestPortalSession(result.session);
+      onSessionGranted(result.session);
     } catch (err) {
       setError(
         httpsCallableMessage(
@@ -98,7 +143,7 @@ export default function GuestPreArrivalDateLookup({
           <p className="text-sm text-white/75 mt-3 leading-relaxed">
             Enter your check-in and check-out dates for{' '}
             <span className="text-white font-medium">{propertyName}</span>
-            {unitName ? ` · ${unitName}` : ''}.
+            {!needsListingChoice && unitName ? ` · ${unitName}` : ''}.
           </p>
         </div>
 
@@ -122,7 +167,12 @@ export default function GuestPreArrivalDateLookup({
               autoComplete="off"
               placeholder="DD/MM/YYYY"
               value={checkInDisplay}
-              onChange={(e) => setCheckInDisplay(formatDayMonthYearInput(e.target.value))}
+              onChange={(e) => {
+                setCheckInDisplay(formatDayMonthYearInput(e.target.value));
+                setListingOptions(null);
+                setSelectedListingKey('');
+                setError(null);
+              }}
               required
               maxLength={10}
               className="guest-input w-full border border-gray-200 text-gray-900 tabular-nums tracking-wide outline-none focus:ring-2 focus:ring-vailo-teal/20"
@@ -143,12 +193,51 @@ export default function GuestPreArrivalDateLookup({
               autoComplete="off"
               placeholder="DD/MM/YYYY"
               value={checkOutDisplay}
-              onChange={(e) => setCheckOutDisplay(formatDayMonthYearInput(e.target.value))}
+              onChange={(e) => {
+                setCheckOutDisplay(formatDayMonthYearInput(e.target.value));
+                setListingOptions(null);
+                setSelectedListingKey('');
+                setError(null);
+              }}
               required
               maxLength={10}
               className="guest-input w-full border border-gray-200 text-gray-900 tabular-nums tracking-wide outline-none focus:ring-2 focus:ring-vailo-teal/20"
             />
           </div>
+
+          {needsListingChoice && (
+            <div>
+              <label
+                htmlFor="pre-arrival-listing"
+                className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1.5"
+              >
+                Which accommodation is your stay? <span className="text-red-500">*</span>
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                More than one listing has a reservation for these dates. Please choose yours.
+              </p>
+              <select
+                id="pre-arrival-listing"
+                value={selectedListingKey}
+                onChange={(e) => {
+                  setSelectedListingKey(e.target.value);
+                  setError(null);
+                }}
+                required
+                className="guest-input w-full border border-gray-200 text-gray-900 bg-white outline-none focus:ring-2 focus:ring-vailo-teal/20"
+              >
+                <option value="">Select accommodation</option>
+                {listingOptions.map((option) => (
+                  <option
+                    key={`${option.typeId}:${option.bookingId}`}
+                    value={`${option.typeId}:${option.bookingId}`}
+                  >
+                    {option.typeName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -162,6 +251,8 @@ export default function GuestPreArrivalDateLookup({
                 <Loader2 size={16} className="animate-spin" />
                 Verifying…
               </>
+            ) : needsListingChoice ? (
+              'Continue to check-in'
             ) : (
               'Continue to check-in'
             )}

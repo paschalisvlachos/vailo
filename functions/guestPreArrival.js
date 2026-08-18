@@ -124,6 +124,11 @@ async function persistBookings(typeRef, bookings) {
   await typeRef.set({ syncedBookings: bookings }, { merge: true });
 }
 
+function isPreArrivalCheckInEnabled(property) {
+  if (property?.preArrivalCheckInEnabled === undefined) return true;
+  return property.preArrivalCheckInEnabled !== false;
+}
+
 function buildBookingAfterPreArrivalRemoval(booking) {
   const submission = booking?.preArrivalSubmission || null;
   const cleared = stripPreArrivalFields(booking);
@@ -552,6 +557,12 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
 
       const propSnap = await firestore.collection("properties").doc(propertyId).get();
       const property = propSnap.exists ? propSnap.data() : {};
+      if (!previewMode && !isPreArrivalCheckInEnabled(property)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Online check-in is not enabled for this property."
+        );
+      }
       const transferFields = resolveTransferFields(data, property);
 
       const bookingId = session.bookingId;

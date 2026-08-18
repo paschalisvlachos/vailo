@@ -144,8 +144,10 @@ export async function resolvePreArrivalBookingByDatesCallable(params: {
   checkIn: string;
   checkOut: string;
   existingSessionId?: string | null;
-}): Promise<SessionPayload & { bookingId?: string; reused?: boolean }> {
-  const res = await call<SessionPayload & { bookingId?: string; reused?: boolean }>(
+  selectedTypeId?: string;
+  selectedBookingId?: string;
+}): Promise<ResolvePreArrivalBookingByDatesResult> {
+  const res = await call<ResolvePreArrivalBookingByDatesResult>(
     'resolvePreArrivalBookingByDates'
   )({
     propertyId: params.propertyId,
@@ -153,8 +155,41 @@ export async function resolvePreArrivalBookingByDatesCallable(params: {
     checkIn: params.checkIn,
     checkOut: params.checkOut,
     existingSessionId: params.existingSessionId || undefined,
+    selectedTypeId: params.selectedTypeId || undefined,
+    selectedBookingId: params.selectedBookingId || undefined,
   });
   return res.data;
+}
+
+export type PreArrivalListingOption = {
+  typeId: string;
+  typeName: string;
+  bookingId: string;
+};
+
+export type ResolvePreArrivalBookingByDatesResult =
+  | (SessionPayload & {
+      bookingId?: string;
+      reused?: boolean;
+      checkIn?: string;
+      checkOut?: string;
+    })
+  | {
+      needsListingChoice: true;
+      listingOptions: PreArrivalListingOption[];
+      checkIn: string;
+      checkOut: string;
+    };
+
+export function isPreArrivalListingChoiceResult(
+  result: ResolvePreArrivalBookingByDatesResult
+): result is {
+  needsListingChoice: true;
+  listingOptions: PreArrivalListingOption[];
+  checkIn: string;
+  checkOut: string;
+} {
+  return 'needsListingChoice' in result && result.needsListingChoice === true;
 }
 
 export async function grantAdminGuestPortalPreviewCallable(

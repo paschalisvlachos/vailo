@@ -25,6 +25,7 @@ type Props = {
   accessPassword?: string;
   inviteToken?: string;
   detailsComplete?: boolean;
+  preArrivalCheckInEnabled?: boolean;
   onClose: () => void;
 };
 
@@ -39,6 +40,7 @@ export default function GuestInviteEmailPreviewModal({
   accessPassword,
   inviteToken,
   detailsComplete = true,
+  preArrivalCheckInEnabled = true,
   onClose,
 }: Props) {
   const [reinvite, setReinvite] = useState(defaultReinvite);
@@ -57,6 +59,7 @@ export default function GuestInviteEmailPreviewModal({
         accessPassword,
         inviteToken,
         logoUrl: `${window.location.origin}/vailoLogo.png`,
+        preArrivalCheckInEnabled,
       }),
     [
       booking,
@@ -68,6 +71,7 @@ export default function GuestInviteEmailPreviewModal({
       reinvite,
       accessPassword,
       inviteToken,
+      preArrivalCheckInEnabled,
     ]
   );
 

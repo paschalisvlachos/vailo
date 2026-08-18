@@ -44,6 +44,7 @@ function preArrivalUrlFromInviteUrl(inviteUrl) {
 }
 
 function resolvePreArrivalUrl(payload) {
+  if (payload.preArrivalCheckInEnabled === false) return "";
   const explicit = String(payload.preArrivalUrl || "").trim();
   if (explicit) return explicit;
   return preArrivalUrlFromInviteUrl(payload.inviteUrl);
@@ -287,7 +288,10 @@ function buildGuestInviteEmailFromContext(context) {
     stayRangeLabel: String(context.stayRangeLabel || "").trim(),
     inviteUrl,
     preArrivalUrl:
-      String(context.preArrivalUrl || "").trim() || preArrivalUrlFromInviteUrl(inviteUrl),
+      context.preArrivalCheckInEnabled === false
+        ? ""
+        : String(context.preArrivalUrl || "").trim() || preArrivalUrlFromInviteUrl(inviteUrl),
+    preArrivalCheckInEnabled: context.preArrivalCheckInEnabled !== false,
     accessPassword: String(context.accessPassword || "").trim(),
     reinvite: Boolean(context.reinvite),
     hostLabel: String(context.hostLabel || "").trim() || propertyName,

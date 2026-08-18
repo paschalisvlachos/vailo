@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -18,6 +18,7 @@ import { extractBookingProvider } from '../../../lib/bookingProvider';
 import { formatICalSyncError, formatICalSyncSuccessMessage, syncPropertyTypeICalCallable } from '../../../lib/icalSync';
 import { maybeTriggerAutoGuestInvite } from '../../../lib/autoGuestInvite';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw, Eraser } from 'lucide-react';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 
 function bookingStatusLabel(status: ReturnType<typeof getBookingInvitationStatus>): string {
   switch (status) {
@@ -50,7 +51,10 @@ export default function Calendar() {
   const { languages } = usePlatformLanguages();
 
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
+  const { listingId: selectedTypeId, setListingId: setSelectedTypeId } = usePropertyListingQuery({
+    validTypeIds: propertyTypeIds,
+  });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
   const [detailsBooking, setDetailsBooking] = useState<SyncedBooking | null>(null);
@@ -62,10 +66,9 @@ export default function Calendar() {
     const unsubscribe = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
       const typesData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setPropertyTypes(typesData);
-      if (typesData.length > 0 && !selectedTypeId) setSelectedTypeId(typesData[0].id);
     });
     return () => unsubscribe();
-  }, [propertyId, selectedTypeId]);
+  }, [propertyId]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();

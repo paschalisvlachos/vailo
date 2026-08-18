@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
 import GuestPortalLoadingScreen from './GuestPortalLoadingScreen';
 import GuestPreArrivalDateLookup from './GuestPreArrivalDateLookup';
 import GuestPreArrivalShell from './GuestPreArrivalShell';
 import {
   clearGuestPortalSession,
   readGuestPortalSession,
-  sessionMatchesUnit,
+  sessionMatchesOpenPreArrivalContext,
   type GuestPortalSession,
 } from '../../lib/guestAccess';
 import { validateGuestPortalSession } from '../../lib/guestPortalCallables';
+import { db } from '../../lib/firebase';
 import type { PreArrivalSubmission } from '../../lib/syncedBooking';
 import type { PreArrivalTransferOffer } from '../../lib/preArrivalSettings';
 
@@ -59,15 +61,12 @@ export default function GuestOpenPreArrivalFlow({
 }: Props) {
   const [phase, setPhase] = useState<FlowPhase>('checking');
   const [session, setSession] = useState<GuestPortalSession | null>(guestSession);
+  const [resolvedUnitName, setResolvedUnitName] = useState(unitName);
+  const [resolvedBooking, setResolvedBooking] = useState<BookingRow | null>(null);
   const bootstrapRunIdRef = useRef(0);
 
   const activeSession = session ?? guestSession ?? readGuestPortalSession();
-
-  const booking = useMemo(() => {
-    const bookingId = activeSession?.bookingId;
-    if (!bookingId || !syncedBookings) return null;
-    return syncedBookings.find((b) => b.id === bookingId) ?? null;
-  }, [activeSession?.bookingId, syncedBookings]);
+  const activeTypeId = activeSession?.typeId || typeId;
 
   const grant = useCallback(
     (s: GuestPortalSession) => {
@@ -81,9 +80,11 @@ export default function GuestOpenPreArrivalFlow({
   const handleChangeDates = useCallback(() => {
     clearGuestPortalSession();
     setSession(null);
+    setResolvedBooking(null);
+    setResolvedUnitName(unitName);
     onSessionCleared?.();
     setPhase('lookup');
-  }, [onSessionCleared]);
+  }, [onSessionCleared, unitName]);
 
   useEffect(() => {
     const runId = ++bootstrapRunIdRef.current;
@@ -93,7 +94,7 @@ export default function GuestOpenPreArrivalFlow({
     (async () => {
       setPhase('checking');
       const stored = readGuestPortalSession();
-      if (!stored || !sessionMatchesUnit(stored, propertyId, typeId)) {
+      if (!stored || !sessionMatchesOpenPreArrivalContext(stored, propertyId, typeId)) {
         if (!stillActive()) return;
         setPhase('lookup');
         return;
@@ -102,7 +103,7 @@ export default function GuestOpenPreArrivalFlow({
       try {
         const result = await validateGuestPortalSession(
           propertyId,
-          typeId,
+          stored.typeId,
           stored.sessionId
         );
         if (!stillActive()) return;
@@ -126,6 +127,55 @@ export default function GuestOpenPreArrivalFlow({
     };
   }, [propertyId, typeId, grant]);
 
+  useEffect(() => {
+    const bookingId = activeSession?.bookingId;
+    const sessionTypeId = activeSession?.typeId;
+    if (!bookingId || !sessionTypeId || !propertyId) {
+      setResolvedBooking(null);
+      setResolvedUnitName(unitName);
+      return;
+    }
+
+    if (sessionTypeId === typeId && syncedBookings) {
+      const match = syncedBookings.find((row) => row.id === bookingId) ?? null;
+      setResolvedBooking(match);
+      setResolvedUnitName(unitName);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snap = await getDoc(
+          doc(db, 'properties', propertyId, 'propertyTypes', sessionTypeId)
+        );
+        if (cancelled || !snap.exists()) return;
+        const data = snap.data();
+        const bookings = Array.isArray(data?.syncedBookings) ? data.syncedBookings : [];
+        const match =
+          (bookings as BookingRow[]).find((row) => row.id === bookingId) ?? null;
+        setResolvedBooking(match);
+        setResolvedUnitName(String(data?.propertyTypeName || '').trim() || unitName);
+      } catch {
+        if (!cancelled) {
+          setResolvedBooking(null);
+          setResolvedUnitName(unitName);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession?.bookingId, activeSession?.typeId, propertyId, syncedBookings, typeId, unitName]);
+
+  const booking = useMemo(() => {
+    if (resolvedBooking) return resolvedBooking;
+    const bookingId = activeSession?.bookingId;
+    if (!bookingId || !syncedBookings) return null;
+    return syncedBookings.find((row) => row.id === bookingId) ?? null;
+  }, [resolvedBooking, activeSession?.bookingId, syncedBookings]);
+
   if (phase === 'checking') {
     return <GuestPortalLoadingScreen status="Loading online check-in…" />;
   }
@@ -146,9 +196,9 @@ export default function GuestOpenPreArrivalFlow({
     <GuestPreArrivalShell
       session={activeSession}
       propertyId={propertyId}
-      typeId={typeId}
+      typeId={activeTypeId}
       propertyName={propertyName}
-      unitName={unitName}
+      unitName={resolvedUnitName}
       guide={guide}
       locale={locale}
       contentPrimaryLocale={contentPrimaryLocale}

@@ -23,6 +23,7 @@ import { getGuestPortalPublicOrigin, isGuestPortalAccessRequired } from '../../.
 import { buildGuestPortalUrl } from '../../../lib/guestPortalSlug';
 import { AdminButton, AdminInput, AdminLabel, AdminSelect } from '../../../components/admin/AdminPageHeader';
 import type { PropertyRecord } from './PropertyLayout';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 
 const EMPTY_FORM = {
   typeId: '',
@@ -42,7 +43,11 @@ export default function PropertyTesters() {
     { id: string; propertyTypeName?: string; urlSlug?: string; typeSlug?: string }[]
   >([]);
   const [testers, setTesters] = useState<PropertyTester[]>([]);
-  const [filterTypeId, setFilterTypeId] = useState<string>('all');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id), [propertyTypes]);
+  const { listingId: filterTypeId, setListingId: setFilterTypeId } = usePropertyListingQuery({
+    allowAll: true,
+    validTypeIds: propertyTypeIds,
+  });
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedUrlTypeId, setCopiedUrlTypeId] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());

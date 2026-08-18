@@ -49,7 +49,8 @@ import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import { isGuestPortalAccessRequired, readGuestPortalSession, type GuestPortalSession } from '../../lib/guestAccess';
-import { isPreArrivalPortalView, markPreArrivalViewIntent, resolvePreArrivalPortalView, GUEST_PRE_ARRIVAL_VIEW } from '../../lib/guestPreArrival';
+import { isPreArrivalPortalView, markPreArrivalViewIntent, resolvePreArrivalPortalView, clearPreArrivalViewIntent, GUEST_PRE_ARRIVAL_VIEW } from '../../lib/guestPreArrival';
+import { isPreArrivalCheckInEnabled } from '../../lib/preArrivalSettings';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   GuestAreaPrefetcher,
@@ -426,9 +427,13 @@ function GuestPortalPage({
     [searchParams, propertyId, typeId, preArrivalViewFromUrl]
   );
 
+  const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
+
+  const preArrivalViewActive = preArrivalView && preArrivalCheckInEnabled;
+
   /** Open portal check-in: dates only, no personal invite token. */
   const isOpenPreArrivalFlow =
-    preArrivalView && !inviteTokenFromQuery && !adminPreviewFromQuery;
+    preArrivalViewActive && !inviteTokenFromQuery && !adminPreviewFromQuery;
 
   useEffect(() => {
     if (preArrivalViewFromUrl && propertyId && typeId) {
@@ -437,7 +442,22 @@ function GuestPortalPage({
   }, [preArrivalViewFromUrl, propertyId, typeId]);
 
   useEffect(() => {
-    if (!propertyId || !typeId || resolving) return;
+    if (!propertyId || !typeId || preArrivalCheckInEnabled) return;
+    if (
+      isPreArrivalPortalView(searchParams.get('view')) ||
+      resolvePreArrivalPortalView(null, propertyId, typeId)
+    ) {
+      clearPreArrivalViewIntent(propertyId, typeId);
+      if (isPreArrivalPortalView(searchParams.get('view'))) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('view');
+        navigate({ search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
+      }
+    }
+  }, [propertyId, typeId, preArrivalCheckInEnabled, searchParams, navigate]);
+
+  useEffect(() => {
+    if (!propertyId || !typeId || resolving || !preArrivalCheckInEnabled) return;
     if (
       resolvePreArrivalPortalView(null, propertyId, typeId) &&
       !isPreArrivalPortalView(searchParams.get('view'))
@@ -1227,7 +1247,7 @@ function GuestPortalPage({
     );
 
   const preArrivalShell =
-    preArrivalView &&
+    preArrivalViewActive &&
     !isOpenPreArrivalFlow &&
     activeGuestSession &&
     property &&
@@ -1279,14 +1299,14 @@ function GuestPortalPage({
       />
     ) : null;
 
-  const preArrivalContent = preArrivalView
+  const preArrivalContent = preArrivalViewActive
     ? openPreArrivalFlow ??
       preArrivalShell ?? (
         <GuestPortalLoadingScreen status="Loading pre-arrival check-in…" />
       )
     : null;
 
-  const gatedContent = preArrivalView ? preArrivalContent : portalContent;
+  const gatedContent = preArrivalViewActive ? preArrivalContent : portalContent;
 
   if (
     isGuestPortalAccessRequired(property) &&

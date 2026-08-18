@@ -1,15 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getGenerativeModel } from 'firebase/ai';
 import { ai, db } from '../../../lib/firebase';
 import { Sparkles, Loader2, Send, Bot, User, Search } from 'lucide-react';
+import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
 
 export default function AiGapAnalyzer() {
   const { property, propertyId } = useOutletContext<{ property: any; propertyId: string }>();
 
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
+  const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
+  const { listingId: selectedTypeId, setListingId: setSelectedTypeId } = usePropertyListingQuery({
+    validTypeIds: propertyTypeIds,
+  });
   const [features, setFeatures] = useState<any[]>([]);
   const [messages, setMessages] = useState<{ role: 'ai' | 'user'; text: string }[]>([]);
   const [input, setInput] = useState('');
@@ -21,10 +25,9 @@ export default function AiGapAnalyzer() {
     const unsub = onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snap) => {
       const types = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setPropertyTypes(types);
-      if (types.length > 0 && !selectedTypeId) setSelectedTypeId(types[0].id);
     });
     return () => unsub();
-  }, [propertyId, selectedTypeId]);
+  }, [propertyId]);
 
   useEffect(() => {
     if (!propertyId || !selectedTypeId) {

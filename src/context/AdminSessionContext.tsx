@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import {
   collection,
   collectionGroup,
@@ -18,6 +18,7 @@ import {
 import { auth, db } from '../lib/firebase';
 import {
   buildAdminScopes,
+  isDeactivatedProfile,
   isPlatformAdmin,
   isScopedUser,
   isAgent,
@@ -95,32 +96,74 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!authUser?.email) {
+    if (!authUser) {
       setProfile(null);
       setProfileReady(true);
       return;
     }
 
     const email = normalizeAdminEmail(authUser.email);
-    const q = query(collection(db, 'owners'), where('email', '==', email));
-    const unsub = onSnapshot(
-      q,
+    const uid = authUser.uid;
+    let emailUnsub: (() => void) | null = null;
+
+    const applySnapshot = (
+      snap: { empty: boolean; docs: { id: string; data: () => Record<string, unknown> }[] }
+    ) => {
+      if (snap.empty) {
+        setProfile(null);
+      } else {
+        const match =
+          snap.docs.find(
+            (docSnap) => normalizeAdminEmail(String(docSnap.data().email)) === email
+          ) ?? snap.docs[0];
+        setProfile(parseOwnerProfile(match.id, match.data()));
+      }
+      setProfileReady(true);
+    };
+
+    const uidQuery = query(collection(db, 'owners'), where('authUid', '==', uid));
+    const unsubUid = onSnapshot(
+      uidQuery,
       (snap) => {
-        if (snap.empty) {
-          setProfile(null);
-        } else {
-          const doc = snap.docs[0];
-          setProfile(parseOwnerProfile(doc.id, doc.data()));
+        if (!snap.empty) {
+          if (emailUnsub) {
+            emailUnsub();
+            emailUnsub = null;
+          }
+          applySnapshot(snap);
+          return;
         }
-        setProfileReady(true);
+
+        if (emailUnsub || !email) return;
+
+        const emailQuery = query(collection(db, 'owners'), where('email', '==', email));
+        emailUnsub = onSnapshot(
+          emailQuery,
+          applySnapshot,
+          () => {
+            setProfile(null);
+            setProfileReady(true);
+          }
+        );
       },
       () => {
         setProfile(null);
         setProfileReady(true);
       }
     );
-    return () => unsub();
-  }, [authUser?.email]);
+
+    return () => {
+      unsubUid();
+      emailUnsub?.();
+    };
+  }, [authUser?.uid, authUser?.email]);
+
+  useEffect(() => {
+    if (!profileReady || !authUser || !profile) return;
+    if (isDeactivatedProfile(profile)) {
+      void signOut(auth);
+    }
+  }, [profileReady, authUser, profile]);
 
   useEffect(() => {
     if (!authUser) {

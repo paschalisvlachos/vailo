@@ -1,9 +1,30 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { normalizeAdminEmail } from '../../lib/adminAccess';
 import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
 import VailoMark from '../guest/VailoMark';
 import { AdminAlert, AdminButton, AdminInput, AdminLabel } from './AdminPageHeader';
+
+function loginErrorMessage(error: unknown): string {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code)
+      : '';
+  if (code === 'auth/user-disabled') {
+    return 'This account has been deactivated. Contact your administrator.';
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Too many failed attempts. Wait a few minutes and try again.';
+  }
+  if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+    return 'Invalid email or password. Please try again.';
+  }
+  if (code === 'auth/invalid-email') {
+    return 'Enter a valid email address.';
+  }
+  return 'Could not sign in. Please try again.';
+}
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -16,10 +37,17 @@ export default function Login() {
     setError('');
     setIsLoading(true);
 
+    const normalizedEmail = normalizeAdminEmail(email);
+    if (!normalizedEmail) {
+      setError('Enter a valid email address.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch {
-      setError('Invalid email or password. Please try again.');
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    } catch (err) {
+      setError(loginErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -56,6 +84,7 @@ export default function Login() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
                   placeholder="admin@vailo.com"
+                  autoComplete="username"
                 />
               </div>
             </div>
@@ -72,6 +101,7 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
               </div>
             </div>

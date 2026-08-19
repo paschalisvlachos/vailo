@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { collection, collectionGroup, addDoc, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, addDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { Loader2, Mail } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
@@ -165,7 +165,18 @@ export default function OwnerFormPage() {
 
       let ownerId = id;
 
+      const authInput = {
+        email: normalizedEmail,
+        status: formFields.status,
+        ...(trimmedPassword ? { password: trimmedPassword } : {}),
+        ...(isEdit && originalEmail && originalEmail.trim().toLowerCase() !== normalizedEmail
+          ? { previousEmail: originalEmail.trim().toLowerCase() }
+          : {}),
+      };
+
       if (isEdit && id) {
+        // Firebase Auth is the source of truth for login — sync it before Firestore.
+        await provisionOwnerAuth({ ownerId: id, ...authInput });
         if (trimmedPassword) payload.password = trimmedPassword;
         await updateDoc(doc(db, 'owners', id), payload);
       } else {
@@ -176,7 +187,6 @@ export default function OwnerFormPage() {
         }
         const createPayload: Record<string, unknown> = {
           ...payload,
-          password: trimmedPassword,
           createdAt: new Date().toISOString(),
         };
         if (agentMode) {
@@ -184,26 +194,30 @@ export default function OwnerFormPage() {
         }
         const ref = await addDoc(collection(db, 'owners'), createPayload);
         ownerId = ref.id;
+        try {
+          await provisionOwnerAuth({
+            ownerId,
+            ...authInput,
+            password: trimmedPassword,
+          });
+          await updateDoc(doc(db, 'owners', ownerId), {
+            password: trimmedPassword,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (authError) {
+          await deleteDoc(doc(db, 'owners', ownerId));
+          throw authError;
+        }
       }
 
       if (!ownerId) {
         throw new Error('Missing owner id.');
       }
 
-      const authResult = await provisionOwnerAuth({
-        ownerId,
-        email: normalizedEmail,
-        status: formFields.status,
-        ...(trimmedPassword ? { password: trimmedPassword } : {}),
-        ...(isEdit && originalEmail && originalEmail !== normalizedEmail
-          ? { previousEmail: originalEmail.trim().toLowerCase() }
-          : {}),
-      });
-
       toast.success(
-        authResult.created
-          ? 'Owner saved and Vailo Admin login created.'
-          : 'Owner saved and Vailo Admin login updated.'
+        isEdit
+          ? 'Owner saved and Vailo Admin login updated.'
+          : 'Owner saved and Vailo Admin login created.'
       );
       navigate(adminPath('/owners'));
     } catch (error) {

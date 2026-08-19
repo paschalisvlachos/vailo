@@ -86,8 +86,12 @@ export function normalizeAdminEmail(email: string | null | undefined): string {
   return String(email || '').trim().toLowerCase();
 }
 
+export function isDeactivatedProfile(profile: OwnerProfile | null): boolean {
+  return profile?.status?.toLowerCase() === 'deactive';
+}
+
 export function isPlatformAdmin(profile: OwnerProfile | null): boolean {
-  return profile?.role === 'admin';
+  return profile?.role === 'admin' && !isDeactivatedProfile(profile);
 }
 
 export function isAgent(profile: OwnerProfile | null): boolean {
@@ -126,12 +130,12 @@ export function buildAdminScopes(
   types: TypeRow[],
   linkedExcursionProviders: ExcursionProviderRow[] = []
 ): AdminScope[] {
-  if (!profile || isPlatformAdmin(profile)) {
-    return [{ kind: 'platform' }];
+  if (!profile || isDeactivatedProfile(profile)) {
+    return [];
   }
 
-  if (profile.status?.toLowerCase() === 'deactive') {
-    return [];
+  if (profile.role === 'admin') {
+    return [{ kind: 'platform' }];
   }
 
   if (isExcursionProvider(profile)) {

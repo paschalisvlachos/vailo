@@ -9,6 +9,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { Lock, AlertCircle } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
 import { useAdminSession } from '../../context/AdminSessionContext';
+import { normalizeAdminEmail } from '../../lib/adminAccess';
 import { useToast } from '../../context/ToastContext';
 import AdminPageHeader, {
   AdminAlert,
@@ -85,21 +86,31 @@ export default function ChangePasswordPage() {
 
     setIsSubmitting(true);
     try {
-      const credential = EmailAuthProvider.credential(authUser.email, currentPassword);
+      const loginEmail = normalizeAdminEmail(authUser.email);
+      const credential = EmailAuthProvider.credential(loginEmail, currentPassword);
       await reauthenticateWithCredential(authUser, credential);
       await updatePassword(authUser, newPassword);
 
       if (profile?.id) {
-        await updateDoc(doc(db, 'owners', profile.id), {
-          password: newPassword,
-          updatedAt: new Date().toISOString(),
-        });
+        try {
+          await updateDoc(doc(db, 'owners', profile.id), {
+            password: newPassword,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (mirrorErr) {
+          console.error('CRM password mirror failed:', mirrorErr);
+          toast.warning(
+            'Your login password was updated. Sign in again with your new password.'
+          );
+          setLogoutCountdown(5);
+          return;
+        }
       }
 
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      toast.success('Password updated successfully.');
+      toast.success('Password updated successfully. Sign in again with your new password.');
       setLogoutCountdown(5);
     } catch (err) {
       console.error('Change password failed:', err);

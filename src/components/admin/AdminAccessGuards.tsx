@@ -31,7 +31,7 @@ export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (profile.role !== 'admin') {
+  if (profile.role !== 'admin' || profile.status?.toLowerCase() === 'deactive') {
     if (profile.role === 'excursion_provider') {
       return <Navigate to={adminPath('/excursion-portal')} replace />;
     }

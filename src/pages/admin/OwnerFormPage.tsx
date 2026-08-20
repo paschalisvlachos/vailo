@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { collection, collectionGroup, addDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
-import { Loader2, Mail } from 'lucide-react';
+import { Loader2, Mail, AlertCircle } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
 import { adminPath } from '../../lib/adminRoutes';
@@ -19,6 +19,7 @@ import { sendPartnerAgreementInviteCallable } from '../../lib/partnerAgreementCa
 import { httpsCallableMessage } from '../../lib/callableError';
 import {
   AdminBackHeader,
+  AdminAlert,
   AdminButton,
   AdminCard,
   AdminInput,
@@ -63,6 +64,8 @@ export default function OwnerFormPage() {
   const [agreementAcceptedAt, setAgreementAcceptedAt] = useState<string | null>(null);
   const [agreementKind, setAgreementKind] = useState<string | null>(null);
   const [sendingAgreementInvite, setSendingAgreementInvite] = useState(false);
+  const [authUid, setAuthUid] = useState<string | null>(null);
+  const loginNotProvisioned = isEdit && !authUid;
 
   useEffect(() => {
     if (!id) return;
@@ -101,6 +104,7 @@ export default function OwnerFormPage() {
         setAgreementInviteSentAt(data.partnerAgreementInviteSentAt || null);
         setAgreementAcceptedAt(data.partnerAgreementAcceptedAt || null);
         setAgreementKind(data.partnerAgreementKind || ownerRoleToAgreementKind(data.role));
+        setAuthUid(typeof data.authUid === 'string' && data.authUid.trim() ? data.authUid.trim() : null);
       } catch (error) {
         console.error('Error loading owner:', error);
         toast.error('Failed to load owner.');
@@ -152,6 +156,14 @@ export default function OwnerFormPage() {
       const { password, ...formFields } = formData;
       const normalizedEmail = formFields.email.trim().toLowerCase();
       const trimmedPassword = password.trim();
+      if (isEdit && !trimmedPassword && !authUid) {
+        toast.warning(
+          'This user has no Vailo Admin login yet. Enter a password below and save again.'
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
       const payload: Record<string, unknown> = {
         ...formFields,
         role: agentMode ? 'owner' : normalizeOwnerRole(formFields.role),
@@ -403,6 +415,13 @@ export default function OwnerFormPage() {
 
             <section>
               <h3 className="admin-section-title border-0 pb-0 mb-4">Account Settings</h3>
+              {loginNotProvisioned && (
+                <AdminAlert variant="warning" icon={<AlertCircle size={18} />} className="mb-5">
+                  This user cannot sign in yet — their Firebase login was never created or linked.
+                  Enter a <strong>new password</strong> below and save to provision access. The
+                  password stored in CRM notes is not used for login; only Firebase Auth is.
+                </AdminAlert>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 mb-5">
                 {isPlatformAdmin ? (
                   <div>
@@ -430,21 +449,33 @@ export default function OwnerFormPage() {
                 </div>
                 <div>
                   <AdminLabel htmlFor="password">
-                    {isEdit ? 'New password' : 'Login Password *'}
+                    {loginNotProvisioned
+                      ? 'Login password *'
+                      : isEdit
+                        ? 'New password'
+                        : 'Login Password *'}
                   </AdminLabel>
                   <AdminInput
                     id="password"
                     type="password"
                     name="password"
-                    required={!isEdit}
+                    required={!isEdit || loginNotProvisioned}
                     value={formData.password}
                     onChange={handleChange}
-                    placeholder={isEdit ? 'Leave blank to keep current' : '••••••••'}
+                    placeholder={
+                      loginNotProvisioned
+                        ? 'Required to create login'
+                        : isEdit
+                          ? 'Leave blank to keep current Firebase password'
+                          : '••••••••'
+                    }
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    {isEdit
-                      ? 'Only fill in to change the Vailo Admin login password'
-                      : 'Creates their Vailo Admin login at vailo.app/admin (not Firebase Console access)'}
+                    {loginNotProvisioned
+                      ? 'Sign-in uses Firebase Auth only — you must set the password here and save.'
+                      : isEdit
+                        ? 'Only fill in to push a new password to Firebase Auth (CRM copy is for your records).'
+                        : 'Creates their Vailo Admin login at vailo.app/admin (not Firebase Console access)'}
                     {formData.role === 'excursion_provider' &&
                       ' — then allocate this user on the business under Excursions → Edit provider → Allocated excursion provider.'}
                   </p>

@@ -12,6 +12,7 @@
     "seed:legal": "node scripts/seedPlatformLegal.mjs",
     "clone:staging": "node scripts/clone-prod-to-staging.mjs",
     "provision:staging-login": "node scripts/provision-staging-login.mjs",
+    "provision:login": "node scripts/provision-login.mjs",
     "deploy:staging": "firebase deploy --only hosting --project staging",
     "deploy:production": "firebase deploy --only hosting --project production",
     "lint": "eslint .",

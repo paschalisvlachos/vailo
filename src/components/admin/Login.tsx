@@ -18,7 +18,7 @@ function loginErrorMessage(error: unknown): string {
     return 'Too many failed attempts. Wait a few minutes and try again.';
   }
   if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-    return 'Invalid email or password. Please try again.';
+    return 'Invalid email or password. If an admin recently reset your access, use the new password they set in Owners CRM (Firebase login), not an old note.';
   }
   if (code === 'auth/invalid-email') {
     return 'Enter a valid email address.';

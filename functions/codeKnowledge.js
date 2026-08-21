@@ -15,6 +15,24 @@ function resolveCodeKnowledgeModel() {
   return configured || DEFAULT_CODE_KNOWLEDGE_MODEL;
 }
 
+function resolveGeminiApiKey() {
+  const apiKey = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Set GEMINI_API_KEY on Cloud Functions for App Code Knowledge."
+    );
+  }
+  // Google AI Studio keys start with AIza… OAuth/Vertex tokens (e.g. AQ.…) fail on generativelanguage.googleapis.com?key=
+  if (!apiKey.startsWith("AIza")) {
+    throw new HttpsError(
+      "failed-precondition",
+      "GEMINI_API_KEY must be a Google AI Studio API key (starts with AIza…). Create one at https://aistudio.google.com/apikey — do not use OAuth tokens, service-account JSON, or the Firebase web API key."
+    );
+  }
+  return apiKey;
+}
+
 function isQuotaOrRateLimitError(err) {
   const status = err?.response?.status;
   const code = err?.response?.data?.error?.code;
@@ -225,13 +243,7 @@ async function askAppCodeKnowledgeHandler(request, firestore) {
     throw new HttpsError("invalid-argument", "question is required.");
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Set GEMINI_API_KEY on Cloud Functions for App Code Knowledge."
-    );
-  }
+  const apiKey = resolveGeminiApiKey();
 
   const index = loadIndex();
   const picked = retrieveChunks(index.chunks || [], question);

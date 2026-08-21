@@ -113,6 +113,20 @@
   .admin-module-card:hover {
     box-shadow: 0 8px 30px -12px rgba(11, 79, 92, 0.18);
   }
+  .admin-module-card-gems {
+    background-color: color-mix(in srgb, var(--color-vailo-gold) 10%, white);
+    border-color: color-mix(in srgb, var(--color-vailo-gold) 22%, transparent);
+  }
+  .admin-module-card-gems:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-vailo-gold) 42%, transparent);
+  }
+  .admin-module-card-features {
+    background-color: color-mix(in srgb, var(--color-vailo-teal) 8%, white);
+    border-color: color-mix(in srgb, var(--color-vailo-teal) 18%, transparent);
+  }
+  .admin-module-card-features:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-vailo-teal) 35%, transparent);
+  }
 
   .admin-back-link {
     @apply inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors mb-4;

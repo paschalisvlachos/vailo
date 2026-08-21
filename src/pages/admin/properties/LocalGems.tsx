@@ -25,6 +25,7 @@ import {
   normalizeCategorySelectionList,
 } from '../../../lib/categoryLocale';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
+import { isHikingTrailsCategory } from '../../../lib/localTrailsGuest';
 import { buildAdminCategoryHierarchy } from '../../../lib/categoryHierarchy';
 import { syncPropertyGemToArea } from '../../../lib/propertyGemAreaSync';
 import CopyGemsModal from '../../../components/admin/CopyGemsModal';
@@ -117,6 +118,14 @@ export default function LocalGems() {
   const categoryCatalogDocs = useMemo(
     () => localGemsCategoryDocs.map((c) => c.data),
     [localGemsCategoryDocs]
+  );
+
+  const gemAssignableCategoryDocs = useMemo(
+    () =>
+      localGemsCategoryDocs.filter(
+        (c) => !isHikingTrailsCategory(categoryPrimaryName(c.data, localeSettings.primaryLocale))
+      ),
+    [localGemsCategoryDocs, localeSettings.primaryLocale]
   );
 
   const normalizedGemCategories = useMemo(
@@ -986,7 +995,7 @@ export default function LocalGems() {
               {localGemsCategoryDocs.length > 0 ? (
                 <HierarchicalCategoryPillSelector
                   label="Categories * (select all that apply)"
-                  categoryDocs={localGemsCategoryDocs}
+                  categoryDocs={gemAssignableCategoryDocs}
                   selectedPrimaries={normalizedGemCategories}
                   onSelectedChange={handleGemCategoriesChange}
                   locale={localeEditor.contentLocale}

@@ -41,6 +41,7 @@ import {
   normalizeCategorySelectionList,
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
+import { isHikingTrailsCategory } from '../../../lib/localTrailsGuest';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
 import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
@@ -125,15 +126,26 @@ export default function AreaLocalGems() {
 
   const categoryFilterOptions = useMemo(
     () =>
-      categories.map((cat) => {
-        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-        const label = resolveCategoryLabel(
-          cat.data,
-          localeSettings.primaryLocale,
-          localeSettings.primaryLocale
-        );
-        return { value: primaryName, label: label || primaryName };
-      }),
+      categories
+        .map((cat) => {
+          const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+          const label = resolveCategoryLabel(
+            cat.data,
+            localeSettings.primaryLocale,
+            localeSettings.primaryLocale
+          );
+          return { value: primaryName, label: label || primaryName };
+        })
+        .filter((opt) => !isHikingTrailsCategory(opt.value)),
+    [categories, localeSettings.primaryLocale]
+  );
+
+  const gemAssignableCategories = useMemo(
+    () =>
+      categories.filter(
+        (cat) =>
+          !isHikingTrailsCategory(categoryPrimaryName(cat.data, localeSettings.primaryLocale))
+      ),
     [categories, localeSettings.primaryLocale]
   );
 
@@ -617,7 +629,7 @@ export default function AreaLocalGems() {
         <div className="sm:col-span-2">
           <HierarchicalCategoryPillSelector
             label="Categories * (select all that apply)"
-            categoryDocs={categories}
+            categoryDocs={gemAssignableCategories}
             selectedPrimaries={normalizedGemCategories}
             onSelectedChange={handleGemCategoriesChange}
             locale={localeEditor.contentLocale}

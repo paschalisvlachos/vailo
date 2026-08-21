@@ -51,8 +51,8 @@ const {
   breakdownFromUsageDoc,
   MAGIC_FILL_LEGACY_UNIT,
 } = require("./placesApiUsage");
-const { syncAllTrailsForAreaHandler } = require("./allTrailsSync");
 const { pointInPolygon, parseBoundaryRing } = require("./areaRadarGeo");
+const { getAllTrailsTrailDetailsHandler } = require("./allTrailsTrailDetails");
 const {
   askAppCodeKnowledgeHandler,
   getAppCodeKnowledgeMetaHandler,
@@ -1838,15 +1838,14 @@ exports.getBillingInvoice = onCall(async (request) => {
   };
 });
 
-/** Area admin: import / merge hiking trails from AllTrails (Algolia search index). */
-exports.syncAllTrailsForArea = onCall(
+/** Area admin: load one AllTrails trail page into the Local Trails form. */
+exports.getAllTrailsTrailDetails = onCall(
   {
-    timeoutSeconds: 540,
-    memory: "512MiB",
-    // Admin-only sync; auth is still required. Avoids App Check blocking before sync runs.
+    timeoutSeconds: 60,
+    memory: "256MiB",
     enforceAppCheck: false,
   },
-  syncAllTrailsForAreaHandler
+  getAllTrailsTrailDetailsHandler
 );
 
 /** Platform admin: Q&A grounded in indexed Vailo source code (Gemini; default gemini-2.5-flash). */

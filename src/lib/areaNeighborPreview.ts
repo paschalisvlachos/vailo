@@ -22,11 +22,6 @@ import {
 } from './categoryHierarchy';
 import { gemCategoryPrimaries } from './categoryLocale';
 import {
-  filterGuestEligibleTrails,
-  localTrailToPickItem,
-  type LocalTrailRecord,
-} from './localTrailsGuest';
-import {
   GUEST_EXCURSION_RADIUS_KM,
   loadGuestExcursionsForListing,
   type GuestExcursionListing,
@@ -94,17 +89,12 @@ export type NeighborPreviewResult = {
     neighbor: NeighborPreviewItem[];
     deduped: NeighborPreviewDedupe[];
   };
-  trails: {
-    home: NeighborPreviewItem[];
-    neighbor: NeighborPreviewItem[];
-    deduped: NeighborPreviewDedupe[];
-  };
   excursions: {
     home: NeighborPreviewExcursion[];
     neighbor: NeighborPreviewExcursion[];
   };
   categoryMismatches: NeighborPreviewItem[];
-  rawNeighborCounts: { gems: number; features: number; discoveredPlaces: number; trails: number };
+  rawNeighborCounts: { gems: number; features: number; discoveredPlaces: number };
 };
 
 export type LoadNeighborPreviewParams = {
@@ -229,11 +219,10 @@ async function loadNeighborBundles(
 ): Promise<NeighborContentBundle[]> {
   const bundles: NeighborContentBundle[] = [];
   for (const neighborId of neighborIds) {
-    const [gems, features, discoveredPlaces, trailsSnap] = await Promise.all([
+    const [gems, features, discoveredPlaces] = await Promise.all([
       loadAreaCollection(country, neighborId, 'localGems'),
       loadAreaCollection(country, neighborId, 'features'),
       loadAreaCollection(country, neighborId, 'discoveredPlaces'),
-      getDocs(collection(db, 'countries', country, 'areas', neighborId, 'localTrails')),
     ]);
     bundles.push({
       areaId: neighborId,
@@ -241,7 +230,7 @@ async function loadNeighborBundles(
       gems,
       features,
       discoveredPlaces,
-      trails: trailsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[],
+      trails: [],
     });
   }
   return bundles;
@@ -384,21 +373,15 @@ export async function loadAreaNeighborPreview(
     areaName: neighborAreaNames[areaId] || areaId,
   }));
 
-  const [homeGems, homeFeatures, homeDiscoveredPlaces, homeTrailsSnap, categorySnap] =
+  const [homeGems, homeFeatures, homeDiscoveredPlaces, categorySnap] =
     await Promise.all([
       loadAreaCollection(params.country, params.areaId, 'localGems'),
       loadAreaCollection(params.country, params.areaId, 'features'),
       loadAreaCollection(params.country, params.areaId, 'discoveredPlaces'),
-      getDocs(collection(db, 'countries', params.country, 'areas', params.areaId, 'localTrails')),
       getDocs(
         collection(db, 'countries', params.country, 'areas', params.areaId, 'localGemsCategories')
       ),
     ]);
-
-  const homeTrails = homeTrailsSnap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-  })) as LocalTrailRecord[];
 
   let propertyGems: Record<string, unknown>[] = [];
   let propertyFeatures: Record<string, unknown>[] = [];
@@ -438,10 +421,9 @@ export async function loadAreaNeighborPreview(
       acc.gems += bundle.gems.length;
       acc.features += bundle.features.length;
       acc.discoveredPlaces += bundle.discoveredPlaces.length;
-      acc.trails += bundle.trails.length;
       return acc;
     },
-    { gems: 0, features: 0, discoveredPlaces: 0, trails: 0 }
+    { gems: 0, features: 0, discoveredPlaces: 0 }
   );
 
   const catalogDocs: CategoryDocRecord[] = categorySnap.docs.map((d) => ({
@@ -460,9 +442,6 @@ export async function loadAreaNeighborPreview(
     tagCuratedScope(homeFeatures, 'area'),
   ];
   const discoveredPools: Record<string, unknown>[][] = [tagCuratedScope(homeDiscoveredPlaces, 'area')];
-  const trailPools: Record<string, unknown>[][] = [
-    homeTrails.map((trail) => ({ ...trail, curatedScope: 'area' as const })),
-  ];
 
   if (overlapEnabled) {
     for (const bundle of neighborBundles) {
@@ -471,33 +450,12 @@ export async function loadAreaNeighborPreview(
       discoveredPools.push(
         tagNeighborScope(bundle.discoveredPlaces, bundle.areaId, bundle.areaName)
       );
-      trailPools.push(
-        tagNeighborScope(bundle.trails as Record<string, unknown>[], bundle.areaId, bundle.areaName)
-      );
     }
   }
 
   const gemsMerged = mergeWithDedupeAudit(gemPools);
   const featuresMerged = mergeWithDedupeAudit(featurePools);
   const discoveredMerged = mergeWithDedupeAudit(discoveredPools);
-
-  const trailsMerged = mergeWithDedupeAudit(trailPools);
-  const trailRowsRaw = trailsMerged.merged as LocalTrailRecord[];
-  const eligibleTrails = filterGuestEligibleTrails(trailRowsRaw);
-  const trailPreviewRows: Record<string, unknown>[] = [];
-
-  for (const trail of eligibleTrails) {
-    const pick = localTrailToPickItem(trail, anchor, maxRadiusKm);
-    if (!pick) continue;
-    trailPreviewRows.push({
-      id: trail.id,
-      name: trail.name,
-      curatedScope: (trail as LocalTrailRecord & { curatedScope?: CuratedScope }).curatedScope,
-      sourceAreaLabel: pick.sourceAreaLabel,
-      latitude: trail.latitude,
-      longitude: trail.longitude,
-    });
-  }
 
   const categoryMismatches: NeighborPreviewItem[] = [];
   for (const gem of gemsMerged.merged) {
@@ -552,10 +510,6 @@ export async function loadAreaNeighborPreview(
         primaryLocale
       ),
       deduped: discoveredMerged.deduped,
-    },
-    trails: {
-      ...mapPreviewRows(trailPreviewRows, anchor, maxRadiusKm, catalogPlain, primaryLocale),
-      deduped: trailsMerged.deduped,
     },
     excursions: mapExcursionRows(excursions, anchor),
     categoryMismatches,

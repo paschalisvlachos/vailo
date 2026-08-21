@@ -1,9 +1,10 @@
 import { bareGooglePlaceId, isDirectPlaceMapsUrl } from './geocoding';
 import { gemSameNameAndLocation, parseGemCoords } from './gemLocationMatch';
 import { normalizePlaceName } from './placeNameUtils';
-import type { LocalTrailRecord } from './localTrailsGuest';
 
 export type CuratedScope = 'property' | 'area' | 'neighbor';
+
+import type { LocalTrailRecord } from './localTrailsGuest';
 
 export type NeighborContentBundle = {
   areaId: string;
@@ -175,9 +176,7 @@ export function buildMergedLocalTrails(
   ];
   if (includeNeighbors) {
     for (const bundle of neighborBundles) {
-      pools.push(
-        tagNeighborScope(bundle.trails as Record<string, unknown>[], bundle.areaId, bundle.areaName)
-      );
+      pools.push(tagNeighborScope(bundle.trails as Record<string, unknown>[], bundle.areaId, bundle.areaName));
     }
   }
   return dedupeCuratedPools(pools) as Array<

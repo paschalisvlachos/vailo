@@ -113,7 +113,7 @@ export default function CategoryPickCarousel({
         {items.map((item, i) => (
           <LocalPickCard
             key={`${item.title}-${i}`}
-            item={{ ...item, itemType: 'pick' }}
+            item={item}
             categoryName={categoryName}
             mapAreaHint={mapAreaHint}
             propertyId={propertyId}

@@ -16,9 +16,9 @@ import {
   Plus,
   Loader2,
   Radar,
-  Footprints,
   ScanSearch,
   Link2,
+  Footprints,
 } from 'lucide-react';
 import AreaLanguagesCard from '../../../components/admin/AreaLanguagesCard';
 import AreaNeighborsCard from '../../../components/admin/AreaNeighborsCard';
@@ -33,18 +33,31 @@ import AdminPageHeader, {
 } from '../../../components/admin/AdminPageHeader';
 
 type AreaOption = { id: string; name: string };
+type ModuleGroup = 'gems' | 'features' | 'other';
 
-const MODULES = [
-  { id: 'local-gems-categories', title: 'Local Gems Categories', icon: Grid, desc: 'Category structure for local recommendations' },
-  { id: 'local-gems', title: 'Local Gems', icon: MapIcon, desc: 'Add restaurants, beaches, and experiences' },
-  { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review AI-imported venues from guest plans' },
-  { id: 'area-radar', title: 'Area Radar', icon: ScanSearch, desc: 'Draw a region on the map and bulk-scout new places' },
-  { id: 'local-trails', title: 'Local Trails', icon: Footprints, desc: 'Sync hiking trails from AllTrails for this area' },
-  { id: 'overlap-preview', title: 'Overlap preview', icon: Link2, desc: 'Preview home vs nearby guest content for a property pin' },
-  { id: 'features-categories', title: 'Features Categories', icon: Layers, desc: 'Category structure for local features' },
-  { id: 'features', title: 'Master Features', icon: Briefcase, desc: 'Car rentals, chefs, transfers, and more' },
-  { id: 'features-photos', title: 'Features Photos', icon: ImageIcon, desc: 'Default stock photos for features' },
+const MODULES: Array<{
+  id: string;
+  title: string;
+  icon: typeof Grid;
+  desc: string;
+  group: ModuleGroup;
+}> = [
+  { id: 'local-gems-categories', title: 'Local Gems Categories', icon: Grid, desc: 'Category structure for local recommendations', group: 'gems' },
+  { id: 'local-gems', title: 'Local Gems', icon: MapIcon, desc: 'Add restaurants, beaches, and experiences', group: 'gems' },
+  { id: 'local-trails', title: 'Local Trails', icon: Footprints, desc: 'AllTrails hiking trails for Live like a local', group: 'gems' },
+  { id: 'features-categories', title: 'Features Categories', icon: Layers, desc: 'Category structure for local features', group: 'features' },
+  { id: 'features', title: 'Master Features', icon: Briefcase, desc: 'Car rentals, chefs, transfers, and more', group: 'features' },
+  { id: 'features-photos', title: 'Features Photos', icon: ImageIcon, desc: 'Default stock photos for features', group: 'features' },
+  { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review AI-imported venues from guest plans', group: 'other' },
+  { id: 'area-radar', title: 'Area Radar', icon: ScanSearch, desc: 'Draw a region on the map and bulk-scout new places', group: 'other' },
+  { id: 'overlap-preview', title: 'Overlap preview', icon: Link2, desc: 'Preview home vs nearby guest content for a property pin', group: 'other' },
 ];
+
+const MODULE_CARD_TONE: Record<ModuleGroup, string> = {
+  gems: 'admin-module-card-gems',
+  features: 'admin-module-card-features',
+  other: '',
+};
 
 export default function AreaSelector() {
   const navigate = useNavigate();
@@ -252,9 +265,13 @@ export default function AreaSelector() {
               type="button"
               disabled={!isReady}
               onClick={() => handleCategoryClick(mod.id)}
-              className="admin-module-card group disabled:cursor-not-allowed disabled:hover:border-gray-100"
+              className={`admin-module-card group disabled:cursor-not-allowed ${MODULE_CARD_TONE[mod.group] || 'disabled:hover:border-gray-100'}`}
             >
-              <div className="admin-icon-box mb-4 group-hover:bg-vailo-gold/15 group-hover:text-vailo-gold transition-colors">
+              <div
+                className={`${
+                  mod.group === 'gems' ? 'admin-icon-box-gold' : 'admin-icon-box'
+                } mb-4 group-hover:bg-vailo-gold/15 group-hover:text-vailo-gold transition-colors`}
+              >
                 <mod.icon size={20} />
               </div>
               <h4 className="text-base font-bold text-vailo-dark font-luxury mb-1.5">{mod.title}</h4>

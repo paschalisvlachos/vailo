@@ -9,7 +9,6 @@ type Props = {
   propertyId: string;
   typeId: string;
   mapAreaHint: string;
-  propertyCoords?: { lat: number; lng: number } | null;
   onClose: () => void;
 };
 
@@ -17,7 +16,6 @@ export default function GuestSavedLocalGems({
   propertyId,
   typeId,
   mapAreaHint,
-  propertyCoords,
   onClose,
 }: Props) {
   const { t, locale } = useGuestLocale();
@@ -136,7 +134,6 @@ export default function GuestSavedLocalGems({
                           viewMapLabel={t('aiExpertView')}
                           goMapLabel={t('aiExpertGo')}
                           mode="saved"
-                          propertyCoords={propertyCoords}
                           className="w-full"
                         />
                       ))}

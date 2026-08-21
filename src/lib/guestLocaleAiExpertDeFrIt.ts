@@ -114,15 +114,12 @@ export const AI_EXPERT_UI_DE: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertDuration10h: '10 Stunden',
   aiExpertDuration12h: '12 Stunden',
   aiExpertDurationUntilMorning: 'Bis 5:30 Uhr',
-  aiExpertHikingTrailsCategory: 'Wandern & Trails',
-  aiExpertViewOnAllTrails: 'Auf AllTrails ansehen',
+  aiExpertNoPicksInRange:
+    'Keine verifizierten {category}-Tipps in Ihrer Entfernung. Vergrößern Sie den Radius oder wählen Sie ein anderes Interesse.',
   aiExpertTrailPicksSub: '{count} Trails · nächste zuerst',
-  aiExpertEnhancingTrail: 'Trail-Details werden aufbereitet…',
   aiExpertTrailOpenAllTrailsHint: 'Auf AllTrails für die vollständige Routenbeschreibung und Bewertungen.',
   aiExpertNoTrailsInRange:
     'Keine Wanderwege in Ihrer gewählten Entfernung. Vergrößern Sie den Radius oder prüfen Sie später erneut.',
-  aiExpertNoPicksInRange:
-    'Keine verifizierten {category}-Tipps in Ihrer Entfernung. Vergrößern Sie den Radius oder wählen Sie ein anderes Interesse.',
   aiExpertRefineOrNew:
     'Soll ich die soeben gezeigten Empfehlungen verfeinern oder etwas ganz Neues finden?',
   aiExpertBestWithin: 'Beste im Umkreis von {distance}',
@@ -242,15 +239,12 @@ export const AI_EXPERT_UI_FR: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertDuration10h: '10 heures',
   aiExpertDuration12h: '12 heures',
   aiExpertDurationUntilMorning: 'Jusqu’à 5 h 30',
-  aiExpertHikingTrailsCategory: 'Randonnée & sentiers',
-  aiExpertViewOnAllTrails: 'Voir sur AllTrails',
+  aiExpertNoPicksInRange:
+    'Aucune recommandation {category} vérifiée à proximité. Élargissez la distance ou choisissez un autre intérêt.',
   aiExpertTrailPicksSub: '{count} sentiers · les plus proches d’abord',
-  aiExpertEnhancingTrail: 'Amélioration des détails du sentier…',
   aiExpertTrailOpenAllTrailsHint: 'Ouvrir sur AllTrails pour le guide complet et les avis.',
   aiExpertNoTrailsInRange:
     'Aucun sentier dans la distance choisie. Élargissez le rayon ou réessayez plus tard.',
-  aiExpertNoPicksInRange:
-    'Aucune recommandation {category} vérifiée à proximité. Élargissez la distance ou choisissez un autre intérêt.',
   aiExpertRefineOrNew:
     'Souhaitez-vous que j’affine les recommandations que je viens de montrer, ou que je trouve quelque chose de totalement nouveau ?',
   aiExpertBestWithin: 'meilleurs à moins de {distance}',
@@ -368,15 +362,12 @@ export const AI_EXPERT_UI_IT: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertDuration10h: '10 ore',
   aiExpertDuration12h: '12 ore',
   aiExpertDurationUntilMorning: 'Fino alle 5:30',
-  aiExpertHikingTrailsCategory: 'Escursionismo & sentieri',
-  aiExpertViewOnAllTrails: 'Vedi su AllTrails',
+  aiExpertNoPicksInRange:
+    'Nessuna scelta {category} verificata nel raggio scelto. Prova ad ampliare la distanza o scegli un altro interesse.',
   aiExpertTrailPicksSub: '{count} sentieri · i più vicini per primi',
-  aiExpertEnhancingTrail: 'Miglioramento dei dettagli del sentiero…',
   aiExpertTrailOpenAllTrailsHint: 'Apri su AllTrails per la guida completa e le recensioni.',
   aiExpertNoTrailsInRange:
     'Nessun sentiero nella distanza selezionata. Prova ad ampliare il raggio o controlla più tardi.',
-  aiExpertNoPicksInRange:
-    'Nessuna scelta {category} verificata nel raggio scelto. Prova ad ampliare la distanza o scegli un altro interesse.',
   aiExpertRefineOrNew:
     'Vuoi che perfezioni i suggerimenti appena mostrati o che trovi qualcosa di completamente nuovo?',
   aiExpertBestWithin: 'i migliori entro {distance}',

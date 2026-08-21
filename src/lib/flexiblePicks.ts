@@ -10,6 +10,7 @@ import {
 } from './categoryLocale';
 import { shouldDropAreasCommercialAiPick } from './areasPickFilter';
 import { getCategoryKnowledgeMode } from './liveLikeLocalCategories';
+import { isHikingTrailsCategory } from './localTrailsGuest';
 import { logPickEvent } from './aiExpertPlanDebug';
 import { titleMatchesCatalogEntry } from './alternateTitles';
 import {
@@ -1189,6 +1190,9 @@ export function buildWizardGemsOnlyPlan(params: {
   }
 
   const categoriesOut = categories.map((cat) => {
+    if (isHikingTrailsCategory(cat)) {
+      return { categoryName: resolveCategoryLabel?.(cat) || cat, items: [] as FlexiblePickItem[] };
+    }
     const rows: DbPickRow[] = [];
     for (const gem of gems || []) {
       const belongs =
@@ -1270,6 +1274,7 @@ export function buildNeighborOnlyBrowseCategories(params: {
       params.primaryLocale,
       params.guestLocale
     );
+    if (catPrimaries.some((primary) => isHikingTrailsCategory(primary))) continue;
     const categoryPrimary = catPrimaries[0] || String(gem.category || 'Nearby picks').trim() || 'Nearby picks';
     const catLimitKm = categoryDistanceLimitKm(
       params.maxKm,

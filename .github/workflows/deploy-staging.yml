@@ -20,6 +20,7 @@ jobs:
       VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.STAGING_FIREBASE_MESSAGING_SENDER_ID }}
       VITE_FIREBASE_APP_ID: ${{ secrets.STAGING_FIREBASE_APP_ID }}
       VITE_GUEST_PORTAL_ORIGIN: https://vailo-staging.web.app
+      VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.STAGING_GOOGLE_MAPS_API_KEY }}
 
     steps:
       - name: Checkout Repository

@@ -10,8 +10,9 @@ export const HIKING_TRAILS_CATEGORY_PRIMARY = 'Hiking & Trails';
 export const MIN_GUEST_TRAIL_RATING = 4;
 
 export function isGuestEligibleTrail(trail: LocalTrailRecord): boolean {
-  const rating = trail.rating;
-  return typeof rating === 'number' && Number.isFinite(rating) && rating >= MIN_GUEST_TRAIL_RATING;
+  const rating = typeof trail.rating === 'number' ? trail.rating : parseFloat(String(trail.rating ?? ''));
+  if (!Number.isFinite(rating)) return true;
+  return rating >= MIN_GUEST_TRAIL_RATING;
 }
 
 export function filterGuestEligibleTrails(trails: LocalTrailRecord[]): LocalTrailRecord[] {
@@ -68,16 +69,14 @@ export type TrailPickItem = {
 export function isHikingTrailsCategory(name: string): boolean {
   const n = name.trim().toLowerCase();
   if (!n) return false;
-  if (n === 'hiking & trails' || n === 'hiking and trails' || n === 'hiking trails') return true;
+  if (n === 'hiking & trails' || n === 'hiking and trails' || n === 'hiking trails' || n === 'local trails') return true;
   return n.includes('hiking') && n.includes('trail');
 }
 
 export function trailCoords(trail: LocalTrailRecord): { lat: number; lng: number } | null {
-  const lat = trail.latitude;
-  const lng = trail.longitude;
-  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return null;
-  }
+  const lat = typeof trail.latitude === 'number' ? trail.latitude : parseFloat(String(trail.latitude ?? ''));
+  const lng = typeof trail.longitude === 'number' ? trail.longitude : parseFloat(String(trail.longitude ?? ''));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return { lat, lng };
 }
 

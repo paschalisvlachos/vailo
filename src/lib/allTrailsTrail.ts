@@ -80,8 +80,8 @@ export function resolveAllTrailsEmbedSrc(options: {
   if (slug) return buildAllTrailsEmbedSrc(slug, options.shareHash);
 
   const pageUrl = String(options.allTrailsUrl || '').trim();
-  const match = pageUrl.match(/alltrails\.com\/(trail\/[^/?#]+)/i);
-  if (match?.[1]) return buildAllTrailsEmbedSrc(match[1], options.shareHash);
+  const match = pageUrl.match(/alltrails\.com\/(trail\/[^?#]+)/i);
+  if (match?.[1]) return buildAllTrailsEmbedSrc(match[1].replace(/\/+$/, ''), options.shareHash);
 
   return '';
 }

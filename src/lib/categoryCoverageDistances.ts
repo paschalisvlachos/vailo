@@ -93,7 +93,7 @@ function nearestKmForCategory(
   ctx: CategoryCoverageContext
 ): number | null {
   const distances: number[] = [];
-  const { catalogDocs, primaryLocale, guestLocale, gems, features, discoveredPlaces, trails } =
+  const { catalogDocs, primaryLocale, guestLocale, gems, features, discoveredPlaces, trails = [] } =
     ctx;
 
   if (isHikingTrailsCategory(cat)) {

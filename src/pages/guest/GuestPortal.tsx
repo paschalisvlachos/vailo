@@ -1157,9 +1157,6 @@ function GuestPortalPage({
               propertyId={propertyId}
               typeId={typeId}
               mapAreaHint={mapAreaHint}
-              propertyCoords={
-                hasPropertyCoords ? { lat: propertyLat!, lng: propertyLng! } : null
-              }
               onClose={() => setActiveView('portal')}
             />
           </Suspense>

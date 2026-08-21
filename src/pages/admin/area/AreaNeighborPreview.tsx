@@ -409,8 +409,7 @@ export default function AreaNeighborPreview() {
                 <div className="mt-1">
                   Raw neighbor inventory: {preview.rawNeighborCounts.gems} gems ·{' '}
                   {preview.rawNeighborCounts.features} features ·{' '}
-                  {preview.rawNeighborCounts.discoveredPlaces} discovered ·{' '}
-                  {preview.rawNeighborCounts.trails} trails
+                  {preview.rawNeighborCounts.discoveredPlaces} discovered
                 </div>
               </div>
             </div>
@@ -439,14 +438,6 @@ export default function AreaNeighborPreview() {
             emptyLabel="No discovered places in range for this radius."
           />
           <DedupeTable title="Discovered place dedupes" rows={preview.discoveredPlaces.deduped} />
-
-          <ItemTable
-            title="Local trails"
-            home={preview.trails.home}
-            neighbor={preview.trails.neighbor}
-            emptyLabel="No eligible trails in range for this radius."
-          />
-          <DedupeTable title="Trail dedupes" rows={preview.trails.deduped} />
 
           <ExcursionTable home={preview.excursions.home} neighbor={preview.excursions.neighbor} />
 

@@ -280,7 +280,6 @@ function collectDbItemsFromPlan(plan: any): any[] {
   return out;
 }
 
-/** Prepend synced AllTrails hiking categories; strip duplicate AI hiking sections. */
 /**
  * Display-only: drop a trailing ", <town>" the AI sometimes appends to an AI
  * pick's name. The verified map link / coordinates carry the real location, and
@@ -1897,7 +1896,7 @@ export default function AiExpertView({
 
         const neighborBrowse = buildNeighborOnlyBrowseCategories({
           mergedGems,
-          homeCategoryPrimaries: nonHikingCategories,
+          homeCategoryPrimaries: liveLikeLocalCategories,
           maxKm: distanceLimitNum,
           startCoords,
           catalogDocs: categoryCatalogDocs,
@@ -2690,7 +2689,6 @@ Return up to ${poolSize} AI candidates per category (source: "ai") plus database
                                 longitude: item.longitude,
                                 estimatedDistance: item.estimatedDistance,
                                 beyondRadius: item.beyondRadius,
-                                itemType: 'pick',
                               }}
                             />
                           </div>

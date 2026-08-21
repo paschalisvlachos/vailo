@@ -96,13 +96,10 @@ export type GuestLocaleAiExpertKey =
   | 'aiExpertDuration10h'
   | 'aiExpertDuration12h'
   | 'aiExpertDurationUntilMorning'
-  | 'aiExpertHikingTrailsCategory'
-  | 'aiExpertViewOnAllTrails'
+  | 'aiExpertNoPicksInRange'
   | 'aiExpertTrailPicksSub'
-  | 'aiExpertEnhancingTrail'
   | 'aiExpertTrailOpenAllTrailsHint'
   | 'aiExpertNoTrailsInRange'
-  | 'aiExpertNoPicksInRange'
   | 'aiExpertRefineOrNew'
   | 'aiExpertBestWithin';
 
@@ -219,15 +216,12 @@ export const AI_EXPERT_UI_EN: Record<GuestLocaleAiExpertKey, string> = {
   aiExpertDuration10h: '10 hours',
   aiExpertDuration12h: '12 hours',
   aiExpertDurationUntilMorning: 'Until 5:30 AM',
-  aiExpertHikingTrailsCategory: 'Hiking & Trails',
-  aiExpertViewOnAllTrails: 'View on AllTrails',
-  aiExpertTrailPicksSub: '{count} trails · nearest first',
-  aiExpertEnhancingTrail: 'Polishing trail details…',
-  aiExpertTrailOpenAllTrailsHint: 'Open on AllTrails for the full route guide and reviews.',
-  aiExpertNoTrailsInRange:
-    'No hiking trails in your selected range. Try widening the distance or check back after your host syncs local trails.',
   aiExpertNoPicksInRange:
     'No verified {category} picks within your range. Try widening the distance or choose another interest.',
+  aiExpertTrailPicksSub: '{count} trails · nearest first',
+  aiExpertTrailOpenAllTrailsHint: 'Open on AllTrails for the full route guide and reviews.',
+  aiExpertNoTrailsInRange:
+    'No trails in your selected distance. Widen the radius or add trails in Area Functionality → Local Trails.',
   aiExpertRefineOrNew:
     'Would you like me to refine the recommendations I just showed, or find something completely new?',
   aiExpertBestWithin: 'best within {distance}',
@@ -347,15 +341,12 @@ export const AI_EXPERT_UI_EL: Partial<Record<GuestLocaleAiExpertKey, string>> = 
   aiExpertDuration10h: '10 ώρες',
   aiExpertDuration12h: '12 ώρες',
   aiExpertDurationUntilMorning: 'Μέχρι 5:30 π.μ.',
-  aiExpertHikingTrailsCategory: 'Πεζοπορία & μονοπάτια',
-  aiExpertViewOnAllTrails: 'Προβολή στο AllTrails',
-  aiExpertTrailPicksSub: '{count} μονοπάτια · πιο κοντινά πρώτα',
-  aiExpertEnhancingTrail: 'Βελτιώνουμε την περιγραφή…',
-  aiExpertTrailOpenAllTrailsHint: 'Ανοίξτε στο AllTrails για τον πλήρη οδηγό διαδρομής και κριτικές.',
-  aiExpertNoTrailsInRange:
-    'Δεν υπάρχουν μονοπάτια στην επιλεγμένη απόσταση. Δοκιμάστε μεγαλύτερη ακτίνα ή ελέγξτε αργότερα.',
   aiExpertNoPicksInRange:
     'Δεν βρέθηκαν επαληθευμένες επιλογές για {category} εντός της απόστασής σας. Δοκιμάστε μεγαλύτερη ακτίνα ή άλλο ενδιαφέρον.',
+  aiExpertTrailPicksSub: '{count} μονοπάτια · πιο κοντινά πρώτα',
+  aiExpertTrailOpenAllTrailsHint: 'Ανοίξτε στο AllTrails για τον πλήρη οδηγό διαδρομής και κριτικές.',
+  aiExpertNoTrailsInRange:
+    'Δεν βρέθηκαν μονοπάτια στην απόσταση που επιλέξατε. Δοκιμάστε μεγαλύτερη ακτίνα ή προσθέστε μονοπάτια στα Local Trails.',
   aiExpertRefineOrNew:
     'Θέλετε να βελτιώσω τις προτάσεις που μόλις σας έδειξα ή να βρω κάτι εντελώς νέο;',
   aiExpertBestWithin: 'καλύτερα εντός {distance}',

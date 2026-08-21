@@ -293,7 +293,9 @@ export default function AreaRadar() {
       try {
         if (!getGoogleMapsApiKey()) {
           throw new Error(
-            'Missing VITE_GOOGLE_MAPS_API_KEY in .env. Add your browser Maps key and restart the dev server.'
+            import.meta.env.PROD
+              ? 'Maps API key is missing from this build. Set VITE_GOOGLE_MAPS_API_KEY in GitHub Actions secrets and redeploy hosting.'
+              : 'Missing VITE_GOOGLE_MAPS_API_KEY in .env. Add your browser Maps key and restart the dev server.'
           );
         }
 

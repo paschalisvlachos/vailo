@@ -21,6 +21,7 @@ jobs:
       VITE_FIREBASE_APP_ID: "1:1023597244475:web:d93a069968cda7531bac1e"
       VITE_FIREBASE_MEASUREMENT_ID: "G-1XJ4P63WBQ"
       VITE_GUEST_PORTAL_ORIGIN: https://vailo.app
+      VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.PRODUCTION_GOOGLE_MAPS_API_KEY }}
 
     steps:
       - name: Checkout Repository

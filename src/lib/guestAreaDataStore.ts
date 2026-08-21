@@ -15,13 +15,11 @@ import {
   buildGuestCategoryHierarchy,
   type CategoryOption,
 } from './categoryHierarchy';
+import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
 import {
   filterGuestEligibleTrails,
-  HIKING_TRAILS_CATEGORY_PRIMARY,
-  isHikingTrailsCategory,
   type LocalTrailRecord,
 } from './localTrailsGuest';
-import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
 import { isGuestVerifiedDiscoveredPlace, type GuestDiscoveredPlaceRow } from './guestDiscoveredPlaces';
 import {
   loadGuestExcursionsForListing,
@@ -54,7 +52,7 @@ export type GuestAreaDataSnapshot = {
   parentCategories: GemCategoryOption[];
   /** Subcategories grouped by parent primary name. */
   subcategoriesByParentPrimary: Record<string, GemCategoryOption[]>;
-  /** @deprecated Use parentCategories — kept for hiking-trails injection. */
+  /** Alias of parentCategories. */
   availableCategories: GemCategoryOption[];
   excludedLiveLikeLocalPrimaries: Set<string>;
   categoryKnowledgeByPrimary: Record<string, string>;
@@ -64,7 +62,6 @@ export type GuestAreaDataSnapshot = {
   areaFeatures: any[];
   homeDiscoveredPlaces: any[];
   homeLocalTrails: LocalTrailRecord[];
-  localTrails: LocalTrailRecord[];
   mergedGems: any[];
   mergedFeatures: any[];
   verifiedDiscoveredPlaces: any[];
@@ -101,7 +98,6 @@ const emptySnapshot: GuestAreaDataSnapshot = {
   areaFeatures: [],
   homeDiscoveredPlaces: [],
   homeLocalTrails: [],
-  localTrails: [],
   mergedGems: [],
   mergedFeatures: [],
   verifiedDiscoveredPlaces: [],
@@ -200,7 +196,6 @@ function publishMergedContent(
     mergedGems: merged.mergedGems,
     mergedFeatures: merged.mergedFeatures,
     discoveredPlaces: merged.discoveredPlaces,
-    localTrails: merged.localTrails as LocalTrailRecord[],
     verifiedDiscoveredPlaces: merged.discoveredPlaces.filter((row) =>
       isGuestVerifiedDiscoveredPlace(row as GuestDiscoveredPlaceRow)
     ),
@@ -224,7 +219,7 @@ export function GuestAreaPrefetcher({
   propertyGems,
   propertyFeatures,
 }: PrefetchProps) {
-  const { locale, t } = useGuestLocale();
+  const { locale } = useGuestLocale();
   const contentSettings = usePropertyContentLocaleSettings(property);
   const areaData = useGuestAreaData();
   const listingAreaCtx = areaData.listingAreaCtx;
@@ -368,7 +363,6 @@ export function GuestAreaPrefetcher({
         areaFeatures: [],
         homeDiscoveredPlaces: [],
         homeLocalTrails: [],
-        localTrails: [],
         neighborAreaIds: [],
         neighborAreaNames: {},
         neighborBundles: [],
@@ -678,22 +672,6 @@ export function GuestAreaPrefetcher({
     propertyCoords?.lat,
     propertyCoords?.lng,
   ]);
-
-  useEffect(() => {
-    if (areaData.guestEligibleTrails.length === 0) return;
-    const prev = getGuestAreaDataSnapshot().parentCategories;
-    const hasHiking = prev.some(
-      (c) => isHikingTrailsCategory(c.primary) || isHikingTrailsCategory(c.label)
-    );
-    if (hasHiking) return;
-    const label = t('aiExpertHikingTrailsCategory');
-    const hiking = { primary: HIKING_TRAILS_CATEGORY_PRIMARY, label };
-    const next = [...prev, hiking].sort((a, b) => a.label.localeCompare(b.label));
-    patchSnapshot({
-      parentCategories: next,
-      availableCategories: next,
-    });
-  }, [areaData.guestEligibleTrails.length, t]);
 
   return null;
 }

@@ -9,9 +9,7 @@ type Props = {
   viewLabel: string;
   goLabel: string;
   className?: string;
-  /** Override View target (e.g. AllTrails page instead of Google Maps). */
   viewUrl?: string;
-  /** Override Go / navigate target (e.g. directions from property coords). */
   goUrl?: string;
 };
 

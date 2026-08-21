@@ -34,7 +34,6 @@ const PRIORITY_PREFIXES = [
   'src/context/',
   'src/hooks/',
   'functions/index.js',
-  'functions/allTrailsSync.js',
   'functions/guestPortal',
   'firebase.json',
   'README.md',

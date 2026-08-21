@@ -4,7 +4,6 @@ import ExpandableDescription from './ExpandableDescription';
 import PickFeedbackButtons from './PickFeedbackButtons';
 import PickSaveButton from './PickSaveButton';
 import PlanImage from './PlanImage';
-import { buildDirectionsFromOriginUrl, isValidExternalUrl } from '../../lib/geocoding';
 import type { SavedLocalGemInput } from '../../lib/savedLocalGems';
 
 export type LocalPickCardItem = Omit<SavedLocalGemInput, 'category'> & {
@@ -23,7 +22,6 @@ type Props = {
   goMapLabel: string;
   /** results = Save on distance row; saved = Remove on distance row */
   mode?: 'results' | 'saved';
-  propertyCoords?: { lat: number; lng: number } | null;
   className?: string;
 };
 
@@ -36,7 +34,6 @@ export default function LocalPickCard({
   viewMapLabel,
   goMapLabel,
   mode = 'results',
-  propertyCoords,
   className = 'w-[min(288px,calc(100vw-3rem))] shrink-0 snap-start snap-always',
 }: Props) {
   const saveItem: SavedLocalGemInput = {
@@ -51,9 +48,6 @@ export default function LocalPickCard({
     longitude: item.longitude,
     estimatedDistance: item.estimatedDistance,
     beyondRadius: item.beyondRadius,
-    itemType: item.itemType,
-    allTrailsUrl: item.allTrailsUrl,
-    allTrailsId: item.allTrailsId,
   };
 
   const feedbackItem = {
@@ -66,21 +60,6 @@ export default function LocalPickCard({
     description: item.description,
     category: categoryName,
   };
-
-  const trailViewUrl = String(item.allTrailsUrl || '').trim();
-  const trailGoUrl =
-    propertyCoords &&
-    typeof item.latitude === 'number' &&
-    typeof item.longitude === 'number'
-      ? buildDirectionsFromOriginUrl(propertyCoords, {
-          lat: item.latitude,
-          lng: item.longitude,
-        })
-      : '';
-
-  const isTrail =
-    item.itemType === 'trail' &&
-    (isValidExternalUrl(trailViewUrl) || isValidExternalUrl(trailGoUrl));
 
   return (
     <article
@@ -158,23 +137,12 @@ export default function LocalPickCard({
 
         <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-white/10">
           <PickFeedbackButtons propertyId={propertyId} item={feedbackItem} />
-          {isTrail ? (
-            <MapLinkButtons
-              item={{ title: item.title, latitude: item.latitude, longitude: item.longitude }}
-              mapAreaHint=""
-              viewLabel={viewMapLabel}
-              goLabel={goMapLabel}
-              viewUrl={trailViewUrl}
-              goUrl={trailGoUrl}
-            />
-          ) : (
-            <MapLinkButtons
-              item={item}
-              mapAreaHint={mapAreaHint}
-              viewLabel={viewMapLabel}
-              goLabel={goMapLabel}
-            />
-          )}
+          <MapLinkButtons
+            item={item}
+            mapAreaHint={mapAreaHint}
+            viewLabel={viewMapLabel}
+            goLabel={goMapLabel}
+          />
         </div>
       </div>
     </article>

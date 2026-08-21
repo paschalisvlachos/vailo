@@ -10,11 +10,11 @@ import {
   buildGuestCategoryHierarchy,
   type CategoryOption,
 } from './categoryHierarchy';
+import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
 import {
   filterGuestEligibleTrails,
   type LocalTrailRecord,
 } from './localTrailsGuest';
-import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
 import { isGuestVerifiedDiscoveredPlace } from './guestDiscoveredPlaces';
 import type { ListingAreaContext } from './listingAreaContext';
 import type { PropertyContentLocaleSettings } from './propertyContentLocales';

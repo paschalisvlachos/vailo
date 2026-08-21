@@ -27,8 +27,8 @@ type ChatMessage = {
 };
 
 const SUGGESTIONS = [
-  'How does Live like a local load hiking trails?',
-  'Where are local trails stored in Firestore?',
+  'How does Live like a local load local gems?',
+  'Where are local gems stored in Firestore?',
   'What admin routes exist for area functionality?',
   'How does guest locale / translation work?',
 ];

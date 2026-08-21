@@ -77,7 +77,7 @@ ${lines.join('\n')}
 How to read these rules:
 - [AREAS ONLY] = geographic spots only (beaches, coves, villages, landmarks, archaeological sites). ZERO restaurants, beach bars, cafés, tour operators, shops, marinas, hotels, or paid venues — even when the Google listing name contains Beach/Cove/Village. Use OFFICIAL Google Maps names only (e.g. "Kalyvaki Beach", "Phylaki", "Aptera") — never invent descriptive labels ("river mouth", "unorganized section", "western cove") and never suggest commercial establishments.
 - [BUSINESS ONLY] = named businesses/operators only. Always include village: "Taverna Name, Village". Never suggest a generic area without a specific establishment.
-- If a category says to use only the Vailo database / stored trails, do not invent alternatives — return fewer AI items or none for that category.
+- If a category says to use only the Vailo database, do not invent alternatives — return fewer AI items or none for that category.
 - Never suggest permanently closed businesses. Only currently operating places.
 - Return many real candidates (up to 12 per category) using official Google Maps names — our system verifies each and shows up to 5 (extended range allowed for picks 4–5). Never invent names to fill slots.
 `;

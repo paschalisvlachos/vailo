@@ -309,8 +309,9 @@ export default function AppCodeKnowledge() {
             </AdminButton>
           </div>
           <p className="text-[11px] text-gray-400 mt-2">
-            Vailo app questions only. Re-index after major releases:{' '}
-            <span className="font-mono">node scripts/buildCodeKnowledgeIndex.mjs</span>
+            Vailo app questions only. Re-index on each functions deploy (predeploy runs{' '}
+            <span className="font-mono">node scripts/buildCodeKnowledgeIndex.mjs</span>) — hosting-only
+            deploys do not refresh the index date.
           </p>
         </div>
       </AdminCard>

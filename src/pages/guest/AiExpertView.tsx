@@ -22,7 +22,6 @@ import {
   applyPickVerificationToPlan,
   buildFlexiblePicksDbContext,
   buildFlexiblePicksPromptSection,
-  buildNeighborOnlyBrowseCategories,
   buildWizardGemsOnlyPlan,
   collectUnverifiedMentionsFromPlan,
   effectiveMaxDistanceKm,
@@ -1894,23 +1893,10 @@ export default function AiExpertView({
           resolveCategoryLabel: resolveCategoryDisplayLabel,
         });
 
-        const neighborBrowse = buildNeighborOnlyBrowseCategories({
-          mergedGems,
-          homeCategoryPrimaries: liveLikeLocalCategories,
-          maxKm: distanceLimitNum,
-          startCoords,
-          catalogDocs: categoryCatalogDocs,
-          primaryLocale: contentSettings.primaryLocale,
-          guestLocale: locale,
-          recentlyShown,
-          knowledgeByPrimary: categoryKnowledgeByPrimary,
-          resolveCategoryLabel: resolveCategoryDisplayLabel,
-        });
-
         let initialPlan = mergeTrailCategoriesIntoPlan(
           {
             type: 'picks',
-            categories: [...(gemsPlan.categories || []), ...neighborBrowse],
+            categories: gemsPlan.categories || [],
           },
           trailCategoryBlocks
         );

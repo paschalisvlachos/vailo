@@ -465,7 +465,7 @@ export default function AreaLocalTrails() {
                     name="allTrailsUrl"
                     value={formData.allTrailsUrl}
                     onChange={handleChange}
-                    placeholder="https://www.alltrails.com/trail/greece/crete/chania-city-stroll?sh=true"
+                    placeholder="https://www.alltrails.com/trail/greece/crete/... or /explore/trail/..."
                     className="w-full px-3 py-2 bg-white border border-vailo-teal/15 rounded-lg admin-input outline-none text-sm"
                   />
                 </div>

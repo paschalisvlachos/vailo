@@ -68,11 +68,11 @@ function parseAllTrailsUrl(rawUrl) {
   }
 
   const path = url.pathname.replace(/\/+$/, "") || "/";
-  const trailMatch = path.match(/^\/trail\/(.+)$/i);
+  const trailMatch = path.match(/^\/(?:explore\/)?trail\/(.+)$/i);
   if (!trailMatch?.[1]) {
     throw new HttpsError(
       "invalid-argument",
-      "Paste a trail page URL like https://www.alltrails.com/trail/greece/crete/chania-city-stroll"
+      "Paste a trail page URL like https://www.alltrails.com/trail/greece/crete/chania-city-stroll or https://www.alltrails.com/explore/trail/greece/crete/chania-city-stroll"
     );
   }
 

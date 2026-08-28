@@ -1,6 +1,14 @@
 import { httpsCallable } from 'firebase/functions';
 import { cloudFunctions } from './firebase';
 
+/** Calendar / iCal sync is enabled unless explicitly turned off on the property. */
+export function isCalendarSyncEnabled(
+  property: { calendarSyncEnabled?: boolean } | null | undefined
+): boolean {
+  if (property?.calendarSyncEnabled === undefined) return true;
+  return property.calendarSyncEnabled !== false;
+}
+
 export type ICalSyncResult = {
   ok: boolean;
   count: number;

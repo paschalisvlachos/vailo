@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { Car, CheckCircle2, Loader2, Shield, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Car, CheckCircle2, ChevronRight, Loader2, Shield, Upload } from 'lucide-react';
 import { httpsCallableMessage } from '../../lib/callableError';
 import { submitPreArrivalCheckInCallable } from '../../lib/guestPortalCallables';
 import type { GuestPortalSession } from '../../lib/guestAccess';
@@ -35,6 +35,8 @@ import {
   type PreArrivalTransferOffer,
 } from '../../lib/preArrivalSettings';
 import type { PreArrivalSubmission } from '../../lib/syncedBooking';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
+import GuestCheckInDiscoverNotes from './GuestCheckInDiscoverNotes';
 
 type Props = {
   propertyId: string;
@@ -51,6 +53,7 @@ type Props = {
   preArrivalComplete?: boolean;
   transferOffer?: Partial<PreArrivalTransferOffer> | null;
   onSubmitted?: (submission: PreArrivalSubmission) => void;
+  onExplorePortal?: () => void;
 };
 
 export default function GuestPreArrivalForm({
@@ -68,7 +71,9 @@ export default function GuestPreArrivalForm({
   preArrivalComplete,
   transferOffer,
   onSubmitted,
+  onExplorePortal,
 }: Props) {
+  const { t } = useGuestLocale();
   const activeTransferOffer = useMemo(() => {
     const normalized = normalizePreArrivalTransferOffer(transferOffer);
     return isPreArrivalTransferOfferActive(normalized) ? normalized : null;
@@ -96,6 +101,7 @@ export default function GuestPreArrivalForm({
     existingSubmission && preArrivalComplete ? existingSubmission : null
   );
   const [editing, setEditing] = useState(!(existingSubmission && preArrivalComplete));
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const [idFile, setIdFile] = useState<File | null>(null);
   const [idInputMode, setIdInputMode] = useState<PreArrivalIdInputMode>(() =>
     preArrivalIdInputModeFromSubmission(existingSubmission)
@@ -104,6 +110,12 @@ export default function GuestPreArrivalForm({
     preArrivalIdDetailsFromSubmission(existingSubmission)
   );
   const idInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!justSubmitted || editing || !onExplorePortal) return;
+    const timer = window.setTimeout(() => onExplorePortal(), 6000);
+    return () => window.clearTimeout(timer);
+  }, [justSubmitted, editing, onExplorePortal]);
 
   const storedIdDocument = submitted?.idDocument || existingSubmission?.idDocument;
   const storedIdDetails = submitted?.idDetails || existingSubmission?.idDetails;
@@ -172,6 +184,7 @@ export default function GuestPreArrivalForm({
       }
       setSubmitted(localSubmission);
       setEditing(false);
+      setJustSubmitted(true);
       onSubmitted?.(localSubmission);
       return;
     }
@@ -222,6 +235,7 @@ export default function GuestPreArrivalForm({
       setSubmitted(result.submission);
       setIdFile(null);
       setEditing(false);
+      setJustSubmitted(true);
       onSubmitted?.(result.submission);
     } catch (err) {
       setError(httpsCallableMessage(err, 'Could not submit your check-in. Please try again.'));
@@ -232,111 +246,131 @@ export default function GuestPreArrivalForm({
 
   if (submitted && !editing) {
     return (
-      <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/80 px-5 py-6">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 size={22} className="text-emerald-600 shrink-0 mt-0.5" />
-          <div>
-            <h2 className="font-luxury text-lg font-medium text-[#051F26]">
-              Check-in details received
-            </h2>
-            <p className="text-sm text-gray-600 leading-relaxed mt-1">
-              Thank you — your host has your arrival information.
-              {previewOnly ? ' (Preview only — not saved.)' : ''}
-            </p>
-            <dl className="mt-4 space-y-2 text-sm text-gray-700">
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Guest</dt>
-                <dd className="font-medium text-right">
-                  {guestFullNameFromSubmission(submitted) ||
-                    buildGuestFullName(form.guestFirstName, form.guestLastName)}
-                </dd>
-              </div>
-              {submitted.guestCountry && (
+      <div className="mt-6 space-y-4">
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-5 py-6">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 size={22} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-luxury text-lg font-medium text-[#051F26]">
+                {t('checkInThanksTitle')}
+              </h2>
+              <p className="text-sm text-gray-600 leading-relaxed mt-1">
+                {t('checkInThanksSub')}
+                {previewOnly ? ' (Preview only — not saved.)' : ''}
+              </p>
+              <dl className="mt-4 space-y-2 text-sm text-gray-700">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500">Country</dt>
-                  <dd className="font-medium text-right">{submitted.guestCountry}</dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Arrival time</dt>
-                <dd className="font-medium tabular-nums">
-                  {formatPreArrivalTimeDisplay(submitted.expectedArrivalTime)}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Guests</dt>
-                <dd className="font-medium">{submitted.guestCount}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-gray-500">Phone</dt>
-                <dd className="font-medium text-right">{submitted.contactPhone}</dd>
-              </div>
-              {submitted.contactEmail && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500">Email</dt>
-                  <dd className="font-medium text-right break-all">{submitted.contactEmail}</dd>
-                </div>
-              )}
-              {submitted.dateOfBirth && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500">Date of birth</dt>
-                  <dd className="font-medium tabular-nums">
-                    {formatPreArrivalDateDisplay(submitted.dateOfBirth)}
-                  </dd>
-                </div>
-              )}
-              {submitted.specialRequests && (
-                <div>
-                  <dt className="text-gray-500 mb-1">Special requests</dt>
-                  <dd className="leading-relaxed whitespace-pre-wrap">{submitted.specialRequests}</dd>
-                </div>
-              )}
-              {submitted.transferRequested && submitted.transferOffer && (
-                <div>
-                  <dt className="text-gray-500 mb-1">Transfer requested</dt>
-                  <dd className="font-medium">
-                    {submitted.transferOffer.label} ·{' '}
-                    {formatPreArrivalTransferPrice(submitted.transferOffer.priceEur)}
-                  </dd>
-                </div>
-              )}
-              {submitted.idDocument && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500">ID document</dt>
-                  <dd className="font-medium text-emerald-700">Uploaded securely</dd>
-                </div>
-              )}
-              {submitted.idDetails && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500">ID details</dt>
+                  <dt className="text-gray-500">Guest</dt>
                   <dd className="font-medium text-right">
-                    {formatPreArrivalIdDetailsSummary(submitted.idDetails)}
+                    {guestFullNameFromSubmission(submitted) ||
+                      buildGuestFullName(form.guestFirstName, form.guestLastName)}
                   </dd>
                 </div>
-              )}
-            </dl>
-            <button
-              type="button"
-              onClick={() => {
-                setForm(
-                  preArrivalFormDefaults({
-                    guestPhone,
-                    guestWhatsapp,
-                    guestEmail,
-                    submission: submitted,
-                  })
-                );
-                setIdInputMode(preArrivalIdInputModeFromSubmission(submitted));
-                setIdDetails(preArrivalIdDetailsFromSubmission(submitted));
-                setIdFile(null);
-                setEditing(true);
-              }}
-              className="mt-5 text-sm font-semibold text-[#0B4F5C] hover:underline"
-            >
-              Update details
-            </button>
+                {submitted.guestCountry && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-gray-500">Country</dt>
+                    <dd className="font-medium text-right">{submitted.guestCountry}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Arrival time</dt>
+                  <dd className="font-medium tabular-nums">
+                    {formatPreArrivalTimeDisplay(submitted.expectedArrivalTime)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Guests</dt>
+                  <dd className="font-medium">{submitted.guestCount}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-gray-500">Phone</dt>
+                  <dd className="font-medium text-right">{submitted.contactPhone}</dd>
+                </div>
+                {submitted.contactEmail && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-gray-500">Email</dt>
+                    <dd className="font-medium text-right break-all">{submitted.contactEmail}</dd>
+                  </div>
+                )}
+                {submitted.dateOfBirth && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-gray-500">Date of birth</dt>
+                    <dd className="font-medium tabular-nums">
+                      {formatPreArrivalDateDisplay(submitted.dateOfBirth)}
+                    </dd>
+                  </div>
+                )}
+                {submitted.specialRequests && (
+                  <div>
+                    <dt className="text-gray-500 mb-1">Special requests</dt>
+                    <dd className="leading-relaxed whitespace-pre-wrap">{submitted.specialRequests}</dd>
+                  </div>
+                )}
+                {submitted.transferRequested && submitted.transferOffer && (
+                  <div>
+                    <dt className="text-gray-500 mb-1">Transfer requested</dt>
+                    <dd className="font-medium">
+                      {submitted.transferOffer.label} ·{' '}
+                      {formatPreArrivalTransferPrice(submitted.transferOffer.priceEur)}
+                    </dd>
+                  </div>
+                )}
+                {submitted.idDocument && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-gray-500">ID document</dt>
+                    <dd className="font-medium text-emerald-700">Uploaded securely</dd>
+                  </div>
+                )}
+                {submitted.idDetails && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-gray-500">ID details</dt>
+                    <dd className="font-medium text-right">
+                      {formatPreArrivalIdDetailsSummary(submitted.idDetails)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm(
+                    preArrivalFormDefaults({
+                      guestPhone,
+                      guestWhatsapp,
+                      guestEmail,
+                      submission: submitted,
+                    })
+                  );
+                  setIdInputMode(preArrivalIdInputModeFromSubmission(submitted));
+                  setIdDetails(preArrivalIdDetailsFromSubmission(submitted));
+                  setIdFile(null);
+                  setEditing(true);
+                }}
+                className="mt-5 text-sm font-semibold text-[#0B4F5C] hover:underline"
+              >
+                Update details
+              </button>
+            </div>
           </div>
         </div>
+
+        <GuestCheckInDiscoverNotes />
+
+        {onExplorePortal && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={onExplorePortal}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0B4F5C] px-4 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-[#083A43] transition-colors"
+            >
+              {t('checkInStartUsing')}
+              <ChevronRight size={16} />
+            </button>
+            <p className="text-center text-xs text-gray-400">
+              {justSubmitted ? t('checkInRedirectHint') : t('checkInPromoDoneSub')}
+            </p>
+          </div>
+        )}
       </div>
     );
   }

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, Navigate } from 'react-router-dom';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
@@ -24,16 +24,11 @@ import {
 } from '../../../lib/guestInviteEmailTemplate';
 import { buildPostStayThankYouWhatsAppMessage } from '../../../lib/postStayThankYouTemplate';
 import { buildInvitePortalUrl, getGuestPortalPublicOrigin, isGuestPortalAccessRequired, portalAccessUntilFromEnd } from '../../../lib/guestAccess';
-import {
-  buildPreArrivalClipboardText,
-  buildPreArrivalPortalUrl,
-  buildOpenPreArrivalPortalUrl,
-  stayRangeLabelFromBooking,
-} from '../../../lib/guestPreArrival';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../../lib/whatsappLink';
 import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
 import { sendGuestInviteCallable, prepareGuestInviteCopyCallable } from '../../../lib/guestPortalCallables';
 import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
+import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import {
   buildSplitBookingsFromOriginal,
@@ -84,6 +79,7 @@ export default function Reservations() {
       urlSlug?: string;
       guestPortalAccessRequired?: boolean;
       reservationSplitEnabled?: boolean;
+      calendarSyncEnabled?: boolean;
       preArrivalCheckInEnabled?: boolean;
       preArrivalTransferOffer?: import('../../../lib/preArrivalSettings').PreArrivalTransferOffer;
       autoSendGuestInviteWhenReady?: boolean;
@@ -93,6 +89,7 @@ export default function Reservations() {
   const toast = useToast();
   const { languages } = usePlatformLanguages();
   const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
+  const calendarSyncEnabled = isCalendarSyncEnabled(property);
 
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
@@ -119,8 +116,6 @@ export default function Reservations() {
     Record<string, { password: string; token: string }>
   >({});
   const [copyingInviteId, setCopyingInviteId] = useState<string | null>(null);
-  const [copyingPreArrivalId, setCopyingPreArrivalId] = useState<string | null>(null);
-  const [copiedPreArrivalId, setCopiedPreArrivalId] = useState<string | null>(null);
   const [openingWhatsAppInviteId, setOpeningWhatsAppInviteId] = useState<string | null>(null);
   const [markingWhatsAppInviteId, setMarkingWhatsAppInviteId] = useState<string | null>(null);
   const [resetRangeOpen, setResetRangeOpen] = useState(false);
@@ -215,7 +210,6 @@ export default function Reservations() {
       propertyName: property.propertyName || 'Your stay',
       unitName: type.propertyTypeName || 'Your unit',
       portalUrl: url,
-      preArrivalUrl: preArrivalCheckInEnabled ? buildOpenPreArrivalPortalUrl(url) : undefined,
       preArrivalCheckInEnabled,
       hostLabel: property.propertyName,
       accessRequired: isGuestPortalAccessRequired(property),
@@ -612,69 +606,6 @@ export default function Reservations() {
     }
   };
 
-  const handleCopyPreArrivalLink = async (booking: ReservationRow) => {
-    if (!preArrivalCheckInEnabled || booking.preArrivalComplete) return;
-    if (!isBookingGuestDetailsComplete(booking)) {
-      toast.warning('Add guest details before copying a pre-arrival link.');
-      return;
-    }
-
-    if (!booking.id) {
-      toast.warning('Save guest details first so this reservation has an id.');
-      return;
-    }
-
-    const type = propertyTypes.find((t) => t.id === booking.typeId);
-    const propSlug = formatGuestSlug(property.urlSlug);
-    const unitSlug = type ? getTypePublicSlug(type) : '';
-    if (!propSlug || !unitSlug) {
-      toast.warning('Set property and unit URL slugs before copying a pre-arrival link.');
-      return;
-    }
-
-    const copyKey = booking.id || `${booking.start}-${booking.end}`;
-
-    setCopyingPreArrivalId(copyKey);
-    try {
-      const secrets = await resolveInviteSecretsForBooking(booking, {
-        alwaysPreparePassword: true,
-      });
-      const token = secrets?.token || booking.inviteToken;
-      const password = secrets?.password;
-      if (!token || !password) {
-        toast.error('Could not prepare invite credentials for this reservation.');
-        return;
-      }
-
-      const preArrivalUrl = buildPreArrivalPortalUrl(
-        getGuestPortalPublicOrigin(),
-        propSlug,
-        unitSlug,
-        token,
-        booking.typeId,
-        booking.guestLocale
-      );
-
-      const text = buildPreArrivalClipboardText({
-        guestName: booking.guestName || booking.summary || 'Guest',
-        stayRangeLabel: stayRangeLabelFromBooking(booking.start, booking.end),
-        propertyName: property.propertyName || 'Your property',
-        unitName: booking.typeName,
-        preArrivalUrl,
-        accessPassword: password,
-      });
-
-      await navigator.clipboard.writeText(text);
-      setCopiedPreArrivalId(copyKey);
-      setTimeout(() => setCopiedPreArrivalId(null), 2500);
-      toast.success('Pre-arrival link copied — paste it into email, Airbnb, or chat.');
-    } catch (err) {
-      toast.error(httpsCallableMessage(err, 'Could not prepare pre-arrival link to copy.'));
-    } finally {
-      setCopyingPreArrivalId(null);
-    }
-  };
-
   const bookingProviderLabel = (booking: ReservationRow) => {
     const type = propertyTypes.find((t) => t.id === booking.typeId);
     return (
@@ -783,6 +714,10 @@ export default function Reservations() {
   };
 
   // --- RENDERS ---
+
+  if (!calendarSyncEnabled) {
+    return <Navigate to=".." replace />;
+  }
 
   if (propertyTypes.length === 0) {
     return (
@@ -1096,33 +1031,6 @@ export default function Reservations() {
                             >
                               <ClipboardCheck size={14} />
                               View pre-arrival
-                            </button>
-                          )}
-
-                          {preArrivalCheckInEnabled && detailsComplete && !booking.preArrivalComplete && (
-                            <button
-                              type="button"
-                              onClick={() => void handleCopyPreArrivalLink(booking)}
-                              disabled={inviteClosed || copyingPreArrivalId === copyKey}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#0B4F5C]/15 bg-[#0B4F5C]/[0.04] text-xs font-bold text-[#0B4F5C] hover:bg-[#0B4F5C]/[0.08] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:border-gray-200 disabled:hover:bg-white"
-                              title={
-                                inviteClosed
-                                  ? inviteClosedTitle
-                                  : 'Copy pre-arrival check-in link and password for this guest'
-                              }
-                            >
-                              {copyingPreArrivalId === copyKey ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : copiedPreArrivalId === copyKey ? (
-                                <Check size={14} className="text-green-600" />
-                              ) : (
-                                <ClipboardCheck size={14} />
-                              )}
-                              {copyingPreArrivalId === copyKey
-                                ? 'Copying…'
-                                : copiedPreArrivalId === copyKey
-                                  ? 'Copied'
-                                  : 'Copy pre-arrival'}
                             </button>
                           )}
 

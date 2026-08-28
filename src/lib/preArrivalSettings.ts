@@ -57,7 +57,7 @@ export function isPreArrivalCheckInEnabled(
   return property.preArrivalCheckInEnabled !== false;
 }
 
-/** Whether guest-facing invitation copy should include a pre-arrival check-in link. */
+/** Whether guest-facing invitation copy should mention in-portal Check in. */
 export function shouldIncludePreArrivalInviteLink(options: {
   preArrivalCheckInEnabled?: boolean;
   preArrivalComplete?: boolean;

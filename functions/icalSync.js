@@ -221,6 +221,12 @@ function registerICalSync({ firestore, logger, firebaseExports }) {
 
     const propSnap = await firestore.collection("properties").doc(propertyId).get();
     const property = propSnap.exists ? propSnap.data() : {};
+    if (property.calendarSyncEnabled === false) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Calendar sync is disabled for this property."
+      );
+    }
 
     const typeRef = firestore
       .collection("properties")

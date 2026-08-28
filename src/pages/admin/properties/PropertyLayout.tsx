@@ -29,6 +29,7 @@ import {
   type PropertyAccessMode,
 } from '../../../lib/adminAccess';
 import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
+import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { adminPath } from '../../../lib/adminRoutes';
 import { propertyListingQuerySuffix } from '../../../hooks/usePropertyListingQuery';
 
@@ -66,7 +67,9 @@ export type PropertyRecord = {
   createdAt?: string;
   guestPortalAccessRequired?: boolean;
   reservationSplitEnabled?: boolean;
-  /** When false, check-in links and flows are hidden for this property. */
+  /** When false, iCal sync is locked and Calendar / Reservations are hidden. */
+  calendarSyncEnabled?: boolean;
+  /** When false, in-portal Check in is hidden for this property. */
   preArrivalCheckInEnabled?: boolean;
   preArrivalTransferOffer?: {
     enabled?: boolean;
@@ -152,6 +155,12 @@ export default function PropertyLayout() {
     () =>
       TABS.filter((tab) => {
         if (tab.path === 'check-ins' && !isPreArrivalCheckInEnabled(property)) {
+          return false;
+        }
+        if (
+          (tab.path === 'reservations' || tab.path === 'calendar') &&
+          !isCalendarSyncEnabled(property)
+        ) {
           return false;
         }
         return isTabAllowedForAccess(tab.path, propertyAccess);
@@ -281,6 +290,9 @@ export default function PropertyLayout() {
               to={adminPath(`/properties/${id}/types?listing=${lockedListingId}`)}
               replace
             />
+          ) : !isCalendarSyncEnabled(property) &&
+            (currentSegment === 'calendar' || currentSegment === 'reservations') ? (
+            <Navigate to={adminPath(`/properties/${id}`)} replace />
           ) : (
             <Outlet context={outletContext} />
           )}

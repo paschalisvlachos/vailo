@@ -18,7 +18,6 @@ import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard'
 import GuestExcursionsPromoCard from '../../components/guest/GuestExcursionsPromoCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
-import GuestPreArrivalShell from '../../components/guest/GuestPreArrivalShell';
 import GuestOpenPreArrivalFlow from '../../components/guest/GuestOpenPreArrivalFlow';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
 import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
@@ -48,9 +47,11 @@ import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
-import { isGuestPortalAccessRequired, readGuestPortalSession, type GuestPortalSession } from '../../lib/guestAccess';
-import { isPreArrivalPortalView, markPreArrivalViewIntent, resolvePreArrivalPortalView, clearPreArrivalViewIntent, GUEST_PRE_ARRIVAL_VIEW } from '../../lib/guestPreArrival';
+import { isGuestPortalAccessRequired, readGuestPortalSession, writeGuestPortalSession, sessionMatchesOpenPreArrivalContext, type GuestPortalSession } from '../../lib/guestAccess';
+import { isPreArrivalPortalView, clearPreArrivalViewIntent } from '../../lib/guestPreArrival';
 import { isPreArrivalCheckInEnabled } from '../../lib/preArrivalSettings';
+import { isCalendarSyncEnabled } from '../../lib/icalSync';
+import { validateGuestPortalSession } from '../../lib/guestPortalCallables';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   GuestAreaPrefetcher,
@@ -68,7 +69,7 @@ import { useSavedLocalGems } from '../../hooks/useSavedLocalGems';
 const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
   MapPin, Globe, ChevronDown, Navigation, 
-  Star, Sparkles,
+  Star, Sparkles, ClipboardCheck, CheckCircle2,
   Wifi, Copy, Check, Map, Clock, Award
 } from 'lucide-react';
 
@@ -366,7 +367,6 @@ function GuestPortalPage({
   const typeIdFromQuery = searchParams.get('typeId') || searchParams.get('type');
   const inviteTokenFromQuery = searchParams.get('invite');
   const adminPreviewFromQuery = searchParams.get('adminPreview') === '1';
-  const preArrivalViewFromUrl = isPreArrivalPortalView(searchParams.get('view'));
   const isMobileFramePreview =
     adminPreviewFromQuery && searchParams.get('previewFrame') === 'mobile';
 
@@ -396,6 +396,8 @@ function GuestPortalPage({
   const [featuredPreviewKey, setFeaturedPreviewKey] = useState<FeaturedKey | null>(null);
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [checkInCompleteLocal, setCheckInCompleteLocal] = useState(false);
   const {
     excursionListings,
     excursionsLoading,
@@ -408,7 +410,11 @@ function GuestPortalPage({
 
   const handleSessionGranted = useCallback(
     (session: GuestPortalSession) => {
+      writeGuestPortalSession(session);
       setGuestSession(session);
+      if (session.preArrivalComplete) {
+        setCheckInCompleteLocal(true);
+      }
       onSessionLocale?.(session.guestLocale?.trim() || null);
     },
     [onSessionLocale]
@@ -416,57 +422,73 @@ function GuestPortalPage({
 
   const handleSessionCleared = useCallback(() => {
     setGuestSession(null);
+    setCheckInCompleteLocal(false);
+  }, []);
+
+  const markCheckInComplete = useCallback(() => {
+    setCheckInCompleteLocal(true);
+    const stored = readGuestPortalSession();
+    if (!stored) return;
+    const next = { ...stored, preArrivalComplete: true };
+    writeGuestPortalSession(next);
+    setGuestSession(next);
   }, []);
 
   const activeGuestSession = guestSession ?? readGuestPortalSession();
 
-  const preArrivalView = useMemo(
-    () =>
-      preArrivalViewFromUrl ||
-      resolvePreArrivalPortalView(searchParams.get('view'), propertyId, typeId),
-    [searchParams, propertyId, typeId, preArrivalViewFromUrl]
-  );
-
   const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
 
-  const preArrivalViewActive = preArrivalView && preArrivalCheckInEnabled;
-
-  /** Open portal check-in: dates only, no personal invite token. */
-  const isOpenPreArrivalFlow =
-    preArrivalViewActive && !inviteTokenFromQuery && !adminPreviewFromQuery;
+  useEffect(() => {
+    if (!propertyId || !typeId || resolving) return;
+    if (!isPreArrivalPortalView(searchParams.get('view'))) return;
+    clearPreArrivalViewIntent(propertyId, typeId);
+    const next = new URLSearchParams(searchParams);
+    next.delete('view');
+    navigate({ search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
+    if (preArrivalCheckInEnabled) {
+      setCheckInOpen(true);
+    }
+  }, [
+    propertyId,
+    typeId,
+    resolving,
+    searchParams,
+    navigate,
+    preArrivalCheckInEnabled,
+  ]);
 
   useEffect(() => {
-    if (preArrivalViewFromUrl && propertyId && typeId) {
-      markPreArrivalViewIntent(propertyId, typeId);
+    if (!propertyId || resolving) return;
+    const stored = guestSession ?? readGuestPortalSession();
+    if (!stored?.sessionId || stored.propertyId !== propertyId) return;
+    if (!sessionMatchesOpenPreArrivalContext(stored, propertyId, typeId || stored.typeId)) {
+      return;
     }
-  }, [preArrivalViewFromUrl, propertyId, typeId]);
+    if (stored.preArrivalComplete) {
+      setCheckInCompleteLocal(true);
+      return;
+    }
 
-  useEffect(() => {
-    if (!propertyId || !typeId || preArrivalCheckInEnabled) return;
-    if (
-      isPreArrivalPortalView(searchParams.get('view')) ||
-      resolvePreArrivalPortalView(null, propertyId, typeId)
-    ) {
-      clearPreArrivalViewIntent(propertyId, typeId);
-      if (isPreArrivalPortalView(searchParams.get('view'))) {
-        const next = new URLSearchParams(searchParams);
-        next.delete('view');
-        navigate({ search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
-      }
-    }
-  }, [propertyId, typeId, preArrivalCheckInEnabled, searchParams, navigate]);
+    let cancelled = false;
+    void validateGuestPortalSession(propertyId, stored.typeId, stored.sessionId)
+      .then((result) => {
+        if (cancelled || !result.valid) return;
+        if (result.session) {
+          writeGuestPortalSession(result.session);
+          setGuestSession(result.session);
+        }
+        if (result.preArrivalComplete || result.session?.preArrivalComplete) {
+          setCheckInCompleteLocal(true);
+        }
+      })
+      .catch(() => {
+        /* keep Check in visible until we know */
+      });
 
-  useEffect(() => {
-    if (!propertyId || !typeId || resolving || !preArrivalCheckInEnabled) return;
-    if (
-      resolvePreArrivalPortalView(null, propertyId, typeId) &&
-      !isPreArrivalPortalView(searchParams.get('view'))
-    ) {
-      const next = new URLSearchParams(searchParams);
-      next.set('view', GUEST_PRE_ARRIVAL_VIEW);
-      navigate({ search: `?${next.toString()}` }, { replace: true });
-    }
-  }, [propertyId, typeId, resolving, searchParams, navigate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, typeId, resolving, guestSession?.sessionId, guestSession?.preArrivalComplete]);
 
   const preArrivalBooking = useMemo(() => {
     const bookingId = activeGuestSession?.bookingId;
@@ -499,6 +521,13 @@ function GuestPortalPage({
       preArrivalSubmission: match.preArrivalSubmission,
     };
   }, [activeGuestSession?.bookingId, typeData?.syncedBookings]);
+
+  const checkInComplete =
+    checkInCompleteLocal ||
+    activeGuestSession?.preArrivalComplete === true ||
+    preArrivalBooking?.preArrivalComplete === true;
+  const showCheckInPromo = Boolean(preArrivalCheckInEnabled);
+  const checkInContinue = Boolean(activeGuestSession?.bookingId) && !checkInComplete;
 
   const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
@@ -937,8 +966,76 @@ function GuestPortalPage({
                     )}
                   </div>
 
-                  {/* Live like a local — gold frame; photo ends at vertical midpoint */}
-                  <div className="mt-auto pt-6">
+                  {/* Check in (first) then Live like a local — photo ends at vertical midpoint */}
+                  <div className="mt-auto pt-6 space-y-3">
+                    {showCheckInPromo && (
+                      <button
+                        type="button"
+                        onClick={() => setCheckInOpen(true)}
+                        className={
+                          checkInComplete
+                            ? 'group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#0B4F5C]/50 via-[#C5A059]/35 to-[#0B4F5C]/50 shadow-[0_8px_32px_rgba(11,79,92,0.18)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.24)] transition-all duration-300 hover:-translate-y-0.5'
+                            : 'group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059] via-[#e0c078] to-[#C5A059] shadow-[0_8px_32px_rgba(197,160,89,0.35)] hover:shadow-[0_12px_40px_rgba(197,160,89,0.45)] transition-all duration-300 hover:-translate-y-0.5'
+                        }
+                      >
+                        <div
+                          className={
+                            checkInComplete
+                              ? 'rounded-[0.9rem] bg-white/95 px-4 py-4 min-h-[72px] flex items-center justify-between gap-2'
+                              : 'rounded-[0.9rem] bg-[#C5A059] px-4 py-4 min-h-[72px] flex items-center justify-between gap-2'
+                          }
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div
+                              className={
+                                checkInComplete
+                                  ? 'h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0'
+                                  : 'h-12 w-12 rounded-xl bg-[#051F26]/15 flex items-center justify-center shrink-0'
+                              }
+                            >
+                              {checkInComplete ? (
+                                <CheckCircle2 size={22} className="text-emerald-600" />
+                              ) : (
+                                <ClipboardCheck size={22} className="text-[#051F26]" />
+                              )}
+                            </div>
+                            <div className="text-left min-w-0">
+                              <p
+                                className={
+                                  checkInComplete
+                                    ? 'font-luxury text-[#0B4F5C] text-base font-semibold leading-tight tracking-wide'
+                                    : 'font-luxury text-[#051F26] text-base font-semibold leading-tight tracking-wide'
+                                }
+                              >
+                                {checkInComplete
+                                  ? t('checkInPromoDoneTitle')
+                                  : checkInContinue
+                                    ? t('checkInPromoContinue')
+                                    : t('checkInPromoTitle')}
+                              </p>
+                              <p
+                                className={
+                                  checkInComplete
+                                    ? 'text-gray-500 text-sm mt-0.5 leading-snug font-medium'
+                                    : 'text-[#051F26]/75 text-sm mt-0.5 leading-snug font-medium'
+                                }
+                              >
+                                {checkInComplete ? t('checkInPromoDoneSub') : t('checkInPromoSub')}
+                              </p>
+                            </div>
+                          </div>
+                          <div
+                            className={
+                              checkInComplete
+                                ? 'h-10 w-10 shrink-0 rounded-xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/12 flex items-center justify-center text-[#0B4F5C]/80 group-hover:bg-[#0B4F5C]/12 transition-colors'
+                                : 'h-10 w-10 shrink-0 rounded-xl bg-[#051F26]/10 flex items-center justify-center text-[#051F26]/80 group-hover:bg-[#051F26]/15 transition-colors'
+                            }
+                          >
+                            <ChevronDown size={20} className="-rotate-90" />
+                          </div>
+                        </div>
+                      </button>
+                    )}
                     <LiveLikeLocalCTA
                       onActivate={() => setActiveView('aiExpert')}
                       className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 transition-colors duration-300"
@@ -1178,6 +1275,47 @@ function GuestPortalPage({
           />
           </Suspense>
         )}
+
+        {checkInOpen && propertyId && typeId && property && (
+          <div
+            className={`${
+              isMobileFramePreview ? 'absolute' : 'fixed'
+            } inset-0 z-[90] overflow-y-auto bg-[#F8FAFA]`}
+          >
+            <GuestOpenPreArrivalFlow
+              propertyId={propertyId}
+              typeId={typeId}
+              propertyName={property?.propertyName || 'Property'}
+              unitName={typeData?.propertyTypeName || 'Unit'}
+              guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
+              locale={locale}
+              contentPrimaryLocale={contentPrimaryLocale}
+              transferOffer={property?.preArrivalTransferOffer}
+              syncedBookings={
+                Array.isArray(typeData?.syncedBookings)
+                  ? (typeData.syncedBookings as Array<{
+                      id?: string;
+                      start?: string;
+                      end?: string;
+                      guestName?: string;
+                      guestPhone?: string;
+                      guestWhatsapp?: string;
+                      guestEmail?: string;
+                      preArrivalComplete?: boolean;
+                      preArrivalSubmission?: import('../../lib/syncedBooking').PreArrivalSubmission;
+                    }>)
+                  : null
+              }
+              guestSession={guestSession}
+              verifyReservationDates={isCalendarSyncEnabled(property)}
+              onSessionGranted={handleSessionGranted}
+              onSessionCleared={handleSessionCleared}
+              onBackToPortal={() => setCheckInOpen(false)}
+              backToPortalLabel={t('checkInBackToPortal')}
+              onCheckInComplete={markCheckInComplete}
+            />
+          </div>
+        )}
       </div>
 
       <GuestFeaturedPreviewSheet
@@ -1191,6 +1329,7 @@ function GuestPortalPage({
       />
 
       {activeView === 'portal' &&
+        !checkInOpen &&
         !serviceDetailOpen &&
         !excursionOverlayOpen &&
         !propertyMapOpen &&
@@ -1243,74 +1382,7 @@ function GuestPortalPage({
       portalMain
     );
 
-  const preArrivalShell =
-    preArrivalViewActive &&
-    !isOpenPreArrivalFlow &&
-    activeGuestSession &&
-    property &&
-    propertyId &&
-    typeId ? (
-      <GuestPreArrivalShell
-        session={activeGuestSession}
-        propertyId={propertyId}
-        typeId={typeId}
-        propertyName={property?.propertyName || 'Property'}
-        unitName={typeData?.propertyTypeName || 'Unit'}
-        guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
-        locale={locale}
-        contentPrimaryLocale={contentPrimaryLocale}
-        transferOffer={property?.preArrivalTransferOffer}
-        booking={preArrivalBooking}
-      />
-    ) : null;
-
-  const openPreArrivalFlow =
-    isOpenPreArrivalFlow && property && propertyId && typeId ? (
-      <GuestOpenPreArrivalFlow
-        propertyId={propertyId}
-        typeId={typeId}
-        propertyName={property?.propertyName || 'Property'}
-        unitName={typeData?.propertyTypeName || 'Unit'}
-        guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
-        locale={locale}
-        contentPrimaryLocale={contentPrimaryLocale}
-        transferOffer={property?.preArrivalTransferOffer}
-        syncedBookings={
-          Array.isArray(typeData?.syncedBookings)
-            ? (typeData.syncedBookings as Array<{
-                id?: string;
-                start?: string;
-                end?: string;
-                guestName?: string;
-                guestPhone?: string;
-                guestWhatsapp?: string;
-                guestEmail?: string;
-                preArrivalComplete?: boolean;
-                preArrivalSubmission?: import('../../lib/syncedBooking').PreArrivalSubmission;
-              }>)
-            : null
-        }
-        guestSession={guestSession}
-        onSessionGranted={handleSessionGranted}
-        onSessionCleared={handleSessionCleared}
-      />
-    ) : null;
-
-  const preArrivalContent = preArrivalViewActive
-    ? openPreArrivalFlow ??
-      preArrivalShell ?? (
-        <GuestPortalLoadingScreen status="Loading pre-arrival check-in…" />
-      )
-    : null;
-
-  const gatedContent = preArrivalViewActive ? preArrivalContent : portalContent;
-
-  if (
-    isGuestPortalAccessRequired(property) &&
-    propertyId &&
-    typeId &&
-    !isOpenPreArrivalFlow
-  ) {
+  if (isGuestPortalAccessRequired(property) && propertyId && typeId) {
     return (
       <GuestPortalAccessGate
         propertyId={propertyId}
@@ -1319,12 +1391,10 @@ function GuestPortalPage({
         adminPreview={adminPreviewFromQuery}
         onSessionGranted={handleSessionGranted}
       >
-        {gatedContent}
+        {portalContent}
       </GuestPortalAccessGate>
     );
   }
-
-  if (preArrivalView) return preArrivalContent;
 
   return portalContent;
 }

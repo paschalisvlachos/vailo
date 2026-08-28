@@ -90,8 +90,12 @@ export type SyncedBooking = {
 export type SplitBookingPart = { start: string; end: string };
 
 export function isPropertyReservationSplitEnabled(
-  property: { reservationSplitEnabled?: boolean } | null | undefined
+  property: {
+    reservationSplitEnabled?: boolean;
+    calendarSyncEnabled?: boolean;
+  } | null | undefined
 ): boolean {
+  if (property?.calendarSyncEnabled === false) return false;
   return property?.reservationSplitEnabled === true;
 }
 

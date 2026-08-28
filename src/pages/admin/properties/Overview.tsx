@@ -22,6 +22,8 @@ import {
   MapPin,
   X,
   Save,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   AdminBadge,
@@ -38,7 +40,10 @@ import { useAdminSession } from '../../../context/AdminSessionContext';
 import { PROPERTY_ASSIGNMENT_ROLES } from '../../../lib/adminAccess';
 import { isGuestPortalAccessRequired } from '../../../lib/guestAccess';
 import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
+import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { isPropertyReservationSplitEnabled } from '../../../lib/syncedBooking';
+import { buildOpenPortalInviteClipboardText } from '../../../lib/guestInviteEmailTemplate';
+import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
 
 interface OwnerOption {
   id: string;
@@ -60,6 +65,7 @@ type FormData = {
   email: string;
   phone: string;
   guestPortalAccessRequired: boolean;
+  calendarSyncEnabled: boolean;
   reservationSplitEnabled: boolean;
   preArrivalCheckInEnabled: boolean;
 };
@@ -76,7 +82,8 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     email: '',
     phone: '',
     guestPortalAccessRequired: isGuestPortalAccessRequired(property),
-    reservationSplitEnabled: isPropertyReservationSplitEnabled(property),
+    calendarSyncEnabled: isCalendarSyncEnabled(property),
+    reservationSplitEnabled: property.reservationSplitEnabled === true,
     preArrivalCheckInEnabled: isPreArrivalCheckInEnabled(property),
   };
 }
@@ -97,6 +104,10 @@ export default function Overview() {
   const [dbAreas, setDbAreas] = useState<string[]>([]);
   const [assignedOwner, setAssignedOwner] = useState<OwnerOption | null>(null);
   const [loadingOwner, setLoadingOwner] = useState(true);
+  const [propertyTypes, setPropertyTypes] = useState<
+    { id: string; propertyTypeName?: string; urlSlug?: string; typeSlug?: string }[]
+  >([]);
+  const [copiedOpenPortalInvite, setCopiedOpenPortalInvite] = useState(false);
   const prevOwnerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -117,6 +128,20 @@ export default function Overview() {
       setOwnersList(list);
     });
   }, []);
+
+  useEffect(() => {
+    if (!propertyId) return;
+    return onSnapshot(collection(db, 'properties', propertyId, 'propertyTypes'), (snapshot) => {
+      setPropertyTypes(
+        snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as {
+          id: string;
+          propertyTypeName?: string;
+          urlSlug?: string;
+          typeSlug?: string;
+        }[]
+      );
+    });
+  }, [propertyId]);
 
   useEffect(() => {
     if (!formData.country) {
@@ -166,6 +191,36 @@ export default function Overview() {
     }
   }, [formData.ownerId, isEditing, ownersList]);
 
+  const handleCopyOpenPortalInvitation = async () => {
+    const type = propertyTypes[0];
+    if (!type) {
+      toast.warning('Add a property listing before copying the portal invitation.');
+      return;
+    }
+    const url = buildGuestPortalPublicListingUrl(property, type);
+    if (!url) {
+      toast.warning('Set property and unit URL slugs before copying the portal invitation.');
+      return;
+    }
+    const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
+    const text = buildOpenPortalInviteClipboardText({
+      propertyName: property.propertyName || 'Your stay',
+      unitName: type.propertyTypeName || 'Your unit',
+      portalUrl: url,
+      preArrivalCheckInEnabled,
+      hostLabel: property.propertyName,
+      accessRequired: isGuestPortalAccessRequired(property),
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedOpenPortalInvite(true);
+      setTimeout(() => setCopiedOpenPortalInvite(false), 2500);
+      toast.success('Portal invitation copied — paste into email, Airbnb, or chat.');
+    } catch {
+      toast.error('Could not copy to clipboard.');
+    }
+  };
+
   const handleStartEdit = () => {
     const owner =
       ownersList.find((o) => o.id === property.ownerId) || assignedOwner;
@@ -181,9 +236,13 @@ export default function Overview() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
       setFormData((prev) => ({
         ...prev,
-        [name]: (e.target as HTMLInputElement).checked,
+        [name]: checked,
+        ...(name === 'calendarSyncEnabled' && !checked
+          ? { reservationSplitEnabled: false }
+          : {}),
       }));
       return;
     }
@@ -224,7 +283,10 @@ export default function Overview() {
           newPropertySlug
         );
         propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
-        propertyPatch.reservationSplitEnabled = formData.reservationSplitEnabled;
+        propertyPatch.calendarSyncEnabled = formData.calendarSyncEnabled;
+        propertyPatch.reservationSplitEnabled = formData.calendarSyncEnabled
+          ? formData.reservationSplitEnabled
+          : false;
         propertyPatch.preArrivalCheckInEnabled = formData.preArrivalCheckInEnabled;
       }
       await updateDoc(doc(db, 'properties', propertyId), propertyPatch);
@@ -257,33 +319,44 @@ export default function Overview() {
         <p className="text-sm text-gray-500">
           {isEditing ? 'Edit property details below, then save.' : 'Property summary and allocation.'}
         </p>
-        {!isEditing ? (
-          isPlatformAdmin ? (
-            <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>
-              <Pencil size={16} /> Edit overview
-            </AdminButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminButton
+            type="button"
+            variant="secondary"
+            onClick={() => void handleCopyOpenPortalInvitation()}
+            title="Copy a general guest portal invitation to paste anywhere"
+          >
+            {copiedOpenPortalInvite ? <Check size={16} /> : <Copy size={16} />}
+            Copy open portal invitation
+          </AdminButton>
+          {!isEditing ? (
+            isPlatformAdmin ? (
+              <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>
+                <Pencil size={16} /> Edit overview
+              </AdminButton>
+            ) : (
+              <p className="text-sm text-gray-500">
+                To edit overview, contact Vailo at{' '}
+                <a
+                  href="mailto:contact@vailo.app"
+                  className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
+                >
+                  contact@vailo.app
+                </a>
+                .
+              </p>
+            )
           ) : (
-            <p className="text-sm text-gray-500">
-              To edit overview, contact Vailo at{' '}
-              <a
-                href="mailto:contact@vailo.app"
-                className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
-              >
-                contact@vailo.app
-              </a>
-              .
-            </p>
-          )
-        ) : (
-          <div className="flex gap-2">
-            <AdminButton type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
-              <X size={16} /> Cancel
-            </AdminButton>
-            <AdminButton type="button" onClick={handleSave} disabled={isSaving}>
-              <Save size={16} /> {isSaving ? 'Saving…' : 'Save changes'}
-            </AdminButton>
-          </div>
-        )}
+            <>
+              <AdminButton type="button" variant="secondary" onClick={handleCancel} disabled={isSaving}>
+                <X size={16} /> Cancel
+              </AdminButton>
+              <AdminButton type="button" onClick={handleSave} disabled={isSaving}>
+                <Save size={16} /> {isSaving ? 'Saving…' : 'Save changes'}
+              </AdminButton>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -537,7 +610,7 @@ export default function Overview() {
             {isGuestPortalAccessRequired(property) ? (
               <AdminBadge variant="teal">Access control enabled</AdminBadge>
             ) : (
-              <span className="text-gray-500">Open portal (no invite gate)</span>
+              <AdminBadge variant="neutral">Open portal (no invite gate)</AdminBadge>
             )}
             {isEditing && !isPlatformAdmin ? (
               <p className="text-xs text-gray-500">
@@ -553,9 +626,9 @@ export default function Overview() {
           Online check-in
         </h3>
         <p className="text-sm text-gray-500 mb-4">
-          When enabled, pre-arrival check-in links appear in guest invitations, the open portal
-          invitation, and the Check-ins tab. When disabled, guests only receive the standard guest
-          portal link.
+          When enabled, guests see a Check in button in the guest portal. Invitation copy tells them
+          to tap Check in after opening the portal. Check-ins appear on the Check-ins tab. When
+          disabled, guests only receive the standard guest portal link.
         </p>
         {isEditing && isPlatformAdmin ? (
           <label className="flex items-start gap-3 cursor-pointer">
@@ -579,7 +652,7 @@ export default function Overview() {
             {isPreArrivalCheckInEnabled(property) ? (
               <AdminBadge variant="teal">Check-in enabled</AdminBadge>
             ) : (
-              <span className="text-gray-500">Check-in disabled</span>
+              <AdminBadge variant="neutral">Check-in disabled</AdminBadge>
             )}
           </div>
         )}
@@ -587,36 +660,70 @@ export default function Overview() {
 
       <AdminCard className="p-6">
         <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-4">
-          Reservations
+          Calendar / Reservations
         </h3>
         <p className="text-sm text-gray-500 mb-4">
-          When enabled, admins can split a single iCal reservation into separate stays with
-          their own dates — useful when a channel exports overlapping bookings as one block.
+          When calendar sync is on, admins can import iCal bookings and use the Reservations and
+          Calendar sections. Split is only available after sync is enabled.
         </p>
         {isEditing && isPlatformAdmin ? (
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              name="reservationSplitEnabled"
-              checked={formData.reservationSplitEnabled}
-              onChange={handleChange}
-              className="mt-1 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
-            />
-            <span className="text-sm text-gray-700">
-              <span className="font-semibold text-gray-900">Allow reservation splitting</span>
-              <span className="block text-gray-500 mt-1">
-                Shows a Split action on each reservation in the Reservations tab for this
-                property.
+          <div className="space-y-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                name="calendarSyncEnabled"
+                checked={formData.calendarSyncEnabled}
+                onChange={handleChange}
+                className="mt-1 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
+              />
+              <span className="text-sm text-gray-700">
+                <span className="font-semibold text-gray-900">Enable calendar sync</span>
+                <span className="block text-gray-500 mt-1">
+                  Import reservations from Airbnb, Booking.com, or a channel manager. When off,
+                  Reservations and Calendar are hidden and listing iCal fields are locked.
+                </span>
               </span>
-            </span>
-          </label>
-        ) : (
-          <div className="text-sm text-gray-700">
-            {isPropertyReservationSplitEnabled(property) ? (
-              <AdminBadge variant="teal">Splitting enabled</AdminBadge>
+            </label>
+            {formData.calendarSyncEnabled ? (
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="reservationSplitEnabled"
+                  checked={formData.reservationSplitEnabled}
+                  onChange={handleChange}
+                  className="mt-1 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/30"
+                />
+                <span className="text-sm text-gray-700">
+                  <span className="font-semibold text-gray-900">Allow reservation splitting</span>
+                  <span className="block text-gray-500 mt-1">
+                    Shows a Split action on each reservation in the Reservations tab for this
+                    property — useful when a channel exports overlapping bookings as one block.
+                  </span>
+                </span>
+              </label>
             ) : (
-              <span className="text-gray-500">Splitting disabled</span>
+              <AdminBadge variant="neutral">Splitting disabled</AdminBadge>
             )}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-700 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {isCalendarSyncEnabled(property) ? (
+                <AdminBadge variant="teal">Sync enabled</AdminBadge>
+              ) : (
+                <AdminBadge variant="neutral">Sync disabled</AdminBadge>
+              )}
+              {isPropertyReservationSplitEnabled(property) ? (
+                <AdminBadge variant="teal">Splitting enabled</AdminBadge>
+              ) : (
+                <AdminBadge variant="neutral">Splitting disabled</AdminBadge>
+              )}
+            </div>
+            {isEditing && !isPlatformAdmin ? (
+              <p className="text-xs text-gray-500">
+                This setting is managed by your Vailo administrator.
+              </p>
+            ) : null}
           </div>
         )}
       </AdminCard>

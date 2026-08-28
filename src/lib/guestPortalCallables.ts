@@ -21,11 +21,13 @@ export async function validateGuestPortalSession(
   valid: boolean;
   reason?: 'expired' | 'booking_cancelled' | 'invite_mismatch';
   session?: GuestPortalSession;
+  preArrivalComplete?: boolean;
 }> {
   const res = await call<{
     valid: boolean;
     reason?: 'expired' | 'booking_cancelled' | 'invite_mismatch';
     session?: GuestPortalSession;
+    preArrivalComplete?: boolean;
   }>('validateGuestPortalSession')({
     propertyId,
     typeId,

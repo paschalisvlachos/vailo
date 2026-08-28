@@ -2,7 +2,6 @@
 
 import { getGuestPortalPublicOrigin, buildInvitePortalUrl } from './guestAccess';
 import { formatGuestSlug, getTypePublicSlug } from './guestPortalSlug';
-import { buildPreArrivalPortalUrl, preArrivalUrlFromInviteUrl } from './guestPreArrival';
 import { shouldIncludePreArrivalInviteLink } from './preArrivalSettings';
 import { formatBookingDateRange } from './syncedBooking';
 
@@ -33,11 +32,9 @@ export type GuestInviteEmailPayload = {
   /** e.g. "15 Jun – 22 Jun 2026" */
   stayRangeLabel: string;
   inviteUrl: string;
-  /** Same credentials as inviteUrl, with view=preArrival */
-  preArrivalUrl?: string;
-  /** When false, pre-arrival links are omitted from invitation copy. */
+  /** When false, in-portal Check in is omitted from invitation copy. */
   preArrivalCheckInEnabled?: boolean;
-  /** When true, pre-arrival links are omitted (guest already checked in). */
+  /** When true, Check in mention is omitted (guest already checked in). */
   preArrivalComplete?: boolean;
   accessPassword: string;
   /** First invite vs refreshed credentials */
@@ -94,9 +91,8 @@ export function buildGuestInviteEmailText(payload: GuestInviteEmailPayload): str
     '',
   ];
   appendGuestInviteLinkLines(lines, payload);
-  const preArrivalUrl = resolvePreArrivalUrl(payload);
   lines.push(
-    preArrivalUrl ? 'Access password (same for both links):' : 'Access password:',
+    'Access password:',
     payload.accessPassword,
     '',
     'Enter this password when prompted. Keep it private — it is personal to your reservation.',
@@ -116,27 +112,27 @@ function invitePasswordIsPlaceholder(password: string): boolean {
   return !trimmed || trimmed === PREVIEW_PASSWORD_PLACEHOLDER || trimmed.includes('•');
 }
 
-function resolvePreArrivalUrl(payload: GuestInviteEmailPayload): string {
-  if (
-    !shouldIncludePreArrivalInviteLink({
-      preArrivalCheckInEnabled: payload.preArrivalCheckInEnabled,
-      preArrivalComplete: payload.preArrivalComplete,
-    })
-  ) {
-    return '';
-  }
-  return payload.preArrivalUrl?.trim() || preArrivalUrlFromInviteUrl(payload.inviteUrl);
+function shouldMentionCheckIn(payload: {
+  preArrivalCheckInEnabled?: boolean;
+  preArrivalComplete?: boolean;
+}): boolean {
+  return shouldIncludePreArrivalInviteLink({
+    preArrivalCheckInEnabled: payload.preArrivalCheckInEnabled,
+    preArrivalComplete: payload.preArrivalComplete,
+  });
 }
 
 function appendGuestInviteLinkLines(
   lines: string[],
   payload: GuestInviteEmailPayload
 ): void {
-  const preArrivalUrl = resolvePreArrivalUrl(payload);
-  if (preArrivalUrl) {
+  const mentionCheckIn = shouldIncludePreArrivalInviteLink({
+    preArrivalCheckInEnabled: payload.preArrivalCheckInEnabled,
+    preArrivalComplete: payload.preArrivalComplete,
+  });
+  if (mentionCheckIn) {
     lines.push(
-      'Before you arrive — complete your pre-arrival check-in:',
-      preArrivalUrl,
+      'Before you arrive, open your guest portal and tap Check in to complete your arrival details.',
       ''
     );
   }
@@ -156,9 +152,7 @@ export type OpenPortalInvitePayload = {
   propertyName: string;
   unitName: string;
   portalUrl: string;
-  /** Open check-in URL (portal + view=preArrival), no invite token. */
-  preArrivalUrl?: string;
-  /** When false, check-in link is omitted from open portal invitation copy. */
+  /** When false, in-portal Check in is omitted from open portal invitation copy. */
   preArrivalCheckInEnabled?: boolean;
   hostLabel?: string;
   /** When true, guest portal uses invite/password gate. */
@@ -177,8 +171,10 @@ export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayl
     ? `Your private guest portal for ${property} is ready. Your host will share access details for your stay.`
     : `Your guest portal for ${property} is ready — open it anytime during your stay. No access code is required.`;
 
-  const checkInUrl =
-    payload.preArrivalCheckInEnabled === false ? '' : payload.preArrivalUrl?.trim() || '';
+  const checkInNote =
+    payload.preArrivalCheckInEnabled === false
+      ? ''
+      : ' Before you arrive, open the portal and tap Check in to enter your stay dates and complete arrival details.';
 
   const accessNote = accessRequired
     ? 'Open the guest portal link when you arrive — your host will provide your personal access password or invitation.'
@@ -195,12 +191,8 @@ export function buildOpenPortalInviteClipboardText(payload: OpenPortalInvitePayl
     '',
   ];
 
-  if (checkInUrl) {
-    lines.push(
-      'Before you arrive — complete your online check-in (enter your stay dates):',
-      checkInUrl,
-      ''
-    );
+  if (checkInNote) {
+    lines.push(checkInNote.trim(), '');
   }
 
   lines.push('Open your guest portal:', url, '', accessNote, '', 'Warm regards,', host || 'Your host', '', '—', 'Powered by Vailo');
@@ -215,7 +207,7 @@ export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload
   const stayLabel = formatGuestStayLabel(payload.propertyName, payload.unitName);
   const stay = payload.stayRangeLabel.trim();
   const url = payload.inviteUrl.trim();
-  const preArrivalUrl = resolvePreArrivalUrl(payload);
+  const mentionCheckIn = shouldMentionCheckIn(payload);
   const passwordIsPlaceholder = invitePasswordIsPlaceholder(payload.accessPassword);
 
   const intro = payload.reinvite
@@ -232,14 +224,17 @@ export function buildGuestInviteWhatsAppMessage(payload: GuestInviteEmailPayload
     '',
   ];
 
-  if (preArrivalUrl) {
-    lines.push('Pre-arrival check-in (before you arrive):', preArrivalUrl, '');
+  if (mentionCheckIn) {
+    lines.push(
+      'Before you arrive, open the guest portal and tap Check in to complete your arrival details.',
+      ''
+    );
   }
   lines.push('Guest portal:', url || '(link will be available after you send the invite)', '');
 
   if (!passwordIsPlaceholder) {
     lines.push(
-      preArrivalUrl ? 'Access password (same for both links):' : 'Access password:',
+      'Access password:',
       payload.accessPassword.trim(),
       '',
       'Enter it when prompted. Keep it private.'
@@ -262,8 +257,7 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
   const stayLabel = escapeHtml(formatGuestStayLabel(payload.propertyName, payload.unitName));
   const stay = escapeHtml(payload.stayRangeLabel.trim());
   const inviteUrl = escapeHtml(payload.inviteUrl.trim());
-  const preArrivalUrlRaw = resolvePreArrivalUrl(payload);
-  const preArrivalUrl = escapeHtml(preArrivalUrlRaw);
+  const mentionCheckIn = shouldMentionCheckIn(payload);
   const password = escapeHtml(payload.accessPassword.trim());
   const host = escapeHtml(payload.hostLabel?.trim() || 'Your host');
   const logoUrl = escapeHtml(resolveGuestInviteLogoUrl(payload.logoUrl));
@@ -317,16 +311,9 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
                 </tr>
               </table>
               ${
-                preArrivalUrlRaw
+                mentionCheckIn
                   ? `<p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#64748B;">Before you arrive</p>
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 16px;">
-                <tr>
-                  <td style="border-radius:999px;background-color:#C5A059;">
-                    <a href="${preArrivalUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none;color:#051F26;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Complete pre-arrival check-in</a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:0 0 16px;font-size:13px;line-height:1.65;color:#64748B;">Share arrival details before your stay using the same password below.</p>`
+              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">Open your guest portal and tap <strong style="color:#0B4F5C;">Check in</strong> to complete your arrival details.</p>`
                   : ''
               }
               <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#64748B;">Your guest portal</p>
@@ -345,22 +332,12 @@ export function buildGuestInviteEmailHtml(payload: GuestInviteEmailPayload): str
                   </td>
                 </tr>
               </table>
-              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">${
-                preArrivalUrlRaw
-                  ? 'Use either link on your phone or computer. When prompted, enter the password exactly as shown — the same password works for both. Please keep it private — it is linked to your reservation.'
-                  : 'Open the link on your phone or computer. When prompted, enter the password exactly as shown. Please keep it private — it is linked to your reservation.'
-              }</p>
+              <p style="margin:0 0 24px;font-size:13px;line-height:1.65;color:#64748B;">Open the link on your phone or computer. When prompted, enter the password exactly as shown. Please keep it private — it is linked to your reservation.</p>
               <p style="margin:0;font-size:15px;line-height:1.6;color:#051F26;">Warm regards,<br /><span style="color:#0B4F5C;font-weight:600;">${host}</span></p>
             </td>
           </tr>
           <tr>
             <td style="padding:20px 32px 28px;border-top:1px solid #EEF2F4;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-              ${
-                preArrivalUrlRaw
-                  ? `<p style="margin:0 0 6px;font-size:11px;line-height:1.5;color:#94A3B8;">Pre-arrival check-in link:</p>
-              <p style="margin:0 0 16px;font-size:11px;line-height:1.5;word-break:break-all;"><a href="${preArrivalUrl}" style="color:#0B4F5C;">${preArrivalUrl}</a></p>`
-                  : ''
-              }
               <p style="margin:0 0 6px;font-size:11px;line-height:1.5;color:#94A3B8;">Guest portal link:</p>
               <p style="margin:0 0 16px;font-size:11px;line-height:1.5;word-break:break-all;"><a href="${inviteUrl}" style="color:#0B4F5C;">${inviteUrl}</a></p>
               <p style="margin:0;font-size:11px;line-height:1.5;color:#94A3B8;">Powered by <a href="https://vailo.app" style="color:#0B4F5C;text-decoration:none;font-weight:600;">Vailo</a></p>
@@ -384,8 +361,6 @@ export const GUEST_INVITE_EMAIL_SAMPLE: GuestInviteEmailPayload = {
   unitName: 'Main Villa',
   stayRangeLabel: '15 Jun – 22 Jun 2026',
   inviteUrl: 'https://vailo.app/villa-serenity/main-villa?invite=sample-token&lang=en',
-  preArrivalUrl:
-    'https://vailo.app/villa-serenity/main-villa?invite=sample-token&lang=en&view=preArrival',
   accessPassword: 'K7M2-PQ9',
   hostLabel: 'Villa Serenity',
 };
@@ -414,7 +389,7 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
   accessPassword?: string;
   inviteToken?: string;
   logoUrl?: string;
-  /** When false, preArrivalUrl is cleared in the payload. */
+  /** When false, in-portal Check in is omitted from invitation copy. */
   preArrivalCheckInEnabled?: boolean;
 }): GuestInviteEmailPayload {
   const { booking, propertyName, unitName, typeId } = context;
@@ -423,18 +398,9 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
 
   const token = context.inviteToken || booking.inviteToken;
   let inviteUrl = '';
-  let preArrivalUrl = '';
   const propSlugFormatted = formatGuestSlug(context.propertySlug || '');
   if (propSlugFormatted && unitSlug && token) {
     inviteUrl = buildInvitePortalUrl(
-      origin,
-      propSlugFormatted,
-      unitSlug,
-      token,
-      typeId,
-      booking.guestLocale
-    );
-    preArrivalUrl = buildPreArrivalPortalUrl(
       origin,
       propSlugFormatted,
       unitSlug,
@@ -448,7 +414,6 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
     if (lang) qs.set('lang', lang);
     qs.set('invite', 'generated-on-send');
     inviteUrl = `${origin}/${propSlugFormatted}/${unitSlug}?${qs.toString()}`;
-    preArrivalUrl = preArrivalUrlFromInviteUrl(inviteUrl);
   } else {
     inviteUrl = `${origin}/…`;
   }
@@ -465,7 +430,6 @@ export function buildGuestInviteEmailPayloadFromBooking(context: {
     unitName: unitName.trim(),
     stayRangeLabel: formatBookingDateRange(booking.start, booking.end),
     inviteUrl,
-    preArrivalUrl: checkInEnabled ? preArrivalUrl : '',
     preArrivalCheckInEnabled: checkInEnabled,
     preArrivalComplete: booking.preArrivalComplete === true,
     accessPassword: context.accessPassword?.trim() || PREVIEW_PASSWORD_PLACEHOLDER,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, Navigate } from 'react-router-dom';
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
@@ -15,7 +15,7 @@ import {
 } from '../../../lib/syncedBooking';
 import { resetPropertyBookingsInDateRange } from '../../../lib/resetPropertyBookings';
 import { extractBookingProvider } from '../../../lib/bookingProvider';
-import { formatICalSyncError, formatICalSyncSuccessMessage, syncPropertyTypeICalCallable } from '../../../lib/icalSync';
+import { formatICalSyncError, formatICalSyncSuccessMessage, isCalendarSyncEnabled, syncPropertyTypeICalCallable } from '../../../lib/icalSync';
 import { maybeTriggerAutoGuestInvite } from '../../../lib/autoGuestInvite';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Building, RefreshCw, Eraser } from 'lucide-react';
 import { usePropertyListingQuery } from '../../../hooks/usePropertyListingQuery';
@@ -45,10 +45,11 @@ function bookingBorderClass(status: ReturnType<typeof getBookingInvitationStatus
 export default function Calendar() {
   const { propertyId, property } = useOutletContext<{
     propertyId: string;
-    property: { autoSendGuestInviteWhenReady?: boolean };
+    property: { autoSendGuestInviteWhenReady?: boolean; calendarSyncEnabled?: boolean };
   }>();
   const toast = useToast();
   const { languages } = usePlatformLanguages();
+  const calendarSyncEnabled = isCalendarSyncEnabled(property);
 
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const propertyTypeIds = useMemo(() => propertyTypes.map((type) => type.id as string), [propertyTypes]);
@@ -112,6 +113,10 @@ export default function Calendar() {
   };
 
   const handleSync = async () => {
+    if (!calendarSyncEnabled) {
+      toast.warning('Calendar sync is disabled for this property.');
+      return;
+    }
     if (!selectedType?.iCalUrl || !selectedTypeId) return;
     setIsSyncing(true);
 
@@ -193,6 +198,10 @@ export default function Calendar() {
     });
   };
 
+  if (!calendarSyncEnabled) {
+    return <Navigate to=".." replace />;
+  }
+
   if (propertyTypes.length === 0) {
     return (
       <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
@@ -252,7 +261,7 @@ export default function Calendar() {
 
           <button
             onClick={handleSync}
-            disabled={!selectedType?.iCalUrl || isSyncing}
+            disabled={!calendarSyncEnabled || !selectedType?.iCalUrl || isSyncing}
             className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl text-sm font-medium hover:bg-vailo-teal-hover disabled:opacity-50 disabled:bg-gray-400 transition-colors shadow-sm"
           >
             <RefreshCw size={14} className={`mr-2 ${isSyncing ? 'animate-spin text-white' : 'text-white'}`} />

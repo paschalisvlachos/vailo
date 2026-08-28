@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Home } from 'lucide-react';
 import { httpsCallableMessage } from '../../lib/callableError';
 import {
   readGuestPortalSession,
@@ -10,22 +10,35 @@ import {
   formatDayMonthYearInput,
   isCompleteDayMonthYear,
   parseDayMonthYearToIso,
+  todayIsoDay,
 } from '../../lib/guestStayDateInput';
 import {
   isPreArrivalListingChoiceResult,
   resolvePreArrivalBookingByDatesCallable,
   type PreArrivalListingOption,
 } from '../../lib/guestPortalCallables';
+import GuestCheckInDiscoverNotes from './GuestCheckInDiscoverNotes';
 
 type Props = {
   propertyId: string;
   typeId: string;
   propertyName: string;
   unitName: string;
+  /** When false, dates are accepted as entered — no reservation match. */
+  verifyReservationDates?: boolean;
   onSessionGranted: (session: GuestPortalSession) => void;
+  onBackToPortal?: () => void;
+  backToPortalLabel?: string;
 };
 
-function validateStayDates(checkInIso: string, checkOutIso: string): string | null {
+function validateStayDates(
+  checkInIso: string,
+  checkOutIso: string,
+  options?: { requireUpcomingCheckIn?: boolean }
+): string | null {
+  if (options?.requireUpcomingCheckIn && checkInIso < todayIsoDay()) {
+    return 'Check-in must be today or a later date.';
+  }
   if (checkOutIso <= checkInIso) {
     return 'Check-out must be after check-in.';
   }
@@ -37,7 +50,10 @@ export default function GuestPreArrivalDateLookup({
   typeId,
   propertyName,
   unitName,
+  verifyReservationDates = true,
   onSessionGranted,
+  onBackToPortal,
+  backToPortalLabel,
 }: Props) {
   const [checkInDisplay, setCheckInDisplay] = useState('');
   const [checkOutDisplay, setCheckOutDisplay] = useState('');
@@ -74,7 +90,9 @@ export default function GuestPreArrivalDateLookup({
       return;
     }
 
-    const rangeError = validateStayDates(checkIn, checkOut);
+    const rangeError = validateStayDates(checkIn, checkOut, {
+      requireUpcomingCheckIn: !verifyReservationDates,
+    });
     if (rangeError) {
       setError(rangeError);
       return;
@@ -118,13 +136,20 @@ export default function GuestPreArrivalDateLookup({
         return;
       }
 
-      writeGuestPortalSession(result.session);
-      onSessionGranted(result.session);
+      const session = {
+        ...result.session,
+        checkIn: result.checkIn || result.session.checkIn,
+        checkOut: result.checkOut || result.session.checkOut,
+      };
+      writeGuestPortalSession(session);
+      onSessionGranted(session);
     } catch (err) {
       setError(
         httpsCallableMessage(
           err,
-          'We could not find a reservation for those dates. Please check your dates or contact your host.'
+          verifyReservationDates
+            ? 'We could not find a reservation for those dates. Please check your dates or contact your host.'
+            : 'We could not start your check-in. Please try again.'
         )
       );
     } finally {
@@ -138,7 +163,7 @@ export default function GuestPreArrivalDateLookup({
         <div className="rounded-[28px] bg-[#0B4F5C] text-white px-6 py-8 shadow-[0_24px_80px_rgba(5,31,38,0.25)]">
           <p className="guest-eyebrow text-[#C5A059]/95 mb-2">Online check-in</p>
           <h1 className="font-luxury text-[1.75rem] leading-tight font-medium">
-            Confirm your stay
+            {verifyReservationDates ? 'Confirm your stay' : 'Your stay dates'}
           </h1>
           <p className="text-sm text-white/75 mt-3 leading-relaxed">
             Enter your check-in and check-out dates for{' '}
@@ -151,7 +176,12 @@ export default function GuestPreArrivalDateLookup({
           onSubmit={(e) => void handleSubmit(e)}
           className="mt-6 rounded-2xl border border-[#0B4F5C]/10 bg-white p-6 shadow-sm space-y-5"
         >
-          <p className="text-xs text-gray-500">Use day / month / year — for example 18/08/2026.</p>
+          <p className="text-xs text-gray-500">
+            Use day / month / year — for example 18/08/2026.
+            {!verifyReservationDates
+              ? ' Check-in must be today or later, and check-out must be after check-in.'
+              : ''}
+          </p>
 
           <div>
             <label
@@ -249,15 +279,26 @@ export default function GuestPreArrivalDateLookup({
             {submitting ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Verifying…
+                {verifyReservationDates ? 'Verifying…' : 'Continuing…'}
               </>
-            ) : needsListingChoice ? (
-              'Continue to check-in'
             ) : (
               'Continue to check-in'
             )}
           </button>
         </form>
+
+        <GuestCheckInDiscoverNotes className="mt-6" />
+
+        {onBackToPortal && (
+          <button
+            type="button"
+            onClick={onBackToPortal}
+            className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-[#0B4F5C]/15 bg-white px-4 py-3.5 text-sm font-semibold text-[#0B4F5C] shadow-sm hover:bg-[#0B4F5C]/[0.03] transition-colors"
+          >
+            <Home size={16} />
+            {backToPortalLabel || 'Back to guest portal'}
+          </button>
+        )}
       </div>
     </div>
   );

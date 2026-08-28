@@ -43,3 +43,9 @@ export function isoToDayMonthYear(iso?: string | null): string {
 export function isCompleteDayMonthYear(value: string): boolean {
   return DISPLAY_PATTERN.test(value.trim());
 }
+
+/** Local calendar day as YYYY-MM-DD. */
+export function todayIsoDay(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}

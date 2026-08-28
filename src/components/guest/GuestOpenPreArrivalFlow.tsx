@@ -39,8 +39,12 @@ type Props = {
   transferOffer?: PreArrivalTransferOffer | null;
   syncedBookings?: BookingRow[] | null;
   guestSession: GuestPortalSession | null;
+  verifyReservationDates?: boolean;
   onSessionGranted: (session: GuestPortalSession) => void;
   onSessionCleared?: () => void;
+  onBackToPortal?: () => void;
+  backToPortalLabel?: string;
+  onCheckInComplete?: () => void;
 };
 
 type FlowPhase = 'checking' | 'lookup' | 'form';
@@ -56,8 +60,12 @@ export default function GuestOpenPreArrivalFlow({
   transferOffer,
   syncedBookings,
   guestSession,
+  verifyReservationDates = true,
   onSessionGranted,
   onSessionCleared,
+  onBackToPortal,
+  backToPortalLabel,
+  onCheckInComplete,
 }: Props) {
   const [phase, setPhase] = useState<FlowPhase>('checking');
   const [session, setSession] = useState<GuestPortalSession | null>(guestSession);
@@ -108,7 +116,11 @@ export default function GuestOpenPreArrivalFlow({
         );
         if (!stillActive()) return;
         if (result.valid && result.session?.bookingId) {
-          grant(result.session);
+          grant({
+            ...result.session,
+            preArrivalComplete:
+              result.preArrivalComplete === true || result.session.preArrivalComplete === true,
+          });
           return;
         }
         if (result.reason === 'booking_cancelled') {
@@ -138,9 +150,11 @@ export default function GuestOpenPreArrivalFlow({
 
     if (sessionTypeId === typeId && syncedBookings) {
       const match = syncedBookings.find((row) => row.id === bookingId) ?? null;
-      setResolvedBooking(match);
-      setResolvedUnitName(unitName);
-      return;
+      if (match?.start && match?.end) {
+        setResolvedBooking(match);
+        setResolvedUnitName(unitName);
+        return;
+      }
     }
 
     let cancelled = false;
@@ -170,11 +184,23 @@ export default function GuestOpenPreArrivalFlow({
   }, [activeSession?.bookingId, activeSession?.typeId, propertyId, syncedBookings, typeId, unitName]);
 
   const booking = useMemo(() => {
-    if (resolvedBooking) return resolvedBooking;
     const bookingId = activeSession?.bookingId;
-    if (!bookingId || !syncedBookings) return null;
-    return syncedBookings.find((row) => row.id === bookingId) ?? null;
-  }, [resolvedBooking, activeSession?.bookingId, syncedBookings]);
+    const fromResolved = resolvedBooking;
+    const fromList =
+      bookingId && syncedBookings
+        ? syncedBookings.find((row) => row.id === bookingId) ?? null
+        : null;
+    const base = fromResolved || fromList;
+    const start = base?.start || activeSession?.checkIn || undefined;
+    const end = base?.end || activeSession?.checkOut || undefined;
+    if (!base && !start && !end) return null;
+    return {
+      ...base,
+      id: base?.id || bookingId || undefined,
+      start,
+      end,
+    };
+  }, [resolvedBooking, activeSession, syncedBookings]);
 
   if (phase === 'checking') {
     return <GuestPortalLoadingScreen status="Loading online check-in…" />;
@@ -187,7 +213,10 @@ export default function GuestOpenPreArrivalFlow({
         typeId={typeId}
         propertyName={propertyName}
         unitName={unitName}
+        verifyReservationDates={verifyReservationDates}
         onSessionGranted={grant}
+        onBackToPortal={onBackToPortal}
+        backToPortalLabel={backToPortalLabel}
       />
     );
   }
@@ -207,6 +236,9 @@ export default function GuestOpenPreArrivalFlow({
       onChangeDates={
         activeSession?.source === 'pre_arrival_dates' ? handleChangeDates : undefined
       }
+      onBackToPortal={onBackToPortal}
+      backToPortalLabel={backToPortalLabel}
+      onSubmitted={onCheckInComplete}
     />
   );
 }

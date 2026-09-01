@@ -63,6 +63,7 @@ export function buildPreArrivalDeclarationHtml(options: {
     row('Phone', submission.contactPhone),
     row('Email', submission.contactEmail || booking.guestEmail || ''),
     row('Date of birth', formatPreArrivalDateDisplay(submission.dateOfBirth)),
+    row('TIN / AFM', submission.taxId || ''),
     row('Special requests', submission.specialRequests || ''),
     row(
       'Transfer requested',

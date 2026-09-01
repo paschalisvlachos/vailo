@@ -261,6 +261,7 @@ export async function submitPreArrivalCheckInCallable(params: {
   contactPhone: string;
   contactEmail?: string;
   dateOfBirth?: string;
+  taxId?: string;
   specialRequests?: string;
   acceptedHouseRules: boolean;
   houseRulesLocale?: string;
@@ -296,6 +297,7 @@ export async function submitPreArrivalCheckInCallable(params: {
     contactPhone: params.contactPhone,
     contactEmail: params.contactEmail || undefined,
     dateOfBirth: params.dateOfBirth || undefined,
+    taxId: params.taxId?.trim() || undefined,
     specialRequests: params.specialRequests || undefined,
     acceptedHouseRules: params.acceptedHouseRules,
     houseRulesLocale: params.houseRulesLocale || undefined,

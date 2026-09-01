@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Car, CheckCircle2, ChevronRight, Loader2, Shield, Upload } from 'lucide-react';
+import { Car, CheckCircle2, ChevronRight, Info, Loader2, Shield, Upload } from 'lucide-react';
 import { httpsCallableMessage } from '../../lib/callableError';
 import { submitPreArrivalCheckInCallable } from '../../lib/guestPortalCallables';
 import type { GuestPortalSession } from '../../lib/guestAccess';
@@ -215,6 +215,7 @@ export default function GuestPreArrivalForm({
         contactPhone: form.contactPhone,
         contactEmail: form.contactEmail.trim() || undefined,
         dateOfBirth: form.dateOfBirth.trim() || undefined,
+        taxId: form.taxId.trim() || undefined,
         specialRequests: form.specialRequests,
         acceptedHouseRules: form.acceptedHouseRules,
         houseRulesLocale: locale,
@@ -298,6 +299,12 @@ export default function GuestPreArrivalForm({
                     <dd className="font-medium tabular-nums">
                       {formatPreArrivalDateDisplay(submitted.dateOfBirth)}
                     </dd>
+                  </div>
+                )}
+                {submitted.taxId && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-gray-500">TIN / AFM</dt>
+                    <dd className="font-medium text-right tabular-nums">{submitted.taxId}</dd>
                   </div>
                 )}
                 {submitted.specialRequests && (
@@ -504,6 +511,44 @@ export default function GuestPreArrivalForm({
             value={form.dateOfBirth}
             onChange={(e) => setForm((prev) => ({ ...prev, dateOfBirth: e.target.value }))}
             className="guest-input w-full border border-gray-200 text-gray-900 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="pre-arrival-tax-id"
+            className="flex items-center gap-2 text-sm font-semibold text-[#051F26] mb-1.5"
+          >
+            <span>
+              TIN / AFM <span className="font-normal text-gray-400">(optional)</span>
+            </span>
+            <span className="relative inline-flex group">
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#0B4F5C]/10 text-[#0B4F5C] hover:bg-[#0B4F5C]/15 focus:outline-none focus:ring-2 focus:ring-[#0B4F5C]/20"
+                aria-label="Tax Identification Number"
+                title="Tax Identification Number"
+              >
+                <Info size={14} strokeWidth={2.25} />
+              </button>
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-1/2 bottom-full z-10 mb-1.5 w-max max-w-[16rem] -translate-x-1/2 rounded-lg bg-[#051F26] px-2.5 py-1.5 text-center text-[11px] font-medium leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              >
+                Tax Identification Number
+              </span>
+            </span>
+          </label>
+          <p className="text-xs font-medium text-[#0B4F5C] mb-2">Tax Identification Number</p>
+          <input
+            id="pre-arrival-tax-id"
+            type="text"
+            inputMode="text"
+            autoComplete="off"
+            value={form.taxId}
+            onChange={(e) => setForm((prev) => ({ ...prev, taxId: e.target.value }))}
+            placeholder="e.g. 123456789"
+            className="guest-input w-full border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-[#0B4F5C]/40 focus:ring-2 focus:ring-[#0B4F5C]/10"
           />
         </div>
 

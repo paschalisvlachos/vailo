@@ -262,6 +262,7 @@ export default function PreArrivalSubmissionModal({
               label="Date of birth"
               value={formatPreArrivalDateDisplay(submission.dateOfBirth)}
             />
+            <DetailRow label="TIN / AFM" value={submission.taxId || ''} />
             <DetailRow label="Special requests" value={submission.specialRequests || ''} />
             {submission.transferRequested && submission.transferOffer && (
               <DetailRow

@@ -643,6 +643,13 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
 
       await persistBookings(typeRef, updated);
 
+      await firestore
+        .collection("properties")
+        .doc(propertyId)
+        .collection("guestPortalSessions")
+        .doc(session.sessionId || sessionId)
+        .set({ preArrivalComplete: true, guestName: guestName || session.guestName || null }, { merge: true });
+
       await upsertGuestProfileFromPreArrival(firestore, {
         propertyId,
         typeId,

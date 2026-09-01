@@ -8,6 +8,7 @@ import { httpsCallableMessage } from '../../../lib/callableError';
 import { db } from '../../../lib/firebase';
 import { removePreArrivalCheckInForAdminCallable } from '../../../lib/guestPortalCallables';
 import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
+import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { formatPreArrivalTimeDisplay } from '../../../lib/preArrivalSubmission';
 import {
   formatBookingDateRange,
@@ -34,6 +35,7 @@ function guestDisplayName(row: CheckInRow): string {
 export default function CheckIns() {
   const { property, propertyId } = useOutletContext<PropertyOutletContext>();
   const toast = useToast();
+  const calendarSyncEnabled = isCalendarSyncEnabled(property);
   const [propertyTypes, setPropertyTypes] = useState<
     { id: string; propertyTypeName?: string; syncedBookings?: SyncedBooking[] }[]
   >([]);
@@ -60,6 +62,14 @@ export default function CheckIns() {
       const bookings = Array.isArray(type.syncedBookings) ? type.syncedBookings : [];
       for (const booking of bookings) {
         if (!booking?.id || !isBookingPortalAccessAllowed(booking)) continue;
+        if (
+          !calendarSyncEnabled &&
+          booking.provider !== 'Online check-in' &&
+          booking.accessSource !== 'pre_arrival_dates' &&
+          !booking.preArrivalComplete
+        ) {
+          continue;
+        }
         list.push({
           ...booking,
           typeId: type.id,
@@ -72,7 +82,7 @@ export default function CheckIns() {
       const bStart = String(b.start || '');
       return bStart.localeCompare(aStart);
     });
-  }, [propertyTypes]);
+  }, [propertyTypes, calendarSyncEnabled]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -89,7 +99,7 @@ export default function CheckIns() {
   }, [rows]);
 
   if (!isPreArrivalCheckInEnabled(property)) {
-    return <Navigate to="../reservations" replace />;
+    return <Navigate to={calendarSyncEnabled ? '../reservations' : '..'} replace />;
   }
 
   const handleRemoveCheckIn = async (row: CheckInRow) => {
@@ -139,8 +149,9 @@ export default function CheckIns() {
             Check-ins
           </h2>
           <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-            Online pre-arrival check-ins for all reservations on this property. Guests from the
-            open portal invitation enter their stay dates, then complete check-in details here.
+            {calendarSyncEnabled
+              ? 'Online check-ins for all reservations on this property. Guests tap Check in in the guest portal, enter their stay dates, then complete check-in details here.'
+              : 'Online check-ins for this property. Guests tap Check in in the guest portal, enter their stay dates, then complete check-in details here.'}
           </p>
           <p className="text-xs text-gray-400 mt-2">
             {stats.complete} checked in · {stats.pending} pending · {stats.total} total bookings
@@ -178,9 +189,11 @@ export default function CheckIns() {
       {filteredRows.length === 0 ? (
         <div className="text-center py-16 rounded-xl border border-dashed border-gray-200 bg-gray-50">
           <ClipboardCheck size={36} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-900 font-medium">No bookings to show</p>
+          <p className="text-gray-900 font-medium">No check-ins to show</p>
           <p className="text-sm text-gray-500 mt-1">
-            Reservations from iCal or manual entry will appear here once synced.
+            {calendarSyncEnabled
+              ? 'Reservations from iCal or manual entry will appear here once synced.'
+              : 'Guests complete online check-in from the Check in button in the guest portal. Stays they enter will appear here.'}
           </p>
         </div>
       ) : (

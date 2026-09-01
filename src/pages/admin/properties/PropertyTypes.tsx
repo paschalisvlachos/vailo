@@ -32,6 +32,7 @@ import { useAdminSession } from '../../../context/AdminSessionContext';
 import {
   formatICalSyncError,
   formatICalSyncSuccessMessage,
+  isCalendarSyncEnabled,
   syncPropertyTypeICalCallable,
 } from '../../../lib/icalSync';
 import { clonePropertyListing } from '../../../lib/clonePropertyListing';
@@ -53,6 +54,7 @@ export default function PropertyTypes() {
   const isEndOwner = profile?.role === 'owner';
 
   const isListingOnly = propertyAccess.level === 'listing_only';
+  const calendarSyncEnabled = isCalendarSyncEnabled(property);
   const canAssignAllocatedOwner = isPlatformAdmin || isAgent;
   const canEditUrlSlug = isPlatformAdmin;
   const allowedTypeIds = isListingOnly ? propertyAccess.typeIds : null;
@@ -610,6 +612,10 @@ export default function PropertyTypes() {
   };
 
   const handleICalSync = async () => {
+    if (!calendarSyncEnabled) {
+      toast.warning('Calendar sync is disabled for this property.');
+      return;
+    }
     if (!typeFormData.iCalUrl?.trim()) {
       toast.warning('Please enter a valid iCal URL first.');
       return;
@@ -781,8 +787,15 @@ export default function PropertyTypes() {
                     </div>
                     
                     {type.iCalUrl && (
-                      <div className="mb-3 flex items-center text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded w-max border border-green-100">
-                        <CalendarSync size={12} className="mr-1.5" /> iCal linked
+                      <div
+                        className={`mb-3 flex items-center text-xs font-medium px-2 py-1 rounded w-max border ${
+                          calendarSyncEnabled
+                            ? 'text-green-700 bg-green-50 border-green-100'
+                            : 'text-gray-500 bg-gray-50 border-gray-200 opacity-60'
+                        }`}
+                      >
+                        <CalendarSync size={12} className="mr-1.5" />
+                        {calendarSyncEnabled ? 'iCal linked' : 'iCal (sync disabled)'}
                       </div>
                     )}
                     
@@ -993,34 +1006,43 @@ export default function PropertyTypes() {
         {/* iCal Sync Section */}
         <div className="p-6 border-b border-gray-100 bg-vailo-teal/5/30">
           <h4 className="text-sm font-bold text-gray-900 flex items-center mb-3">
-            <CalendarSync size={18} className="mr-2 text-vailo-teal" /> Calendar Sync (iCal)
+            <CalendarSync size={18} className={`mr-2 ${calendarSyncEnabled ? 'text-vailo-teal' : 'text-gray-400'}`} /> Calendar Sync (iCal)
           </h4>
-          <label className="block text-sm font-medium text-gray-700 mb-1">iCal Feed URL</label>
-          <div className="flex gap-3">
-            <input 
-              type="url" 
-              name="iCalUrl" 
-              value={typeFormData.iCalUrl} 
-              onChange={handleTypeChange} 
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" 
-              placeholder="https://www.airbnb.com/calendar/ical/..." 
-            />
-            <button 
-              type="button" 
-              onClick={() => void handleICalSync()}
-              disabled={isICalSyncing || !typeFormData.iCalUrl?.trim()}
-              className="px-6 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover text-sm font-medium transition-colors shadow-sm disabled:opacity-50 disabled:bg-gray-400 inline-flex items-center gap-2"
-            >
-              {isICalSyncing ? <Loader2 size={16} className="animate-spin" /> : <CalendarSync size={16} />}
-              {isICalSyncing ? 'Syncing…' : 'Sync Now'}
-            </button>
+          {!calendarSyncEnabled ? (
+            <p className="text-sm text-gray-500 mb-3">
+              Calendar sync is turned off for this property. A Vailo administrator can enable it in
+              Overview.
+            </p>
+          ) : null}
+          <div className={!calendarSyncEnabled ? 'opacity-50' : undefined}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">iCal Feed URL</label>
+            <div className="flex gap-3">
+              <input
+                type="url"
+                name="iCalUrl"
+                value={typeFormData.iCalUrl}
+                onChange={handleTypeChange}
+                disabled={!calendarSyncEnabled}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
+                placeholder="https://www.airbnb.com/calendar/ical/..."
+              />
+              <button
+                type="button"
+                onClick={() => void handleICalSync()}
+                disabled={!calendarSyncEnabled || isICalSyncing || !typeFormData.iCalUrl?.trim()}
+                className="px-6 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover text-sm font-medium transition-colors shadow-sm disabled:opacity-50 disabled:bg-gray-400 inline-flex items-center gap-2"
+              >
+                {isICalSyncing ? <Loader2 size={16} className="animate-spin" /> : <CalendarSync size={16} />}
+                {isICalSyncing ? 'Syncing…' : 'Sync Now'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Paste the iCal export link from Airbnb, Booking.com, or your channel manager.
+              {editingTypeId
+                ? ' Click Sync Now to import reservations into this listing.'
+                : ' Save the listing first, then sync.'}
+            </p>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Paste the iCal export link from Airbnb, Booking.com, or your channel manager.
-            {editingTypeId
-              ? ' Click Sync Now to import reservations into this listing.'
-              : ' Save the listing first, then sync.'}
-          </p>
         </div>
 
         {/* General Details & Coordinates */}

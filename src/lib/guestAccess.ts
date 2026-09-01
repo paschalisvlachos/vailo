@@ -53,6 +53,11 @@ export type GuestPortalSession = {
   guestLocale?: string | null;
   /** Set for invite sessions — used to avoid reusing another guest's session. */
   inviteToken?: string | null;
+  /** Stay dates from open check-in (YYYY-MM-DD). */
+  checkIn?: string | null;
+  checkOut?: string | null;
+  /** True after this session submitted online check-in. */
+  preArrivalComplete?: boolean;
 };
 
 export type SyncedBookingAccessFields = {

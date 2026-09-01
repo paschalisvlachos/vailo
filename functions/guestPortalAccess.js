@@ -22,6 +22,11 @@ function isPreArrivalCheckInEnabled(property) {
   return property.preArrivalCheckInEnabled !== false;
 }
 
+function isCalendarSyncEnabled(property) {
+  if (property?.calendarSyncEnabled === undefined) return true;
+  return property.calendarSyncEnabled !== false;
+}
+
 function parseIsoDay(iso) {
   if (!iso) return null;
   const day = String(iso).trim().slice(0, 10);
@@ -138,6 +143,8 @@ async function createPreArrivalDateSession(
     source: "pre_arrival_dates",
     guestName: resolveBookingGuestDisplayName(booking),
     guestLocale: booking.guestLocale || null,
+    checkIn: checkInDay,
+    checkOut: checkOutDay,
   });
 
   return {
@@ -148,7 +155,70 @@ async function createPreArrivalDateSession(
   };
 }
 
-function parseGuestCheckInDates(checkIn, checkOut) {
+async function createStandalonePreArrivalSession(
+  firestore,
+  { propertyId, typeId, checkInDay, checkOutDay, existingSessionId }
+) {
+  const typeRef = firestore
+    .collection("properties")
+    .doc(propertyId)
+    .collection("propertyTypes")
+    .doc(typeId);
+  const typeSnap = await typeRef.get();
+  if (!typeSnap.exists) {
+    throw new HttpsError("not-found", "Unit not found.");
+  }
+
+  const bookings = Array.isArray(typeSnap.data().syncedBookings)
+    ? typeSnap.data().syncedBookings
+    : [];
+
+  if (existingSessionId) {
+    const existing = await getSession(firestore, propertyId, existingSessionId);
+    if (
+      existing &&
+      existing.propertyId === propertyId &&
+      existing.typeId === typeId &&
+      existing.bookingId &&
+      Date.now() < new Date(existing.accessUntil).getTime()
+    ) {
+      const existingBooking = bookings.find((b) => b.id === existing.bookingId);
+      if (
+        existingBooking &&
+        isBookingPortalAccessAllowed(existingBooking) &&
+        bookingMatchesExactDates(existingBooking, checkInDay, checkOutDay)
+      ) {
+        return {
+          session: formatSessionPayload(existing),
+          reused: true,
+          bookingId: existing.bookingId,
+          checkIn: checkInDay,
+          checkOut: checkOutDay,
+        };
+      }
+    }
+  }
+
+  const booking = {
+    id: `CHECKIN-${crypto.randomBytes(6).toString("hex")}`,
+    start: checkInDay,
+    end: checkOutDay,
+    provider: "Online check-in",
+    isInvited: false,
+    guestDetailsComplete: false,
+  };
+  await persistBookings(typeRef, [...bookings, booking]);
+
+  return createPreArrivalDateSession(firestore, {
+    propertyId,
+    typeId,
+    booking,
+    checkInDay,
+    checkOutDay,
+  });
+}
+
+function parseGuestCheckInDates(checkIn, checkOut, options = {}) {
   const checkInDay = normalizeBookingDay(checkIn);
   const checkOutDay = normalizeBookingDay(checkOut);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkInDay) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOutDay)) {
@@ -158,6 +228,13 @@ function parseGuestCheckInDates(checkIn, checkOut) {
   const end = parseIsoDay(checkOutDay);
   if (!start || !end) {
     throw new HttpsError("invalid-argument", "Please enter valid check-in and check-out dates.");
+  }
+  if (options.requireUpcomingCheckIn) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (start.getTime() < today.getTime()) {
+      throw new HttpsError("invalid-argument", "Check-in must be today or a later date.");
+    }
   }
   if (end.getTime() <= start.getTime()) {
     throw new HttpsError("invalid-argument", "Check-out must be after check-in.");
@@ -243,6 +320,8 @@ async function createSession(firestore, {
   guestName,
   guestLocale,
   inviteToken,
+  checkIn,
+  checkOut,
 }) {
   const sessionRef = firestore
     .collection("properties")
@@ -259,6 +338,8 @@ async function createSession(firestore, {
     guestName: guestName || null,
     guestLocale: guestLocale || null,
     inviteToken: inviteToken || null,
+    checkIn: checkIn || null,
+    checkOut: checkOut || null,
     createdAt: new Date().toISOString(),
   };
   await sessionRef.set(session);
@@ -288,6 +369,9 @@ function formatSessionPayload(session) {
     guestName: session.guestName,
     guestLocale: session.guestLocale || null,
     inviteToken: session.inviteToken || null,
+    checkIn: session.checkIn || null,
+    checkOut: session.checkOut || null,
+    preArrivalComplete: session.preArrivalComplete === true,
   };
 }
 
@@ -299,7 +383,7 @@ async function sessionMatchesInviteToken(firestore, propertyId, typeId, session,
 }
 
 async function houseGuestBookingAllowsAccess(firestore, session) {
-  if (!session?.bookingId) return { allowed: true };
+  if (!session?.bookingId) return { allowed: true, booking: null };
   const booking = await getBookingById(
     firestore,
     session.propertyId,
@@ -307,9 +391,9 @@ async function houseGuestBookingAllowsAccess(firestore, session) {
     session.bookingId
   );
   if (!isBookingPortalAccessAllowed(booking)) {
-    return { allowed: false, reason: "booking_cancelled" };
+    return { allowed: false, reason: "booking_cancelled", booking };
   }
-  return { allowed: true };
+  return { allowed: true, booking };
 }
 
 function isGuestPortalAccessControlEnabled(propertyData) {
@@ -400,7 +484,15 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
     }
     return {
       valid: true,
-      session: formatSessionPayload(session),
+      session: formatSessionPayload({
+        ...session,
+        preArrivalComplete: Boolean(
+          bookingAccess.booking?.preArrivalComplete || session.preArrivalComplete
+        ),
+      }),
+      preArrivalComplete: Boolean(
+        bookingAccess.booking?.preArrivalComplete || session.preArrivalComplete
+      ),
     };
   });
 
@@ -831,15 +923,29 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
       throw new HttpsError("invalid-argument", "Missing property or unit.");
     }
 
-    const { checkInDay, checkOutDay } = parseGuestCheckInDates(checkIn, checkOut);
-
     const propSnap = await firestore.collection("properties").doc(propertyId).get();
     if (!propSnap.exists) throw new HttpsError("not-found", "Property not found.");
-    if (!isPreArrivalCheckInEnabled(propSnap.data())) {
+    const property = propSnap.data();
+    if (!isPreArrivalCheckInEnabled(property)) {
       throw new HttpsError(
         "failed-precondition",
         "Online check-in is not enabled for this property."
       );
+    }
+
+    const calendarSyncEnabled = isCalendarSyncEnabled(property);
+    const { checkInDay, checkOutDay } = parseGuestCheckInDates(checkIn, checkOut, {
+      requireUpcomingCheckIn: !calendarSyncEnabled,
+    });
+
+    if (!calendarSyncEnabled) {
+      return createStandalonePreArrivalSession(firestore, {
+        propertyId,
+        typeId,
+        checkInDay,
+        checkOutDay,
+        existingSessionId,
+      });
     }
 
     const matches = await findPreArrivalDateMatchesAcrossProperty(

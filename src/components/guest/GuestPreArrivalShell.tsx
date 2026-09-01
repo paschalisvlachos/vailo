@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarDays, Home } from 'lucide-react';
 import { formatBookingDateRange, resolveGuestDisplayName } from '../../lib/syncedBooking';
@@ -7,6 +7,7 @@ import type { GuestPortalSession } from '../../lib/guestAccess';
 import { isPreArrivalPortalView, clearPreArrivalViewIntent } from '../../lib/guestPreArrival';
 import type { PreArrivalSubmission } from '../../lib/syncedBooking';
 import GuestPreArrivalForm from './GuestPreArrivalForm';
+import GuestCheckInDiscoverNotes from './GuestCheckInDiscoverNotes';
 
 type BookingSummary = {
   start?: string;
@@ -34,6 +35,10 @@ type Props = {
   booking?: BookingSummary | null;
   /** Open date lookup flow — lets guest re-enter stay dates. */
   onChangeDates?: () => void;
+  /** Close overlay / return to portal home without requiring ?view=preArrival. */
+  onBackToPortal?: () => void;
+  backToPortalLabel?: string;
+  onSubmitted?: (submission: PreArrivalSubmission) => void;
 };
 
 export default function GuestPreArrivalShell({
@@ -48,7 +53,11 @@ export default function GuestPreArrivalShell({
   transferOffer,
   booking,
   onChangeDates,
+  onBackToPortal,
+  backToPortalLabel,
+  onSubmitted,
 }: Props) {
+  const [formComplete, setFormComplete] = useState(booking?.preArrivalComplete === true);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -67,17 +76,24 @@ export default function GuestPreArrivalShell({
     session.guestName,
   ]);
 
-  const stayLabel = formatBookingDateRange(booking?.start, booking?.end);
+  const stayStart = booking?.start || session.checkIn || undefined;
+  const stayEnd = booking?.end || session.checkOut || undefined;
+  const stayLabel =
+    stayStart && stayEnd ? formatBookingDateRange(stayStart, stayEnd) : '';
 
   const openFullPortal = () => {
     clearPreArrivalViewIntent(propertyId, typeId);
+    if (onBackToPortal) {
+      onBackToPortal();
+      return;
+    }
     const next = new URLSearchParams(searchParams);
     next.delete('view');
     const qs = next.toString();
     navigate({ search: qs ? `?${qs}` : '' }, { replace: true });
   };
 
-  if (!isPreArrivalPortalView(searchParams.get('view'))) {
+  if (!onBackToPortal && !isPreArrivalPortalView(searchParams.get('view'))) {
     return null;
   }
 
@@ -127,16 +143,25 @@ export default function GuestPreArrivalShell({
           existingSubmission={booking?.preArrivalSubmission}
           preArrivalComplete={booking?.preArrivalComplete}
           transferOffer={transferOffer}
+          onSubmitted={(submission) => {
+            setFormComplete(true);
+            onSubmitted?.(submission);
+          }}
+          onExplorePortal={onBackToPortal ? openFullPortal : undefined}
         />
 
-        <button
-          type="button"
-          onClick={openFullPortal}
-          className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-[#0B4F5C]/15 bg-white px-4 py-3.5 text-sm font-semibold text-[#0B4F5C] shadow-sm hover:bg-[#0B4F5C]/[0.03] transition-colors"
-        >
-          <Home size={16} />
-          Open full guest portal
-        </button>
+        {!formComplete && <GuestCheckInDiscoverNotes className="mt-6" />}
+
+        {(!formComplete || !onBackToPortal) && (
+          <button
+            type="button"
+            onClick={openFullPortal}
+            className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-2xl border border-[#0B4F5C]/15 bg-white px-4 py-3.5 text-sm font-semibold text-[#0B4F5C] shadow-sm hover:bg-[#0B4F5C]/[0.03] transition-colors"
+          >
+            <Home size={16} />
+            {backToPortalLabel || 'Back to guest portal'}
+          </button>
+        )}
       </div>
     </div>
   );

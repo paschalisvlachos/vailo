@@ -18,6 +18,7 @@ const {
 const idDocEncryptionKey = defineSecret("GUEST_ID_DOCUMENT_ENCRYPTION_KEY");
 
 const PRE_ARRIVAL_SPECIAL_REQUESTS_MAX = 2000;
+const PRE_ARRIVAL_TAX_ID_MAX = 20;
 const PRE_ARRIVAL_GUEST_COUNT_MAX = 30;
 const PRE_ARRIVAL_ID_MAX_BYTES = 5 * 1024 * 1024;
 const PRE_ARRIVAL_TRANSFER_PRICE_MAX = 9999;
@@ -59,6 +60,7 @@ function buildPreArrivalSubmissionRecord(input, extras = {}) {
     ...(input.guestCountry ? { guestCountry: input.guestCountry } : {}),
     ...(input.contactEmail ? { contactEmail: input.contactEmail } : {}),
     ...(input.dateOfBirth ? { dateOfBirth: input.dateOfBirth } : {}),
+    ...(input.taxId ? { taxId: input.taxId } : {}),
     ...(input.specialRequests ? { specialRequests: input.specialRequests } : {}),
     ...(input.houseRulesLocale ? { houseRulesLocale: input.houseRulesLocale } : {}),
     ...(extras.idDocument ? { idDocument: extras.idDocument } : {}),
@@ -251,6 +253,16 @@ function validateSubmissionInput(data) {
     }
   }
 
+  const taxId = String(data.taxId || "").trim().replace(/\s+/g, "");
+  if (taxId) {
+    if (taxId.length > PRE_ARRIVAL_TAX_ID_MAX || !/^[A-Za-z0-9./-]{5,20}$/.test(taxId)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Please enter a valid TIN / AFM, or leave the field empty."
+      );
+    }
+  }
+
   return {
     guestFirstName,
     guestLastName,
@@ -261,6 +273,7 @@ function validateSubmissionInput(data) {
     contactPhone,
     contactEmail: contactEmail || undefined,
     dateOfBirth: dateOfBirth || undefined,
+    taxId: taxId || undefined,
     specialRequests: specialRequests || undefined,
     houseRulesLocale: String(data.houseRulesLocale || "").trim() || undefined,
     transferRequested: data.transferRequested === true,

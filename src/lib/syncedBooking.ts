@@ -32,6 +32,8 @@ export type PreArrivalSubmission = {
   contactEmail?: string;
   /** ISO date YYYY-MM-DD */
   dateOfBirth?: string;
+  /** Tax Identification Number (TIN / AFM). Optional. */
+  taxId?: string;
   specialRequests?: string;
   acceptedHouseRulesAt: string;
   houseRulesLocale?: string;

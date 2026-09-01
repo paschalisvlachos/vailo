@@ -3,6 +3,7 @@ import type { PreArrivalIdDetails, PreArrivalSubmission } from './syncedBooking'
 import type { PreArrivalTransferOffer } from './preArrivalSettings';
 
 export const PRE_ARRIVAL_SPECIAL_REQUESTS_MAX = 2000;
+export const PRE_ARRIVAL_TAX_ID_MAX = 20;
 export const PRE_ARRIVAL_GUEST_COUNT_MAX = 30;
 export const PRE_ARRIVAL_ID_MAX_BYTES = 5 * 1024 * 1024;
 export const PRE_ARRIVAL_ID_MAX_MB = 5;
@@ -59,6 +60,7 @@ export type PreArrivalFormInput = {
   contactPhone: string;
   contactEmail: string;
   dateOfBirth: string;
+  taxId: string;
   specialRequests: string;
   acceptedHouseRules: boolean;
   transferRequested: boolean;
@@ -94,6 +96,17 @@ export function guestFullNameFromSubmission(
     return buildGuestFullName(submission.guestFirstName, submission.guestLastName);
   }
   return '';
+}
+
+export function normalizePreArrivalTaxId(value: string): string {
+  return value.trim().replace(/\s+/g, '');
+}
+
+function isValidOptionalTaxId(value: string): boolean {
+  const trimmed = normalizePreArrivalTaxId(value);
+  if (!trimmed) return true;
+  if (trimmed.length > PRE_ARRIVAL_TAX_ID_MAX) return false;
+  return /^[A-Za-z0-9./-]{5,20}$/.test(trimmed);
 }
 
 function isValidOptionalEmail(value: string): boolean {
@@ -193,6 +206,10 @@ export function validatePreArrivalForm(input: PreArrivalFormInput): string | nul
 
   if (!isValidOptionalDateOfBirth(input.dateOfBirth)) {
     return 'Please enter a valid date of birth, or leave the field empty.';
+  }
+
+  if (!isValidOptionalTaxId(input.taxId)) {
+    return 'Please enter a valid TIN / AFM, or leave the field empty.';
   }
 
   return null;
@@ -404,6 +421,7 @@ export function buildPreArrivalSubmissionPayload(
   const requests = input.specialRequests.trim();
   const email = input.contactEmail.trim();
   const dob = input.dateOfBirth.trim();
+  const taxId = normalizePreArrivalTaxId(input.taxId);
   return {
     submittedAt: now,
     guestFirstName: input.guestFirstName.trim(),
@@ -414,6 +432,7 @@ export function buildPreArrivalSubmissionPayload(
     contactPhone: input.contactPhone.trim(),
     contactEmail: email || undefined,
     dateOfBirth: dob || undefined,
+    taxId: taxId || undefined,
     specialRequests: requests || undefined,
     acceptedHouseRulesAt: now,
     houseRulesLocale: houseRulesLocale?.trim() || undefined,
@@ -474,6 +493,7 @@ export function preArrivalFormDefaults(options: {
     contactPhone: phone,
     contactEmail: email,
     dateOfBirth: existing?.dateOfBirth || '',
+    taxId: existing?.taxId || '',
     specialRequests: existing?.specialRequests || '',
     acceptedHouseRules: Boolean(existing?.acceptedHouseRulesAt),
     transferRequested: existing?.transferRequested === true,

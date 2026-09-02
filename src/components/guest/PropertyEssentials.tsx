@@ -20,6 +20,7 @@ import {
   MessageCircleQuestion,
   ShoppingBag,
   Car,
+  Info,
   ChevronDown,
   Bot,
 } from 'lucide-react';
@@ -63,6 +64,7 @@ const ICONS: Record<string, ReactNode> = {
   MessageCircleQuestion: <MessageCircleQuestion size={18} />,
   ShoppingBag: <ShoppingBag size={18} />,
   Car: <Car size={18} />,
+  Info: <Info size={18} />,
 };
 
 export default function PropertyEssentials({

@@ -38,7 +38,8 @@ export type FeaturedKey =
   | 'devices'
   | 'faq'
   | 'daily-needs'
-  | 'transportation';
+  | 'transportation'
+  | 'general-info';
 
 export type FeaturedConfig = {
   id: FeaturedKey;
@@ -66,7 +67,8 @@ export type FeaturedConfig = {
     | 'Wrench'
     | 'MessageCircleQuestion'
     | 'ShoppingBag'
-    | 'Car';
+    | 'Car'
+    | 'Info';
   /** Admin CategoryDef.id values that feed this featured key. */
   sourceCategoryIds: string[];
 };
@@ -211,6 +213,13 @@ export const FEATURED_CONFIGS: FeaturedConfig[] = [
     description: 'Airport transfers, taxis, public transport, and parking.',
     iconName: 'Car',
     sourceCategoryIds: ['transportation'],
+  },
+  {
+    id: 'general-info',
+    title: 'General Info',
+    description: 'Notes that do not belong in another section.',
+    iconName: 'Info',
+    sourceCategoryIds: ['general'],
   },
 ];
 

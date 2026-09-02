@@ -29,6 +29,7 @@ import {
   MessageCircleQuestion,
   ShoppingBag,
   Car,
+  Info,
   Compass,
 } from 'lucide-react';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
@@ -67,6 +68,7 @@ const FEATURED_ICONS: Record<string, ReactNode> = {
   MessageCircleQuestion: <MessageCircleQuestion size={20} />,
   ShoppingBag: <ShoppingBag size={20} />,
   Car: <Car size={20} />,
+  Info: <Info size={20} />,
 };
 
 type IconVariant = 'gold' | 'bot' | 'featured' | 'excursions' | 'saved';

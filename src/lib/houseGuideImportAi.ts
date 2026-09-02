@@ -286,7 +286,7 @@ export async function analyzeHouseGuideImport(opts: {
   const targetLocale = normalizeLocaleCode(opts.contentLocale) || 'en';
   const targetLabel = guestLocaleDisplayName(targetLocale);
 
-  const prompt = `You are a vacation-rental house guide organiser. Read the SOURCE MATERIAL and split it into the correct House Guide categories and fields.
+  const prompt = `You are a vacation-rental house guide organiser. Read the SOURCE MATERIAL and split it into the correct House Guide categories and fields. Put leftover facts that do not match any dedicated section into General Info (categoryId "general", fieldId "generalInfo").
 
 TARGET LANGUAGE (mandatory): ${targetLabel} (${targetLocale})
 - Write ALL output text in ${targetLabel}: summary, assignment "content", array item strings, and question "content".
@@ -306,6 +306,8 @@ RULES:
 - For array_maps in waste/supplies: prefer titles from ${HOUSE_GUIDE_WASTE_OPTIONS.join(', ')} or ${HOUSE_GUIDE_USEFUL_MAP_OPTIONS.join(', ')} when they fit.
 - For array_maps in transportation: prefer titles from ${HOUSE_GUIDE_TRANSPORTATION_OPTIONS.join(', ')} when they fit.
 - For array_faqs: return question / answer pairs.
+- Prefer the most specific catalog field. Use categoryId "general" / fieldId "generalInfo" only as a catch-all for leftover notes that truly do not belong anywhere else (host preferences, neighborhood quirks, miscellaneous policies). Never put check-in, check-out, Wi-Fi, appliances, house rules, or safety instructions in generalInfo when a dedicated field exists.
+- Do not confuse generalInfo with dailyNeedsInfo, transportationInfo, or supplies fieldId "generalItems" (physical leftover household items). If a leftover snippet is a real guest-facing fact but has no dedicated field, assign it to generalInfo instead of leaving it only in questions.
 - mergeMode: "append" when adding to typical instructions; "replace" only if the source clearly supersedes prior info.
 - confidence: "high" when category+field are obvious; "medium" when reasonable; "low" when ambiguous.
 - Put ambiguous snippets in "questions" (not assignments) with suggestedCategoryId / suggestedFieldId when possible.

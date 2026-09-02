@@ -332,6 +332,21 @@ export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
       },
     ],
   },
+  {
+    id: 'general',
+    title: '22. General Info',
+    iconName: 'Info',
+    description: 'Anything that does not belong in another section — leftover notes for guests.',
+    fields: [
+      {
+        id: 'generalInfo',
+        label: 'General Information',
+        type: 'textarea',
+        placeholder:
+          'Anything guests should know that does not fit Arrival, Rules, Kitchen, or other sections…',
+      },
+    ],
+  },
 ];
 
 /** Guest-facing title without admin numbering prefix. */

@@ -36,7 +36,7 @@ export default function DashboardPage() {
         {[
           { icon: Building2, label: 'Properties', to: adminPath('/properties'), desc: 'Portfolio & guest portals' },
           { icon: Users, label: 'Owners CRM', to: adminPath('/owners'), desc: 'Agents, owners & providers' },
-          { icon: Compass, label: 'Excursions', to: adminPath('/excursions/providers'), desc: 'Providers & catalog' },
+          { icon: Compass, label: 'Arrange and Book', to: adminPath('/excursions/providers'), desc: 'Providers & services' },
           { icon: Globe, label: 'Area data', to: adminPath('/area'), desc: 'Gems, features, AI rules' },
           { icon: Sparkles, label: 'Billing', to: adminPath('/billing'), desc: 'API usage & costs' },
         ].map((item) => (

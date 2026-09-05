@@ -28,6 +28,14 @@ import {
   type ExcursionProviderStatus,
 } from '../../../lib/excursionProvider';
 import { adminExcursionsListPath } from '../../../lib/excursion';
+import {
+  ARRANGE_AND_BOOK_CATEGORIES,
+  arrangeAndBookCategoryById,
+  formatProviderServicesSummary,
+  providerOffersCategory,
+  providerOffersSubcategory,
+} from '../../../lib/arrangeAndBook';
+import { inferServicesFromOfferings } from '../../../lib/excursionCategories';
 import AdminPageHeader, {
   AdminButtonLink,
   AdminCard,
@@ -53,12 +61,18 @@ function StatusBadge({ status }: { status: ExcursionProviderStatus }) {
 
 export default function ExcursionProvidersPage() {
   const toast = useToast();
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterSubcategory, setFilterSubcategory] = useState('');
+  const categoryMeta = arrangeAndBookCategoryById(filterCategory);
   const [providers, setProviders] = useState<ExcursionProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [countries, setCountries] = useState<string[]>([]);
   const [filterCountry, setFilterCountry] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [excursionCounts, setExcursionCounts] = useState<Record<string, number>>({});
+  const [offeringCategoriesByProvider, setOfferingCategoriesByProvider] = useState<
+    Record<string, string[][]>
+  >({});
   const [portalUsersById, setPortalUsersById] = useState<
     Record<string, { fullName: string; email: string }>
   >({});
@@ -116,22 +130,60 @@ export default function ExcursionProvidersPage() {
   useEffect(() => {
     const unsub = onSnapshot(collectionGroup(db, EXCURSION_SUBCOLLECTION), (snapshot) => {
       const counts: Record<string, number> = {};
+      const categories: Record<string, string[][]> = {};
       snapshot.docs.forEach((d) => {
         const providerId = d.ref.parent.parent?.id;
         if (!providerId) return;
         counts[providerId] = (counts[providerId] || 0) + 1;
+        const raw = d.data().categories;
+        categories[providerId] = [
+          ...(categories[providerId] || []),
+          Array.isArray(raw) ? raw.map(String) : [],
+        ];
       });
       setExcursionCounts(counts);
+      setOfferingCategoriesByProvider(categories);
     });
     return () => unsub();
   }, []);
+
+  const inferredServicesByProvider = useMemo(() => {
+    const map: Record<string, { serviceCategoryIds: string[]; serviceSubcategoryIds: string[] }> =
+      {};
+    for (const provider of providers) {
+      const id = provider.id;
+      if (!id) continue;
+      const offerings = (offeringCategoriesByProvider[id] || []).map((categories) => ({
+        categories,
+      }));
+      const inferred = inferServicesFromOfferings(offerings);
+      map[id] = {
+        serviceCategoryIds: inferred.categoryIds,
+        serviceSubcategoryIds: inferred.subcategoryIds,
+      };
+    }
+    return map;
+  }, [providers, offeringCategoriesByProvider]);
 
   const filtered = useMemo(() => {
     return providers
       .filter((p) => providerOperatesInCountry(p, filterCountry))
       .filter((p) => !filterStatus || p.status === filterStatus)
+      .filter((p) =>
+        providerOffersCategory(inferredServicesByProvider[p.id || ''] || {}, filterCategory)
+      )
+      .filter((p) =>
+        providerOffersSubcategory(inferredServicesByProvider[p.id || ''] || {}, filterSubcategory)
+      )
       .sort((a, b) => (a.businessName || '').localeCompare(b.businessName || ''));
-  }, [providers, filterCountry, filterStatus]);
+  }, [
+    providers,
+    filterCountry,
+    filterStatus,
+    filterCategory,
+    filterSubcategory,
+    inferredServicesByProvider,
+  ]);
 
   const handleDelete = async (provider: ExcursionProvider) => {
     const providerId = provider.id;
@@ -140,7 +192,7 @@ export default function ExcursionProvidersPage() {
     const linkedCount = excursionCounts[providerId] || 0;
     if (linkedCount > 0) {
       toast.error(
-        `Cannot delete "${provider.businessName}" — ${linkedCount} excursion${linkedCount !== 1 ? 's are' : ' is'} still linked. Remove all excursions first.`
+        `Cannot delete "${provider.businessName}" — ${linkedCount} listing${linkedCount !== 1 ? 's are' : ' is'} still linked. Remove all listings first.`
       );
       return;
     }
@@ -160,7 +212,7 @@ export default function ExcursionProvidersPage() {
       );
       if (countSnap.data().count > 0) {
         toast.error(
-          `Cannot delete "${provider.businessName}" — excursions were added since the list loaded. Remove all excursions first.`
+          `Cannot delete "${provider.businessName}" — listings were added since the list loaded. Remove all listings first.`
         );
         return;
       }
@@ -182,8 +234,8 @@ export default function ExcursionProvidersPage() {
   return (
     <div className="admin-page">
       <AdminPageHeader
-        title="Excursion Providers"
-        description="Manage tour operators and excursion businesses by area. Commission and contract fields are admin-only."
+        title="Providers"
+        description="Add each business once. Tag categories on the listings they offer, not on the provider."
         icon={<Compass size={26} />}
         action={
           <AdminButtonLink to={adminPath('/excursions/providers/add')} className="w-full sm:w-auto">
@@ -193,7 +245,7 @@ export default function ExcursionProvidersPage() {
       />
 
       <AdminCard className="p-4 sm:p-5 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <AdminLabel htmlFor="filterCountry">Filter by country</AdminLabel>
             <AdminSelect
@@ -222,6 +274,41 @@ export default function ExcursionProvidersPage() {
               <option value="suspended">Suspended</option>
             </AdminSelect>
           </div>
+          <div>
+            <AdminLabel htmlFor="filterCategory">Filter by category</AdminLabel>
+            <AdminSelect
+              id="filterCategory"
+              value={filterCategory}
+              onChange={(e) => {
+                setFilterCategory(e.target.value);
+                setFilterSubcategory('');
+              }}
+            >
+              <option value="">All categories</option>
+              {ARRANGE_AND_BOOK_CATEGORIES.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.label}
+                </option>
+              ))}
+            </AdminSelect>
+          </div>
+          {categoryMeta && (
+            <div>
+              <AdminLabel htmlFor="filterSubcategory">Filter by service</AdminLabel>
+              <AdminSelect
+                id="filterSubcategory"
+                value={filterSubcategory}
+                onChange={(e) => setFilterSubcategory(e.target.value)}
+              >
+                <option value="">All {categoryMeta.label.toLowerCase()}</option>
+                {categoryMeta.subcategories.map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.label}
+                  </option>
+                ))}
+              </AdminSelect>
+            </div>
+          )}
           <div className="flex items-end">
             <p className="text-sm text-gray-500">
               {filtered.length} provider{filtered.length !== 1 ? 's' : ''}
@@ -233,8 +320,12 @@ export default function ExcursionProvidersPage() {
       {filtered.length === 0 ? (
         <AdminEmptyState
           icon={<Compass size={32} />}
-          title="No excursion providers yet"
-          description="Add a tour operator or excursion business to start building your catalog."
+          title={categoryMeta ? `No ${categoryMeta.label.toLowerCase()} providers` : 'No providers yet'}
+          description={
+            categoryMeta
+              ? 'No provider is tagged with this category yet. Edit a provider and select the services they offer.'
+              : 'Add a business once, then tag every Arrange and Book service they offer.'
+          }
           action={
             <AdminButtonLink to={adminPath('/excursions/providers/add')}>
               <Plus size={18} /> Add Provider
@@ -249,10 +340,11 @@ export default function ExcursionProvidersPage() {
                 <tr className="border-b border-gray-100 bg-vailo-surface-elevated/80 text-left">
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Business</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Regions</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Services</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Contact</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Portal user</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Commission</th>
-                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Excursions</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Listings</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Status</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600 text-right">
                     Actions
@@ -304,6 +396,14 @@ export default function ExcursionProvidersPage() {
                       )}
                     </td>
                     <td className="px-4 sm:px-6 py-4 text-gray-600">
+                      <p>
+                        {formatProviderServicesSummary(
+                          inferredServicesByProvider[provider.id || ''] || {},
+                          { offeringCount: excursionCounts[provider.id || ''] || 0 }
+                        )}
+                      </p>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 text-gray-600">
                       <p>{provider.email || '—'}</p>
                       <p className="text-xs text-gray-400">{provider.phone || provider.whatsapp || ''}</p>
                     </td>
@@ -331,7 +431,7 @@ export default function ExcursionProvidersPage() {
                         to={adminPath(adminExcursionsListPath(provider.id!))}
                         className="font-medium text-vailo-teal hover:underline tabular-nums"
                       >
-                        {linkedExcursions} excursion{linkedExcursions !== 1 ? 's' : ''}
+                        {linkedExcursions} listing{linkedExcursions !== 1 ? 's' : ''}
                       </Link>
                     </td>
                     <td className="px-4 sm:px-6 py-4">
@@ -358,7 +458,7 @@ export default function ExcursionProvidersPage() {
                           title={
                             canDelete
                               ? 'Delete provider'
-                              : `Cannot delete — ${linkedExcursions} excursion${linkedExcursions !== 1 ? 's' : ''} linked. Remove them first.`
+                              : `Cannot delete — ${linkedExcursions} listing${linkedExcursions !== 1 ? 's' : ''} linked. Remove them first.`
                           }
                         >
                           <Trash2 size={16} />

@@ -9,38 +9,36 @@ type Props = {
 export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props) {
   const { t } = useGuestLocale();
   return (
-    <div className="text-center pt-5 pb-2 border-t border-gray-200/50 !mt-6">
+    <footer className="text-center pt-3 pb-1 !mt-3">
+      <div className="mb-2.5 flex items-center gap-3" aria-hidden>
+        <span className="h-px flex-1 bg-gradient-to-r from-transparent to-[#C5A059]/35" />
+        <span className="h-1.5 w-1.5 rotate-45 border border-[#C5A059]/60" />
+        <span className="h-px flex-1 bg-gradient-to-l from-transparent to-[#C5A059]/35" />
+      </div>
       <nav
-        className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mb-3"
+        className="flex items-center justify-center gap-3"
         aria-label="Legal"
       >
         <button
           type="button"
           onClick={onPrivacyClick}
-          className="text-sm font-bold uppercase tracking-[0.1em] text-[#0B4F5C] hover:text-[#C5A059] underline-offset-4 hover:underline transition-colors min-h-[44px] px-1"
+          className="min-h-[36px] px-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#0A4544]/65 transition-colors hover:text-[#B08B46]"
         >
           Privacy Policy
         </button>
-        <span className="text-gray-300 text-sm" aria-hidden>
-          |
+        <span className="h-1 w-1 rounded-full bg-[#C5A059]/55" aria-hidden>
         </span>
         <button
           type="button"
           onClick={onTermsClick}
-          className="text-sm font-bold uppercase tracking-[0.1em] text-[#0B4F5C] hover:text-[#C5A059] underline-offset-4 hover:underline transition-colors min-h-[44px] px-1"
+          className="min-h-[36px] px-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#0A4544]/65 transition-colors hover:text-[#B08B46]"
         >
           {t('termsOfUse')}
         </button>
       </nav>
-      <img
-        src="/vailoLogo.png"
-        alt="Vailo"
-        className="h-7 w-auto mx-auto mb-1.5 opacity-40 grayscale hover:grayscale-0 hover:opacity-70 transition-all"
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
-        }}
-      />
-      <p className="guest-eyebrow text-gray-400">Powered by Vailo</p>
-    </div>
+      <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-[#8E8A82]/55">
+        Powered by Vailo
+      </p>
+    </footer>
   );
 }

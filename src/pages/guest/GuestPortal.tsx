@@ -10,18 +10,13 @@ import LegalDocumentModal from '../../components/guest/LegalDocumentModal';
 import GuestLegalFooter from '../../components/guest/GuestLegalFooter';
 import GuestFloatingActions from '../../components/guest/GuestFloatingActions';
 import GuestReportIssueSheet from '../../components/guest/GuestReportIssueSheet';
-import PropertyEssentials from '../../components/guest/PropertyEssentials';
-import GuestLocalServices from '../../components/guest/GuestLocalServices';
-import GuestLanguageMenu from '../../components/guest/GuestLanguageMenu';
 import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet';
-import GuestGoogleRatingCard from '../../components/guest/GuestGoogleRatingCard';
 import GuestExcursionsPromoCard from '../../components/guest/GuestExcursionsPromoCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
+import GuestPortalHome from '../../components/guest/GuestPortalHome';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
 import GuestOpenPreArrivalFlow from '../../components/guest/GuestOpenPreArrivalFlow';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
-import GuestPortalNavMenu from '../../components/guest/GuestPortalNavMenu';
-import GuestFeaturedPreviewSheet from '../../components/guest/GuestFeaturedPreviewSheet';
 import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
 import MirroredPhotoImg from '../../components/shared/MirroredPhotoImg';
 import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
@@ -64,13 +59,11 @@ import {
 } from '../../lib/guestPortalSlug';
 import { adminPath } from '../../lib/adminRoutes';
 import { gemCategoryPrimaries } from '../../lib/categoryLocale';
-import { useSavedLocalGems } from '../../hooks/useSavedLocalGems';
 
 const RESERVED_PORTAL_SLUGS = new Set(['admin', 'app', 'website']);
 import { 
-  MapPin, Globe, ChevronDown, Navigation, 
-  Star, Sparkles, ClipboardCheck, CheckCircle2,
-  Wifi, Copy, Check, Map, Clock, Award
+  MapPin, Navigation, 
+  Star, Map, Clock, Award
 } from 'lucide-react';
 
 const GEMS_PAGE_SIZE = 5;
@@ -321,30 +314,6 @@ function GuestGemsGrid({
   );
 }
 
-function LiveLikeLocalCTA({
-  onActivate,
-  className,
-  children,
-}: {
-  onActivate: () => void;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const { track } = useGuestAnalytics();
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        track('live_like_local_open');
-        onActivate();
-      }}
-      className={className}
-    >
-      {children}
-    </button>
-  );
-}
-
 function GuestPortalPage({
   onSessionLocale,
   onContentLocaleSettings,
@@ -392,8 +361,6 @@ function GuestPortalPage({
   const [gemFilters, setGemFilters] = useState<string[]>([]);
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
-  const [portalMenuOpen, setPortalMenuOpen] = useState(false);
-  const [featuredPreviewKey, setFeaturedPreviewKey] = useState<FeaturedKey | null>(null);
   const [serviceDetailOpen, setServiceDetailOpen] = useState(false);
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
@@ -529,21 +496,16 @@ function GuestPortalPage({
   const showCheckInPromo = Boolean(preArrivalCheckInEnabled);
   const checkInContinue = Boolean(activeGuestSession?.bookingId) && !checkInComplete;
 
-  const openLiveLikeLocal = useCallback(() => setActiveView('aiExpert'), []);
-  const openAssistant = useCallback(() => setActiveView('assistant'), []);
   const { track } = useGuestAnalytics();
+  const openLiveLikeLocal = useCallback(() => {
+    track('live_like_local_open');
+    setActiveView('aiExpert');
+  }, [track]);
+  const openAssistant = useCallback(() => setActiveView('assistant'), []);
   const openExcursions = useCallback(() => {
     track('excursions_open');
     setActiveView('excursions');
   }, [track]);
-  const openSavedLocalGems = useCallback(() => setActiveView('savedGems'), []);
-  const { count: savedLocalGemsCount } = useSavedLocalGems(propertyId ?? undefined, typeId ?? undefined);
-  const savedLocalGemsMenuSub = useMemo(() => {
-    if (savedLocalGemsCount > 0) {
-      return guestUiTFormat(locale, 'savedLocalGemsMenuSub', { count: String(savedLocalGemsCount) });
-    }
-    return t('savedLocalGemsMenuSubEmpty');
-  }, [savedLocalGemsCount, locale, t]);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -821,6 +783,60 @@ function GuestPortalPage({
     [features]
   );
 
+  const checkoutDateLabel = useMemo(() => {
+    const end = preArrivalBooking?.end;
+    if (!end) return null;
+    const iso = String(end).slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(end);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' });
+  }, [preArrivalBooking?.end, locale]);
+
+  const excursionHeroUrl = useMemo(() => {
+    const withPhoto =
+      excursionListings.find((listing) => {
+        const excursion = listing.excursion;
+        const search = [
+          excursion.title,
+          excursion.subtitle,
+          ...(excursion.categories || []),
+        ]
+          .join(' ')
+          .toLowerCase();
+        return (
+          excursion.heroPhotoUrl?.trim() &&
+          /\b(boat|sail|sailing|yacht|cruise|sea|marine|catamaran)\b/.test(search)
+        );
+      }) ||
+      excursionListings.find((listing) => listing.excursion.heroPhotoUrl?.trim());
+    return withPhoto?.excursion.heroPhotoUrl?.trim();
+  }, [excursionListings]);
+
+  const liveLikeLocalHeroUrl = useMemo(() => {
+    const scenic = gems.find((gem) => {
+      const search = [
+        gem.name,
+        gem.category,
+        ...(Array.isArray(gem.categories) ? gem.categories : []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return (
+        gem.photoUrl &&
+        /\b(village|harbour|harbor|old town|coast|viewpoint|scenic|landmark|beach)\b/.test(search)
+      );
+    });
+    const picked =
+      scenic ||
+      gems.find((gem) => gem.isLegitPick && gem.photoUrl) ||
+      gems.find((gem) => gem.photoUrl);
+    return typeof picked?.photoUrl === 'string' ? picked.photoUrl : undefined;
+  }, [gems]);
+
+  const showHomeLocalGems = false;
+  const showHomeFloatingActions = false;
+
   if (resolving) return <GuestPortalLoadingScreen status={t('preparingStay')} />;
   if (error) return (
     <div className="min-h-screen flex items-center justify-center bg-[#F3F4F6] px-6 font-sans">
@@ -841,16 +857,16 @@ function GuestPortalPage({
           propertyFeatures={features}
         />
       ) : null}
-    <div className="min-h-screen bg-[#E8ECEB] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#F7F7F5] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
       <style>
         {`
-          .font-luxury { font-family: 'Lora', serif; }
-          .font-sans { font-family: 'DM Sans', sans-serif; }
-          .hero-text-shadow { text-shadow: 0 2px 24px rgba(0,0,0,0.35); }
+          .font-luxury { font-family: 'Playfair Display', Georgia, serif; }
+          .font-sans { font-family: 'Montserrat', Arial, sans-serif; }
+          .hero-text-shadow { text-shadow: 0 2px 28px rgba(0,0,0,0.45); }
         `}
       </style>
 
-      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F3F4F6] overflow-x-hidden flex flex-col relative ${
+      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-hidden flex flex-col relative ${
         isMobileFramePreview
           ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
           : 'max-w-none min-h-screen'
@@ -858,261 +874,67 @@ function GuestPortalPage({
         
         {activeView === 'portal' ? (
           <>
-            {/* ── HERO: tall property photo (to mid Live like a local) + CTA ── */}
-            <section className="relative z-10">
-              <div className={`relative ${isMobileFramePreview ? 'md:rounded-t-[30px] overflow-hidden' : ''}`}>
-                {/* Photo height = full block minus half of Live like a local (min-h 72px → 2.25rem) */}
-                <div className="absolute inset-x-0 top-0 z-0 h-[calc(100%-2.25rem)] overflow-hidden">
-                  {heroPhoto ? (
-                    <MirroredPhotoImg
-                      src={heroPhoto}
-                      alt={typeData?.propertyTypeName || property?.propertyName || 'Your stay'}
-                      className="w-full h-full object-cover object-[center_30%]"
-                      mirrorContext={
-                        propertyId && typeId
-                          ? {
-                              propertyId,
-                              propertyTypeId: typeId,
-                              googlePlaceId: typeData?.googlePlaceId,
-                            }
-                          : undefined
-                      }
-                      fallback={
-                        <div className="w-full h-full bg-gradient-to-br from-vailo-teal via-[#083A43] to-[#051F26]" />
-                      }
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-vailo-teal via-[#083A43] to-[#051F26]" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/20 to-[#F3F4F6]/95" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#051F26]/75 via-transparent to-black/35" />
-                </div>
-
-                <div className={`relative z-10 mx-auto px-4 sm:px-5 pt-5 min-h-[360px] sm:min-h-[400px] flex flex-col ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
-                  {pwaInstall.showBanner && (
-                    <GuestAddToHomeBanner
-                      t={t}
-                      canPromptNative={pwaInstall.canPromptNative}
-                      onDismiss={pwaInstall.dismiss}
-                      onInstall={pwaInstall.promptInstall}
-                      propertyLabel={
-                        property?.propertyName && typeData?.propertyTypeName
-                          ? `${property.propertyName} · ${typeData.propertyTypeName}`
-                          : property?.propertyName
-                      }
-                    />
-                  )}
-
-                  {/* Top bar */}
-                  <div className="flex justify-between items-center mb-auto">
-                    <GuestPortalNavMenu
-                      open={portalMenuOpen}
-                      onOpenChange={setPortalMenuOpen}
-                      t={t}
-                      featuredOnPortal={featuredOnPortal}
-                      previews={featuredPreviews}
-                      onFeaturedPreview={setFeaturedPreviewKey}
-                      onLiveLikeLocal={openLiveLikeLocal}
-                      onAssistant={openAssistant}
-                      showExcursions={showExcursionsPromo}
-                      onExcursions={openExcursions}
-                      onSavedLocalGems={openSavedLocalGems}
-                      savedLocalGemsMenuSub={savedLocalGemsMenuSub}
-                    />
-                    <div className="flex items-center gap-2">
-                      <GuestLanguageMenu
-                        locale={locale}
-                        onChange={setLocale}
-                        options={localeOptions}
-                        dismissOpen={portalMenuOpen}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => hasPropertyCoords && setPropertyMapOpen(true)}
-                        disabled={!hasPropertyCoords}
-                        className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[40px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-xs font-semibold uppercase tracking-wider hover:bg-white/20 transition-all disabled:opacity-40 disabled:pointer-events-none"
-                      >
-                        <MapPin size={14} className="text-[#C5A059]" />
-                        {t('map')}
-                      </button>
-                      {websiteUrl && (
-                        <button
-                          type="button"
-                          onClick={() => openExternalUrl(websiteUrl)}
-                          className="flex items-center justify-center h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white hover:bg-white/20 transition-all"
-                          aria-label="Website"
-                        >
-                          <Globe size={15} className="text-[#C5A059]" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Hero copy */}
-                  <div className="mt-8 text-center hero-text-shadow">
-                    <p className="guest-eyebrow text-white/90 mb-2">{t('welcomeTo')}</p>
-                    <h1 className="font-luxury text-[1.625rem] sm:text-[2rem] md:text-4xl text-white leading-[1.12] font-medium">
-                      {property?.propertyName}
-                    </h1>
-                    {typeData?.propertyTypeName && (
-                      <p className="font-luxury text-base sm:text-lg text-white/85 mt-2 italic">
-                        {typeData.propertyTypeName}
-                      </p>
-                    )}
-                    {heroLocation && (
-                      <p className="text-white/60 text-sm mt-3 flex items-center justify-center gap-1.5">
-                        <MapPin size={14} className="text-vailo-gold shrink-0" /> {heroLocation}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Check in (first) then Live like a local — photo ends at vertical midpoint */}
-                  <div className="mt-auto pt-6 space-y-3">
-                    {showCheckInPromo && (
-                      <button
-                        type="button"
-                        onClick={() => setCheckInOpen(true)}
-                        className={
-                          checkInComplete
-                            ? 'group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#0B4F5C]/50 via-[#C5A059]/35 to-[#0B4F5C]/50 shadow-[0_8px_32px_rgba(11,79,92,0.18)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.24)] transition-all duration-300 hover:-translate-y-0.5'
-                            : 'group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059] via-[#e0c078] to-[#C5A059] shadow-[0_8px_32px_rgba(197,160,89,0.35)] hover:shadow-[0_12px_40px_rgba(197,160,89,0.45)] transition-all duration-300 hover:-translate-y-0.5'
-                        }
-                      >
-                        <div
-                          className={
-                            checkInComplete
-                              ? 'rounded-[0.9rem] bg-white/95 px-4 py-4 min-h-[72px] flex items-center justify-between gap-2'
-                              : 'rounded-[0.9rem] bg-[#C5A059] px-4 py-4 min-h-[72px] flex items-center justify-between gap-2'
-                          }
-                        >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div
-                              className={
-                                checkInComplete
-                                  ? 'h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0'
-                                  : 'h-12 w-12 rounded-xl bg-[#051F26]/15 flex items-center justify-center shrink-0'
-                              }
-                            >
-                              {checkInComplete ? (
-                                <CheckCircle2 size={22} className="text-emerald-600" />
-                              ) : (
-                                <ClipboardCheck size={22} className="text-[#051F26]" />
-                              )}
-                            </div>
-                            <div className="text-left min-w-0">
-                              <p
-                                className={
-                                  checkInComplete
-                                    ? 'font-luxury text-[#0B4F5C] text-base font-semibold leading-tight tracking-wide'
-                                    : 'font-luxury text-[#051F26] text-base font-semibold leading-tight tracking-wide'
-                                }
-                              >
-                                {checkInComplete
-                                  ? t('checkInPromoDoneTitle')
-                                  : checkInContinue
-                                    ? t('checkInPromoContinue')
-                                    : t('checkInPromoTitle')}
-                              </p>
-                              <p
-                                className={
-                                  checkInComplete
-                                    ? 'text-gray-500 text-sm mt-0.5 leading-snug font-medium'
-                                    : 'text-[#051F26]/75 text-sm mt-0.5 leading-snug font-medium'
-                                }
-                              >
-                                {checkInComplete ? t('checkInPromoDoneSub') : t('checkInPromoSub')}
-                              </p>
-                            </div>
-                          </div>
-                          <div
-                            className={
-                              checkInComplete
-                                ? 'h-10 w-10 shrink-0 rounded-xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/12 flex items-center justify-center text-[#0B4F5C]/80 group-hover:bg-[#0B4F5C]/12 transition-colors'
-                                : 'h-10 w-10 shrink-0 rounded-xl bg-[#051F26]/10 flex items-center justify-center text-[#051F26]/80 group-hover:bg-[#051F26]/15 transition-colors'
-                            }
-                          >
-                            <ChevronDown size={20} className="-rotate-90" />
-                          </div>
-                        </div>
-                      </button>
-                    )}
-                    <LiveLikeLocalCTA
-                      onActivate={() => setActiveView('aiExpert')}
-                      className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/60 via-white/30 to-[#C5A059]/40 transition-colors duration-300"
-                    >
-                      <div className="rounded-[0.9rem] bg-white/12 backdrop-blur-xl px-4 py-4 min-h-[72px] flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-[#C5A059] to-[#a88648] flex items-center justify-center shrink-0">
-                            <Sparkles size={22} className="text-white" />
-                          </div>
-                          <div className="text-left min-w-0 [text-shadow:0_0_12px_rgba(255,255,255,0.75),0_1px_2px_rgba(255,255,255,0.5)]">
-                            <p className="font-luxury text-[#051F26] text-base font-semibold leading-tight tracking-wide">
-                              {t('liveLikeLocalHero')}
-                            </p>
-                            <p className="text-[#0B4F5C] text-sm mt-0.5 leading-snug font-medium">
-                              {t('liveLikeLocalHeroSub')}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="h-10 w-10 shrink-0 rounded-xl bg-[#0B4F5C]/8 border border-[#0B4F5C]/12 flex items-center justify-center text-[#0B4F5C]/70 group-hover:bg-[#0B4F5C]/12 transition-colors">
-                          <ChevronDown size={20} className="-rotate-90" />
-                        </div>
-                      </div>
-                    </LiveLikeLocalCTA>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Excursions promo, Wi‑Fi, Google — equal spacing */}
-            <div className={`mx-auto px-4 sm:px-5 relative z-20 w-full flex flex-col gap-3 mt-3 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
-              {showExcursionsPromo && (
-                <GuestExcursionsPromoCard
-                  locale={locale}
-                  listings={excursionListings}
-                  loading={excursionsLoading && excursionListings.length === 0}
-                  onOpen={openExcursions}
-                  t={t}
+            <GuestPortalHome
+              t={t}
+              locale={locale}
+              setLocale={setLocale}
+              localeOptions={localeOptions}
+              isMobileFramePreview={isMobileFramePreview}
+              propertyName={property?.propertyName}
+              propertyTypeName={typeData?.propertyTypeName}
+              heroPhoto={heroPhoto}
+              heroLocation={heroLocation}
+              propertyId={propertyId}
+              typeId={typeId}
+              googlePlaceId={typeData?.googlePlaceId}
+              featuredOnPortal={featuredOnPortal}
+              featuredPreviews={featuredPreviews}
+              onLiveLikeLocal={openLiveLikeLocal}
+              onAssistant={openAssistant}
+              showExcursions={showExcursionsPromo}
+              onExcursions={openExcursions}
+              excursionHeroUrl={excursionHeroUrl}
+              liveLikeLocalHeroUrl={liveLikeLocalHeroUrl}
+              hasPropertyCoords={hasPropertyCoords}
+              onOpenMap={() => setPropertyMapOpen(true)}
+              websiteUrl={websiteUrl}
+              googleRating={showGoogleRating ? googleRating : undefined}
+              googleReviewUrl={googleReviewUrl}
+              whatsappHref={whatsappHref}
+              pwaBanner={
+                pwaInstall.showBanner ? (
+                  <GuestAddToHomeBanner
+                    t={t}
+                    canPromptNative={pwaInstall.canPromptNative}
+                    onDismiss={pwaInstall.dismiss}
+                    onInstall={pwaInstall.promptInstall}
+                    propertyLabel={
+                      property?.propertyName && typeData?.propertyTypeName
+                        ? `${property.propertyName} · ${typeData.propertyTypeName}`
+                        : property?.propertyName
+                    }
+                  />
+                ) : null
+              }
+              showCheckInPromo={showCheckInPromo}
+              checkInComplete={checkInComplete}
+              checkInContinue={checkInContinue}
+              onOpenCheckIn={() => setCheckInOpen(true)}
+              wifiName={wifiName}
+              wifiPassword={wifiPassword}
+              copiedWifi={copiedWifi}
+              onCopyWifi={copyWifi}
+              guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
+              checkoutDateLabel={checkoutDateLabel}
+              portalFeatures={portalFeatures}
+              onServiceDetailOpenChange={setServiceDetailOpen}
+              legalFooter={
+                <GuestLegalFooter
+                  onPrivacyClick={() => setLegalModal('privacy')}
+                  onTermsClick={() => setLegalModal('terms')}
                 />
-              )}
-
-              {wifiName && (
-                <div className="group w-full rounded-2xl p-[1px] bg-gradient-to-r from-[#C5A059]/50 via-white/40 to-[#C5A059]/50 shadow-[0_8px_32px_rgba(11,79,92,0.14)] hover:shadow-[0_12px_40px_rgba(11,79,92,0.2)] transition-all duration-300 hover:-translate-y-0.5">
-                  <div className="rounded-[0.9rem] bg-white/95 backdrop-blur-xl px-4 py-4 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-[#0B4F5C]/10 to-[#0B4F5C]/5 flex items-center justify-center shrink-0">
-                        <Wifi size={18} className="text-[#0B4F5C]" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-gray-400 uppercase tracking-wider leading-none mb-1">Wi‑Fi</p>
-                        <p className="text-base font-semibold text-gray-900 truncate">{wifiName}</p>
-                      </div>
-                    </div>
-                    {wifiPassword && (
-                      <div className="flex items-center gap-2 bg-gray-50 pl-3 pr-1.5 py-1.5 rounded-xl border border-gray-100 shrink-0">
-                        <p className="text-sm font-mono font-semibold text-gray-600">{wifiPassword}</p>
-                        <button
-                          onClick={copyWifi}
-                          className={`p-2.5 min-h-[40px] min-w-[40px] rounded-lg transition-colors ${copiedWifi ? 'bg-emerald-100 text-emerald-700' : 'bg-white hover:bg-gray-100 text-[#0B4F5C] shadow-sm'}`}
-                          aria-label="Copy Wi-Fi password"
-                        >
-                          {copiedWifi ? <Check size={14} /> : <Copy size={14} />}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {showGoogleRating && googleReviewUrl && (
-                <GuestGoogleRatingCard
-                  rating={googleRating}
-                  reviewUrl={googleReviewUrl}
-                  listingName={typeData?.propertyTypeName}
-                  t={t}
-                />
-              )}
-            </div>
+              }
+            />
 
             {hasPropertyCoords && (
               <GuestPropertyMapSheet
@@ -1133,95 +955,51 @@ function GuestPortalPage({
               />
             )}
 
-            {/* Main content */}
-            <div className={`mx-auto px-5 mt-6 space-y-14 pb-28 relative z-10 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
-              <PropertyEssentials
-                featuredOnPortal={featuredOnPortal}
-                previews={featuredPreviews}
-                guideData={
-                  guide && typeof guide === 'object'
-                    ? (guide as Record<string, unknown>)
-                    : undefined
-                }
-                onAskAssistant={() => setActiveView('assistant')}
+            {showHomeLocalGems && showExcursionsPromo && (
+              <GuestExcursionsPromoCard
+                locale={locale}
+                listings={excursionListings}
+                loading={excursionsLoading && excursionListings.length === 0}
+                onOpen={openExcursions}
+                t={t}
               />
+            )}
 
-              {portalFeatures.length > 0 && (
-                <GuestLocalServices
-                  features={portalFeatures}
-                  propertyName={property?.propertyName || 'your stay'}
-                  propertyTypeName={typeData?.propertyTypeName}
-                  onDetailOpenChange={setServiceDetailOpen}
-                />
-              )}
-
-              {gems.length > 0 && (
-                <section
-                  className={
-                    portalFeatures.length > 0
-                      ? '!mt-8 !mb-0'
-                      : featuredOnPortal.length > 0
-                        ? '!mt-6 !mb-0'
-                        : '!mb-0'
-                  }
-                >
-                  <div className="mb-5">
-                    <p className="guest-eyebrow mb-1">Curated by your host</p>
-                    <h2 className="guest-heading-section">Local Gems</h2>
-                    <p className="text-gray-500 text-sm mt-1.5">
-                      {filteredGems.length} spot{filteredGems.length !== 1 ? 's' : ''}
-                      {filteredGems.length > GEMS_PAGE_SIZE
-                        ? ' · load more to see all'
-                        : ' · places locals love'}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 pb-4">
-                    {allGemFilterOptions.map(filter => {
-                      const isActive =
-                        filter === 'All'
-                          ? gemFilters.includes('All')
-                          : gemFilters.includes(filter);
-                      return (
-                        <button
-                          type="button"
-                          key={filter}
-                          onClick={() => handleGemFilterClick(filter)}
-                          className={`guest-pill whitespace-nowrap transition-all ${
-                            isActive 
-                              ? 'bg-[#0B4F5C] text-white shadow-md' 
-                              : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#C5A059]/50 hover:text-[#0B4F5C]'
-                          }`}
-                        >
-                          {filter}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {filteredGems.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-8 rounded-xl bg-white/80 border border-gray-100">
-                      No spots match these filters.
-                    </p>
-                  ) : propertyId && typeId ? (
-                    <GuestGemsGrid
-                      gems={filteredGems}
-                      listKey={gemFilterKey}
-                      mapAreaHint={mapAreaHint}
-                      propertyId={propertyId}
-                      typeId={typeId}
-                    />
-                  ) : null}
-                </section>
-              )}
-
-              <GuestLegalFooter
-                onPrivacyClick={() => setLegalModal('privacy')}
-                onTermsClick={() => setLegalModal('terms')}
-              />
-
-            </div>
-
+            {showHomeLocalGems && gems.length > 0 && (
+              <div className={`mx-auto px-5 mt-6 space-y-6 pb-28 relative z-10 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
+                <div className="flex flex-wrap gap-1.5 pb-4">
+                  {allGemFilterOptions.map((filter) => {
+                    const isActive =
+                      filter === 'All'
+                        ? gemFilters.includes('All')
+                        : gemFilters.includes(filter);
+                    return (
+                      <button
+                        type="button"
+                        key={filter}
+                        onClick={() => handleGemFilterClick(filter)}
+                        className={`guest-pill whitespace-nowrap transition-all ${
+                          isActive
+                            ? 'bg-[#0B4F5C] text-white shadow-md'
+                            : 'bg-white text-gray-500 border border-gray-200/80 hover:border-[#C5A059]/50 hover:text-[#0B4F5C]'
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    );
+                  })}
+                </div>
+                {propertyId && typeId ? (
+                  <GuestGemsGrid
+                    gems={filteredGems}
+                    listKey={gemFilterKey}
+                    mapAreaHint={mapAreaHint}
+                    propertyId={propertyId}
+                    typeId={typeId}
+                  />
+                ) : null}
+              </div>
+            )}
           </>
         ) : activeView === 'aiExpert' ? (
           <Suspense fallback={<GuestSubviewFallback />}>
@@ -1318,23 +1096,13 @@ function GuestPortalPage({
         )}
       </div>
 
-      <GuestFeaturedPreviewSheet
-        featuredKey={featuredPreviewKey}
-        previews={featuredPreviews}
-        guideData={
-          guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : undefined
-        }
-        onClose={() => setFeaturedPreviewKey(null)}
-        onAskAssistant={openAssistant}
-      />
-
-      {activeView === 'portal' &&
+      {showHomeFloatingActions &&
+        activeView === 'portal' &&
         !checkInOpen &&
         !serviceDetailOpen &&
         !excursionOverlayOpen &&
         !propertyMapOpen &&
         !reportSheetOpen &&
-        !featuredPreviewKey &&
         !legalModal && (
         <GuestFloatingActions
           mobileFramePreview={isMobileFramePreview}

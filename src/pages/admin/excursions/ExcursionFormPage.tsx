@@ -28,10 +28,11 @@ import {
 import { normalizeLegalContentForEditor } from '../../../lib/legalHtml';
 import RichTextEditor from '../../../components/admin/RichTextEditor';
 import {
-  EXCURSION_CATEGORY_OPTIONS,
   categoriesFormFromDoc,
   categoriesPayloadFromForm,
 } from '../../../lib/excursionCategories';
+import ArrangeAndBookServicePicker from '../../../components/admin/ArrangeAndBookServicePicker';
+import { arrangeAndBookReturnPath } from '../../../lib/arrangeAndBook';
 import {
   adminExcursionAvailabilityPath,
   portalExcursionAvailabilityPath,
@@ -81,6 +82,7 @@ export default function ExcursionFormPage() {
     createSeasonPriceRow({ yearRound: true }),
   ]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [selectedServiceCategoryIds, setSelectedServiceCategoryIds] = useState<string[]>([]);
   const [customCategories, setCustomCategories] = useState('');
   const [slugManual, setSlugManual] = useState(false);
   const [providerName, setProviderName] = useState('');
@@ -97,11 +99,14 @@ export default function ExcursionFormPage() {
   const [isUploadingGallery, setIsUploadingGallery] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const listPath = providerId
-    ? adminPath(
-        portalMode ? portalExcursionsListPath(providerId) : adminExcursionsListPath(providerId)
-      )
-    : adminPath('/excursions/providers');
+  const categoryReturnPath = arrangeAndBookReturnPath(location.search);
+  const listPath = categoryReturnPath
+    ? adminPath(categoryReturnPath)
+    : providerId
+      ? adminPath(
+          portalMode ? portalExcursionsListPath(providerId) : adminExcursionsListPath(providerId)
+        )
+      : adminPath('/excursions/providers');
 
   const availabilityPath =
     isEdit && providerId && excursionId
@@ -160,10 +165,11 @@ export default function ExcursionFormPage() {
           additionalInfo: normalizeLegalContentForEditor(parsed.additionalInfo),
         });
         setSeasonPrices(seasonPricesFormFromDoc(snap.data()));
-        const { selectedIds, custom } = categoriesFormFromDoc(
+        const { subcategoryIds, categoryIds, custom } = categoriesFormFromDoc(
           Array.isArray(snap.data().categories) ? snap.data().categories.map(String) : []
         );
-        setSelectedCategoryIds(selectedIds);
+        setSelectedCategoryIds(subcategoryIds);
+        setSelectedServiceCategoryIds(categoryIds);
         setCustomCategories(custom);
         setSlugManual(true);
         if (parsed.heroPhotoUrl) setHeroPreview(parsed.heroPhotoUrl);
@@ -173,7 +179,7 @@ export default function ExcursionFormPage() {
         setGalleryUrls(storedGallery);
       })
       .catch(() => {
-        toast.error('Failed to load excursion.');
+        toast.error('Failed to load listing.');
         navigate(listPath);
       })
       .finally(() => setLoading(false));
@@ -228,14 +234,6 @@ export default function ExcursionFormPage() {
     });
     setSeasonPrices((prev) =>
       prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
-    );
-  };
-
-  const toggleCategory = (categoryId: string) => {
-    setSelectedCategoryIds((prev) =>
-      prev.includes(categoryId)
-        ? prev.filter((id) => id !== categoryId)
-        : [...prev, categoryId]
     );
   };
 
@@ -323,7 +321,11 @@ export default function ExcursionFormPage() {
     if (!providerId) return;
 
     const includeCommission = showExcursionCommission && providerUsesPerExcursionCommission;
-    const categories = categoriesPayloadFromForm(selectedCategoryIds, customCategories);
+    const categories = categoriesPayloadFromForm(
+      selectedCategoryIds,
+      customCategories,
+      selectedServiceCategoryIds
+    );
     const errors = validateExcursionForm(formData, seasonPrices, { includeCommission });
     if (errors.length > 0) {
       const map: Record<string, string> = {};
@@ -355,19 +357,19 @@ export default function ExcursionFormPage() {
           doc(db, EXCURSION_PROVIDER_COLLECTION, providerId, EXCURSION_SUBCOLLECTION, excursionId),
           payload
         );
-        toast.success('Excursion updated.');
+        toast.success('Listing updated.');
       } else {
         await addDoc(
           collection(db, EXCURSION_PROVIDER_COLLECTION, providerId, EXCURSION_SUBCOLLECTION),
           { ...payload, createdAt: new Date().toISOString() }
         );
-        toast.success('Excursion created.');
+        toast.success('Listing created.');
       }
 
       navigate(listPath);
     } catch (error) {
       console.error(error);
-      toast.error('Failed to save excursion.');
+      toast.error('Failed to save listing.');
     } finally {
       setIsSubmitting(false);
     }
@@ -379,17 +381,17 @@ export default function ExcursionFormPage() {
   }
 
   if (loading) {
-    return <div className="py-16 text-center text-gray-500 text-sm">Loading excursion…</div>;
+    return <div className="py-16 text-center text-gray-500 text-sm">Loading listing…</div>;
   }
 
   return (
     <div className="admin-page">
       <AdminBackHeader
         backTo={listPath}
-        backLabel="Back to excursions"
-        title={isEdit ? 'Edit excursion' : 'Add excursion'}
+        backLabel={categoryReturnPath ? 'Back to services' : 'Back to listings'}
+        title={isEdit ? 'Edit listing' : 'Add listing'}
         description={
-          providerName ? `${providerName}${isEdit ? '' : ' · new product'}` : undefined
+          providerName ? `${providerName}${isEdit ? '' : ' · new listing'}` : undefined
         }
         action={
           isEdit && (availabilityPath || discountsPath || bookingsPath) ? (
@@ -486,25 +488,15 @@ export default function ExcursionFormPage() {
                 </div>
                 <div className="md:col-span-2">
                   <AdminLabel>Categories</AdminLabel>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {EXCURSION_CATEGORY_OPTIONS.map((option) => {
-                      const selected = selectedCategoryIds.includes(option.id);
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => toggleCategory(option.id)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                            selected
-                              ? 'bg-vailo-teal text-white border-vailo-teal'
-                              : 'bg-white text-gray-700 border-gray-200 hover:border-vailo-teal/40'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ArrangeAndBookServicePicker
+                    selectedCategoryIds={selectedServiceCategoryIds}
+                    selectedSubcategoryIds={selectedCategoryIds}
+                    onChange={(next) => {
+                      setSelectedServiceCategoryIds(next.categoryIds);
+                      setSelectedCategoryIds(next.subcategoryIds);
+                    }}
+                    description="Tag this listing. That is what puts it under Arrange and Book, for example Experiences → Sailing."
+                  />
                   <div className="mt-3">
                     <AdminLabel htmlFor="customCategories">Other categories (optional)</AdminLabel>
                     <AdminInput
@@ -526,7 +518,7 @@ export default function ExcursionFormPage() {
                     rows={4}
                     value={formData.description}
                     onChange={handleChange}
-                    placeholder="Main overview of the excursion for guests…"
+                    placeholder="Main overview of this service for guests…"
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -564,7 +556,7 @@ export default function ExcursionFormPage() {
                 <div className="md:col-span-2">
                   <AdminLabel>More photos</AdminLabel>
                   <p className="text-xs text-gray-500 mb-3">
-                    Additional gallery images shown on the guest excursion page (hero photo is separate).
+                    Additional gallery images shown on the guest listing page (hero photo is separate).
                   </p>
                   {(galleryUrls.length > 0 || galleryPending.length > 0) && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-4">
@@ -1249,7 +1241,7 @@ export default function ExcursionFormPage() {
               Cancel
             </AdminButton>
             <AdminButton type="submit" disabled={isSubmitting || isUploadingHero || isUploadingGallery}>
-              {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create excursion'}
+              {isSubmitting ? 'Saving…' : isEdit ? 'Save changes' : 'Create listing'}
             </AdminButton>
           </div>
         </AdminCard>

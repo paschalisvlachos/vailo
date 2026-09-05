@@ -41,6 +41,7 @@ type Props = {
   previews: FeaturedPreviewsMap;
   guideData?: Record<string, unknown>;
   onAskAssistant: () => void;
+  hideHeader?: boolean;
 };
 
 const ICONS: Record<string, ReactNode> = {
@@ -72,6 +73,7 @@ export default function PropertyEssentials({
   previews,
   guideData,
   onAskAssistant,
+  hideHeader = false,
 }: Props) {
   const [openKey, setOpenKey] = useState<FeaturedKey | null>(null);
   const { track } = useGuestAnalytics();
@@ -85,6 +87,7 @@ export default function PropertyEssentials({
 
   return (
     <section className="!mb-0">
+      {!hideHeader && (
       <div className="mb-4">
         <p className="guest-eyebrow mb-1">
           {t('essentials')}
@@ -93,8 +96,15 @@ export default function PropertyEssentials({
           {t('thingsToKnow')}
         </h2>
       </div>
+      )}
 
-      <div className="bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.12)] border border-gray-100/80 overflow-hidden divide-y divide-gray-50">
+      <div
+        className={
+          hideHeader
+            ? 'overflow-hidden divide-y divide-gray-100'
+            : 'bg-white rounded-2xl shadow-[0_4px_24px_-8px_rgba(11,79,92,0.12)] border border-gray-100/80 overflow-hidden divide-y divide-gray-50'
+        }
+      >
         {featured.map((key) => {
           const cfg = getFeaturedConfig(key);
           if (!cfg) return null;
@@ -136,10 +146,14 @@ export default function PropertyEssentials({
                     return next;
                   });
                 }}
-                className="w-full flex items-center p-4 min-h-[52px] text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group"
+                className={`w-full flex items-center text-left hover:bg-[#0B4F5C]/[0.02] transition-colors group ${
+                  hideHeader ? 'px-1 py-3 min-h-[48px]' : 'p-4 min-h-[52px]'
+                }`}
                 aria-expanded={isOpen}
               >
-                <div className="h-10 w-10 rounded-xl bg-[#F8FAFA] border border-gray-100 flex items-center justify-center mr-4 shrink-0 text-[#0B4F5C] group-hover:border-[#0B4F5C]/20 transition-all">
+                <div className={`rounded-xl bg-[#F7F3EC] border border-[#E8DFD0] flex items-center justify-center shrink-0 text-[#0A3D3A] group-hover:border-[#C5A059]/40 transition-all ${
+                  hideHeader ? 'h-9 w-9 mr-3' : 'h-10 w-10 mr-4'
+                }`}>
                   {icon}
                 </div>
                 <span

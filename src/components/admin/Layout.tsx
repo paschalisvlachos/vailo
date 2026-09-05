@@ -28,6 +28,7 @@ import { useAdminInboxUnreadCount } from '../../hooks/useAdminInboxUnreadCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { scopeFromRoute, scopeKey, isExcursionProvider, isAgent, isOwner, formatOwnerRoleLabel } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
+import ArrangeAndBookSidebarNav from './ArrangeAndBookSidebarNav';
 import VailoMark from '../guest/VailoMark';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
@@ -67,7 +68,7 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
   },
   {
     id: 'excursions',
-    label: 'Excursions',
+    label: 'Arrange and Book',
     items: [{ icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') }],
   },
   {
@@ -220,6 +221,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
+              {section.id === 'excursions' && (
+                <ArrangeAndBookSidebarNav onNavigate={() => setMobileOpen(false)} />
+              )}
             </div>
           </div>
         ))}

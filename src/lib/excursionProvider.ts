@@ -1,6 +1,10 @@
 /** Excursion operator business — platform-managed catalog (Step 1). */
 
 import type { ExcursionProviderFleetEntry } from './excursionProviderDetails';
+import {
+  normalizeArrangeAndBookSelection,
+  parseIdList,
+} from './arrangeAndBook';
 
 export type ExcursionProviderStatus = 'draft' | 'active' | 'suspended';
 
@@ -88,6 +92,10 @@ export type ExcursionProvider = {
   excursionUsefulInfo?: string;
   /** Boats, vehicles, or vessels in the provider fleet. */
   excursionFleet?: ExcursionProviderFleetEntry[];
+  /** Arrange and Book categories this provider offers. Multiple allowed. */
+  serviceCategoryIds?: string[];
+  /** Specific services inside those categories. Multiple allowed. */
+  serviceSubcategoryIds?: string[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -125,6 +133,8 @@ export type ExcursionProviderFormData = {
   contractNotes: string;
   payoutTerms: ExcursionProviderPayoutTerms | '';
   internalNotes: string;
+  serviceCategoryIds: string[];
+  serviceSubcategoryIds: string[];
 };
 
 export const EMPTY_EXCURSION_PROVIDER_FORM: ExcursionProviderFormData = {
@@ -155,6 +165,8 @@ export const EMPTY_EXCURSION_PROVIDER_FORM: ExcursionProviderFormData = {
   contractNotes: '',
   payoutTerms: 'monthly',
   internalNotes: '',
+  serviceCategoryIds: [],
+  serviceSubcategoryIds: [],
 };
 
 export function operatingRegionKey(region: Pick<ExcursionProviderRegion, 'country' | 'areaId'>): string {
@@ -256,6 +268,10 @@ export function providerOperatesInArea(
 export function excursionProviderFormFromDoc(
   data: Record<string, unknown>
 ): ExcursionProviderFormData {
+  const services = normalizeArrangeAndBookSelection(
+    parseIdList(data.serviceCategoryIds),
+    parseIdList(data.serviceSubcategoryIds)
+  );
   return {
     businessName: String(data.businessName || ''),
     legalName: String(data.legalName || ''),
@@ -293,6 +309,8 @@ export function excursionProviderFormFromDoc(
         ? data.payoutTerms
         : 'monthly',
     internalNotes: String(data.internalNotes || ''),
+    serviceCategoryIds: services.categoryIds,
+    serviceSubcategoryIds: services.subcategoryIds,
   };
 }
 

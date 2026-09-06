@@ -15,7 +15,6 @@ import {
   Globe,
   Grid2x2,
   MapPin,
-  MessageCircle,
   Shield,
   ShoppingBag,
   Sparkles,
@@ -302,30 +301,25 @@ export default function GuestPortalHome(props: Props) {
                   aria-hidden
                   className="pointer-events-none absolute -right-10 -top-16 -z-10 h-40 w-40 rounded-full border border-[#D4B57A]/10"
                 />
-                <div className="relative z-10 flex items-center gap-2">
+                <div className="relative z-10 flex items-center gap-2.5">
                   <div className="h-10 w-10 rounded-full bg-[#C5A059] flex items-center justify-center shrink-0 text-white">
                     {checkInComplete ? <CheckCircle2 size={22} /> : <Trophy size={20} />}
                   </div>
-                  <span className="h-11 w-px bg-[#D4B57A]/35" />
+                  <span className="w-px shrink-0 self-stretch bg-[#D4B57A]/35" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#D4B57A]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#D4B57A] whitespace-nowrap">
                       Before you arrive
                     </p>
-                    <p className="font-luxury text-white text-[1.05rem] sm:text-[1.1rem] font-medium leading-tight mt-0.5 tracking-tight whitespace-nowrap">
-                      {checkInComplete
-                        ? t('checkInPromoDoneTitle')
-                        : 'Online check-in'}
-                    </p>
-                    <p className="text-white/75 text-[12px] sm:text-[12.5px] mt-0.5 leading-snug line-clamp-3">
+                    <span className="mt-1.5 flex w-full items-center justify-center rounded-xl bg-[#E7C46F] px-3 py-2.5 text-[#0A2F32] text-[13px] sm:text-[14px] font-medium leading-none">
+                      {checkInComplete ? 'View check-in' : 'Complete online check-in'}
+                      <ChevronRight size={14} className="inline ml-0.5 shrink-0" />
+                    </span>
+                    <p className="text-white/75 text-[12px] sm:text-[12.5px] mt-1.5 leading-snug">
                       {checkInComplete
                         ? t('checkInPromoDoneSub')
                         : 'Complete your check-in to unlock your stay experience.'}
                     </p>
                   </div>
-                  <span className="flex h-9 w-[clamp(104px,28vw,166px)] shrink-0 items-center justify-center rounded-xl bg-[#E7C46F] px-1.5 text-[#0A2F32] text-[11px] sm:text-[12px] font-medium whitespace-nowrap">
-                    {checkInComplete ? 'View' : 'Complete check-in'}
-                    <ChevronRight size={13} className="inline -mt-0.5 ml-0.5" />
-                  </span>
                 </div>
                 <div className="relative z-10 mt-2.5 border-t border-white/10 pt-2">
                   <span className="inline-flex items-center gap-2 text-[11px] text-white/50 font-medium tracking-wide">
@@ -359,28 +353,6 @@ export default function GuestPortalHome(props: Props) {
             />
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={onAssistant}
-          className="w-full min-h-[56px] rounded-[0.9rem] border border-[#ECE8E0] bg-white px-3 py-2 flex items-center gap-3 shadow-[0_8px_22px_-15px_rgba(10,47,50,0.35)]"
-        >
-          <span className="h-9 w-9 rounded-full bg-[#0A4544] text-white flex items-center justify-center shrink-0">
-            <MessageCircle size={17} />
-          </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block text-[14px] font-semibold text-[#0A2F32] leading-tight">
-              Ask Vailo – 24/7 Stay Assistant
-            </span>
-            <span className="block text-[12px] text-[#7A7266] mt-0.5 leading-snug">
-              Get instant answers and local recommendations.
-            </span>
-          </span>
-          <span className="shrink-0 rounded-xl border border-[#E8DFD0] bg-[#FCFAF6] text-[#765F3A] text-[12px] font-medium px-3 py-2">
-            <Sparkles size={12} className="inline mr-1 -mt-0.5" />
-            Start chat
-          </span>
-        </button>
 
         <section className="pt-3">
           <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
@@ -612,13 +584,25 @@ function DestinationCard({
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-[#0A3D3A] to-[#041C1E]" />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-black/10" />
+      {/* Full-card depth + stronger bottom veil so title/subtitle stay readable */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,20,22,0.18)_0%,rgba(4,20,22,0.08)_38%,rgba(0,0,0,0.42)_62%,rgba(0,0,0,0.78)_100%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[radial-gradient(120%_90%_at_50%_100%,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0.35)_48%,transparent_78%)]"
+      />
       <span className="absolute top-3 left-3 h-8 w-8 rounded-[0.7rem] bg-[#C5A059] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(197,160,89,0.35)]">
         {icon}
       </span>
-      <span className="absolute bottom-3 left-3 right-11">
-        <span className="block font-luxury text-white text-[clamp(15px,3.4vw,17px)] leading-tight">{title}</span>
-        <span className="block text-white/80 text-[clamp(11px,2.2vw,12.5px)] mt-0.5 leading-snug">{subtitle}</span>
+      <span className="absolute bottom-3 left-3 right-11 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+        <span className="block font-luxury text-white text-[clamp(15px,3.4vw,17px)] leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
+          {title}
+        </span>
+        <span className="block text-white/92 text-[clamp(11px,2.2vw,12.5px)] mt-0.5 leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
+          {subtitle}
+        </span>
       </span>
       <span className="absolute bottom-3 right-3 h-8 w-8 rounded-full border border-[#D9B459] bg-[#073D3B]/45 text-[#E5BD62] flex items-center justify-center backdrop-blur-sm">
         <ChevronRight size={16} />

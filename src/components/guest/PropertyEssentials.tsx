@@ -151,28 +151,36 @@ export default function PropertyEssentials({
                 }`}
                 aria-expanded={isOpen}
               >
-                <div className={`rounded-xl bg-[#F7F3EC] border border-[#E8DFD0] flex items-center justify-center shrink-0 text-[#0A3D3A] group-hover:border-[#C5A059]/40 transition-all ${
-                  hideHeader ? 'h-9 w-9 mr-3' : 'h-10 w-10 mr-4'
+                <div className={`rounded-xl bg-[#F7F3EC] border border-[#E8DFD0] flex items-center justify-center shrink-0 text-[#0A3330] group-hover:border-[#C5A059]/40 transition-all ${
+                  hideHeader ? 'h-9 w-9 mr-3' : 'h-10 w-10 mr-4 text-[#0A3D3A]'
                 }`}>
                   {icon}
                 </div>
                 <span
-                  className={`flex-1 font-luxury text-base transition-colors ${
-                    isOpen ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'
+                  className={`flex-1 transition-colors ${
+                    hideHeader
+                      ? 'text-[15px] font-semibold text-[#0A2F32]'
+                      : `font-luxury text-base ${isOpen ? 'text-[#0B4F5C] font-medium' : 'text-gray-800'}`
                   }`}
                 >
                   <span className="block">{cfg.title}</span>
                   {!isOpen && previewLine.trim() && (
-                    <span className="block text-sm font-normal text-gray-500 mt-0.5 line-clamp-2 leading-snug">
+                    <span
+                      className={`block mt-0.5 line-clamp-2 leading-snug font-normal ${
+                        hideHeader ? 'text-[13px] text-[#7A7266]' : 'text-sm text-gray-500'
+                      }`}
+                    >
                       {previewLine.trim()}
                     </span>
                   )}
                 </span>
                 <div
                   className={`p-1.5 rounded-full transition-all ${
-                    isOpen
-                      ? 'bg-[#0B4F5C] text-white rotate-180'
-                      : 'text-gray-300 group-hover:text-gray-400'
+                    hideHeader
+                      ? `text-[#9A968E] ${isOpen ? 'rotate-180' : ''}`
+                      : isOpen
+                        ? 'bg-[#0B4F5C] text-white rotate-180'
+                        : 'text-gray-300 group-hover:text-gray-400'
                   }`}
                 >
                   <ChevronDown size={16} />
@@ -184,14 +192,24 @@ export default function PropertyEssentials({
                   isOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
-                <div className="px-5 pb-5">
+                <div className={`pb-5 ${hideHeader ? 'px-1 pl-12' : 'px-5'}`}>
                   {digest ? (
                     <GuestLinkifiedText
                       text={digest}
-                      className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
+                      className={`whitespace-pre-wrap leading-relaxed ${
+                        hideHeader
+                          ? 'text-[13px] text-[#7A7266]'
+                          : 'text-base text-gray-600'
+                      }`}
                     />
                   ) : (
-                    <p className="text-base text-gray-500 italic">
+                    <p
+                      className={`italic ${
+                        hideHeader
+                          ? 'text-[13px] text-[#7A7266]'
+                          : 'text-base text-gray-500'
+                      }`}
+                    >
                       Your host has not added details for this section yet.
                     </p>
                   )}
@@ -202,7 +220,11 @@ export default function PropertyEssentials({
                       e.stopPropagation();
                       onAskAssistant();
                     }}
-                    className="guest-btn-action mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] hover:from-[#083a43] hover:to-[#072d34] transition-colors"
+                    className={`guest-btn-action mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl transition-colors ${
+                      hideHeader
+                        ? 'bg-[#0A4544] text-[#E8D5A8] hover:bg-[#083937]'
+                        : 'bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] hover:from-[#083a43] hover:to-[#072d34]'
+                    }`}
                   >
                     <Bot size={13} className="shrink-0" />
                     Ask the 24/7 Assistant for full details

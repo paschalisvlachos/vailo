@@ -340,7 +340,7 @@ export default function GuestPortalHome(props: Props) {
             title={t('liveLikeLocalHero')}
             subtitle="Curated picks, local tips and hidden gems from people who know."
             photoUrl={liveLikeLocalHeroUrl}
-            icon={<Sparkles size={14} />}
+            icon={<Sparkles size={11} />}
             onClick={onLiveLikeLocal}
           />
           {showExcursions && (
@@ -348,7 +348,7 @@ export default function GuestPortalHome(props: Props) {
               title="Excursions"
               subtitle="Unforgettable experiences and day trips, handpicked for you."
               photoUrl={excursionHeroUrl}
-              icon={<Compass size={14} />}
+              icon={<Compass size={11} />}
               onClick={onExcursions}
             />
           )}
@@ -593,7 +593,7 @@ function DestinationCard({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[radial-gradient(120%_90%_at_50%_100%,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0.35)_48%,transparent_78%)]"
       />
-      <span className="absolute top-3 left-3 h-8 w-8 rounded-[0.7rem] bg-[#C5A059] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(197,160,89,0.35)]">
+      <span className="absolute top-3 left-3 h-[25px] w-[25px] rounded-[0.6rem] bg-[#C5A059] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(197,160,89,0.35)]">
         {icon}
       </span>
       <span className="absolute bottom-3 left-3 right-11 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">

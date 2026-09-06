@@ -22,7 +22,7 @@ export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props
         <button
           type="button"
           onClick={onPrivacyClick}
-          className="min-h-[36px] px-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#0A4544]/65 transition-colors hover:text-[#B08B46]"
+          className="min-h-[36px] px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0A4544]/65 transition-colors hover:text-[#B08B46]"
         >
           Privacy Policy
         </button>
@@ -31,12 +31,12 @@ export default function GuestLegalFooter({ onPrivacyClick, onTermsClick }: Props
         <button
           type="button"
           onClick={onTermsClick}
-          className="min-h-[36px] px-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-[#0A4544]/65 transition-colors hover:text-[#B08B46]"
+          className="min-h-[36px] px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0A4544]/65 transition-colors hover:text-[#B08B46]"
         >
           {t('termsOfUse')}
         </button>
       </nav>
-      <p className="text-[8px] font-medium uppercase tracking-[0.2em] text-[#8E8A82]/55">
+      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#8E8A82]/55">
         Powered by Vailo
       </p>
     </footer>

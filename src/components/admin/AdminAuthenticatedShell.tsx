@@ -20,17 +20,27 @@ function AdminSessionGate({ children }: { children: React.ReactNode }) {
 }
 
 function AdminAccountGate({ children }: { children: React.ReactNode }) {
-  const { authUser, profile } = useAdminSession();
+  const { authUser, profile, profileError } = useAdminSession();
 
   if (authUser && !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-vailo-surface px-4">
         <div className="max-w-md w-full bg-white border border-gray-100 rounded-2xl shadow-lg p-8 text-center">
-          <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            Your login is not linked to a Vailo profile. Ask your administrator to add your email in
-            Owners CRM, then sign in again.
+          <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">
+            {profileError ? 'Could not load your profile' : 'Account not set up'}
+          </h2>
+          <p className="text-gray-500 text-sm mb-4">
+            {profileError
+              ? profileError
+              : 'Your login is not linked to a Vailo profile. Ask your administrator to add your email in Owners CRM, then sign in again.'}
           </p>
+          {authUser.email && (
+            <p className="text-xs text-gray-400 mb-6 break-all">
+              Signed in as {authUser.email}
+              <br />
+              Auth UID: {authUser.uid}
+            </p>
+          )}
           <AdminButton
             type="button"
             variant="secondary"

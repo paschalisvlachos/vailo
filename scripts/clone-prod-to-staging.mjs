@@ -10,6 +10,10 @@
  *   GOOGLE_APPLICATION_CREDENTIALS_PRODUCTION=./prod.json \
  *   GOOGLE_APPLICATION_CREDENTIALS_STAGING=./staging.json \
  *   npm run clone:staging
+ *
+ * Note: Area Functionality often lives under `countries/{country}/areas/{areaId}`
+ * where the country parent document was never created. A normal collection walk
+ * skips those trees — this script also wipes/copies them via collectionGroup('areas').
  */
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -56,6 +60,15 @@ async function listRootCollections(db) {
   return db.listCollections();
 }
 
+/** `countries/{country}/areas/{areaId}` → { country, areaId } or null. */
+function parseCountryAreaPath(path) {
+  const segments = path.split('/');
+  if (segments.length !== 4 || segments[0] !== 'countries' || segments[2] !== 'areas') {
+    return null;
+  }
+  return { country: segments[1], areaId: segments[3] };
+}
+
 async function deleteDocumentTree(docRef) {
   const subcollections = await docRef.listCollections();
   for (const subcol of subcollections) {
@@ -75,6 +88,27 @@ async function deleteCollection(collectionRef) {
   }
 }
 
+/**
+ * Firestore can store subcollections under a path whose parent document does not
+ * exist. Root-collection wipes miss those trees — delete them via collectionGroup.
+ */
+async function wipeOrphanCountryAreas(stagingDb) {
+  console.log('  deleting orphan countries/*/areas (missing country parents)...');
+  const snap = await stagingDb.collectionGroup('areas').get();
+  let deleted = 0;
+
+  for (const docSnap of snap.docs) {
+    const parsed = parseCountryAreaPath(docSnap.ref.path);
+    if (!parsed) continue;
+
+    await deleteDocumentTree(docSnap.ref);
+    deleted += 1;
+    console.log(`    deleted /countries/${parsed.country}/areas/${parsed.areaId}`);
+  }
+
+  console.log(`  deleted ${deleted} orphan area tree(s)`);
+}
+
 async function wipeStagingDatabase(stagingDb) {
   console.log('Wiping staging Firestore...');
   const collections = await listRootCollections(stagingDb);
@@ -82,6 +116,8 @@ async function wipeStagingDatabase(stagingDb) {
     console.log(`  deleting /${col.id}`);
     await deleteCollection(col);
   }
+  // Orphan area trees survive a root walk when the country parent doc is missing.
+  await wipeOrphanCountryAreas(stagingDb);
 }
 
 async function copyCollectionTree(prodColRef, stagingColRef, stagingDb) {
@@ -126,6 +162,58 @@ async function copyCollectionTree(prodColRef, stagingColRef, stagingDb) {
   }
 }
 
+async function ensureCountryParentDoc(prodDb, stagingDb, country) {
+  const prodCountryRef = prodDb.collection('countries').doc(country);
+  const stagingCountryRef = stagingDb.collection('countries').doc(country);
+  const prodCountrySnap = await prodCountryRef.get();
+
+  if (prodCountrySnap.exists) {
+    await stagingCountryRef.set(prodCountrySnap.data(), { merge: true });
+    return;
+  }
+
+  // Materialize a stub so future root walks (and admin UI) see the country.
+  await stagingCountryRef.set(
+    {
+      name: country,
+      createdAt: new Date().toISOString(),
+      clonedAsStub: true,
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * Copy every `countries/{country}/areas/{areaId}` tree, including areas whose
+ * country parent document does not exist in production.
+ */
+async function copyCountryAreaTrees(prodDb, stagingDb) {
+  console.log('  copying countries/*/areas (including missing country parents)...');
+  const snap = await prodDb.collectionGroup('areas').get();
+  let copied = 0;
+
+  for (const docSnap of snap.docs) {
+    const parsed = parseCountryAreaPath(docSnap.ref.path);
+    if (!parsed) continue;
+
+    const { country, areaId } = parsed;
+    await ensureCountryParentDoc(prodDb, stagingDb, country);
+
+    const stagingAreaRef = stagingDb.collection('countries').doc(country).collection('areas').doc(areaId);
+    await stagingAreaRef.set(docSnap.data());
+
+    const subcollections = await docSnap.ref.listCollections();
+    for (const subcol of subcollections) {
+      await copyCollectionTree(subcol, stagingAreaRef.collection(subcol.id), stagingDb);
+    }
+
+    copied += 1;
+    console.log(`    /countries/${country}/areas/${areaId}`);
+  }
+
+  console.log(`  copied ${copied} area tree(s)`);
+}
+
 async function cloneFirestore(prodDb, stagingDb) {
   console.log(`Cloning Firestore ${PRODUCTION_PROJECT_ID} → ${STAGING_PROJECT_ID}...`);
 
@@ -136,6 +224,9 @@ async function cloneFirestore(prodDb, stagingDb) {
     console.log(`  copying /${col.id}`);
     await copyCollectionTree(col, stagingDb.collection(col.id), stagingDb);
   }
+
+  // Area Functionality under phantom country parents is invisible to the walk above.
+  await copyCountryAreaTrees(prodDb, stagingDb);
 
   console.log('Firestore clone complete.');
 }

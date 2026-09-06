@@ -267,15 +267,15 @@ export default function GuestPortalHome(props: Props) {
             </div>
 
             <div className="mt-5 mb-5 text-center hero-text-shadow">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.34em] text-[#D4B57A] mb-1.5">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.28em] text-[#D4B57A] mb-1.5">
                 {t('welcomeTo')}
               </p>
               <h1 className="font-luxury text-[2.35rem] text-white leading-[0.95] font-medium tracking-[-0.025em]">
                 {propertyName}
               </h1>
               {heroLocation && (
-                <p className="text-white/90 text-[12px] mt-2 flex items-center justify-center gap-1.5">
-                  <MapPin size={13} className="text-[#D4B57A] shrink-0" /> {heroLocation}
+                <p className="text-white/90 text-[14px] mt-2 flex items-center justify-center gap-1.5">
+                  <MapPin size={14} className="text-[#D4B57A] shrink-0" /> {heroLocation}
                 </p>
               )}
             </div>
@@ -308,28 +308,28 @@ export default function GuestPortalHome(props: Props) {
                   </div>
                   <span className="h-11 w-px bg-[#D4B57A]/35" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[8px] sm:text-[9px] font-semibold uppercase tracking-[0.22em] text-[#D4B57A]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#D4B57A]">
                       Before you arrive
                     </p>
-                    <p className="font-luxury text-white text-[14px] sm:text-[1.1rem] font-medium leading-tight mt-0.5 tracking-tight whitespace-nowrap">
+                    <p className="font-luxury text-white text-[1.05rem] sm:text-[1.1rem] font-medium leading-tight mt-0.5 tracking-tight whitespace-nowrap">
                       {checkInComplete
                         ? t('checkInPromoDoneTitle')
                         : 'Online check-in'}
                     </p>
-                    <p className="text-white/75 text-[8.5px] sm:text-[10.5px] mt-0.5 leading-snug line-clamp-3">
+                    <p className="text-white/75 text-[12px] sm:text-[12.5px] mt-0.5 leading-snug line-clamp-3">
                       {checkInComplete
                         ? t('checkInPromoDoneSub')
                         : 'Complete your check-in to unlock your stay experience.'}
                     </p>
                   </div>
-                  <span className="flex h-9 w-[clamp(92px,27vw,166px)] shrink-0 items-center justify-center rounded-xl bg-[#E7C46F] px-1 text-[#0A2F32] text-[8.5px] sm:text-[11px] font-medium whitespace-nowrap">
+                  <span className="flex h-9 w-[clamp(104px,28vw,166px)] shrink-0 items-center justify-center rounded-xl bg-[#E7C46F] px-1.5 text-[#0A2F32] text-[11px] sm:text-[12px] font-medium whitespace-nowrap">
                     {checkInComplete ? 'View' : 'Complete check-in'}
-                    <ChevronRight size={12} className="inline -mt-0.5 ml-0.5" />
+                    <ChevronRight size={13} className="inline -mt-0.5 ml-0.5" />
                   </span>
                 </div>
                 <div className="relative z-10 mt-2.5 border-t border-white/10 pt-2">
-                  <span className="inline-flex items-center gap-2 text-[8px] sm:text-[9px] text-white/50 font-medium tracking-wide">
-                    <Shield size={11} className="text-[#7FC3BD]" />
+                  <span className="inline-flex items-center gap-2 text-[11px] text-white/50 font-medium tracking-wide">
+                    <Shield size={12} className="text-[#7FC3BD]" />
                     Secure <span className="text-[#D4B57A]/65">·</span> Private{' '}
                     <span className="text-[#D4B57A]/65">·</span> Takes 2 min
                   </span>
@@ -369,21 +369,21 @@ export default function GuestPortalHome(props: Props) {
             <MessageCircle size={17} />
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className="block text-[12.5px] font-semibold text-[#0A2F32] leading-tight">
+            <span className="block text-[14px] font-semibold text-[#0A2F32] leading-tight">
               Ask Vailo – 24/7 Stay Assistant
             </span>
-            <span className="block text-[9.5px] text-[#7A7266] mt-0.5 leading-snug">
+            <span className="block text-[12px] text-[#7A7266] mt-0.5 leading-snug">
               Get instant answers and local recommendations.
             </span>
           </span>
-          <span className="shrink-0 rounded-xl border border-[#E8DFD0] bg-[#FCFAF6] text-[#765F3A] text-[10px] font-medium px-3 py-2">
-            <Sparkles size={11} className="inline mr-1 -mt-0.5" />
+          <span className="shrink-0 rounded-xl border border-[#E8DFD0] bg-[#FCFAF6] text-[#765F3A] text-[12px] font-medium px-3 py-2">
+            <Sparkles size={12} className="inline mr-1 -mt-0.5" />
             Start chat
           </span>
         </button>
 
         <section className="pt-3">
-          <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-[#C4A574] mb-3">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
             Your stay
           </p>
           <div
@@ -392,15 +392,15 @@ export default function GuestPortalHome(props: Props) {
             }`}
           >
             {wifiName && (
-              <div className="h-[72px] rounded-[0.9rem] border border-[#EEEAE3] bg-white px-2.5 py-2 flex items-center gap-2.5 shadow-[0_8px_22px_-15px_rgba(10,47,50,0.28)]">
+              <div className="min-h-[80px] rounded-[0.9rem] border border-[#EEEAE3] bg-white px-2.5 py-2.5 flex items-center gap-2.5 shadow-[0_8px_22px_-15px_rgba(10,47,50,0.28)]">
                 <span className="h-10 w-10 rounded-full bg-[#F1EDE5] text-[#0A3330] flex items-center justify-center shrink-0">
                   <Wifi size={18} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold text-[#0A2F32] leading-tight">Wi-Fi</p>
-                  <p className="text-[10px] text-[#5F5B54] truncate mt-0.5">{wifiName}</p>
+                  <p className="text-[14px] font-semibold text-[#0A2F32] leading-tight">Wi-Fi</p>
+                  <p className="text-[12px] text-[#5F5B54] truncate mt-0.5">{wifiName}</p>
                   {wifiPassword && (
-                    <p className="text-[10px] tracking-[0.22em] text-[#0A2F32] truncate mt-0.5">
+                    <p className="text-[12px] tracking-[0.18em] text-[#0A2F32] truncate mt-0.5">
                       {wifiVisible ? wifiPassword : '••••••••'}
                     </p>
                   )}
@@ -428,17 +428,17 @@ export default function GuestPortalHome(props: Props) {
               </div>
             )}
             {checkoutWindow && (
-              <div className="h-[72px] rounded-[0.9rem] border border-[#EEEAE3] bg-white px-2.5 py-2 flex items-center gap-2.5 shadow-[0_8px_22px_-15px_rgba(10,47,50,0.28)]">
+              <div className="min-h-[80px] rounded-[0.9rem] border border-[#EEEAE3] bg-white px-2.5 py-2.5 flex items-center gap-2.5 shadow-[0_8px_22px_-15px_rgba(10,47,50,0.28)]">
                 <span className="h-10 w-10 rounded-full bg-[#F1EDE5] text-[#0A3330] flex items-center justify-center shrink-0">
                   <Clock size={18} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold text-[#0A2F32] leading-tight">Check-out</p>
-                  <p className="text-[10px] text-[#0A2F32] truncate mt-1">
+                  <p className="text-[14px] font-semibold text-[#0A2F32] leading-tight">Check-out</p>
+                  <p className="text-[12px] text-[#0A2F32] truncate mt-1">
                     {checkoutWindow}
                   </p>
                   {checkoutDateLabel && (
-                    <p className="text-[9.5px] text-[#9A968E] mt-0.5">{checkoutDateLabel}</p>
+                    <p className="text-[11px] text-[#9A968E] mt-0.5">{checkoutDateLabel}</p>
                   )}
                 </div>
                 <ChevronRight size={14} className="text-[#AAA69F] shrink-0" />
@@ -457,8 +457,8 @@ export default function GuestPortalHome(props: Props) {
                   <BookOpen size={17} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold text-[#0A2F32]">{t('thingsToKnow')}</p>
-                  <p className="text-[11.5px] text-[#7A7266] leading-snug">
+                  <p className="text-[15px] font-semibold text-[#0A2F32]">{t('thingsToKnow')}</p>
+                  <p className="text-[13px] text-[#7A7266] leading-snug">
                     Check-in, safety & emergency, house rules, daily needs and more.
                   </p>
                 </span>
@@ -485,10 +485,10 @@ export default function GuestPortalHome(props: Props) {
         {portalFeatures.length > 0 && (
           <section className="pt-2">
             <div className="flex items-end justify-between mb-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-[#C4A574]">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574]">
                 Host&apos;s Features
               </p>
-              <span className="text-[11px] font-semibold text-[#0A3330]/55">View all</span>
+              <span className="text-[13px] font-semibold text-[#0A3330]/55">View all</span>
             </div>
             <GuestLocalServices
               layout="carousel"
@@ -501,17 +501,17 @@ export default function GuestPortalHome(props: Props) {
         )}
 
         <section className="pt-2">
-          <p className="text-[10.5px] font-semibold uppercase tracking-[0.26em] text-[#C4A574] mb-3">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
             Book & Arrange
           </p>
           <div className="grid grid-cols-5 gap-2">
             {BOOK_ARRANGE_TILES.map((tile) => (
               <div
                 key={tile.label}
-                className="rounded-xl border border-[#EEEAE3] bg-white py-1.5 px-1 flex flex-col items-center gap-1 shadow-[0_8px_20px_-14px_rgba(10,47,50,0.28)]"
+                className="rounded-xl border border-[#EEEAE3] bg-white py-2 px-1 flex flex-col items-center gap-1 shadow-[0_8px_20px_-14px_rgba(10,47,50,0.28)]"
               >
                 <tile.icon size={18} className="text-[#0A3330]" strokeWidth={1.6} />
-                <span className="text-[9px] font-semibold text-[#0A2F32] text-center leading-tight">
+                <span className="text-[11px] font-semibold text-[#0A2F32] text-center leading-tight">
                   {tile.label}
                 </span>
               </div>
@@ -542,7 +542,7 @@ export default function GuestPortalHome(props: Props) {
             <div className="h-[3.35rem] w-[3.35rem] rounded-full bg-[#0A3330] border-[3px] border-[#F7F7F5] flex items-center justify-center shadow-[0_10px_22px_rgba(4,28,30,0.4)]">
               <Sparkles size={18} className="text-[#E8D5A8]" />
             </div>
-            <span className="text-[10px] font-medium mt-1 text-white/80">Ask Vailo</span>
+            <span className="text-[12px] font-medium mt-1 text-white/80">Ask Vailo</span>
           </button>
           <NavItem label="Explore" icon={<Compass size={19} strokeWidth={1.75} />} />
           <NavItem
@@ -571,7 +571,7 @@ function GoogleRatingButton({
       aria-label={`Google rating ${rating.toFixed(1)}. Open Google reviews`}
     >
       <GoogleMark />
-      <span className="text-[11px] font-semibold tabular-nums">{rating.toFixed(1)}</span>
+      <span className="text-[13px] font-semibold tabular-nums">{rating.toFixed(1)}</span>
       <Star size={10} className="fill-[#E7C46F] text-[#E7C46F]" />
     </button>
   );
@@ -617,8 +617,8 @@ function DestinationCard({
         {icon}
       </span>
       <span className="absolute bottom-3 left-3 right-11">
-        <span className="block font-luxury text-white text-[clamp(13px,3vw,17px)] leading-tight">{title}</span>
-        <span className="block text-white/80 text-[clamp(8px,1.85vw,10.5px)] mt-0.5 leading-snug">{subtitle}</span>
+        <span className="block font-luxury text-white text-[clamp(15px,3.4vw,17px)] leading-tight">{title}</span>
+        <span className="block text-white/80 text-[clamp(11px,2.2vw,12.5px)] mt-0.5 leading-snug">{subtitle}</span>
       </span>
       <span className="absolute bottom-3 right-3 h-8 w-8 rounded-full border border-[#D9B459] bg-[#073D3B]/45 text-[#E5BD62] flex items-center justify-center backdrop-blur-sm">
         <ChevronRight size={16} />
@@ -645,12 +645,12 @@ function NavItem({
   return onClick ? (
     <button type="button" onClick={onClick} className={className} aria-label="Contact host on WhatsApp">
       {icon}
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className="text-[12px] font-medium">{label}</span>
     </button>
   ) : (
     <div className={className}>
       {icon}
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className="text-[12px] font-medium">{label}</span>
     </div>
   );
 }

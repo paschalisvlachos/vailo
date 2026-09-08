@@ -241,10 +241,23 @@ export default function GuestBookArrange({
     return heroPhotoRef.current;
   }, [featuredRefs, listingByKey, listings]);
 
+  const categoriesWithContent = useMemo(() => {
+    return ARRANGE_AND_BOOK_CATEGORIES.filter((cat) =>
+      listings.some((listing) => listingMatchesCategory(listing, cat.id))
+    );
+  }, [listings]);
+
+  useEffect(() => {
+    if (!selectedCategoryId) return;
+    if (listingsLoading) return;
+    if (categoriesWithContent.some((cat) => cat.id === selectedCategoryId)) return;
+    setSelectedCategoryId('');
+  }, [categoriesWithContent, listingsLoading, selectedCategoryId]);
+
   const subcategoryTiles = useMemo(() => {
     const cats: ArrangeAndBookCategory[] = selectedCategoryId
-      ? ARRANGE_AND_BOOK_CATEGORIES.filter((c) => c.id === selectedCategoryId)
-      : ARRANGE_AND_BOOK_CATEGORIES;
+      ? categoriesWithContent.filter((c) => c.id === selectedCategoryId)
+      : categoriesWithContent;
 
     const tiles: Array<{
       categoryId: string;
@@ -262,7 +275,7 @@ export default function GuestBookArrange({
       }
     }
     return tiles;
-  }, [listings, selectedCategoryId]);
+  }, [listings, selectedCategoryId, categoriesWithContent]);
 
   const subcategoryListings = useMemo(() => {
     if (!activeSubcategory) return [];
@@ -404,7 +417,7 @@ export default function GuestBookArrange({
                       active={!selectedCategoryId}
                       onClick={() => setSelectedCategoryId('')}
                     />
-                    {ARRANGE_AND_BOOK_CATEGORIES.map((cat) => (
+                    {categoriesWithContent.map((cat) => (
                       <CategoryPill
                         key={cat.id}
                         label={cat.label}

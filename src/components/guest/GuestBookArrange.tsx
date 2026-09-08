@@ -55,6 +55,7 @@ import type { GuestExcursionListing } from '../../lib/guestExcursions';
 import { buildExcursionImpressionKey } from '../../lib/guestAnalytics';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 import type { GuestLocale } from '../../lib/guestLocale';
+import type { GuestTKey } from '../../context/GuestLocaleContext';
 
 const GLASS =
   'relative z-30 flex items-center justify-center h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-[#0A2F32]/45 backdrop-blur-md border border-[#D4B57A]/35 ring-1 ring-inset ring-white/10 text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] hover:bg-[#0A2F32]/60 transition-all';
@@ -325,7 +326,6 @@ export default function GuestBookArrange({
               hasPropertyCoords={hasPropertyCoords}
               onOpenMap={onOpenMap}
               websiteUrl={websiteUrl}
-              propertyName={propertyName}
               googleRating={googleRating}
               googleReviewUrl={googleReviewUrl}
               onBack={() => setActiveSubcategory(null)}
@@ -630,7 +630,7 @@ function FeaturedListingCard({
   highlight?: boolean;
   placeHint?: string;
   onOpen: () => void;
-  t: (key: string) => string;
+  t: (key: GuestTKey) => string;
 }) {
   const { excursion, providerName } = listing;
   const lowestPrice = excursionLowestAdultPrice(excursion);
@@ -717,7 +717,6 @@ function SubcategoryListView({
   hasPropertyCoords,
   onOpenMap,
   websiteUrl,
-  propertyName,
   googleRating,
   googleReviewUrl,
   onBack,
@@ -738,12 +737,11 @@ function SubcategoryListView({
   hasPropertyCoords: boolean;
   onOpenMap: () => void;
   websiteUrl: string | null;
-  propertyName?: string;
   googleRating?: number;
   googleReviewUrl?: string | null;
   onBack: () => void;
   onSelect: (listing: GuestExcursionListing) => void;
-  t: (key: string) => string;
+  t: (key: GuestTKey) => string;
 }) {
   const impressionExcursions = useMemo(
     () =>

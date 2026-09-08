@@ -16,6 +16,7 @@ export type GuestAnalyticsEventType =
   | 'ai_expert_wizard_message'
   | 'ai_expert_chat_message'
   | 'excursions_open'
+  | 'book_arrange_open'
   | 'excursion_impression'
   | 'excursion_detail_open'
   | 'excursion_booking_start'

@@ -370,7 +370,8 @@ export default function GuestPortalHome(props: Props) {
         <div className={`grid gap-3 ${showExcursions ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <DestinationCard
             title={t('liveLikeLocalHero')}
-            subtitle="Curated picks, local tips and hidden gems from people who know."
+            subtitle="Local tips"
+            detail="and hidden gems nearby."
             photoUrl={liveLikeLocalHeroUrl}
             icon={<Sparkles size={11} />}
             onClick={onLiveLikeLocal}
@@ -576,12 +577,14 @@ function GoogleMark() {
 function DestinationCard({
   title,
   subtitle,
+  detail,
   photoUrl,
   icon,
   onClick,
 }: {
   title: string;
   subtitle: string;
+  detail?: string;
   photoUrl?: string;
   icon: ReactNode;
   onClick: () => void;
@@ -597,14 +600,15 @@ function DestinationCard({
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-[#0A3D3A] to-[#041C1E]" />
       )}
-      {/* Full-card depth + stronger bottom veil so title/subtitle stay readable */}
+      {/* Darker full-card mask + bottom veil for readable title/subtitle */}
+      <div aria-hidden className="absolute inset-0 bg-[#041C1E]/38" />
       <div
         aria-hidden
-        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,20,22,0.18)_0%,rgba(4,20,22,0.08)_38%,rgba(0,0,0,0.42)_62%,rgba(0,0,0,0.78)_100%)]"
+        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,20,22,0.22)_0%,rgba(4,20,22,0.12)_32%,rgba(0,0,0,0.52)_62%,rgba(0,0,0,0.86)_100%)]"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[radial-gradient(120%_90%_at_50%_100%,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0.35)_48%,transparent_78%)]"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[radial-gradient(120%_90%_at_50%_100%,rgba(0,0,0,0.78)_0%,rgba(0,0,0,0.4)_48%,transparent_78%)]"
       />
       <span className="absolute top-3 left-3 h-[25px] w-[25px] rounded-[0.6rem] bg-[#C5A059] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(197,160,89,0.35)]">
         {icon}
@@ -616,6 +620,11 @@ function DestinationCard({
         <span className="block text-white/92 text-[clamp(11px,2.2vw,12.5px)] mt-0.5 leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
           {subtitle}
         </span>
+        {detail ? (
+          <span className="block text-white/92 text-[clamp(11px,2.2vw,12.5px)] leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
+            {detail}
+          </span>
+        ) : null}
       </span>
       <span className="absolute bottom-3 right-3 h-8 w-8 rounded-full border border-[#D9B459] bg-[#073D3B]/45 text-[#E5BD62] flex items-center justify-center backdrop-blur-sm">
         <ChevronRight size={16} />

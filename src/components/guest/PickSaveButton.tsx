@@ -14,8 +14,8 @@ type Props = {
   propertyId: string | undefined;
   typeId: string | undefined;
   item: SavedLocalGemInput;
-  /** results = Save on pick cards; saved-list = Remove on saved list cards */
-  variant?: 'results' | 'saved-list';
+  /** results = Save on pick cards; saved-list = Remove on saved list cards; icon-overlay = circular bookmark on photos */
+  variant?: 'results' | 'saved-list' | 'icon-overlay';
   size?: 'sm' | 'md';
 };
 
@@ -90,6 +90,13 @@ export default function PickSaveButton({
   const ariaLabel =
     variant === 'saved-list' || saved ? t('savedLocalGemUnsaveAria') : t('savedLocalGemSaveAria');
 
+  const buttonClass =
+    variant === 'icon-overlay'
+      ? `inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-[#0A2F32] shadow-[0_4px_12px_rgba(0,0,0,0.18)] border border-white/80 transition-colors hover:bg-white disabled:opacity-50 ${
+          saved ? 'text-[#0A4544]' : ''
+        }`
+      : PICK_PILL_BASE;
+
   return (
     <>
       <button
@@ -98,14 +105,14 @@ export default function PickSaveButton({
         disabled={busy}
         aria-pressed={saved}
         aria-label={ariaLabel}
-        className={PICK_PILL_BASE}
+        className={buttonClass}
       >
         {busy ? (
           <Loader2 size={iconSize} className="animate-spin" />
         ) : (
           <Bookmark size={iconSize} strokeWidth={2} className={saved ? 'fill-current' : ''} />
         )}
-        {label}
+        {variant !== 'icon-overlay' && label}
       </button>
 
       {toast && (

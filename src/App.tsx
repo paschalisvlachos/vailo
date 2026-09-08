@@ -40,6 +40,7 @@ import AreaDiscoveredPlaces from "./pages/admin/area/AreaDiscoveredPlaces";
 import AreaRadar from "./pages/admin/area/AreaRadar";
 import AreaNeighborPreview from "./pages/admin/area/AreaNeighborPreview";
 import ExcursionProvidersPage from "./pages/admin/excursions/ExcursionProvidersPage";
+import ArrangeAndBookFeaturedPage from "./pages/admin/excursions/ArrangeAndBookFeaturedPage";
 import ArrangeAndBookServicesPage from "./pages/admin/excursions/ArrangeAndBookServicesPage";
 import ExcursionProviderFormPage from "./pages/admin/excursions/ExcursionProviderFormPage";
 import ExcursionProviderPortalHome from "./pages/admin/excursions/ExcursionProviderPortalHome";
@@ -199,6 +200,7 @@ export default function App() {
           <Route path="area/:country/:area/area-radar" element={<PlatformAdminOnly><AreaRadar /></PlatformAdminOnly>} />
           <Route path="area/:country/:area/overlap-preview" element={<PlatformAdminOnly><AreaNeighborPreview /></PlatformAdminOnly>} />
 
+          <Route path="excursions/featured" element={<PlatformAdminOnly><ArrangeAndBookFeaturedPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers" element={<PlatformAdminOnly><ExcursionProvidersPage /></PlatformAdminOnly>} />
           <Route path="excursions/services" element={<PlatformAdminOnly><ArrangeAndBookServicesPage /></PlatformAdminOnly>} />
           <Route path="excursions/providers/add" element={<PlatformAdminOnly><ExcursionProviderFormPage /></PlatformAdminOnly>} />

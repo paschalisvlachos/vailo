@@ -19,6 +19,7 @@ import {
   ClipboardList,
   Mail,
   Receipt,
+  Star,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -69,7 +70,10 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
   {
     id: 'excursions',
     label: 'Arrange and Book',
-    items: [{ icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') }],
+    items: [
+      { icon: Star, label: 'Featured', to: adminPath('/excursions/featured') },
+      { icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') },
+    ],
   },
   {
     id: 'knowledge',

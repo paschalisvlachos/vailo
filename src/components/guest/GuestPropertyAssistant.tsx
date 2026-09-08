@@ -509,7 +509,7 @@ export default function GuestPropertyAssistant({
   };
 
   return (
-    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
         .font-luxury { font-family: 'Lora', serif; }
@@ -693,7 +693,7 @@ export default function GuestPropertyAssistant({
             )}
           </div>
 
-          <div className="shrink-0 border-t border-gray-100 bg-white/95 backdrop-blur px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="shrink-0 border-t border-gray-100 bg-white/95 backdrop-blur px-3 pt-3 pb-3">
             {error && (
               <p className="text-sm text-red-600 mb-2 px-1" role="alert">
                 {error}

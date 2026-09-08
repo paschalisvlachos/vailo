@@ -1,10 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   BookOpen,
+  Baby,
   Car,
   Check,
   CheckCircle2,
-  ChefHat,
   ChevronRight,
   Clock,
   Compass,
@@ -13,13 +13,16 @@ import {
   EyeOff,
   Flower2,
   Globe,
-  Grid2x2,
   MapPin,
+  PartyPopper,
   Shield,
+  ShoppingBag,
   Sparkles,
   Star,
   Trophy,
+  UtensilsCrossed,
   Wifi,
+  type LucideIcon,
 } from 'lucide-react';
 import GuestLanguageMenu from './GuestLanguageMenu';
 import PropertyEssentials from './PropertyEssentials';
@@ -28,6 +31,9 @@ import MirroredPhotoImg from '../shared/MirroredPhotoImg';
 import { openExternalUrl } from '../../lib/geocoding';
 import { getGuideTextValue } from '../../lib/houseGuideLocales';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
+import { ARRANGE_AND_BOOK_CATEGORIES } from '../../lib/arrangeAndBook';
+import { offeringMatchesArrangeAndBook } from '../../lib/excursionCategories';
+import type { GuestExcursionListing } from '../../lib/guestExcursions';
 import type { FeaturedKey, FeaturedPreviewsMap } from '../../lib/houseGuidePortal';
 import type { GuestLocale, GuestLocaleKey } from '../../lib/guestLocale';
 
@@ -52,7 +58,8 @@ type Props = {
   onAssistant: () => void;
   showExcursions: boolean;
   onExcursions: () => void;
-  onBookArrange?: () => void;
+  onBookArrange?: (categoryId?: string) => void;
+  bookArrangeListings?: GuestExcursionListing[];
   excursionHeroUrl?: string;
   liveLikeLocalHeroUrl?: string;
   hasPropertyCoords: boolean;
@@ -108,16 +115,33 @@ function extractCheckoutTime(text: string, allowUnlabelled: boolean): string | n
   return allowUnlabelled ? extractTimeFromText(clean) : null;
 }
 
-const BOOK_ARRANGE_TILES = [
-  { label: 'Transfers', icon: Car },
-  { label: 'Car rental', icon: Car },
-  { label: 'Private chef', icon: ChefHat },
-  { label: 'Wellness', icon: Flower2 },
-  { label: 'More', icon: Grid2x2 },
-] as const;
-
 const GLASS =
   'relative z-30 flex items-center justify-center h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-[#0A2F32]/45 backdrop-blur-md border border-[#D4B57A]/35 ring-1 ring-inset ring-white/10 text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] hover:bg-[#0A2F32]/60 transition-all';
+
+function bookArrangeCategoryIcon(id: string): LucideIcon {
+  switch (id) {
+    case 'experiences':
+      return Compass;
+    case 'transport':
+      return Car;
+    case 'food_dining':
+      return UtensilsCrossed;
+    case 'wellness':
+      return Flower2;
+    case 'at_the_villa':
+      return Sparkles;
+    case 'family':
+      return Baby;
+    case 'celebrations':
+      return PartyPopper;
+    case 'vip_luxury':
+      return Star;
+    case 'everyday_needs':
+      return ShoppingBag;
+    default:
+      return Compass;
+  }
+}
 
 export default function GuestPortalHome(props: Props) {
   const {
@@ -140,6 +164,7 @@ export default function GuestPortalHome(props: Props) {
     showExcursions,
     onExcursions,
     onBookArrange,
+    bookArrangeListings = [],
     excursionHeroUrl,
     liveLikeLocalHeroUrl,
     hasPropertyCoords,
@@ -189,6 +214,14 @@ export default function GuestPortalHome(props: Props) {
     }
     return null;
   }, [guide, locale, contentPrimaryLocale]);
+
+  const bookArrangeCategories = useMemo(() => {
+    return ARRANGE_AND_BOOK_CATEGORIES.filter((cat) =>
+      bookArrangeListings.some((listing) =>
+        offeringMatchesArrangeAndBook(listing.excursion.categories, cat.id)
+      )
+    );
+  }, [bookArrangeListings]);
 
   const showLanguage = localeOptions.length > 1;
 
@@ -471,26 +504,36 @@ export default function GuestPortalHome(props: Props) {
           </section>
         )}
 
-        <section className="pt-2">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
-            Book & Arrange
-          </p>
-          <div className="grid grid-cols-5 gap-2">
-            {BOOK_ARRANGE_TILES.map((tile) => (
-              <button
-                key={tile.label}
-                type="button"
-                onClick={onBookArrange || onExcursions}
-                className="rounded-xl border border-[#EEEAE3] bg-white py-2 px-1 flex flex-col items-center gap-1 shadow-[0_8px_20px_-14px_rgba(10,47,50,0.28)] hover:border-[#C5A059]/45 transition-colors"
-              >
-                <tile.icon size={18} className="text-[#0A3330]" strokeWidth={1.6} />
-                <span className="text-[11px] font-semibold text-[#0A2F32] text-center leading-tight">
-                  {tile.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+        {bookArrangeCategories.length > 0 && (
+          <section className="pt-2">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
+              Book & Arrange
+            </p>
+            <div className="grid grid-cols-5 gap-x-1.5 gap-y-3 px-0.5">
+              {bookArrangeCategories.map((cat) => {
+                const Icon = bookArrangeCategoryIcon(cat.id);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      if (onBookArrange) onBookArrange(cat.id);
+                      else onExcursions();
+                    }}
+                    className="min-w-0 flex flex-col items-center gap-1.5"
+                  >
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#EEEAE3] bg-white text-[#0A3330] shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
+                      <Icon size={18} strokeWidth={1.6} />
+                    </span>
+                    <span className="w-full px-0.5 text-[10px] font-semibold text-[#0A2F32] text-center leading-[1.15] line-clamp-2 break-words hyphens-auto">
+                      {cat.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {legalFooter}
       </div>

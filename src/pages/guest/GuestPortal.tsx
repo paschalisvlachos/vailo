@@ -524,8 +524,10 @@ function GuestPortalPage({
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
   const openExplore = useCallback(() => setActiveView('explore'), []);
   const openSavedGems = useCallback(() => setActiveView('savedGems'), []);
-  const openBook = useCallback(() => {
+  const [bookCategoryId, setBookCategoryId] = useState('');
+  const openBook = useCallback((categoryId?: string) => {
     track('book_arrange_open');
+    setBookCategoryId(categoryId?.trim() || '');
     setActiveView('book');
   }, [track]);
   const openStay = useCallback(() => {
@@ -533,6 +535,7 @@ function GuestPortalPage({
   }, []);
   const openExcursions = useCallback(() => {
     track('excursions_open');
+    setBookCategoryId('');
     setActiveView('book');
   }, [track]);
 
@@ -923,6 +926,7 @@ function GuestPortalPage({
               showExcursions={showExcursionsPromo}
               onExcursions={openExcursions}
               onBookArrange={openBook}
+              bookArrangeListings={excursionListings}
               excursionHeroUrl={excursionHeroUrl}
               liveLikeLocalHeroUrl={liveLikeLocalHeroUrl}
               hasPropertyCoords={hasPropertyCoords}
@@ -1069,6 +1073,7 @@ function GuestPortalPage({
         ) : activeView === 'book' ? (
           <Suspense fallback={<GuestSubviewFallback />}>
             <GuestBookArrange
+              key={bookCategoryId || 'book-all'}
               listings={excursionListings}
               listingsLoading={excursionsLoading}
               propertyId={propertyId || ''}
@@ -1086,6 +1091,7 @@ function GuestPortalPage({
               locationLabel={heroLocation}
               googleRating={showGoogleRating ? googleRating : undefined}
               googleReviewUrl={googleReviewUrl}
+              initialCategoryId={bookCategoryId}
               onOverlayOpenChange={setExcursionOverlayOpen}
             />
           </Suspense>
@@ -1170,9 +1176,12 @@ function GuestPortalPage({
                       : 'home'
             }
             isMobileFramePreview={isMobileFramePreview}
-            onHome={() => setActiveView('portal')}
+            onHome={() => {
+              setBookCategoryId('');
+              setActiveView('portal');
+            }}
             onAssistant={openAssistant}
-            onBook={openBook}
+            onBook={() => openBook()}
             onExplore={openExplore}
             onStay={openStay}
           />

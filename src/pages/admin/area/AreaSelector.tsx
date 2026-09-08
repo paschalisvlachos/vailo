@@ -142,10 +142,18 @@ export default function AreaSelector() {
     try {
       const areaId = newAreaName.trim().toLowerCase().replace(/\s+/g, '-');
       const finalName = newAreaName.trim();
+      const now = new Date().toISOString();
+
+      // Parent country docs must exist so prod→staging clone can discover area trees.
+      await setDoc(
+        doc(db, 'countries', selectedCountry),
+        { name: selectedCountry, updatedAt: now },
+        { merge: true }
+      );
 
       await setDoc(doc(db, 'countries', selectedCountry, 'areas', areaId), {
         name: finalName,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       });
 
       setNewAreaName('');

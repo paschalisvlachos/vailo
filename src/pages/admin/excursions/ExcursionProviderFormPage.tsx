@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { collection, addDoc, doc, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, addDoc, deleteField, doc, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Image as ImageIcon, Loader2, Lock, Plus, Users, X } from 'lucide-react';
 import { db, storage } from '../../../lib/firebase';
@@ -11,6 +11,7 @@ import { adminPath } from '../../../lib/adminRoutes';
 import {
   EMPTY_EXCURSION_PROVIDER_FORM,
   EXCURSION_PROVIDER_COLLECTION,
+  EXCURSION_SUBCOLLECTION,
   dedupeOperatingRegions,
   excursionProviderFormFromDoc,
   excursionProviderPayloadFromForm,
@@ -24,6 +25,7 @@ import {
   type ExcursionProviderFormData,
   type ExcursionProviderRegion,
 } from '../../../lib/excursionProvider';
+import { listingServiceGroupsFromOfferings } from '../../../lib/excursionCategories';
 import {
   adminExcursionsListPath,
   portalExcursionsListPath,
@@ -95,6 +97,7 @@ export default function ExcursionProviderFormPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [listingOfferings, setListingOfferings] = useState<Array<{ categories?: string[] }>>([]);
 
   useEffect(() => {
     loadCountryNames()
@@ -246,6 +249,30 @@ export default function ExcursionProviderFormPage() {
     load();
   }, [docId, navigate, portalMode, toast]);
 
+  useEffect(() => {
+    if (!docId) {
+      setListingOfferings([]);
+      return;
+    }
+    return onSnapshot(
+      collection(db, EXCURSION_PROVIDER_COLLECTION, docId, EXCURSION_SUBCOLLECTION),
+      (snapshot) => {
+        setListingOfferings(
+          snapshot.docs.map((d) => ({
+            categories: Array.isArray(d.data().categories)
+              ? d.data().categories.map(String)
+              : [],
+          }))
+        );
+      }
+    );
+  }, [docId]);
+
+  const listingServiceGroups = useMemo(
+    () => listingServiceGroupsFromOfferings(listingOfferings),
+    [listingOfferings]
+  );
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
@@ -344,7 +371,11 @@ export default function ExcursionProviderFormPage() {
       });
 
       if (isEdit && docId) {
-        await updateDoc(doc(db, EXCURSION_PROVIDER_COLLECTION, docId), payload);
+        await updateDoc(doc(db, EXCURSION_PROVIDER_COLLECTION, docId), {
+          ...payload,
+          serviceCategoryIds: deleteField(),
+          serviceSubcategoryIds: deleteField(),
+        });
         toast.success(portalMode ? 'Business profile saved.' : 'Provider updated.');
       } else {
         await addDoc(collection(db, EXCURSION_PROVIDER_COLLECTION), {
@@ -431,7 +462,7 @@ export default function ExcursionProviderFormPage() {
                 )}
                 variant="secondary"
               >
-                Manage excursions
+                Manage listings
               </AdminButtonLink>
               <AdminButtonLink
                 to={adminPath(
@@ -538,9 +569,48 @@ export default function ExcursionProviderFormPage() {
                     rows={3}
                     value={formData.description}
                     onChange={handleChange}
-                    placeholder="Brief overview of the business and types of excursions offered…"
+                    placeholder="Brief overview of the business and types of services offered…"
                   />
                 </div>
+                {isEdit && (
+                  <div className="md:col-span-2">
+                    <AdminLabel>Services from listings</AdminLabel>
+                    {listingOfferings.length === 0 ? (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Tags appear here from this provider&apos;s listings. Add a listing and
+                        choose its category there.
+                      </p>
+                    ) : listingServiceGroups.length === 0 ? (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Existing listings will show as Excursions until you tag a more specific
+                        service on the listing.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-3">
+                        {listingServiceGroups.map((group) => (
+                          <div key={group.categoryId}>
+                            <p className="text-xs font-semibold text-gray-500 mb-1.5">
+                              {group.categoryLabel}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {(group.services.length > 0
+                                ? group.services
+                                : [group.categoryLabel]
+                              ).map((label) => (
+                                <span
+                                  key={label}
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold bg-vailo-teal/10 text-vailo-teal border border-vailo-teal/20"
+                                >
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <AdminLabel>Logo</AdminLabel>
                   <div className="flex items-start gap-4">

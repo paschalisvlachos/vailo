@@ -11,6 +11,7 @@ import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import {
   collection,
   collectionGroup,
+  getDocs,
   onSnapshot,
   query,
   where,
@@ -35,6 +36,8 @@ import {
 type AdminSessionContextValue = {
   authUser: User | null;
   profile: OwnerProfile | null;
+  /** Set when the owners profile query fails (e.g. permission / App Check). */
+  profileError: string | null;
   loading: boolean;
   scopes: AdminScope[];
   activeScope: AdminScope | null;
@@ -43,6 +46,24 @@ type AdminSessionContextValue = {
   isScopedUser: boolean;
   isAgent: boolean;
 };
+
+function formatFirestoreError(error: unknown): string {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: string }).code || '')
+      : '';
+  const message =
+    error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: string }).message || '')
+      : String(error || 'Unknown Firestore error');
+  if (code.includes('permission-denied') || /permission/i.test(message)) {
+    return 'Firestore permission denied while reading Owners CRM. Check App Check enforcement and Firestore rules on this project.';
+  }
+  if (/app.?check/i.test(message) || code.includes('app-check')) {
+    return 'Firebase App Check blocked Owners CRM reads. Disable enforcement on staging or enable App Check for this build.';
+  }
+  return code ? `${code}: ${message}` : message;
+}
 
 const AdminSessionContext = createContext<AdminSessionContextValue | null>(null);
 
@@ -62,6 +83,7 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState<OwnerProfile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [profileReady, setProfileReady] = useState(false);
   const [properties, setProperties] = useState<
     { id: string; propertyName?: string; ownerId?: string }[]
@@ -87,9 +109,11 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       setAuthReady(true);
       if (!user) {
         setProfile(null);
+        setProfileError(null);
         setProfileReady(true);
       } else {
         setProfileReady(false);
+        setProfileError(null);
       }
     });
     return () => unsub();
@@ -98,17 +122,20 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authUser) {
       setProfile(null);
+      setProfileError(null);
       setProfileReady(true);
       return;
     }
 
     const email = normalizeAdminEmail(authUser.email);
     const uid = authUser.uid;
+    let cancelled = false;
     let emailUnsub: (() => void) | null = null;
 
     const applySnapshot = (
       snap: { empty: boolean; docs: { id: string; data: () => Record<string, unknown> }[] }
     ) => {
+      if (cancelled) return;
       if (snap.empty) {
         setProfile(null);
       } else {
@@ -117,9 +144,55 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
             (docSnap) => normalizeAdminEmail(String(docSnap.data().email)) === email
           ) ?? snap.docs[0];
         setProfile(parseOwnerProfile(match.id, match.data()));
+        setProfileError(null);
       }
       setProfileReady(true);
     };
+
+    const listenByEmail = () => {
+      if (emailUnsub || !email || cancelled) return;
+      const emailQuery = query(collection(db, 'owners'), where('email', '==', email));
+      emailUnsub = onSnapshot(
+        emailQuery,
+        applySnapshot,
+        (error) => {
+          if (cancelled) return;
+          console.error('[admin-session] owners email query failed', error);
+          setProfile(null);
+          setProfileError(formatFirestoreError(error));
+          setProfileReady(true);
+        }
+      );
+    };
+
+    // One-shot lookups first so App Check / permission failures surface immediately.
+    void (async () => {
+      try {
+        const uidSnap = await getDocs(query(collection(db, 'owners'), where('authUid', '==', uid)));
+        if (cancelled) return;
+        if (!uidSnap.empty) {
+          applySnapshot(uidSnap);
+          return;
+        }
+        if (email) {
+          const emailSnap = await getDocs(
+            query(collection(db, 'owners'), where('email', '==', email))
+          );
+          if (cancelled) return;
+          applySnapshot(emailSnap);
+          if (!emailSnap.empty) return;
+        } else {
+          setProfile(null);
+          setProfileReady(true);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('[admin-session] owners profile lookup failed', error);
+        setProfile(null);
+        setProfileError(formatFirestoreError(error));
+        setProfileReady(true);
+      }
+    })();
 
     const uidQuery = query(collection(db, 'owners'), where('authUid', '==', uid));
     const unsubUid = onSnapshot(
@@ -133,26 +206,21 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
           applySnapshot(snap);
           return;
         }
-
-        if (emailUnsub || !email) return;
-
-        const emailQuery = query(collection(db, 'owners'), where('email', '==', email));
-        emailUnsub = onSnapshot(
-          emailQuery,
-          applySnapshot,
-          () => {
-            setProfile(null);
-            setProfileReady(true);
-          }
-        );
+        listenByEmail();
       },
-      () => {
-        setProfile(null);
-        setProfileReady(true);
+      (error) => {
+        console.error('[admin-session] owners authUid query failed', error);
+        setProfileError(formatFirestoreError(error));
+        listenByEmail();
+        if (!email) {
+          setProfile(null);
+          setProfileReady(true);
+        }
       }
     );
 
     return () => {
+      cancelled = true;
       unsubUid();
       emailUnsub?.();
     };
@@ -271,6 +339,7 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
     () => ({
       authUser,
       profile,
+      profileError,
       loading,
       scopes,
       activeScope,
@@ -279,7 +348,7 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       isScopedUser: isScopedUser(profile),
       isAgent: isAgent(profile),
     }),
-    [authUser, profile, loading, scopes, activeScope, setActiveScope]
+    [authUser, profile, profileError, loading, scopes, activeScope, setActiveScope]
   );
 
   return (

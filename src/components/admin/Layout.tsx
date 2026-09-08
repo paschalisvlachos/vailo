@@ -19,6 +19,7 @@ import {
   ClipboardList,
   Mail,
   Receipt,
+  Star,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -28,6 +29,7 @@ import { useAdminInboxUnreadCount } from '../../hooks/useAdminInboxUnreadCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { scopeFromRoute, scopeKey, isExcursionProvider, isAgent, isOwner, formatOwnerRoleLabel } from '../../lib/adminAccess';
 import AdminScopeBar from './AdminScopeBar';
+import ArrangeAndBookSidebarNav from './ArrangeAndBookSidebarNav';
 import VailoMark from '../guest/VailoMark';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
@@ -67,8 +69,11 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
   },
   {
     id: 'excursions',
-    label: 'Excursions',
-    items: [{ icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') }],
+    label: 'Arrange and Book',
+    items: [
+      { icon: Star, label: 'Featured', to: adminPath('/excursions/featured') },
+      { icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') },
+    ],
   },
   {
     id: 'knowledge',
@@ -220,6 +225,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
+              {section.id === 'excursions' && (
+                <ArrangeAndBookSidebarNav onNavigate={() => setMobileOpen(false)} />
+              )}
             </div>
           </div>
         ))}

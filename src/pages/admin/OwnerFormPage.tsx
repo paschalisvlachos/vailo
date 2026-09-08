@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { collection, collectionGroup, addDoc, deleteDoc, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, addDoc, deleteDoc, deleteField, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { Loader2, Mail, AlertCircle } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useToast } from '../../context/ToastContext';
@@ -189,8 +189,8 @@ export default function OwnerFormPage() {
       if (isEdit && id) {
         // Firebase Auth is the source of truth for login — sync it before Firestore.
         await provisionOwnerAuth({ ownerId: id, ...authInput });
-        if (trimmedPassword) payload.password = trimmedPassword;
-        await updateDoc(doc(db, 'owners', id), payload);
+        // Never persist plaintext passwords on owners docs.
+        await updateDoc(doc(db, 'owners', id), { ...payload, password: deleteField() });
       } else {
         if (!trimmedPassword) {
           toast.warning('Please set an initial login password.');
@@ -213,7 +213,7 @@ export default function OwnerFormPage() {
             password: trimmedPassword,
           });
           await updateDoc(doc(db, 'owners', ownerId), {
-            password: trimmedPassword,
+            password: deleteField(),
             updatedAt: new Date().toISOString(),
           });
         } catch (authError) {

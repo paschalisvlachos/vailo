@@ -234,7 +234,7 @@ function ProviderFleetItem({
   );
 }
 
-function ExcursionDetailSheet({
+export function ExcursionDetailSheet({
   listing,
   onClose,
   onBook,
@@ -730,7 +730,7 @@ export default function GuestExcursions({
 
   return (
     <>
-      <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-[#F3F4F6] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+      <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-[#F3F4F6] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
         <header className="relative shrink-0 overflow-hidden border-b border-[#0B4F5C]/8">
           <div className="absolute inset-0 bg-gradient-to-br from-[#EAF2F2] via-white to-[#FDF9F3]" />
           <div className="absolute -top-12 -right-8 w-44 h-44 bg-[#C5A059]/14 blur-3xl rounded-full pointer-events-none" />

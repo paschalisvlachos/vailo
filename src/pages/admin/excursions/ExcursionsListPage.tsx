@@ -137,7 +137,7 @@ export default function ExcursionsListPage() {
         setLoading(false);
       },
       () => {
-        toast.error('Failed to load excursions.');
+        toast.error('Failed to load listings.');
         setLoading(false);
       }
     );
@@ -189,10 +189,10 @@ export default function ExcursionsListPage() {
       await deleteDoc(
         doc(db, EXCURSION_PROVIDER_COLLECTION, providerId, EXCURSION_SUBCOLLECTION, excursion.id)
       );
-      toast.success('Excursion deleted.');
+      toast.success('Listing deleted.');
     } catch (error) {
       console.error(error);
-      toast.error('Failed to delete excursion.');
+      toast.error('Failed to delete listing.');
     }
   };
 
@@ -228,7 +228,7 @@ export default function ExcursionsListPage() {
   }
 
   if (loading) {
-    return <div className="py-16 text-center text-gray-500 text-sm">Loading excursions…</div>;
+    return <div className="py-16 text-center text-gray-500 text-sm">Loading listings…</div>;
   }
 
   return (
@@ -236,11 +236,11 @@ export default function ExcursionsListPage() {
       <AdminBackHeader
         backTo={listBackPath}
         backLabel={portalMode ? 'Back to business profile' : 'Back to providers'}
-        title="Excursions"
+        title="Listings"
         description={
           providerName
-            ? `Products offered by ${providerName}`
-            : 'Manage bookable excursion products'
+            ? `Bookable services from ${providerName} — sailing, transfers, dining, wellness, and more.`
+            : 'Bookable services this provider offers across Arrange and Book.'
         }
         action={
           <div className="flex flex-wrap gap-2">
@@ -248,7 +248,7 @@ export default function ExcursionsListPage() {
               <Info size={18} /> Provider details
             </AdminButtonLink>
             <AdminButtonLink to={addPath}>
-              <Plus size={18} /> Add excursion
+              <Plus size={18} /> Add listing
             </AdminButtonLink>
           </div>
         }
@@ -257,11 +257,11 @@ export default function ExcursionsListPage() {
       {sorted.length === 0 ? (
         <AdminEmptyState
           icon={<MapPin size={32} />}
-          title="No excursions yet"
-          description="Create your first excursion with pricing, duration, and publish status."
+          title="No listings yet"
+          description="Add the first bookable service for this provider. Tag it as Excursions, Sailing, Airport transfer, or any other Arrange and Book category."
           action={
             <AdminButtonLink to={addPath}>
-              <Plus size={18} /> Add excursion
+              <Plus size={18} /> Add listing
             </AdminButtonLink>
           }
         />
@@ -291,7 +291,7 @@ export default function ExcursionsListPage() {
           </div>
           {filtered.length === 0 ? (
             <div className="px-6 py-12 text-center text-sm text-gray-500">
-              No {tourTypeFilter === 'private' ? 'private' : 'group'} excursions match this
+              No {tourTypeFilter === 'private' ? 'private' : 'group'} listings match this
               filter.
             </div>
           ) : (
@@ -299,8 +299,8 @@ export default function ExcursionsListPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-vailo-surface-elevated/80 text-left">
-                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Excursion</th>
-                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Categories</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Listing</th>
+                  <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Service type</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Seasons</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Travel style</th>
                   <th className="px-4 sm:px-6 py-3 font-semibold text-gray-600">Duration</th>

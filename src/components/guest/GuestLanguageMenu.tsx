@@ -12,6 +12,8 @@ type Props = {
   variant?: 'hero' | 'surface';
   /** When true, closes the dropdown (e.g. portal nav menu opened). */
   dismissOpen?: boolean;
+  /** Tighter trigger for the redesigned home header. */
+  compact?: boolean;
 };
 
 export default function GuestLanguageMenu({
@@ -20,6 +22,7 @@ export default function GuestLanguageMenu({
   options,
   variant = 'hero',
   dismissOpen = false,
+  compact = false,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -36,7 +39,9 @@ export default function GuestLanguageMenu({
   const triggerClass =
     variant === 'surface'
       ? 'flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-full bg-[#0B4F5C]/8 border border-[#0B4F5C]/15 text-[#0B4F5C] text-xs font-semibold uppercase tracking-wider hover:bg-[#0B4F5C]/12 transition-all'
-      : 'flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-xs font-semibold uppercase tracking-wider hover:bg-white/20 transition-all';
+      : compact
+        ? 'flex items-center justify-center gap-0.5 h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-[#0A2F32]/45 backdrop-blur-md border border-white/15 text-white text-[10px] font-semibold uppercase tracking-wider hover:bg-[#0A2F32]/60 transition-all'
+        : 'flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-full bg-white/12 backdrop-blur-md border border-white/25 text-white text-xs font-semibold uppercase tracking-wider hover:bg-white/20 transition-all';
 
   useEffect(() => {
     if (!open) return;
@@ -58,8 +63,12 @@ export default function GuestLanguageMenu({
         aria-label="Language"
       >
         <Languages size={13} className="text-[#C5A059] shrink-0" />
-        <span>{current.nativeLabel}</span>
-        <ChevronDown size={12} className={`opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {!compact && <span>{current.nativeLabel}</span>}
+        {compact ? (
+          <span className="sr-only">{current.nativeLabel}</span>
+        ) : (
+          <ChevronDown size={12} className={`opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        )}
       </button>
 
       {open && (

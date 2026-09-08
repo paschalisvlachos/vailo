@@ -47,7 +47,7 @@ export default function GuestSavedLocalGems({
   }, [filtered, categoryFilter]);
 
   return (
-    <div className="guest-mobile fixed inset-0 z-50 flex flex-col overflow-hidden bg-gradient-to-b from-vailo-teal to-vailo-teal-hover md:relative md:h-[800px] md:rounded-3xl md:shadow-[4px_0_48px_-8px_rgba(5,31,38,0.45)] md:border md:border-white/10">
+    <div className="guest-mobile fixed inset-0 z-50 flex flex-col overflow-hidden bg-gradient-to-b from-vailo-teal to-vailo-teal-hover pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:shadow-[4px_0_48px_-8px_rgba(5,31,38,0.45)] md:border md:border-white/10">
       <div className="shrink-0 border-b border-white/10 px-4 py-3.5 flex items-center gap-3">
         <button
           type="button"

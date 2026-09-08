@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   Anchor,
+  Bookmark,
   Briefcase,
   Car,
   Check,
@@ -50,6 +51,7 @@ type Props = {
   propertyTypeName?: string;
   /** Notifies parent when the detail sheet opens — used to hide FABs and fix stacking. */
   onDetailOpenChange?: (open: boolean) => void;
+  layout?: 'list' | 'carousel';
 };
 
 function featureTitle(
@@ -299,6 +301,7 @@ export default function GuestLocalServices({
   propertyName,
   propertyTypeName,
   onDetailOpenChange,
+  layout = 'list',
 }: Props) {
   const { locale, contentPrimaryLocale } = useGuestLocale();
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -322,6 +325,76 @@ export default function GuestLocalServices({
   );
 
   if (features.length === 0) return null;
+
+  if (layout === 'carousel') {
+    return (
+      <>
+        <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-none">
+          {features.map((feature) => {
+            const title = featureTitle(feature, locale, contentPrimaryLocale);
+            const listDescription = resolveLocalizedString(
+              feature,
+              'description',
+              locale,
+              contentPrimaryLocale
+            );
+            const category = feature.categories?.[0];
+            return (
+              <button
+                key={feature.id}
+                type="button"
+                onClick={() => setSelected(feature)}
+                className="snap-start shrink-0 w-[9.75rem] text-left rounded-[0.75rem] overflow-hidden border border-[#EEEAE3] bg-white shadow-[0_8px_20px_-14px_rgba(10,47,50,0.35)]"
+              >
+                <div className="relative h-[5rem] bg-[#E8DFD0]">
+                  {feature.photoUrl ? (
+                    <MirroredPhotoImg
+                      src={feature.photoUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      mirrorContext={{ docId: feature.id }}
+                      fallback={
+                        <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
+                          <Sparkles size={26} />
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
+                      <Sparkles size={26} />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0A2F32]/55 via-transparent to-black/10" />
+                  <span className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/95 text-[#0A2F32] flex items-center justify-center shadow-sm">
+                    <Bookmark size={13} />
+                  </span>
+                </div>
+                <div className="px-2.5 pt-2 pb-2.5">
+                  <h3 className="font-sans text-[11px] font-semibold text-[#0A2F32] leading-tight line-clamp-1">
+                    {title}
+                  </h3>
+                  <p className="text-[9.5px] text-[#7A7266] mt-1 line-clamp-1 leading-snug">
+                    {category || listDescription || 'Host pick'}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {selected &&
+          typeof document !== 'undefined' &&
+          createPortal(
+            <ServiceDetailSheet
+              feature={selected}
+              propertyName={propertyName}
+              propertyTypeName={propertyTypeName}
+              onClose={() => setSelected(null)}
+            />,
+            document.body
+          )}
+      </>
+    );
+  }
 
   return (
     <>

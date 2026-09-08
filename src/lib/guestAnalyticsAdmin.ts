@@ -165,6 +165,7 @@ export function eventTypeLabel(type: string): string {
     ai_expert_wizard_message: 'Live like a local (wizard)',
     ai_expert_chat_message: 'Live like a local (chat)',
     excursions_open: 'Excursions opened',
+    book_arrange_open: 'Book & Arrange opened',
     excursion_impression: 'Excursion seen in list',
     excursion_detail_open: 'Excursion detail viewed',
     excursion_booking_start: 'Excursion booking started',

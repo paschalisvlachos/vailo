@@ -16,7 +16,6 @@ import {
   Grid2x2,
   MapPin,
   Shield,
-  ShoppingBag,
   Sparkles,
   Star,
   Trophy,
@@ -53,6 +52,7 @@ type Props = {
   onAssistant: () => void;
   showExcursions: boolean;
   onExcursions: () => void;
+  onBookArrange?: () => void;
   excursionHeroUrl?: string;
   liveLikeLocalHeroUrl?: string;
   hasPropertyCoords: boolean;
@@ -60,7 +60,6 @@ type Props = {
   websiteUrl: string | null;
   googleRating?: number;
   googleReviewUrl?: string | null;
-  whatsappHref?: string | null;
   pwaBanner: ReactNode;
   showCheckInPromo: boolean;
   checkInComplete: boolean;
@@ -140,6 +139,7 @@ export default function GuestPortalHome(props: Props) {
     onAssistant,
     showExcursions,
     onExcursions,
+    onBookArrange,
     excursionHeroUrl,
     liveLikeLocalHeroUrl,
     hasPropertyCoords,
@@ -147,7 +147,6 @@ export default function GuestPortalHome(props: Props) {
     websiteUrl,
     googleRating,
     googleReviewUrl,
-    whatsappHref,
     pwaBanner,
     showCheckInPromo,
     checkInComplete,
@@ -334,7 +333,7 @@ export default function GuestPortalHome(props: Props) {
         </div>
       </section>
 
-      <div className={`mx-auto relative z-20 flex flex-col gap-3 pb-32 ${column} ${contentPadding}`}>
+      <div className={`mx-auto relative z-20 flex flex-col gap-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] ${column} ${contentPadding}`}>
         <div className={`grid gap-3 ${showExcursions ? 'grid-cols-2' : 'grid-cols-1'}`}>
           <DestinationCard
             title={t('liveLikeLocalHero')}
@@ -345,11 +344,11 @@ export default function GuestPortalHome(props: Props) {
           />
           {showExcursions && (
             <DestinationCard
-              title="Excursions"
-              subtitle="Unforgettable experiences and day trips, handpicked for you."
+              title="Book & Arrange"
+              subtitle="Turn good holidays into unforgettable ones."
               photoUrl={excursionHeroUrl}
               icon={<Compass size={11} />}
-              onClick={onExcursions}
+              onClick={onBookArrange || onExcursions}
             />
           )}
         </div>
@@ -478,52 +477,23 @@ export default function GuestPortalHome(props: Props) {
           </p>
           <div className="grid grid-cols-5 gap-2">
             {BOOK_ARRANGE_TILES.map((tile) => (
-              <div
+              <button
                 key={tile.label}
-                className="rounded-xl border border-[#EEEAE3] bg-white py-2 px-1 flex flex-col items-center gap-1 shadow-[0_8px_20px_-14px_rgba(10,47,50,0.28)]"
+                type="button"
+                onClick={onBookArrange || onExcursions}
+                className="rounded-xl border border-[#EEEAE3] bg-white py-2 px-1 flex flex-col items-center gap-1 shadow-[0_8px_20px_-14px_rgba(10,47,50,0.28)] hover:border-[#C5A059]/45 transition-colors"
               >
                 <tile.icon size={18} className="text-[#0A3330]" strokeWidth={1.6} />
                 <span className="text-[11px] font-semibold text-[#0A2F32] text-center leading-tight">
                   {tile.label}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </section>
 
         {legalFooter}
       </div>
-
-      <nav
-        className={`${
-          isMobileFramePreview ? 'absolute inset-x-0' : 'fixed left-1/2 -translate-x-1/2 w-full max-w-[576px]'
-        } bottom-0 z-30 bg-[#0A2F32] text-white/70 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2.5 ${
-          isMobileFramePreview ? 'md:rounded-b-[32px]' : ''
-        }`}
-        aria-label="Guest portal navigation"
-      >
-        <div className="px-3 grid grid-cols-5 items-end">
-          <NavItem label="Home" active icon={<HomeGlyph />} />
-          <NavItem label="Book" icon={<ShoppingBag size={19} strokeWidth={1.75} />} />
-          <button
-            type="button"
-            onClick={onAssistant}
-            className="flex min-h-[44px] flex-col items-center -mt-7"
-            aria-label="Open Ask Vailo 24/7 assistant"
-          >
-            <div className="h-[3.35rem] w-[3.35rem] rounded-full bg-[#0A3330] border-[3px] border-[#F7F7F5] flex items-center justify-center shadow-[0_10px_22px_rgba(4,28,30,0.4)]">
-              <Sparkles size={18} className="text-[#E8D5A8]" />
-            </div>
-            <span className="text-[12px] font-medium mt-1 text-white/80">Ask Vailo</span>
-          </button>
-          <NavItem label="Explore" icon={<Compass size={19} strokeWidth={1.75} />} />
-          <NavItem
-            label="WhatsApp"
-            icon={<WhatsAppGlyph />}
-            onClick={whatsappHref ? () => openExternalUrl(whatsappHref) : undefined}
-          />
-        </div>
-      </nav>
     </>
   );
 }
@@ -608,58 +578,5 @@ function DestinationCard({
         <ChevronRight size={16} />
       </span>
     </button>
-  );
-}
-
-function NavItem({
-  label,
-  icon,
-  active = false,
-  onClick,
-}: {
-  label: string;
-  icon: ReactNode;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  const className = `flex min-h-[44px] flex-col items-center justify-end gap-1 pb-0.5 ${
-    active ? 'text-[#D4B57A]' : 'text-white/75'
-  }`;
-
-  return onClick ? (
-    <button type="button" onClick={onClick} className={className} aria-label="Contact host on WhatsApp">
-      {icon}
-      <span className="text-[12px] font-medium">{label}</span>
-    </button>
-  ) : (
-    <div className={className}>
-      {icon}
-      <span className="text-[12px] font-medium">{label}</span>
-    </div>
-  );
-}
-
-function WhatsAppGlyph() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M20.3 11.7a8.3 8.3 0 0 1-12.25 7.3L4 20l1.08-3.92A8.3 8.3 0 1 1 20.3 11.7Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.1 7.8c.2-.45.43-.46.73-.47h.43c.14 0 .36.05.54.45.18.4.62 1.51.67 1.62.06.11.1.24.02.38-.08.15-.12.24-.24.37-.12.13-.25.29-.36.39-.12.11-.24.23-.1.46.14.24.62 1.03 1.34 1.67.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.17.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.39.66 1.63.78.24.12.4.18.46.28.06.1.06.58-.14 1.14-.2.56-1.17 1.07-1.61 1.14-.42.07-.96.1-1.55-.1-.36-.11-.82-.27-1.41-.53-.25-.11-2.48-.92-4.21-3.23-.49-.65-.82-1.38-.92-1.61-.1-.24-1.03-2.49.98-4.3Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function HomeGlyph() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M4.4 10.7 12 4.2l7.6 6.5c.3.26.4.7.25 1.08A.9.9 0 0 1 19 12.4h-.7V19a1.1 1.1 0 0 1-1.1 1.1h-4.1v-5.2h-2.2v5.2H6.8A1.1 1.1 0 0 1 5.7 19v-6.6H5a.9.9 0 0 1-.85-.62.95.95 0 0 1 .25-1.08Z" />
-    </svg>
   );
 }

@@ -108,7 +108,7 @@ export default function GuestFeaturedPreviewSheet({
         );
   }, [featuredKey, cfg, previews, guideData, locale, contentPrimaryLocale, contentReviewedLocales]);
 
-  const bodyText = previewLine.trim() || digest;
+  const bodyText = digest.trim() || previewLine.trim();
 
   if (!featuredKey || !cfg) return null;
 

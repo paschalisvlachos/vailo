@@ -6,6 +6,9 @@ const AiExpertView = lazy(() => import('./AiExpertView'));
 const GuestPropertyAssistant = lazy(() => import('../../components/guest/GuestPropertyAssistant'));
 const GuestExcursions = lazy(() => import('../../components/guest/GuestExcursions'));
 const GuestSavedLocalGems = lazy(() => import('../../components/guest/GuestSavedLocalGems'));
+const GuestExplore = lazy(() => import('../../components/guest/GuestExplore'));
+const GuestBookArrange = lazy(() => import('../../components/guest/GuestBookArrange'));
+const GuestStay = lazy(() => import('../../components/guest/GuestStay'));
 import LegalDocumentModal from '../../components/guest/LegalDocumentModal';
 import GuestLegalFooter from '../../components/guest/GuestLegalFooter';
 import GuestFloatingActions from '../../components/guest/GuestFloatingActions';
@@ -14,12 +17,14 @@ import GuestPropertyMapSheet from '../../components/guest/GuestPropertyMapSheet'
 import GuestExcursionsPromoCard from '../../components/guest/GuestExcursionsPromoCard';
 import GuestAddToHomeBanner from '../../components/guest/GuestAddToHomeBanner';
 import GuestPortalHome from '../../components/guest/GuestPortalHome';
+import GuestPortalBottomNav from '../../components/guest/GuestPortalBottomNav';
 import GuestPortalAccessGate from '../../components/guest/GuestPortalAccessGate';
 import GuestOpenPreArrivalFlow from '../../components/guest/GuestOpenPreArrivalFlow';
 import GuestPortalLoadingScreen from '../../components/guest/GuestPortalLoadingScreen';
 import GemImpressionTracker from '../../components/guest/GemImpressionTracker';
 import MirroredPhotoImg from '../../components/shared/MirroredPhotoImg';
 import { GuestAnalyticsProvider, useGuestAnalytics } from '../../context/GuestAnalyticsContext';
+import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 import {
   getFeaturedConfig,
   PORTAL_FEATURED_CAP,
@@ -351,7 +356,9 @@ function GuestPortalPage({
   const [resolving, setResolving] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<'portal' | 'aiExpert' | 'assistant' | 'excursions' | 'savedGems'>('portal');
+  const [activeView, setActiveView] = useState<
+    'portal' | 'aiExpert' | 'assistant' | 'excursions' | 'explore' | 'savedGems' | 'book' | 'stay'
+  >('portal');
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [propertyMapOpen, setPropertyMapOpen] = useState(false);
   const { locale, setLocale, t, localeOptions, contentPrimaryLocale } = useGuestLocale();
@@ -369,7 +376,20 @@ function GuestPortalPage({
     excursionListings,
     excursionsLoading,
     listingAreaCtx,
+    parentCategories,
+    subcategoriesByParentPrimary,
+    categoryCatalogDocs,
   } = useGuestAreaData();
+
+  const exploreCategoryOptions = useMemo(() => {
+    const options = [];
+    for (const parent of parentCategories) {
+      options.push(parent);
+      const subs = subcategoriesByParentPrimary[parent.primary] || [];
+      options.push(...subs);
+    }
+    return options;
+  }, [parentCategories, subcategoriesByParentPrimary]);
   const guestLoadKeyRef = useRef<string | null>(null);
   const [guestSession, setGuestSession] = useState<GuestPortalSession | null>(() =>
     readGuestPortalSession()
@@ -502,9 +522,18 @@ function GuestPortalPage({
     setActiveView('aiExpert');
   }, [track]);
   const openAssistant = useCallback(() => setActiveView('assistant'), []);
+  const openExplore = useCallback(() => setActiveView('explore'), []);
+  const openSavedGems = useCallback(() => setActiveView('savedGems'), []);
+  const openBook = useCallback(() => {
+    track('book_arrange_open');
+    setActiveView('book');
+  }, [track]);
+  const openStay = useCallback(() => {
+    setActiveView('stay');
+  }, []);
   const openExcursions = useCallback(() => {
     track('excursions_open');
-    setActiveView('excursions');
+    setActiveView('book');
   }, [track]);
 
   useEffect(() => {
@@ -893,6 +922,7 @@ function GuestPortalPage({
               onAssistant={openAssistant}
               showExcursions={showExcursionsPromo}
               onExcursions={openExcursions}
+              onBookArrange={openBook}
               excursionHeroUrl={excursionHeroUrl}
               liveLikeLocalHeroUrl={liveLikeLocalHeroUrl}
               hasPropertyCoords={hasPropertyCoords}
@@ -900,7 +930,6 @@ function GuestPortalPage({
               websiteUrl={websiteUrl}
               googleRating={showGoogleRating ? googleRating : undefined}
               googleReviewUrl={googleReviewUrl}
-              whatsappHref={whatsappHref}
               pwaBanner={
                 pwaInstall.showBanner ? (
                   <GuestAddToHomeBanner
@@ -1014,6 +1043,79 @@ function GuestPortalPage({
               localeOptions={localeOptions}
             />
           </Suspense>
+        ) : activeView === 'explore' ? (
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <GuestExplore
+              gems={gems}
+              categoryOptions={exploreCategoryOptions}
+              categoryCatalogDocs={categoryCatalogDocs}
+              locationLabel={heroLocation}
+              mapAreaHint={mapAreaHint}
+              propertyName={property?.propertyName}
+              propertyId={propertyId || ''}
+              typeId={typeId || ''}
+              googlePlaceId={typeData?.googlePlaceId}
+              locale={locale}
+              setLocale={setLocale}
+              localeOptions={localeOptions}
+              hasPropertyCoords={hasPropertyCoords}
+              onOpenMap={() => setPropertyMapOpen(true)}
+              websiteUrl={websiteUrl}
+              googleRating={showGoogleRating ? googleRating : undefined}
+              googleReviewUrl={googleReviewUrl}
+              onOpenSaved={openSavedGems}
+            />
+          </Suspense>
+        ) : activeView === 'book' ? (
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <GuestBookArrange
+              listings={excursionListings}
+              listingsLoading={excursionsLoading}
+              propertyId={propertyId || ''}
+              typeId={typeId || ''}
+              googlePlaceId={typeData?.googlePlaceId}
+              locale={locale}
+              setLocale={setLocale}
+              localeOptions={localeOptions}
+              hasPropertyCoords={hasPropertyCoords}
+              onOpenMap={() => setPropertyMapOpen(true)}
+              websiteUrl={websiteUrl}
+              propertyName={property?.propertyName}
+              propertyTypeName={typeData?.propertyTypeName}
+              whatsappRaw={typeData?.whatsapp}
+              locationLabel={heroLocation}
+              googleRating={showGoogleRating ? googleRating : undefined}
+              googleReviewUrl={googleReviewUrl}
+              onOverlayOpenChange={setExcursionOverlayOpen}
+            />
+          </Suspense>
+        ) : activeView === 'stay' ? (
+          <Suspense fallback={<GuestSubviewFallback />}>
+            <GuestStay
+              heroPhoto={heroPhoto}
+              propertyId={propertyId || ''}
+              typeId={typeId || ''}
+              googlePlaceId={typeData?.googlePlaceId}
+              locale={locale}
+              setLocale={setLocale}
+              localeOptions={localeOptions}
+              hasPropertyCoords={hasPropertyCoords}
+              onOpenMap={() => setPropertyMapOpen(true)}
+              websiteUrl={websiteUrl}
+              googleRating={showGoogleRating ? googleRating : undefined}
+              googleReviewUrl={googleReviewUrl}
+              wifiName={wifiName}
+              wifiPassword={wifiPassword}
+              copiedWifi={copiedWifi}
+              onCopyWifi={copyWifi}
+              guide={guide && typeof guide === 'object' ? (guide as Record<string, unknown>) : null}
+              checkoutDateLabel={checkoutDateLabel}
+              featuredPreviews={featuredPreviews}
+              whatsappHref={whatsappHref}
+              onAssistant={openAssistant}
+              onOverlayOpenChange={setExcursionOverlayOpen}
+            />
+          </Suspense>
         ) : activeView === 'excursions' ? (
           <Suspense fallback={<GuestSubviewFallback />}>
             <GuestExcursions
@@ -1032,7 +1134,7 @@ function GuestPortalPage({
               propertyId={propertyId}
               typeId={typeId}
               mapAreaHint={mapAreaHint}
-              onClose={() => setActiveView('portal')}
+              onClose={() => setActiveView('explore')}
             />
           </Suspense>
         ) : (
@@ -1052,6 +1154,28 @@ function GuestPortalPage({
             }}
           />
           </Suspense>
+        )}
+
+        {!checkInOpen && !excursionOverlayOpen && (
+          <GuestPortalBottomNav
+            activeTab={
+              activeView === 'assistant'
+                ? 'assistant'
+                : activeView === 'explore' || activeView === 'savedGems'
+                  ? 'explore'
+                  : activeView === 'book' || activeView === 'excursions'
+                    ? 'book'
+                    : activeView === 'stay'
+                      ? 'stay'
+                      : 'home'
+            }
+            isMobileFramePreview={isMobileFramePreview}
+            onHome={() => setActiveView('portal')}
+            onAssistant={openAssistant}
+            onBook={openBook}
+            onExplore={openExplore}
+            onStay={openStay}
+          />
         )}
 
         {checkInOpen && propertyId && typeId && property && (
@@ -1095,6 +1219,34 @@ function GuestPortalPage({
           </div>
         )}
       </div>
+
+      {activeView === 'portal' &&
+        whatsappHref &&
+        !checkInOpen &&
+        !serviceDetailOpen &&
+        !excursionOverlayOpen &&
+        !propertyMapOpen &&
+        !reportSheetOpen &&
+        !legalModal && (
+        <div
+          className={
+            isMobileFramePreview
+              ? `pointer-events-none fixed ${GUEST_PORTAL_Z.fab} bottom-[calc(5.15rem+env(safe-area-inset-bottom,0px))] right-3 max-md:right-3 md:right-[max(0.75rem,calc((100vw-400px)/2+0.75rem))]`
+              : `pointer-events-none fixed bottom-[calc(5.15rem+env(safe-area-inset-bottom,0px))] right-3 ${GUEST_PORTAL_Z.fab}`
+          }
+        >
+          <button
+            type="button"
+            onClick={() => openExternalUrl(whatsappHref)}
+            className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-[0_8px_22px_rgba(37,211,102,0.45)] border border-[#1da851]/45 hover:bg-[#20bd5a] transition-all active:scale-[0.97]"
+            aria-label="Contact host on WhatsApp"
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12.04 2C6.58 2 2.15 6.4 2.15 11.83c0 1.99.58 3.85 1.59 5.43L2 22l4.9-1.68A9.86 9.86 0 0 0 12.04 21.7c5.46 0 9.89-4.4 9.89-9.87C21.93 6.4 17.5 2 12.04 2Zm5.5 13.84c-.23.65-1.34 1.2-1.86 1.28-.48.07-1.1.1-1.77-.11-.41-.13-.93-.3-1.6-.59-2.82-1.22-4.66-4.06-4.8-4.25-.14-.19-1.13-1.5-1.13-2.86 0-1.36.71-2.03.96-2.31.25-.28.55-.35.73-.35h.53c.17 0 .4-.06.62.47.23.54.77 1.88.84 2.02.07.14.11.3.02.48-.09.19-.14.3-.27.46-.14.16-.29.35-.41.47-.14.14-.28.29-.12.57.16.28.7 1.15 1.5 1.86 1.03.92 1.9 1.2 2.17 1.34.27.14.43.12.59-.07.16-.19.68-.79.86-1.06.18-.28.36-.23.61-.14.25.09 1.58.75 1.85.88.27.14.45.2.52.31.07.11.07.65-.16 1.3Z" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {showHomeFloatingActions &&
         activeView === 'portal' &&

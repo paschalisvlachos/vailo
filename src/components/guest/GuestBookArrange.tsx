@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
 import {
@@ -177,6 +177,8 @@ export default function GuestBookArrange({
   const [selected, setSelected] = useState<GuestExcursionListing | null>(null);
   const [bookingListing, setBookingListing] = useState<GuestExcursionListing | null>(null);
   const heroPhotoRef = useRef<string | null>(null);
+  const featuredScrollRef = useRef<HTMLDivElement>(null);
+  const [featuredActiveIndex, setFeaturedActiveIndex] = useState(0);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -218,6 +220,39 @@ export default function GuestBookArrange({
       .filter((row): row is GuestExcursionListing => Boolean(row))
       .filter((row) => listingMatchesCategory(row, selectedCategoryId));
   }, [featuredRefs, listingByKey, selectedCategoryId]);
+
+  const featuredCardStride = () => {
+    const el = featuredScrollRef.current;
+    const row = el?.firstElementChild as HTMLElement | null;
+    const first = row?.firstElementChild as HTMLElement | null;
+    if (!el || !row || !first) return 0;
+    const gap =
+      parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap || '0') || 0;
+    return first.offsetWidth + gap;
+  };
+
+  const updateFeaturedActiveIndex = useCallback(() => {
+    const el = featuredScrollRef.current;
+    if (!el || featuredListings.length === 0) return;
+    const stride = featuredCardStride();
+    if (stride <= 0) return;
+    const index = Math.round(el.scrollLeft / stride);
+    setFeaturedActiveIndex(Math.min(Math.max(index, 0), featuredListings.length - 1));
+  }, [featuredListings.length]);
+
+  useEffect(() => {
+    setFeaturedActiveIndex(0);
+    featuredScrollRef.current?.scrollTo({ left: 0 });
+  }, [selectedCategoryId, featuredListings.length]);
+
+  const scrollFeaturedToIndex = (index: number) => {
+    const el = featuredScrollRef.current;
+    if (!el) return;
+    const stride = featuredCardStride();
+    if (stride <= 0) return;
+    el.scrollTo({ left: index * stride, behavior: 'smooth' });
+    setFeaturedActiveIndex(index);
+  };
 
   const heroPhoto = useMemo(() => {
     const pool = featuredRefs
@@ -444,20 +479,52 @@ export default function GuestBookArrange({
                           : 'No featured listings yet.'}
                     </p>
                   ) : (
-                    <div className="-mx-[clamp(18px,6.6vw,38px)] px-[clamp(18px,6.6vw,38px)] overflow-x-auto scrollbar-none">
-                      <div className="flex gap-3 pb-1">
-                        {featuredListings.map((listing, index) => (
-                          <FeaturedListingCard
-                            key={`${listing.providerId}-${listing.excursion.id}`}
-                            listing={listing}
-                            highlight={index === 0}
-                            placeHint={placeHint}
-                            onOpen={() => setSelected(listing)}
-                            t={t}
-                          />
-                        ))}
+                    <>
+                      <div
+                        ref={featuredScrollRef}
+                        onScroll={updateFeaturedActiveIndex}
+                        className="-mx-[clamp(18px,6.6vw,38px)] overflow-x-auto scrollbar-none"
+                      >
+                        <div className="flex w-max gap-3 pl-[clamp(18px,6.6vw,38px)] pb-1">
+                          {featuredListings.map((listing, index) => (
+                            <div
+                              key={`${listing.providerId}-${listing.excursion.id}`}
+                              className={
+                                index === featuredListings.length - 1
+                                  ? 'shrink-0 mr-[clamp(18px,6.6vw,38px)]'
+                                  : 'shrink-0'
+                              }
+                            >
+                              <FeaturedListingCard
+                                listing={listing}
+                                highlight={index === 0}
+                                placeHint={placeHint}
+                                onOpen={() => setSelected(listing)}
+                                t={t}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                      {featuredListings.length > 1 && (
+                        <div className="flex items-center justify-center gap-1.5 mt-3">
+                          {featuredListings.map((listing, i) => (
+                            <button
+                              key={`featured-dot-${listing.providerId}-${listing.excursion.id}`}
+                              type="button"
+                              aria-label={`View featured ${i + 1} of ${featuredListings.length}`}
+                              aria-current={i === featuredActiveIndex ? 'true' : undefined}
+                              onClick={() => scrollFeaturedToIndex(i)}
+                              className={`rounded-full transition-all duration-300 ${
+                                i === featuredActiveIndex
+                                  ? 'h-2 w-2 bg-[#C5A059] scale-110'
+                                  : 'h-1.5 w-1.5 bg-[#0A2F32]/20 hover:bg-[#0A2F32]/35'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                 </section>
 

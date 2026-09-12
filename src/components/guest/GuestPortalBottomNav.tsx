@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Compass, ShoppingBag, Sparkles } from 'lucide-react';
 
 export type GuestPortalNavTab = 'home' | 'book' | 'assistant' | 'explore' | 'stay';
@@ -26,13 +27,14 @@ export default function GuestPortalBottomNav({
   onExplore,
   onStay,
 }: Props) {
-  return (
+  const nav = (
     <nav
-      className={`${
-        isMobileFramePreview ? 'absolute inset-x-0' : 'fixed left-1/2 -translate-x-1/2 w-full max-w-[576px]'
-      } bottom-0 z-[60] bg-[#0A2F32] text-white/70 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-2.5 ${
-        isMobileFramePreview ? 'md:rounded-b-[32px]' : ''
-      }`}
+      className={
+        isMobileFramePreview
+          ? 'absolute inset-x-0 bottom-0 z-[60] bg-[#0A2F32] text-white/70 pt-2.5 pb-[max(0.45rem,env(safe-area-inset-bottom,0px))] md:rounded-b-[32px]'
+          : // Avoid transform centering (left-1/2 -translate-x-1/2) — breaks fixed bottom bars on some mobile WebKits.
+            'fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-[576px] bg-[#0A2F32] text-white/70 pt-2.5 pb-[max(0.45rem,env(safe-area-inset-bottom,0px))]'
+      }
       aria-label="Guest portal navigation"
     >
       <div className="px-3 grid grid-cols-5 items-end">
@@ -70,6 +72,13 @@ export default function GuestPortalBottomNav({
       </div>
     </nav>
   );
+
+  // Portal out of overflow/transform ancestors so fixed positioning tracks the viewport.
+  if (!isMobileFramePreview && typeof document !== 'undefined') {
+    return createPortal(nav, document.body);
+  }
+
+  return nav;
 }
 
 function NavItem({

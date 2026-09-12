@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
@@ -52,6 +52,8 @@ type Props = {
   /** Notifies parent when the detail sheet opens — used to hide FABs and fix stacking. */
   onDetailOpenChange?: (open: boolean) => void;
   layout?: 'list' | 'carousel';
+  /** When layout is carousel — show vertical list like Explore “See all”. */
+  carouselExpanded?: boolean;
 };
 
 function featureTitle(
@@ -302,6 +304,7 @@ export default function GuestLocalServices({
   propertyTypeName,
   onDetailOpenChange,
   layout = 'list',
+  carouselExpanded = false,
 }: Props) {
   const { locale, contentPrimaryLocale } = useGuestLocale();
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -328,71 +331,17 @@ export default function GuestLocalServices({
 
   if (layout === 'carousel') {
     return (
-      <>
-        <div className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-none">
-          {features.map((feature) => {
-            const title = featureTitle(feature, locale, contentPrimaryLocale);
-            const listDescription = resolveLocalizedString(
-              feature,
-              'description',
-              locale,
-              contentPrimaryLocale
-            );
-            const category = feature.categories?.[0];
-            return (
-              <button
-                key={feature.id}
-                type="button"
-                onClick={() => setSelected(feature)}
-                className="snap-start shrink-0 w-[9.75rem] text-left rounded-[0.75rem] overflow-hidden border border-[#EEEAE3] bg-white shadow-[0_8px_20px_-14px_rgba(10,47,50,0.35)]"
-              >
-                <div className="relative h-[5rem] bg-[#E8DFD0]">
-                  {feature.photoUrl ? (
-                    <MirroredPhotoImg
-                      src={feature.photoUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      mirrorContext={{ docId: feature.id }}
-                      fallback={
-                        <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
-                          <Sparkles size={26} />
-                        </div>
-                      }
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
-                      <Sparkles size={26} />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0A2F32]/55 via-transparent to-black/10" />
-                  <span className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/95 text-[#0A2F32] flex items-center justify-center shadow-sm">
-                    <Bookmark size={13} />
-                  </span>
-                </div>
-                <div className="px-2.5 pt-2 pb-2.5">
-                  <h3 className="font-sans text-[11px] font-semibold text-[#0A2F32] leading-tight line-clamp-1">
-                    {title}
-                  </h3>
-                  <p className="text-[9.5px] text-[#7A7266] mt-1 line-clamp-1 leading-snug">
-                    {category || listDescription || 'Host pick'}
-                  </p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        {selected &&
-          typeof document !== 'undefined' &&
-          createPortal(
-            <ServiceDetailSheet
-              feature={selected}
-              propertyName={propertyName}
-              propertyTypeName={propertyTypeName}
-              onClose={() => setSelected(null)}
-            />,
-            document.body
-          )}
-      </>
+      <FeatureCarousel
+        features={features}
+        locale={locale}
+        contentPrimaryLocale={contentPrimaryLocale}
+        onSelect={setSelected}
+        onCloseSelected={() => setSelected(null)}
+        selected={selected}
+        propertyName={propertyName}
+        propertyTypeName={propertyTypeName}
+        expanded={carouselExpanded}
+      />
     );
   }
 
@@ -521,5 +470,205 @@ export default function GuestLocalServices({
           document.body
         )}
     </>
+  );
+}
+
+const FEATURE_CARD_WIDTH_PX = 156; // w-[9.75rem]
+const FEATURE_CARD_GAP_PX = 12; // gap-3
+
+function FeatureCarousel({
+  features,
+  locale,
+  contentPrimaryLocale,
+  onSelect,
+  onCloseSelected,
+  selected,
+  propertyName,
+  propertyTypeName,
+  expanded = false,
+}: {
+  features: GuestPortalFeature[];
+  locale: string;
+  contentPrimaryLocale: string;
+  onSelect: (feature: GuestPortalFeature) => void;
+  onCloseSelected: () => void;
+  selected: GuestPortalFeature | null;
+  propertyName: string;
+  propertyTypeName?: string;
+  expanded?: boolean;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const stride = FEATURE_CARD_WIDTH_PX + FEATURE_CARD_GAP_PX;
+
+  const updateActiveIndex = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || features.length === 0) return;
+    const index = Math.round(el.scrollLeft / stride);
+    setActiveIndex(Math.min(Math.max(index, 0), features.length - 1));
+  }, [features.length, stride]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+    scrollRef.current?.scrollTo({ left: 0 });
+  }, [features.length, expanded]);
+
+  const scrollToIndex = (index: number) => {
+    scrollRef.current?.scrollTo({ left: index * stride, behavior: 'smooth' });
+    setActiveIndex(index);
+  };
+
+  const cards = features.map((feature) => {
+    const title = featureTitle(feature, locale, contentPrimaryLocale);
+    const listDescription = resolveLocalizedString(
+      feature,
+      'description',
+      locale,
+      contentPrimaryLocale
+    );
+    const category = feature.categories?.[0];
+    const subtitle = category || listDescription || 'Host pick';
+    return (
+      <FeatureCard
+        key={`${expanded ? 'v' : 'h'}-${feature.id}`}
+        feature={feature}
+        title={title}
+        subtitle={subtitle}
+        layout={expanded ? 'vertical' : 'horizontal'}
+        onSelect={() => onSelect(feature)}
+      />
+    );
+  });
+
+  return (
+    <>
+      {expanded ? (
+        <div className="flex flex-col gap-3">{cards}</div>
+      ) : (
+        <>
+          <div
+            ref={scrollRef}
+            onScroll={updateActiveIndex}
+            className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-none"
+          >
+            {cards}
+          </div>
+          {features.length > 1 && (
+            <div className="flex items-center justify-center gap-1.5 mt-3">
+              {features.map((feature, i) => (
+                <button
+                  key={feature.id}
+                  type="button"
+                  aria-label={`View feature ${i + 1} of ${features.length}`}
+                  aria-current={i === activeIndex ? 'true' : undefined}
+                  onClick={() => scrollToIndex(i)}
+                  className={`rounded-full transition-all duration-300 ${
+                    i === activeIndex
+                      ? 'h-2 w-2 bg-[#C5A059] scale-110'
+                      : 'h-1.5 w-1.5 bg-[#0A2F32]/20 hover:bg-[#0A2F32]/35'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {selected &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <ServiceDetailSheet
+            feature={selected}
+            propertyName={propertyName}
+            propertyTypeName={propertyTypeName}
+            onClose={onCloseSelected}
+          />,
+          document.body
+        )}
+    </>
+  );
+}
+
+function FeatureCard({
+  feature,
+  title,
+  subtitle,
+  layout,
+  onSelect,
+}: {
+  feature: GuestPortalFeature;
+  title: string;
+  subtitle: string;
+  layout: 'horizontal' | 'vertical';
+  onSelect: () => void;
+}) {
+  const vertical = layout === 'vertical';
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={
+        vertical
+          ? 'w-full flex gap-3 text-left rounded-[0.9rem] border border-[#EEEAE3] bg-white p-2 shadow-[0_8px_20px_-14px_rgba(10,47,50,0.28)]'
+          : 'snap-start shrink-0 w-[9.75rem] text-left rounded-[0.75rem] overflow-hidden border border-[#EEEAE3] bg-white shadow-[0_8px_20px_-14px_rgba(10,47,50,0.35)]'
+      }
+    >
+      <div
+        className={
+          vertical
+            ? 'relative h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-[0.85rem] bg-[#E8DFD0]'
+            : 'relative h-[5rem] bg-[#E8DFD0]'
+        }
+      >
+        {feature.photoUrl ? (
+          <MirroredPhotoImg
+            src={feature.photoUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            mirrorContext={{ docId: feature.id }}
+            fallback={
+              <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
+                <Sparkles size={26} />
+              </div>
+            }
+          />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
+            <Sparkles size={26} />
+          </div>
+        )}
+        {!vertical && (
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0A2F32]/55 via-transparent to-black/10" />
+        )}
+        <span
+          className={`absolute top-2 right-2 h-7 w-7 rounded-full bg-white/95 text-[#0A2F32] flex items-center justify-center shadow-sm ${
+            vertical ? 'h-6 w-6' : ''
+          }`}
+        >
+          <Bookmark size={vertical ? 12 : 13} />
+        </span>
+      </div>
+      <div className={vertical ? 'min-w-0 flex-1 py-0.5 pr-1' : 'px-2.5 pt-2 pb-2.5'}>
+        <h3
+          className={
+            vertical
+              ? 'text-[13px] font-semibold text-[#0A2F32] leading-snug truncate'
+              : 'font-sans text-[11px] font-semibold text-[#0A2F32] leading-tight line-clamp-1'
+          }
+        >
+          {title}
+        </h3>
+        <p
+          className={
+            vertical
+              ? 'mt-0.5 text-[11px] text-[#7A7266] leading-snug line-clamp-2'
+              : 'text-[9.5px] text-[#7A7266] mt-1 line-clamp-1 leading-snug'
+          }
+        >
+          {subtitle}
+        </p>
+      </div>
+    </button>
   );
 }

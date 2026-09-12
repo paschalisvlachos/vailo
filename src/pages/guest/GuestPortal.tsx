@@ -884,7 +884,7 @@ function GuestPortalPage({
           propertyFeatures={features}
         />
       ) : null}
-    <div className="min-h-screen bg-[#F7F7F5] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#F7F7F5] flex flex-col items-center justify-start transition-all duration-500 relative overflow-x-clip font-sans">
       <style>
         {`
           .font-luxury { font-family: 'Playfair Display', Georgia, serif; }
@@ -893,7 +893,7 @@ function GuestPortalPage({
         `}
       </style>
 
-      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-hidden flex flex-col relative ${
+      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-clip flex flex-col relative ${
         isMobileFramePreview
           ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
           : 'max-w-none min-h-screen'

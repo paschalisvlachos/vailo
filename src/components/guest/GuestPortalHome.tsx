@@ -4,7 +4,6 @@ import {
   Baby,
   Car,
   Check,
-  CheckCircle2,
   ChevronRight,
   Clock,
   Compass,
@@ -57,8 +56,7 @@ type Props = {
   onLiveLikeLocal: () => void;
   onAssistant: () => void;
   showExcursions: boolean;
-  onExcursions: () => void;
-  onBookArrange?: (categoryId?: string) => void;
+  onBookArrange: (categoryId?: string) => void;
   bookArrangeListings?: GuestExcursionListing[];
   excursionHeroUrl?: string;
   liveLikeLocalHeroUrl?: string;
@@ -162,7 +160,6 @@ export default function GuestPortalHome(props: Props) {
     onLiveLikeLocal,
     onAssistant,
     showExcursions,
-    onExcursions,
     onBookArrange,
     bookArrangeListings = [],
     excursionHeroUrl,
@@ -175,6 +172,7 @@ export default function GuestPortalHome(props: Props) {
     pwaBanner,
     showCheckInPromo,
     checkInComplete,
+    checkInContinue,
     onOpenCheckIn,
     wifiName,
     wifiPassword,
@@ -311,7 +309,7 @@ export default function GuestPortalHome(props: Props) {
               )}
             </div>
 
-            {showCheckInPromo && (
+            {showCheckInPromo && !checkInComplete && (
               <button
                 type="button"
                 onClick={onOpenCheckIn}
@@ -335,7 +333,7 @@ export default function GuestPortalHome(props: Props) {
                 />
                 <div className="relative z-10 flex items-center gap-2.5">
                   <div className="h-10 w-10 rounded-full bg-[#C5A059] flex items-center justify-center shrink-0 text-white">
-                    {checkInComplete ? <CheckCircle2 size={22} /> : <Trophy size={20} />}
+                    <Trophy size={20} />
                   </div>
                   <span className="w-px shrink-0 self-stretch bg-[#D4B57A]/35" aria-hidden />
                   <div className="min-w-0 flex-1">
@@ -343,13 +341,11 @@ export default function GuestPortalHome(props: Props) {
                       Before you arrive
                     </p>
                     <span className="mt-1.5 flex w-full items-center justify-center rounded-xl bg-[#E7C46F] px-3 py-2.5 text-[#0A2F32] text-[13px] sm:text-[14px] font-medium leading-none">
-                      {checkInComplete ? 'View check-in' : 'Complete online check-in'}
+                      {checkInContinue ? t('checkInPromoContinue') : 'Complete online check-in'}
                       <ChevronRight size={14} className="inline ml-0.5 shrink-0" />
                     </span>
                     <p className="text-white/75 text-[12px] sm:text-[12.5px] mt-1.5 leading-snug">
-                      {checkInComplete
-                        ? t('checkInPromoDoneSub')
-                        : 'Complete your check-in to unlock your stay experience.'}
+                      Complete your check-in to unlock your stay experience.
                     </p>
                   </div>
                 </div>
@@ -382,7 +378,7 @@ export default function GuestPortalHome(props: Props) {
               subtitle="Turn good holidays into unforgettable ones."
               photoUrl={excursionHeroUrl}
               icon={<Compass size={11} />}
-              onClick={onBookArrange || onExcursions}
+              onClick={() => onBookArrange()}
             />
           )}
         </div>
@@ -517,10 +513,7 @@ export default function GuestPortalHome(props: Props) {
                   <button
                     key={cat.id}
                     type="button"
-                    onClick={() => {
-                      if (onBookArrange) onBookArrange(cat.id);
-                      else onExcursions();
-                    }}
+                    onClick={() => onBookArrange(cat.id)}
                     className="min-w-0 flex flex-col items-center gap-1.5"
                   >
                     <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#EEEAE3] bg-white text-[#0A3330] shadow-[0_4px_14px_rgba(0,0,0,0.12)]">

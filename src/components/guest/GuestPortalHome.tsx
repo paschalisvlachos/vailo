@@ -12,6 +12,8 @@ import {
   EyeOff,
   Flower2,
   Globe,
+  List,
+  LayoutGrid,
   MapPin,
   PartyPopper,
   Shield,
@@ -188,6 +190,7 @@ export default function GuestPortalHome(props: Props) {
   const { contentPrimaryLocale } = useGuestLocale();
   const [wifiVisible, setWifiVisible] = useState(false);
   const [thingsOpen, setThingsOpen] = useState(false);
+  const [featuresExpanded, setFeaturesExpanded] = useState(false);
   const column = 'w-full max-w-[576px]';
   const contentPadding = 'px-[clamp(18px,6.6vw,38px)]';
 
@@ -485,14 +488,30 @@ export default function GuestPortalHome(props: Props) {
 
         {portalFeatures.length > 0 && (
           <section className="pt-2">
-            <div className="flex items-end justify-between mb-3">
+            <div className="flex items-end justify-between gap-3 mb-3">
               <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574]">
                 Host&apos;s Features
               </p>
-              <span className="text-[13px] font-semibold text-[#0A3330]/55">View all</span>
+              {portalFeatures.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => setFeaturesExpanded((v) => !v)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#EEEAE3] bg-white text-[#0A3330] shadow-[0_4px_12px_-8px_rgba(10,47,50,0.28)] hover:border-[#C5A059]/40 hover:text-[#0A2F32] transition-colors"
+                  aria-expanded={featuresExpanded}
+                  aria-label={featuresExpanded ? 'Show feature cards' : 'Show feature list'}
+                  title={featuresExpanded ? 'Show cards' : 'Show list'}
+                >
+                  {featuresExpanded ? (
+                    <LayoutGrid size={18} strokeWidth={1.9} />
+                  ) : (
+                    <List size={18} strokeWidth={1.9} />
+                  )}
+                </button>
+              )}
             </div>
             <GuestLocalServices
               layout="carousel"
+              carouselExpanded={featuresExpanded}
               features={portalFeatures}
               propertyName={propertyName || 'your stay'}
               propertyTypeName={propertyTypeName}

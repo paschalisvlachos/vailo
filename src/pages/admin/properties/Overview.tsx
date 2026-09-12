@@ -108,6 +108,7 @@ export default function Overview() {
     { id: string; propertyTypeName?: string; urlSlug?: string; typeSlug?: string }[]
   >([]);
   const [copiedOpenPortalInvite, setCopiedOpenPortalInvite] = useState(false);
+  const [inviteListingId, setInviteListingId] = useState('');
   const prevOwnerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -142,6 +143,16 @@ export default function Overview() {
       );
     });
   }, [propertyId]);
+
+  useEffect(() => {
+    if (propertyTypes.length === 0) {
+      setInviteListingId('');
+      return;
+    }
+    setInviteListingId((current) =>
+      propertyTypes.some((type) => type.id === current) ? current : propertyTypes[0]!.id
+    );
+  }, [propertyTypes]);
 
   useEffect(() => {
     if (!formData.country) {
@@ -192,7 +203,12 @@ export default function Overview() {
   }, [formData.ownerId, isEditing, ownersList]);
 
   const handleCopyOpenPortalInvitation = async () => {
-    const type = propertyTypes[0];
+    if (propertyTypes.length === 0) {
+      toast.warning('Add a property listing before copying the portal invitation.');
+      return;
+    }
+    const type =
+      propertyTypes.find((listing) => listing.id === inviteListingId) || propertyTypes[0];
     if (!type) {
       toast.warning('Add a property listing before copying the portal invitation.');
       return;
@@ -202,10 +218,11 @@ export default function Overview() {
       toast.warning('Set property and unit URL slugs before copying the portal invitation.');
       return;
     }
+    const unitLabel = type.propertyTypeName?.trim() || 'Your unit';
     const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
     const text = buildOpenPortalInviteClipboardText({
       propertyName: property.propertyName || 'Your stay',
-      unitName: type.propertyTypeName || 'Your unit',
+      unitName: unitLabel,
       portalUrl: url,
       preArrivalCheckInEnabled,
       hostLabel: property.propertyName,
@@ -215,7 +232,9 @@ export default function Overview() {
       await navigator.clipboard.writeText(text);
       setCopiedOpenPortalInvite(true);
       setTimeout(() => setCopiedOpenPortalInvite(false), 2500);
-      toast.success('Portal invitation copied — paste into email, Airbnb, or chat.');
+      toast.success(
+        `Portal invitation for ${unitLabel} copied — paste into email, Airbnb, or chat.`
+      );
     } catch {
       toast.error('Could not copy to clipboard.');
     }
@@ -320,15 +339,39 @@ export default function Overview() {
           {isEditing ? 'Edit property details below, then save.' : 'Property summary and allocation.'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <AdminButton
-            type="button"
-            variant="secondary"
-            onClick={() => void handleCopyOpenPortalInvitation()}
-            title="Copy a general guest portal invitation to paste anywhere"
-          >
-            {copiedOpenPortalInvite ? <Check size={16} /> : <Copy size={16} />}
-            Copy open portal invitation
-          </AdminButton>
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white pl-2 pr-1 py-1 shadow-sm">
+            <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+              Open portal invitation for
+            </span>
+            <AdminSelect
+              aria-label="Property listing for portal invitation"
+              value={inviteListingId}
+              onChange={(e) => setInviteListingId(e.target.value)}
+              disabled={propertyTypes.length === 0}
+              className="min-w-[8rem] max-w-[12rem] py-1 px-2 text-xs h-8"
+            >
+              {propertyTypes.length === 0 ? (
+                <option value="">No listings</option>
+              ) : (
+                propertyTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.propertyTypeName?.trim() || 'Untitled listing'}
+                  </option>
+                ))
+              )}
+            </AdminSelect>
+            <AdminButton
+              type="button"
+              variant="secondary"
+              onClick={() => void handleCopyOpenPortalInvitation()}
+              disabled={propertyTypes.length === 0}
+              title="Copy open portal invitation for the selected listing"
+              aria-label="Copy open portal invitation"
+              className="!px-2 !py-1.5 h-8 shrink-0"
+            >
+              {copiedOpenPortalInvite ? <Check size={14} /> : <Copy size={14} />}
+            </AdminButton>
+          </div>
           {!isEditing ? (
             isPlatformAdmin ? (
               <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>

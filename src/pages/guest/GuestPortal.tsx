@@ -527,17 +527,12 @@ function GuestPortalPage({
   const [bookCategoryId, setBookCategoryId] = useState('');
   const openBook = useCallback((categoryId?: string) => {
     track('book_arrange_open');
-    setBookCategoryId(categoryId?.trim() || '');
+    setBookCategoryId(typeof categoryId === 'string' ? categoryId.trim() : '');
     setActiveView('book');
   }, [track]);
   const openStay = useCallback(() => {
     setActiveView('stay');
   }, []);
-  const openExcursions = useCallback(() => {
-    track('excursions_open');
-    setBookCategoryId('');
-    setActiveView('book');
-  }, [track]);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -924,7 +919,6 @@ function GuestPortalPage({
               onLiveLikeLocal={openLiveLikeLocal}
               onAssistant={openAssistant}
               showExcursions={showExcursionsPromo}
-              onExcursions={openExcursions}
               onBookArrange={openBook}
               bookArrangeListings={excursionListings}
               excursionHeroUrl={excursionHeroUrl}
@@ -993,7 +987,7 @@ function GuestPortalPage({
                 locale={locale}
                 listings={excursionListings}
                 loading={excursionsLoading && excursionListings.length === 0}
-                onOpen={openExcursions}
+                onOpen={() => openBook()}
                 t={t}
               />
             )}

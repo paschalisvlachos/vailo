@@ -527,17 +527,12 @@ function GuestPortalPage({
   const [bookCategoryId, setBookCategoryId] = useState('');
   const openBook = useCallback((categoryId?: string) => {
     track('book_arrange_open');
-    setBookCategoryId(categoryId?.trim() || '');
+    setBookCategoryId(typeof categoryId === 'string' ? categoryId.trim() : '');
     setActiveView('book');
   }, [track]);
   const openStay = useCallback(() => {
     setActiveView('stay');
   }, []);
-  const openExcursions = useCallback(() => {
-    track('excursions_open');
-    setBookCategoryId('');
-    setActiveView('book');
-  }, [track]);
 
   useEffect(() => {
     const fetchGuestData = async () => {
@@ -889,7 +884,7 @@ function GuestPortalPage({
           propertyFeatures={features}
         />
       ) : null}
-    <div className="min-h-screen bg-[#F7F7F5] flex flex-col items-center justify-start transition-all duration-500 relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#F7F7F5] flex flex-col items-center justify-start transition-all duration-500 relative overflow-x-clip font-sans">
       <style>
         {`
           .font-luxury { font-family: 'Playfair Display', Georgia, serif; }
@@ -898,7 +893,7 @@ function GuestPortalPage({
         `}
       </style>
 
-      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-hidden flex flex-col relative ${
+      <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-clip flex flex-col relative ${
         isMobileFramePreview
           ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
           : 'max-w-none min-h-screen'
@@ -924,7 +919,6 @@ function GuestPortalPage({
               onLiveLikeLocal={openLiveLikeLocal}
               onAssistant={openAssistant}
               showExcursions={showExcursionsPromo}
-              onExcursions={openExcursions}
               onBookArrange={openBook}
               bookArrangeListings={excursionListings}
               excursionHeroUrl={excursionHeroUrl}
@@ -993,7 +987,7 @@ function GuestPortalPage({
                 locale={locale}
                 listings={excursionListings}
                 loading={excursionsLoading && excursionListings.length === 0}
-                onOpen={openExcursions}
+                onOpen={() => openBook()}
                 t={t}
               />
             )}

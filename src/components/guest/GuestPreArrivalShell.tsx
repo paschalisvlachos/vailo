@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarDays, Home } from 'lucide-react';
 import { formatBookingDateRange, resolveGuestDisplayName } from '../../lib/syncedBooking';
@@ -81,7 +81,7 @@ export default function GuestPreArrivalShell({
   const stayLabel =
     stayStart && stayEnd ? formatBookingDateRange(stayStart, stayEnd) : '';
 
-  const openFullPortal = () => {
+  const openFullPortal = useCallback(() => {
     clearPreArrivalViewIntent(propertyId, typeId);
     if (onBackToPortal) {
       onBackToPortal();
@@ -91,7 +91,7 @@ export default function GuestPreArrivalShell({
     next.delete('view');
     const qs = next.toString();
     navigate({ search: qs ? `?${qs}` : '' }, { replace: true });
-  };
+  }, [navigate, onBackToPortal, propertyId, searchParams, typeId]);
 
   if (!onBackToPortal && !isPreArrivalPortalView(searchParams.get('view'))) {
     return null;

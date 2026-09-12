@@ -110,12 +110,19 @@ export default function GuestPreArrivalForm({
     preArrivalIdDetailsFromSubmission(existingSubmission)
   );
   const idInputRef = useRef<HTMLInputElement>(null);
+  const onExplorePortalRef = useRef(onExplorePortal);
+
+  useEffect(() => {
+    onExplorePortalRef.current = onExplorePortal;
+  }, [onExplorePortal]);
 
   useEffect(() => {
     if (!justSubmitted || editing || !onExplorePortal) return;
-    const timer = window.setTimeout(() => onExplorePortal(), 6000);
+    const timer = window.setTimeout(() => onExplorePortalRef.current?.(), 6000);
     return () => window.clearTimeout(timer);
-  }, [justSubmitted, editing, onExplorePortal]);
+    // Keep timer stable across parent re-renders; presence is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onExplorePortal via ref
+  }, [justSubmitted, editing, onExplorePortal != null]);
 
   const storedIdDocument = submitted?.idDocument || existingSubmission?.idDocument;
   const storedIdDetails = submitted?.idDetails || existingSubmission?.idDetails;

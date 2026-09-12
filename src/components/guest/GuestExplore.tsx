@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   Binoculars,
   ChevronRight,
@@ -6,6 +6,7 @@ import {
   Heart,
   Landmark,
   LayoutGrid,
+  List,
   Map as MapIcon,
   MapPin,
   Navigation,
@@ -466,6 +467,36 @@ function ExploreCarousel({
 }) {
   const [expanded, setExpanded] = useState(false);
   const canToggle = items.length > 2;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const updateActiveIndex = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || items.length === 0) return;
+    const first = el.children[0] as HTMLElement | undefined;
+    if (!first) return;
+    const gap = parseFloat(getComputedStyle(el).columnGap || getComputedStyle(el).gap || '0') || 0;
+    const stride = first.offsetWidth + gap;
+    if (stride <= 0) return;
+    const index = Math.round(el.scrollLeft / stride);
+    setActiveIndex(Math.min(Math.max(index, 0), items.length - 1));
+  }, [items.length]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+    scrollRef.current?.scrollTo({ left: 0 });
+  }, [categoryKey, items.length, expanded]);
+
+  const scrollToIndex = (index: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const first = el.children[0] as HTMLElement | undefined;
+    if (!first) return;
+    const gap = parseFloat(getComputedStyle(el).columnGap || getComputedStyle(el).gap || '0') || 0;
+    const stride = first.offsetWidth + gap;
+    el.scrollTo({ left: index * stride, behavior: 'smooth' });
+    setActiveIndex(index);
+  };
 
   return (
     <section>
@@ -475,9 +506,16 @@ function ExploreCarousel({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="text-[12px] font-semibold text-[#0A3330]/55 hover:text-[#0A2F32] transition-colors"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#EEEAE3] bg-white text-[#0A3330] shadow-[0_4px_12px_-8px_rgba(10,47,50,0.28)] hover:border-[#C5A059]/40 hover:text-[#0A2F32] transition-colors"
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Show cards' : 'Show list'}
+            title={expanded ? 'Show cards' : 'Show list'}
           >
-            {expanded ? 'See less' : 'See all'}
+            {expanded ? (
+              <LayoutGrid size={18} strokeWidth={1.9} />
+            ) : (
+              <List size={18} strokeWidth={1.9} />
+            )}
           </button>
         )}
       </div>
@@ -499,20 +537,44 @@ function ExploreCarousel({
           ))}
         </div>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x snap-mandatory">
-          {items.map(({ gem, title: gemTitle, categories }) => (
-            <ExploreGemCard
-              key={`${categoryKey}-h-${gem.id}`}
-              gem={gem}
-              title={gemTitle}
-              categoryLine={categories.join(' · ') || title}
-              propertyId={propertyId}
-              typeId={typeId}
-              mapAreaHint={mapAreaHint}
-              layout="horizontal"
-            />
-          ))}
-        </div>
+        <>
+          <div
+            ref={scrollRef}
+            onScroll={updateActiveIndex}
+            className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x snap-mandatory"
+          >
+            {items.map(({ gem, title: gemTitle, categories }) => (
+              <ExploreGemCard
+                key={`${categoryKey}-h-${gem.id}`}
+                gem={gem}
+                title={gemTitle}
+                categoryLine={categories.join(' · ') || title}
+                propertyId={propertyId}
+                typeId={typeId}
+                mapAreaHint={mapAreaHint}
+                layout="horizontal"
+              />
+            ))}
+          </div>
+          {items.length > 1 && (
+            <div className="flex items-center justify-center gap-1.5 mt-3">
+              {items.map(({ gem }, i) => (
+                <button
+                  key={`${categoryKey}-dot-${gem.id}`}
+                  type="button"
+                  aria-label={`View place ${i + 1} of ${items.length}`}
+                  aria-current={i === activeIndex ? 'true' : undefined}
+                  onClick={() => scrollToIndex(i)}
+                  className={`rounded-full transition-all duration-300 ${
+                    i === activeIndex
+                      ? 'h-2 w-2 bg-[#C5A059] scale-110'
+                      : 'h-1.5 w-1.5 bg-[#0A2F32]/20 hover:bg-[#0A2F32]/35'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );

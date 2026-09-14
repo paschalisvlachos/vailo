@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import {
   BookOpen,
   Baby,
+  CalendarDays,
   Car,
   Check,
   ChevronRight,
@@ -71,7 +72,12 @@ type Props = {
   showCheckInPromo: boolean;
   checkInComplete: boolean;
   checkInContinue: boolean;
+  /** Stay range shown after check-in, e.g. 15/06/2026 → 22/06/2026 */
+  checkInStayLabel?: string | null;
   onOpenCheckIn: () => void;
+  /** Restart from date lookup (wrong dates) — clears admin guest-created stay when applicable. */
+  onRestartCheckIn?: () => void;
+  restartingCheckIn?: boolean;
   wifiName?: string;
   wifiPassword?: string;
   copiedWifi: boolean;
@@ -175,7 +181,10 @@ export default function GuestPortalHome(props: Props) {
     showCheckInPromo,
     checkInComplete,
     checkInContinue,
+    checkInStayLabel,
     onOpenCheckIn,
+    onRestartCheckIn,
+    restartingCheckIn,
     wifiName,
     wifiPassword,
     copiedWifi,
@@ -361,30 +370,109 @@ export default function GuestPortalHome(props: Props) {
                 </div>
               </button>
             )}
+
+            {checkInComplete && (
+              <button
+                type="button"
+                onClick={onLiveLikeLocal}
+                className="relative isolate overflow-hidden mx-[clamp(6px,4.5vw,26px)] min-h-[148px] text-left rounded-[1.25rem] border border-white/60 mb-3 shadow-[0_14px_28px_-12px_rgba(4,28,30,0.58)]"
+              >
+                {liveLikeLocalHeroUrl || heroPhoto ? (
+                  <img
+                    src={liveLikeLocalHeroUrl || heroPhoto}
+                    alt=""
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 -z-20 h-full w-full object-cover object-center"
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 -z-20 bg-gradient-to-br from-[#0A3D3A] to-[#041C1E]"
+                  />
+                )}
+                {/* Blue transparent mask — keeps the teal character over the photo */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 -z-10 bg-[#004845]/78"
+                />
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(4,28,30,0.88)_0%,rgba(0,72,69,0.55)_42%,rgba(0,72,69,0.4)_100%)]"
+                />
+                <span className="absolute top-3.5 left-3.5 right-14 z-10 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+                  <span className="block text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.22em] text-[#E7C46F] [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
+                    Local tips & hidden gems
+                  </span>
+                  <span className="mt-1.5 block font-luxury text-white text-[clamp(1.35rem,5.2vw,1.7rem)] leading-[1.05] tracking-[-0.02em] font-medium [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]">
+                    {t('liveLikeLocalHero')}
+                  </span>
+                  <span className="mt-1.5 block max-w-[22rem] text-white/88 text-[clamp(12px,2.6vw,14px)] leading-snug [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
+                    {t('liveLikeLocalHeroSub')}
+                  </span>
+                </span>
+                <span className="absolute bottom-3.5 right-3.5 z-10 h-8 w-8 rounded-full border border-[#D9B459] bg-[#073D3B]/45 text-[#E5BD62] flex items-center justify-center backdrop-blur-sm">
+                  <ChevronRight size={16} />
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </section>
 
       <div className={`mx-auto relative z-20 flex flex-col gap-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] ${column} ${contentPadding}`}>
         <div className={`grid gap-3 ${showExcursions ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          <DestinationCard
-            title={t('liveLikeLocalHero')}
-            subtitle="Local tips"
-            detail="and hidden gems nearby."
-            photoUrl={liveLikeLocalHeroUrl}
-            icon={<Sparkles size={11} />}
-            onClick={onLiveLikeLocal}
-          />
+          {checkInComplete ? (
+            <DestinationCard
+              title={t('assistantProperty')}
+              subtitle={t('assistantPropertySub')}
+              photoUrl="/portal-ai-chatbot-hero.png"
+              onClick={onAssistant}
+            />
+          ) : (
+            <DestinationCard
+              title={t('liveLikeLocalHero')}
+              subtitle="Local tips"
+              detail="and hidden gems nearby."
+              photoUrl={liveLikeLocalHeroUrl}
+              onClick={onLiveLikeLocal}
+            />
+          )}
           {showExcursions && (
             <DestinationCard
               title="Book & Arrange"
               subtitle="Turn good holidays into unforgettable ones."
-              photoUrl={excursionHeroUrl}
-              icon={<Compass size={11} />}
+              photoUrl="/portal-book-arrange-hero.png"
               onClick={() => onBookArrange()}
             />
           )}
         </div>
+
+        {showCheckInPromo && checkInComplete && (
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-white/15 bg-[#004845]/88 px-3.5 py-2.5 text-[13px] text-white/90 shadow-[0_8px_18px_-12px_rgba(4,28,30,0.5)]">
+            <span className="inline-flex min-w-0 items-center gap-2 font-medium">
+              <CalendarDays size={14} className="shrink-0 text-[#D4B57A]" />
+              <span className="shrink-0 text-white/75">{t('checkInPromoTitle')}</span>
+              {checkInStayLabel && (
+                <>
+                  <span className="text-[#D4B57A]/65" aria-hidden>
+                    ·
+                  </span>
+                  <span className="truncate tabular-nums text-white/90">{checkInStayLabel}</span>
+                </>
+              )}
+            </span>
+            {onRestartCheckIn && (
+              <button
+                type="button"
+                onClick={onRestartCheckIn}
+                disabled={restartingCheckIn}
+                className="shrink-0 text-[12px] font-semibold text-[#D4B57A] underline underline-offset-2 hover:text-[#E7C46F] disabled:opacity-60"
+              >
+                {restartingCheckIn ? '…' : t('checkInWrongDates')}
+              </button>
+            )}
+          </div>
+        )}
 
         <section className="pt-3">
           <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
@@ -598,7 +686,7 @@ function DestinationCard({
   subtitle: string;
   detail?: string;
   photoUrl?: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -612,20 +700,22 @@ function DestinationCard({
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-[#0A3D3A] to-[#041C1E]" />
       )}
-      {/* Darker full-card mask + bottom veil for readable title/subtitle */}
+      {/* Darker full-card mask + top veil for readable title/subtitle */}
       <div aria-hidden className="absolute inset-0 bg-[#041C1E]/38" />
       <div
         aria-hidden
-        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,20,22,0.22)_0%,rgba(4,20,22,0.12)_32%,rgba(0,0,0,0.52)_62%,rgba(0,0,0,0.86)_100%)]"
+        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.78)_0%,rgba(0,0,0,0.45)_28%,rgba(4,20,22,0.18)_58%,rgba(4,20,22,0.28)_100%)]"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[62%] bg-[radial-gradient(120%_90%_at_50%_100%,rgba(0,0,0,0.78)_0%,rgba(0,0,0,0.4)_48%,transparent_78%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[58%] bg-[radial-gradient(120%_90%_at_50%_0%,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0.35)_48%,transparent_78%)]"
       />
-      <span className="absolute top-3 left-3 h-[25px] w-[25px] rounded-[0.6rem] bg-[#C5A059] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(197,160,89,0.35)]">
-        {icon}
-      </span>
-      <span className="absolute bottom-3 left-3 right-11 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+      {icon ? (
+        <span className="absolute top-3 left-3 h-[25px] w-[25px] rounded-[0.6rem] bg-[#C5A059] text-white flex items-center justify-center shadow-[0_4px_12px_rgba(197,160,89,0.35)]">
+          {icon}
+        </span>
+      ) : null}
+      <span className="absolute top-3 left-3 right-11 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
         <span className="block font-luxury text-white text-[clamp(15px,3.4vw,17px)] leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
           {title}
         </span>

@@ -9,7 +9,10 @@ import {
   sessionMatchesOpenPreArrivalContext,
   type GuestPortalSession,
 } from '../../lib/guestAccess';
-import { validateGuestPortalSession } from '../../lib/guestPortalCallables';
+import {
+  resetGuestPreArrivalCheckInCallable,
+  validateGuestPortalSession,
+} from '../../lib/guestPortalCallables';
 import { db } from '../../lib/firebase';
 import type { PreArrivalSubmission } from '../../lib/syncedBooking';
 import type { PreArrivalTransferOffer } from '../../lib/preArrivalSettings';
@@ -44,7 +47,7 @@ type Props = {
   onSessionCleared?: () => void;
   onBackToPortal?: () => void;
   backToPortalLabel?: string;
-  onCheckInComplete?: () => void;
+  onCheckInComplete?: (stay?: { start?: string; end?: string }) => void;
 };
 
 type FlowPhase = 'checking' | 'lookup' | 'form';
@@ -71,6 +74,7 @@ export default function GuestOpenPreArrivalFlow({
   const [session, setSession] = useState<GuestPortalSession | null>(guestSession);
   const [resolvedUnitName, setResolvedUnitName] = useState(unitName);
   const [resolvedBooking, setResolvedBooking] = useState<BookingRow | null>(null);
+  const [changingDates, setChangingDates] = useState(false);
   const bootstrapRunIdRef = useRef(0);
 
   const activeSession = session ?? guestSession ?? readGuestPortalSession();
@@ -85,14 +89,30 @@ export default function GuestOpenPreArrivalFlow({
     [onSessionGranted]
   );
 
-  const handleChangeDates = useCallback(() => {
-    clearGuestPortalSession();
-    setSession(null);
-    setResolvedBooking(null);
-    setResolvedUnitName(unitName);
-    onSessionCleared?.();
-    setPhase('lookup');
-  }, [onSessionCleared, unitName]);
+  const handleChangeDates = useCallback(async () => {
+    if (changingDates) return;
+    setChangingDates(true);
+    const stored = readGuestPortalSession() || session || guestSession;
+    try {
+      if (stored?.sessionId && propertyId) {
+        await resetGuestPreArrivalCheckInCallable({
+          propertyId,
+          typeId: stored.typeId || typeId,
+          sessionId: stored.sessionId,
+        });
+      }
+    } catch {
+      /* Continue to lookup even if server reset fails. */
+    } finally {
+      clearGuestPortalSession();
+      setSession(null);
+      setResolvedBooking(null);
+      setResolvedUnitName(unitName);
+      onSessionCleared?.();
+      setChangingDates(false);
+      setPhase('lookup');
+    }
+  }, [changingDates, session, guestSession, propertyId, typeId, onSessionCleared, unitName]);
 
   useEffect(() => {
     const runId = ++bootstrapRunIdRef.current;
@@ -234,11 +254,20 @@ export default function GuestOpenPreArrivalFlow({
       transferOffer={transferOffer}
       booking={booking}
       onChangeDates={
-        activeSession?.source === 'pre_arrival_dates' ? handleChangeDates : undefined
+        activeSession?.source === 'pre_arrival_dates' && !changingDates
+          ? () => {
+              void handleChangeDates();
+            }
+          : undefined
       }
       onBackToPortal={onBackToPortal}
       backToPortalLabel={backToPortalLabel}
-      onSubmitted={onCheckInComplete}
+      onSubmitted={() => {
+        onCheckInComplete?.({
+          start: booking?.start || activeSession?.checkIn || undefined,
+          end: booking?.end || activeSession?.checkOut || undefined,
+        });
+      }}
     />
   );
 }

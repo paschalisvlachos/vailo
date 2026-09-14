@@ -131,6 +131,13 @@ function isPreArrivalCheckInEnabled(property) {
   return property.preArrivalCheckInEnabled !== false;
 }
 
+/** Guest-entered stay (no calendar sync) — booking dates live only because of check-in. */
+function isGuestCreatedOnlineCheckInBooking(booking) {
+  if (!booking) return false;
+  if (String(booking.provider || "").trim() === "Online check-in") return true;
+  return String(booking.id || "").startsWith("CHECKIN-");
+}
+
 function buildBookingAfterPreArrivalRemoval(booking) {
   const submission = booking?.preArrivalSubmission || null;
   const cleared = stripPreArrivalFields(booking);
@@ -838,6 +845,110 @@ function registerGuestPreArrival({ firestore, firebaseExports }) {
 
       return {
         removed: true,
+        bookingId,
+      };
+    }
+  );
+
+  /**
+   * Guest restarts check-in from the beginning (wrong dates).
+   * Removes guest-created Online check-in bookings from admin, or clears
+   * pre-arrival fields on calendar-synced reservations, then ends the session.
+   */
+  firebaseExports.resetGuestPreArrivalCheckIn = onCall(
+    {
+      region: "us-central1",
+      enforceAppCheck: false,
+    },
+    async (request) => {
+      const data = request.data || {};
+      const propertyId = String(data.propertyId || "").trim();
+      const typeId = String(data.typeId || "").trim();
+      const sessionId = String(data.sessionId || "").trim();
+
+      if (!propertyId || !typeId || !sessionId) {
+        throw new HttpsError("invalid-argument", "Missing session parameters.");
+      }
+
+      const { session, previewMode, booking } = await requireGuestSession(
+        firestore,
+        propertyId,
+        typeId,
+        sessionId
+      );
+
+      if (previewMode) {
+        return { reset: true, previewMode: true, bookingRemoved: false };
+      }
+
+      const bookingId = session.bookingId;
+      const typeRef = firestore
+        .collection("properties")
+        .doc(propertyId)
+        .collection("propertyTypes")
+        .doc(typeId);
+      const typeSnap = await typeRef.get();
+      if (!typeSnap.exists) {
+        throw new HttpsError("not-found", "Unit not found.");
+      }
+
+      const bookings = Array.isArray(typeSnap.data().syncedBookings)
+        ? typeSnap.data().syncedBookings
+        : [];
+      const target = bookings.find((b) => matchesBooking(b, bookingId)) || booking;
+      if (!target) {
+        throw new HttpsError("not-found", "Booking not found.");
+      }
+
+      const storagePath = target.preArrivalSubmission?.idDocument?.storagePath;
+      if (storagePath) {
+        try {
+          await deleteStoredIdDocument(storagePath);
+        } catch (err) {
+          console.error("resetGuestPreArrivalCheckIn: storage delete failed", {
+            propertyId,
+            typeId,
+            bookingId,
+            storagePath,
+            error: err?.message || String(err),
+          });
+          throw new HttpsError(
+            "internal",
+            "Could not clear your previous check-in. Please try again."
+          );
+        }
+      }
+
+      const removeBooking = isGuestCreatedOnlineCheckInBooking(target);
+      const hasPreArrivalData = Boolean(
+        target.preArrivalComplete ||
+          target.preArrivalSubmittedAt ||
+          target.preArrivalSubmission
+      );
+
+      let updated = bookings;
+      if (removeBooking) {
+        updated = bookings.filter((b) => !matchesBooking(b, bookingId));
+      } else if (hasPreArrivalData) {
+        updated = bookings.map((b) =>
+          matchesBooking(b, bookingId) ? buildBookingAfterPreArrivalRemoval(b) : b
+        );
+      }
+
+      if (updated !== bookings) {
+        await persistBookings(typeRef, updated);
+      }
+
+      await firestore
+        .collection("properties")
+        .doc(propertyId)
+        .collection("guestPortalSessions")
+        .doc(session.sessionId || sessionId)
+        .delete();
+
+      return {
+        reset: true,
+        bookingRemoved: removeBooking,
         bookingId,
       };
     }

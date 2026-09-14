@@ -47,11 +47,15 @@ import { usePlatformLanguages } from '../../hooks/usePlatformLanguages';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useGuestPwaManifest } from '../../hooks/useGuestPwaManifest';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
-import { isGuestPortalAccessRequired, readGuestPortalSession, writeGuestPortalSession, sessionMatchesOpenPreArrivalContext, type GuestPortalSession } from '../../lib/guestAccess';
+import { isGuestPortalAccessRequired, readGuestPortalSession, writeGuestPortalSession, clearGuestPortalSession, sessionMatchesOpenPreArrivalContext, type GuestPortalSession } from '../../lib/guestAccess';
 import { isPreArrivalPortalView, clearPreArrivalViewIntent } from '../../lib/guestPreArrival';
 import { isPreArrivalCheckInEnabled } from '../../lib/preArrivalSettings';
 import { isCalendarSyncEnabled } from '../../lib/icalSync';
-import { validateGuestPortalSession } from '../../lib/guestPortalCallables';
+import {
+  resetGuestPreArrivalCheckInCallable,
+  validateGuestPortalSession,
+} from '../../lib/guestPortalCallables';
+import { formatBookingDateRange } from '../../lib/syncedBooking';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   GuestAreaPrefetcher,
@@ -372,6 +376,7 @@ function GuestPortalPage({
   const [excursionOverlayOpen, setExcursionOverlayOpen] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [checkInCompleteLocal, setCheckInCompleteLocal] = useState(false);
+  const [restartingCheckIn, setRestartingCheckIn] = useState(false);
   const {
     excursionListings,
     excursionsLoading,
@@ -412,11 +417,16 @@ function GuestPortalPage({
     setCheckInCompleteLocal(false);
   }, []);
 
-  const markCheckInComplete = useCallback(() => {
+  const markCheckInComplete = useCallback((stay?: { start?: string; end?: string }) => {
     setCheckInCompleteLocal(true);
     const stored = readGuestPortalSession();
     if (!stored) return;
-    const next = { ...stored, preArrivalComplete: true };
+    const next = {
+      ...stored,
+      preArrivalComplete: true,
+      checkIn: stay?.start || stored.checkIn || null,
+      checkOut: stay?.end || stored.checkOut || null,
+    };
     writeGuestPortalSession(next);
     setGuestSession(next);
   }, []);
@@ -424,6 +434,74 @@ function GuestPortalPage({
   const activeGuestSession = guestSession ?? readGuestPortalSession();
 
   const preArrivalCheckInEnabled = isPreArrivalCheckInEnabled(property);
+
+  /** Keep stay dates available even when portal typeData is stale or booking is on another unit. */
+  useEffect(() => {
+    const session = guestSession ?? readGuestPortalSession();
+    if (!propertyId || !session?.bookingId) return;
+    if (session.checkIn && session.checkOut) return;
+
+    const sessionTypeId = session.typeId || typeId;
+    if (!sessionTypeId) return;
+
+    const fromPortalType =
+      sessionTypeId === typeId && Array.isArray(typeData?.syncedBookings)
+        ? (typeData.syncedBookings as Array<{ id?: string; start?: string; end?: string }>).find(
+            (b) => b.id === session.bookingId
+          )
+        : null;
+    if (fromPortalType?.start && fromPortalType?.end) {
+      const next = {
+        ...session,
+        checkIn: fromPortalType.start,
+        checkOut: fromPortalType.end,
+      };
+      writeGuestPortalSession(next);
+      setGuestSession(next);
+      return;
+    }
+
+    let cancelled = false;
+    void getDoc(doc(db, 'properties', propertyId, 'propertyTypes', sessionTypeId))
+      .then((snap) => {
+        if (cancelled || !snap.exists()) return;
+        const bookings = Array.isArray(snap.data()?.syncedBookings)
+          ? (snap.data()!.syncedBookings as Array<{ id?: string; start?: string; end?: string }>)
+          : [];
+        const match = bookings.find((b) => b.id === session.bookingId);
+        if (!match?.start || !match?.end) return;
+        const latest = readGuestPortalSession();
+        if (!latest || latest.sessionId !== session.sessionId) return;
+        const next = {
+          ...latest,
+          checkIn: match.start,
+          checkOut: match.end,
+        };
+        writeGuestPortalSession(next);
+        setGuestSession(next);
+        if (sessionTypeId === typeId) {
+          setTypeData((prev: Record<string, unknown> | null) =>
+            prev ? { ...prev, syncedBookings: bookings } : prev
+          );
+        }
+      })
+      .catch(() => {
+        /* keep whatever dates we already have */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    propertyId,
+    typeId,
+    typeData?.syncedBookings,
+    guestSession?.sessionId,
+    guestSession?.bookingId,
+    guestSession?.typeId,
+    guestSession?.checkIn,
+    guestSession?.checkOut,
+  ]);
 
   useEffect(() => {
     if (!propertyId || !typeId || resolving) return;
@@ -453,7 +531,8 @@ function GuestPortalPage({
     }
     if (stored.preArrivalComplete) {
       setCheckInCompleteLocal(true);
-      return;
+      // Still validate so stay dates can be enriched from the booking when missing.
+      if (stored.checkIn && stored.checkOut) return;
     }
 
     let cancelled = false;
@@ -461,10 +540,20 @@ function GuestPortalPage({
       .then((result) => {
         if (cancelled || !result.valid) return;
         if (result.session) {
-          writeGuestPortalSession(result.session);
-          setGuestSession(result.session);
+          const merged = {
+            ...stored,
+            ...result.session,
+            checkIn: result.session.checkIn || stored.checkIn || null,
+            checkOut: result.session.checkOut || stored.checkOut || null,
+            preArrivalComplete:
+              result.preArrivalComplete === true ||
+              result.session.preArrivalComplete === true ||
+              stored.preArrivalComplete === true,
+          };
+          writeGuestPortalSession(merged);
+          setGuestSession(merged);
         }
-        if (result.preArrivalComplete || result.session?.preArrivalComplete) {
+        if (result.preArrivalComplete || result.session?.preArrivalComplete || stored.preArrivalComplete) {
           setCheckInCompleteLocal(true);
         }
       })
@@ -475,7 +564,7 @@ function GuestPortalPage({
     return () => {
       cancelled = true;
     };
-  }, [propertyId, typeId, resolving, guestSession?.sessionId, guestSession?.preArrivalComplete]);
+  }, [propertyId, typeId, resolving, guestSession?.sessionId, guestSession?.preArrivalComplete, guestSession?.checkIn, guestSession?.checkOut]);
 
   const preArrivalBooking = useMemo(() => {
     const bookingId = activeGuestSession?.bookingId;
@@ -515,6 +604,48 @@ function GuestPortalPage({
     preArrivalBooking?.preArrivalComplete === true;
   const showCheckInPromo = Boolean(preArrivalCheckInEnabled);
   const checkInContinue = Boolean(activeGuestSession?.bookingId) && !checkInComplete;
+  const checkInStayLabel = useMemo(() => {
+    const start =
+      preArrivalBooking?.start || activeGuestSession?.checkIn || undefined;
+    const end = preArrivalBooking?.end || activeGuestSession?.checkOut || undefined;
+    if (!start || !end) return null;
+    return formatBookingDateRange(start, end);
+  }, [
+    preArrivalBooking?.start,
+    preArrivalBooking?.end,
+    activeGuestSession?.checkIn,
+    activeGuestSession?.checkOut,
+  ]);
+  const canRestartCheckInDates =
+    activeGuestSession?.source === 'pre_arrival_dates' &&
+    Boolean(activeGuestSession?.sessionId);
+
+  const handleRestartCheckIn = useCallback(async () => {
+    if (restartingCheckIn) return;
+    const stored = readGuestPortalSession();
+    if (!stored?.sessionId || !propertyId) {
+      clearGuestPortalSession();
+      handleSessionCleared();
+      setCheckInOpen(true);
+      return;
+    }
+
+    setRestartingCheckIn(true);
+    try {
+      await resetGuestPreArrivalCheckInCallable({
+        propertyId,
+        typeId: stored.typeId || typeId || '',
+        sessionId: stored.sessionId,
+      });
+    } catch {
+      /* Still restart locally so the guest can re-enter dates. */
+    } finally {
+      clearGuestPortalSession();
+      handleSessionCleared();
+      setRestartingCheckIn(false);
+      setCheckInOpen(true);
+    }
+  }, [restartingCheckIn, propertyId, typeId, handleSessionCleared]);
 
   const { track } = useGuestAnalytics();
   const openLiveLikeLocal = useCallback(() => {
@@ -819,26 +950,6 @@ function GuestPortalPage({
     return date.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' });
   }, [preArrivalBooking?.end, locale]);
 
-  const excursionHeroUrl = useMemo(() => {
-    const withPhoto =
-      excursionListings.find((listing) => {
-        const excursion = listing.excursion;
-        const search = [
-          excursion.title,
-          excursion.subtitle,
-          ...(excursion.categories || []),
-        ]
-          .join(' ')
-          .toLowerCase();
-        return (
-          excursion.heroPhotoUrl?.trim() &&
-          /\b(boat|sail|sailing|yacht|cruise|sea|marine|catamaran)\b/.test(search)
-        );
-      }) ||
-      excursionListings.find((listing) => listing.excursion.heroPhotoUrl?.trim());
-    return withPhoto?.excursion.heroPhotoUrl?.trim();
-  }, [excursionListings]);
-
   const liveLikeLocalHeroUrl = useMemo(() => {
     const scenic = gems.find((gem) => {
       const search = [
@@ -921,7 +1032,6 @@ function GuestPortalPage({
               showExcursions={showExcursionsPromo}
               onBookArrange={openBook}
               bookArrangeListings={excursionListings}
-              excursionHeroUrl={excursionHeroUrl}
               liveLikeLocalHeroUrl={liveLikeLocalHeroUrl}
               hasPropertyCoords={hasPropertyCoords}
               onOpenMap={() => setPropertyMapOpen(true)}
@@ -946,7 +1056,10 @@ function GuestPortalPage({
               showCheckInPromo={showCheckInPromo}
               checkInComplete={checkInComplete}
               checkInContinue={checkInContinue}
+              checkInStayLabel={checkInStayLabel}
               onOpenCheckIn={() => setCheckInOpen(true)}
+              onRestartCheckIn={canRestartCheckInDates ? handleRestartCheckIn : undefined}
+              restartingCheckIn={restartingCheckIn}
               wifiName={wifiName}
               wifiPassword={wifiPassword}
               copiedWifi={copiedWifi}

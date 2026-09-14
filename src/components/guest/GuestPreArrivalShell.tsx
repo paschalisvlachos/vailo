@@ -6,6 +6,7 @@ import { guestFullNameFromSubmission } from '../../lib/preArrivalSubmission';
 import type { GuestPortalSession } from '../../lib/guestAccess';
 import { isPreArrivalPortalView, clearPreArrivalViewIntent } from '../../lib/guestPreArrival';
 import type { PreArrivalSubmission } from '../../lib/syncedBooking';
+import { useGuestLocale } from '../../context/GuestLocaleContext';
 import GuestPreArrivalForm from './GuestPreArrivalForm';
 import GuestCheckInDiscoverNotes from './GuestCheckInDiscoverNotes';
 
@@ -60,6 +61,7 @@ export default function GuestPreArrivalShell({
   const [formComplete, setFormComplete] = useState(booking?.preArrivalComplete === true);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t } = useGuestLocale();
 
   const guestName = useMemo(() => {
     const fromSubmission = guestFullNameFromSubmission(booking?.preArrivalSubmission);
@@ -122,7 +124,7 @@ export default function GuestPreArrivalShell({
                   onClick={onChangeDates}
                   className="text-sm font-semibold text-[#C5A059] hover:text-[#d4b06a] underline underline-offset-2"
                 >
-                  Wrong dates?
+                  {t('checkInWrongDates')}
                 </button>
               )}
             </div>

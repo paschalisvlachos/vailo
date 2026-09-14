@@ -950,26 +950,6 @@ function GuestPortalPage({
     return date.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' });
   }, [preArrivalBooking?.end, locale]);
 
-  const excursionHeroUrl = useMemo(() => {
-    const withPhoto =
-      excursionListings.find((listing) => {
-        const excursion = listing.excursion;
-        const search = [
-          excursion.title,
-          excursion.subtitle,
-          ...(excursion.categories || []),
-        ]
-          .join(' ')
-          .toLowerCase();
-        return (
-          excursion.heroPhotoUrl?.trim() &&
-          /\b(boat|sail|sailing|yacht|cruise|sea|marine|catamaran)\b/.test(search)
-        );
-      }) ||
-      excursionListings.find((listing) => listing.excursion.heroPhotoUrl?.trim());
-    return withPhoto?.excursion.heroPhotoUrl?.trim();
-  }, [excursionListings]);
-
   const liveLikeLocalHeroUrl = useMemo(() => {
     const scenic = gems.find((gem) => {
       const search = [
@@ -1052,7 +1032,6 @@ function GuestPortalPage({
               showExcursions={showExcursionsPromo}
               onBookArrange={openBook}
               bookArrangeListings={excursionListings}
-              excursionHeroUrl={excursionHeroUrl}
               liveLikeLocalHeroUrl={liveLikeLocalHeroUrl}
               hasPropertyCoords={hasPropertyCoords}
               onOpenMap={() => setPropertyMapOpen(true)}

@@ -369,6 +369,25 @@ export async function removePreArrivalCheckInForAdminCallable(params: {
   return res.data;
 }
 
+/** Guest restarts check-in (wrong dates) — clears/removes admin booking dates as needed. */
+export async function resetGuestPreArrivalCheckInCallable(params: {
+  propertyId: string;
+  typeId: string;
+  sessionId: string;
+}): Promise<{ reset: boolean; bookingRemoved?: boolean; previewMode?: boolean; bookingId?: string }> {
+  const res = await call<{
+    reset: boolean;
+    bookingRemoved?: boolean;
+    previewMode?: boolean;
+    bookingId?: string;
+  }>('resetGuestPreArrivalCheckIn')({
+    propertyId: params.propertyId,
+    typeId: params.typeId,
+    sessionId: params.sessionId,
+  });
+  return res.data;
+}
+
 export async function escalateAssistantQuestionCallable(params: {
   propertyId: string;
   typeId: string;

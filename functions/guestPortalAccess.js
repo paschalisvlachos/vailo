@@ -486,6 +486,14 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
       valid: true,
       session: formatSessionPayload({
         ...session,
+        checkIn:
+          session.checkIn ||
+          normalizeBookingDay(bookingAccess.booking?.start) ||
+          null,
+        checkOut:
+          session.checkOut ||
+          normalizeBookingDay(bookingAccess.booking?.end) ||
+          null,
         preArrivalComplete: Boolean(
           bookingAccess.booking?.preArrivalComplete || session.preArrivalComplete
         ),

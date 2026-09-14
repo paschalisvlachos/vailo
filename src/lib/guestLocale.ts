@@ -40,6 +40,7 @@ export type GuestLocaleKey =
   | 'checkInPromoContinue'
   | 'checkInPromoDoneTitle'
   | 'checkInPromoDoneSub'
+  | 'checkInWrongDates'
   | 'checkInBackToPortal'
   | 'checkInNoteEyebrow'
   | 'checkInNoteFree'

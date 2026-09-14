@@ -61,7 +61,6 @@ type Props = {
   showExcursions: boolean;
   onBookArrange: (categoryId?: string) => void;
   bookArrangeListings?: GuestExcursionListing[];
-  excursionHeroUrl?: string;
   liveLikeLocalHeroUrl?: string;
   hasPropertyCoords: boolean;
   onOpenMap: () => void;
@@ -170,7 +169,6 @@ export default function GuestPortalHome(props: Props) {
     showExcursions,
     onBookArrange,
     bookArrangeListings = [],
-    excursionHeroUrl,
     liveLikeLocalHeroUrl,
     hasPropertyCoords,
     onOpenMap,

@@ -3,6 +3,7 @@ const axios = require("axios");
 const { resolveCallerOwnerProfile } = require("./platformAdmin");
 const { resendApiKey } = require("./resendInbox");
 const { deliverGuestInviteForBooking, isAutoInviteEligible } = require("./guestAutoInvite");
+const { reconcileICalBookings } = require("./icalReconcile");
 
 function normalizeICalUrl(url) {
   const trimmed = String(url || "").trim();
@@ -74,61 +75,13 @@ function parseICalBookings(text, iCalUrl) {
         currentEvent.end = extractDateFromICalLine(line) || undefined;
       } else if (upper.startsWith("SUMMARY")) {
         currentEvent.summary = line.slice(line.indexOf(":") + 1);
+      } else if (upper.startsWith("UID")) {
+        currentEvent.icalUid = line.slice(line.indexOf(":") + 1).trim() || undefined;
       }
     }
   }
 
   return events;
-}
-
-function bookingsMatchByDates(a, b) {
-  return Boolean(a?.start && a?.end && b?.start && b?.end && a.start === b.start && a.end === b.end);
-}
-
-/** Skip re-adding an iCal block that an admin already split into separate stays. */
-function isSplitHandledICalEvent(existingBookings, iCalEvent) {
-  if (!iCalEvent?.start || !iCalEvent?.end) return false;
-  return existingBookings.some(
-    (b) =>
-      b.splitFromRange?.start === iCalEvent.start && b.splitFromRange?.end === iCalEvent.end
-  );
-}
-
-/** Keep existing DB rows (guest invites, etc.); append only new iCal events. */
-function applyIncrementalICalSync(existingBookings, iCalEvents) {
-  const updated = existingBookings.map((b) => ({ ...b }));
-  let added = 0;
-  const addedBookings = [];
-
-  for (const iCalEvent of iCalEvents) {
-    if (isSplitHandledICalEvent(updated, iCalEvent)) {
-      continue;
-    }
-    const matchIndex = updated.findIndex((b) => bookingsMatchByDates(b, iCalEvent));
-    if (matchIndex >= 0) {
-      const existing = updated[matchIndex];
-      updated[matchIndex] = omitUndefined({
-        ...existing,
-        summary: iCalEvent.summary ?? existing.summary,
-        provider: iCalEvent.provider ?? existing.provider,
-      });
-    } else {
-      const row = omitUndefined(iCalEvent);
-      updated.push(row);
-      addedBookings.push(row);
-      added += 1;
-    }
-  }
-
-  return { bookings: updated, added, total: updated.length, addedBookings };
-}
-
-function omitUndefined(obj) {
-  const out = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) out[key] = value;
-  }
-  return out;
 }
 
 async function fetchICalText(iCalUrl) {
@@ -245,10 +198,24 @@ function registerICalSync({ firestore, logger, firebaseExports }) {
       ? typeSnap.data().syncedBookings
       : [];
 
-    const { bookings: syncedBookings, added, total, addedBookings } = applyIncrementalICalSync(
-      existingBookings,
-      events
-    );
+    const {
+      bookings: syncedBookings,
+      added,
+      updated,
+      removed,
+      total,
+      addedBookings,
+      removedBookings,
+    } = reconcileICalBookings(existingBookings, events);
+
+    if (removed > 0) {
+      logger?.info?.("iCalSync: removed stale feed bookings", {
+        propertyId,
+        typeId,
+        removed,
+        bookingIds: removedBookings.map((b) => b.id).filter(Boolean),
+      });
+    }
 
     await typeRef.set(
       {
@@ -282,8 +249,8 @@ function registerICalSync({ firestore, logger, firebaseExports }) {
       }
     }
 
-    return { ok: true, count: total, added, autoInvitesSent };
+    return { ok: true, count: total, added, updated, removed, autoInvitesSent };
   });
 }
 
-module.exports = { registerICalSync, parseICalBookings, normalizeICalUrl, applyIncrementalICalSync };
+module.exports = { registerICalSync, parseICalBookings, normalizeICalUrl, reconcileICalBookings };

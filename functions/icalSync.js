@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const axios = require("axios");
 const { resolveCallerOwnerProfile } = require("./platformAdmin");
 const { resendApiKey } = require("./resendInbox");
@@ -158,6 +159,77 @@ async function requirePropertyCalendarAccess(request, firestore, propertyId) {
   throw new HttpsError("permission-denied", "You do not have access to this property.");
 }
 
+/** Nightly automation only touches listings whose property still has sync on. */
+function shouldAutoSyncListing({ property, typeData }) {
+  if (property?.calendarSyncEnabled === false) return false;
+  return Boolean(String(typeData?.iCalUrl || "").trim());
+}
+
+/** One listing: download the feed, reconcile it into syncedBookings, persist. */
+async function syncListingICalFeed({
+  firestore,
+  logger,
+  resendKey,
+  propertyId,
+  typeId,
+  typeRef,
+  typeData,
+  property,
+  iCalUrl,
+}) {
+  const normalizedUrl = normalizeICalUrl(iCalUrl);
+  const text = await fetchICalText(normalizedUrl);
+  const events = parseICalBookings(text, normalizedUrl);
+  const existingBookings = Array.isArray(typeData?.syncedBookings) ? typeData.syncedBookings : [];
+
+  const {
+    bookings: syncedBookings,
+    added,
+    updated,
+    removed,
+    total,
+    addedBookings,
+    removedBookings,
+  } = reconcileICalBookings(existingBookings, events);
+
+  if (removed > 0) {
+    logger?.info?.("iCalSync: removed stale feed bookings", {
+      propertyId,
+      typeId,
+      removed,
+      bookingIds: removedBookings.map((b) => b.id).filter(Boolean),
+    });
+  }
+
+  await typeRef.set(
+    {
+      iCalUrl: normalizedUrl,
+      syncedBookings,
+      lastSyncedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+
+  let autoInvitesSent = 0;
+  if (property?.autoSendGuestInviteWhenReady && addedBookings.length > 0 && resendKey) {
+    for (const booking of addedBookings) {
+      if (!booking?.id || !isAutoInviteEligible(property, booking)) continue;
+      const result = await deliverGuestInviteForBooking(firestore, logger, resendKey, {
+        propertyId,
+        typeId,
+        bookingId: booking.id,
+        property,
+        typeData,
+        bookings: syncedBookings,
+        typeRef,
+      });
+      if (result.sent) autoInvitesSent += 1;
+    }
+  }
+
+  return { count: total, added, updated, removed, autoInvitesSent };
+}
+
 function registerICalSync({ firestore, logger, firebaseExports }) {
   firebaseExports.syncPropertyTypeICal = onCall(
     {
@@ -191,66 +263,100 @@ function registerICalSync({ firestore, logger, firebaseExports }) {
       throw new HttpsError("not-found", "Property listing not found.");
     }
 
-    const normalizedUrl = normalizeICalUrl(iCalUrl);
-    const text = await fetchICalText(normalizedUrl);
-    const events = parseICalBookings(text, normalizedUrl);
-    const existingBookings = Array.isArray(typeSnap.data().syncedBookings)
-      ? typeSnap.data().syncedBookings
-      : [];
+    const result = await syncListingICalFeed({
+      firestore,
+      logger,
+      resendKey: resendApiKey.value(),
+      propertyId,
+      typeId,
+      typeRef,
+      typeData: typeSnap.data(),
+      property,
+      iCalUrl,
+    });
 
-    const {
-      bookings: syncedBookings,
-      added,
-      updated,
-      removed,
-      total,
-      addedBookings,
-      removedBookings,
-    } = reconcileICalBookings(existingBookings, events);
+    return { ok: true, ...result };
+  });
 
-    if (removed > 0) {
-      logger?.info?.("iCalSync: removed stale feed bookings", {
-        propertyId,
-        typeId,
-        removed,
-        bookingIds: removedBookings.map((b) => b.id).filter(Boolean),
+  firebaseExports.syncAllPropertyICalFeeds = onSchedule(
+    {
+      schedule: "0 0 * * *",
+      timeZone: "Europe/Athens",
+      region: "us-central1",
+      secrets: [resendApiKey],
+      timeoutSeconds: 540,
+      memory: "512MiB",
+    },
+    async () => {
+      const startedAt = Date.now();
+      const totals = {
+        listings: 0,
+        synced: 0,
+        skipped: 0,
+        failed: 0,
+        added: 0,
+        updated: 0,
+        removed: 0,
+        autoInvitesSent: 0,
+      };
+
+      const propertiesSnap = await firestore.collection("properties").get();
+
+      for (const propDoc of propertiesSnap.docs) {
+        const property = propDoc.data() || {};
+        const typesSnap = await propDoc.ref.collection("propertyTypes").get();
+
+        for (const typeDoc of typesSnap.docs) {
+          const typeData = typeDoc.data() || {};
+          totals.listings += 1;
+
+          if (!shouldAutoSyncListing({ property, typeData })) {
+            totals.skipped += 1;
+            continue;
+          }
+
+          try {
+            const result = await syncListingICalFeed({
+              firestore,
+              logger,
+              resendKey: resendApiKey.value(),
+              propertyId: propDoc.id,
+              typeId: typeDoc.id,
+              typeRef: typeDoc.ref,
+              typeData,
+              property,
+              iCalUrl: typeData.iCalUrl,
+            });
+
+            totals.synced += 1;
+            totals.added += result.added;
+            totals.updated += result.updated;
+            totals.removed += result.removed;
+            totals.autoInvitesSent += result.autoInvitesSent;
+          } catch (err) {
+            // One unreachable feed must not stop the rest of the nightly run.
+            totals.failed += 1;
+            logger.error("iCalSync: nightly sync failed for listing", {
+              propertyId: propDoc.id,
+              typeId: typeDoc.id,
+              error: err?.message || String(err),
+            });
+          }
+        }
+      }
+
+      logger.info("iCalSync: nightly run complete", {
+        ...totals,
+        durationMs: Date.now() - startedAt,
       });
     }
-
-    await typeRef.set(
-      {
-        iCalUrl: normalizedUrl,
-        syncedBookings,
-        lastSyncedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-
-    let autoInvitesSent = 0;
-    if (property.autoSendGuestInviteWhenReady && addedBookings.length > 0) {
-      const typeData = typeSnap.data();
-      for (const booking of addedBookings) {
-        if (!booking?.id || !isAutoInviteEligible(property, booking)) continue;
-        const result = await deliverGuestInviteForBooking(
-          firestore,
-          logger,
-          resendApiKey.value(),
-          {
-            propertyId,
-            typeId,
-            bookingId: booking.id,
-            property,
-            typeData,
-            bookings: syncedBookings,
-            typeRef,
-          }
-        );
-        if (result.sent) autoInvitesSent += 1;
-      }
-    }
-
-    return { ok: true, count: total, added, updated, removed, autoInvitesSent };
-  });
+  );
 }
 
-module.exports = { registerICalSync, parseICalBookings, normalizeICalUrl, reconcileICalBookings };
+module.exports = {
+  registerICalSync,
+  parseICalBookings,
+  normalizeICalUrl,
+  reconcileICalBookings,
+  shouldAutoSyncListing,
+};

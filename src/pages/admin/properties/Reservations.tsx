@@ -44,6 +44,7 @@ import {
   isSplitBookingPart,
   patchSyncedBookingList,
   patchSyncedBookingListRevokeAccess,
+  parseSyncedBookingDay,
   replaceBookingWithSplits,
   type SplitBookingPart,
   type SyncedBooking,
@@ -895,12 +896,17 @@ export default function Reservations() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {displayedBookings.map((booking: ReservationRow) => {
-                  const checkIn = booking.start
-                    ? new Date(booking.start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-                    : '—';
-                  const checkOut = booking.end
-                    ? new Date(booking.end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-                    : '—';
+                  const formatStayDay = (iso?: string) => {
+                    const day = parseSyncedBookingDay(iso);
+                    if (!day) return '—';
+                    return day.toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    });
+                  };
+                  const checkIn = formatStayDay(booking.start);
+                  const checkOut = formatStayDay(booking.end);
                   const isManual = booking.provider === 'Direct Booking';
                   const status = getBookingInvitationStatus(booking);
                   const detailsComplete = isBookingGuestDetailsComplete(booking);

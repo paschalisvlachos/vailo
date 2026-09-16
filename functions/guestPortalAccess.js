@@ -16,6 +16,14 @@ const {
   isBookingPortalAccessAllowed,
   resolveBookingGuestDisplayName,
 } = require("./guestPortalBookingAccess");
+const { CheckInValidationError } = require("./guestPreArrivalSubmitRules");
+const {
+  normalizeBookingDay,
+  parseIsoDay,
+  bookingMatchesExactDates,
+  parseGuestCheckInDates,
+  buildOnlineCheckInBookingDraft,
+} = require("./guestPortalDateRules");
 
 function isPreArrivalCheckInEnabled(property) {
   if (property?.preArrivalCheckInEnabled === undefined) return true;
@@ -27,34 +35,12 @@ function isCalendarSyncEnabled(property) {
   return property.calendarSyncEnabled !== false;
 }
 
-function parseIsoDay(iso) {
-  if (!iso) return null;
-  const day = String(iso).trim().slice(0, 10);
-  const parts = day.split("-").map(Number);
-  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
-  const d = new Date(parts[0], parts[1] - 1, parts[2]);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function isWithinBookingStayDates(today, start, end) {
   const s = parseIsoDay(start);
   const e = parseIsoDay(end);
   if (!s || !e) return false;
   const t = today.getTime();
   return t >= s.getTime() && t <= e.getTime();
-}
-
-function normalizeBookingDay(iso) {
-  return String(iso || "").trim().slice(0, 10);
-}
-
-function bookingMatchesExactDates(booking, checkIn, checkOut) {
-  if (!booking?.start || !booking?.end) return false;
-  return (
-    normalizeBookingDay(booking.start) === normalizeBookingDay(checkIn) &&
-    normalizeBookingDay(booking.end) === normalizeBookingDay(checkOut)
-  );
 }
 
 async function findPreArrivalDateMatchesAcrossProperty(
@@ -199,14 +185,11 @@ async function createStandalonePreArrivalSession(
     }
   }
 
-  const booking = {
+  const booking = buildOnlineCheckInBookingDraft({
     id: `CHECKIN-${crypto.randomBytes(6).toString("hex")}`,
-    start: checkInDay,
-    end: checkOutDay,
-    provider: "Online check-in",
-    isInvited: false,
-    guestDetailsComplete: false,
-  };
+    checkInDay,
+    checkOutDay,
+  });
   await persistBookings(typeRef, [...bookings, booking]);
 
   return createPreArrivalDateSession(firestore, {
@@ -218,28 +201,15 @@ async function createStandalonePreArrivalSession(
   });
 }
 
-function parseGuestCheckInDates(checkIn, checkOut, options = {}) {
-  const checkInDay = normalizeBookingDay(checkIn);
-  const checkOutDay = normalizeBookingDay(checkOut);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(checkInDay) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOutDay)) {
-    throw new HttpsError("invalid-argument", "Please enter valid check-in and check-out dates.");
-  }
-  const start = parseIsoDay(checkInDay);
-  const end = parseIsoDay(checkOutDay);
-  if (!start || !end) {
-    throw new HttpsError("invalid-argument", "Please enter valid check-in and check-out dates.");
-  }
-  if (options.requireUpcomingCheckIn) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (start.getTime() < today.getTime()) {
-      throw new HttpsError("invalid-argument", "Check-in must be today or a later date.");
+function wrapCheckInValidation(fn) {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof CheckInValidationError) {
+      throw new HttpsError(err.code || "invalid-argument", err.message);
     }
+    throw err;
   }
-  if (end.getTime() <= start.getTime()) {
-    throw new HttpsError("invalid-argument", "Check-out must be after check-in.");
-  }
-  return { checkInDay, checkOutDay };
 }
 
 function portalAccessUntilFromEnd(end) {
@@ -942,9 +912,11 @@ function registerGuestPortalAccess({ firestore, logger, firebaseExports }) {
     }
 
     const calendarSyncEnabled = isCalendarSyncEnabled(property);
-    const { checkInDay, checkOutDay } = parseGuestCheckInDates(checkIn, checkOut, {
-      requireUpcomingCheckIn: !calendarSyncEnabled,
-    });
+    const { checkInDay, checkOutDay } = wrapCheckInValidation(() =>
+      parseGuestCheckInDates(checkIn, checkOut, {
+        requireUpcomingCheckIn: !calendarSyncEnabled,
+      })
+    );
 
     if (!calendarSyncEnabled) {
       return createStandalonePreArrivalSession(firestore, {

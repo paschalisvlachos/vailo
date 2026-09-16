@@ -1,52 +1,16 @@
 const admin = require("firebase-admin");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-
-const PRE_ARRIVAL_RETENTION_DAYS = 7;
+const {
+  PRE_ARRIVAL_RETENTION_DAYS,
+  hasRetainedIdDocumentData,
+  isPreArrivalPurgeDue,
+  stripIdDocumentFromBooking,
+  stripPreArrivalFields,
+  hasPreArrivalData,
+} = require("./guestPreArrivalRules");
 
 function utcDateKey(date = new Date()) {
   return date.toISOString().slice(0, 10);
-}
-
-function addDaysToIsoDate(isoDate, days) {
-  const parts = String(isoDate || "")
-    .split("-")
-    .map(Number);
-  if (parts.length < 3) return null;
-  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function bookingEndIso(booking) {
-  const end = String(booking?.end || "").trim();
-  if (!end) return null;
-  return end.split("T")[0];
-}
-
-function hasPreArrivalData(booking) {
-  return Boolean(
-    booking?.preArrivalComplete ||
-      booking?.preArrivalSubmittedAt ||
-      booking?.preArrivalSubmission
-  );
-}
-
-function isPreArrivalPurgeDue(booking, todayKey, retentionDays = PRE_ARRIVAL_RETENTION_DAYS) {
-  const endIso = bookingEndIso(booking);
-  if (!endIso) return false;
-  const purgeOnOrAfterKey = addDaysToIsoDate(endIso, retentionDays);
-  if (!purgeOnOrAfterKey) return false;
-  return purgeOnOrAfterKey <= todayKey;
-}
-
-function stripPreArrivalFields(booking) {
-  const {
-    preArrivalComplete: _complete,
-    preArrivalSubmittedAt: _submittedAt,
-    preArrivalSubmission: _submission,
-    ...rest
-  } = booking;
-  return rest;
 }
 
 async function deleteStoredIdDocument(storagePath, logger, context) {
@@ -108,8 +72,9 @@ function registerGuestPreArrivalPurge({ firestore, logger, firebaseExports }) {
           const updatedBookings = [];
 
           for (const booking of bookings) {
+            // Retention: remove passport/ID only — keep completed check-in + form answers.
             const shouldPurge =
-              hasPreArrivalData(booking) && isPreArrivalPurgeDue(booking, todayKey);
+              hasRetainedIdDocumentData(booking) && isPreArrivalPurgeDue(booking, todayKey);
 
             if (!shouldPurge) {
               updatedBookings.push(booking);
@@ -140,7 +105,7 @@ function registerGuestPreArrivalPurge({ firestore, logger, firebaseExports }) {
               continue;
             }
 
-            updatedBookings.push(stripPreArrivalFields(booking));
+            updatedBookings.push(stripIdDocumentFromBooking(booking));
             changed = true;
             purged += 1;
           }
@@ -177,5 +142,7 @@ module.exports = {
   PRE_ARRIVAL_RETENTION_DAYS,
   isPreArrivalPurgeDue,
   hasPreArrivalData,
+  hasRetainedIdDocumentData,
   stripPreArrivalFields,
+  stripIdDocumentFromBooking,
 };

@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - staging
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install App Dependencies
+        run: npm ci
+
+      - name: Run App Unit Tests
+        run: npm run test:app
+
+      - name: Install Functions Dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Run Functions Unit Tests
+        working-directory: functions
+        run: npm test

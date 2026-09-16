@@ -39,8 +39,12 @@ function inferGroup(key: string): GuestUiStringGroup {
     key === 'liveLikeLocalHeroSub' ||
     key === 'liveLikeLocalSub' ||
     key.startsWith('checkInPromo') ||
-    key === 'checkInWrongDates' ||
+    key.startsWith('checkInWrongDates') ||
+    key.startsWith('checkInNote') ||
+    key.startsWith('checkInThanks') ||
     key === 'checkInBackToPortal' ||
+    key === 'checkInStartUsing' ||
+    key === 'checkInRedirectHint' ||
     key === 'essentials' ||
     key === 'thingsToKnow' ||
     key.startsWith('googleRating') ||

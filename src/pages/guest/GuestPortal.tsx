@@ -56,6 +56,10 @@ import {
   validateGuestPortalSession,
 } from '../../lib/guestPortalCallables';
 import { formatBookingDateRange } from '../../lib/syncedBooking';
+import {
+  resolveCheckInStayLabel,
+  resolveGuestCheckInPromoState,
+} from '../../lib/guestCheckInPromo';
 import { buildGoogleReviewUrl } from '../../lib/googleReviewUrl';
 import {
   GuestAreaPrefetcher,
@@ -598,27 +602,49 @@ function GuestPortalPage({
     };
   }, [activeGuestSession?.bookingId, typeData?.syncedBookings]);
 
-  const checkInComplete =
-    checkInCompleteLocal ||
-    activeGuestSession?.preArrivalComplete === true ||
-    preArrivalBooking?.preArrivalComplete === true;
-  const showCheckInPromo = Boolean(preArrivalCheckInEnabled);
-  const checkInContinue = Boolean(activeGuestSession?.bookingId) && !checkInComplete;
-  const checkInStayLabel = useMemo(() => {
-    const start =
-      preArrivalBooking?.start || activeGuestSession?.checkIn || undefined;
-    const end = preArrivalBooking?.end || activeGuestSession?.checkOut || undefined;
-    if (!start || !end) return null;
-    return formatBookingDateRange(start, end);
-  }, [
-    preArrivalBooking?.start,
-    preArrivalBooking?.end,
-    activeGuestSession?.checkIn,
-    activeGuestSession?.checkOut,
-  ]);
-  const canRestartCheckInDates =
-    activeGuestSession?.source === 'pre_arrival_dates' &&
-    Boolean(activeGuestSession?.sessionId);
+  const checkInPromo = useMemo(
+    () =>
+      resolveGuestCheckInPromoState({
+        preArrivalCheckInEnabled,
+        checkInCompleteLocal,
+        sessionPreArrivalComplete: activeGuestSession?.preArrivalComplete === true,
+        bookingPreArrivalComplete: preArrivalBooking?.preArrivalComplete === true,
+        sessionBookingId: activeGuestSession?.bookingId,
+        sessionSource: activeGuestSession?.source,
+        sessionId: activeGuestSession?.sessionId,
+      }),
+    [
+      preArrivalCheckInEnabled,
+      checkInCompleteLocal,
+      activeGuestSession?.preArrivalComplete,
+      activeGuestSession?.bookingId,
+      activeGuestSession?.source,
+      activeGuestSession?.sessionId,
+      preArrivalBooking?.preArrivalComplete,
+    ]
+  );
+  const {
+    showCheckInPromo,
+    checkInComplete,
+    checkInContinue,
+    canRestartCheckInDates,
+  } = checkInPromo;
+  const checkInStayLabel = useMemo(
+    () =>
+      resolveCheckInStayLabel({
+        bookingStart: preArrivalBooking?.start,
+        bookingEnd: preArrivalBooking?.end,
+        sessionCheckIn: activeGuestSession?.checkIn,
+        sessionCheckOut: activeGuestSession?.checkOut,
+        formatRange: formatBookingDateRange,
+      }),
+    [
+      preArrivalBooking?.start,
+      preArrivalBooking?.end,
+      activeGuestSession?.checkIn,
+      activeGuestSession?.checkOut,
+    ]
+  );
 
   const handleRestartCheckIn = useCallback(async () => {
     if (restartingCheckIn) return;

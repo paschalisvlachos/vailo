@@ -1,5 +1,5 @@
 const { reconcileICalBookings, canRemoveStaleBooking } = require("../icalReconcile");
-const { parseICalBookings } = require("../icalSync");
+const { parseICalBookings, shouldAutoSyncListing } = require("../icalSync");
 
 const TODAY = "2026-09-16";
 
@@ -172,6 +172,23 @@ describe("reconcileICalBookings", () => {
 
     expect(result.bookings).toHaveLength(1);
     expect(result).toMatchObject({ added: 0, updated: 0, removed: 0 });
+  });
+});
+
+describe("shouldAutoSyncListing", () => {
+  const typeData = { iCalUrl: "https://admin.booking.com/ical.html?t=abc" };
+
+  it("syncs listings with a feed on sync-enabled properties", () => {
+    expect(shouldAutoSyncListing({ property: {}, typeData })).toBe(true);
+    expect(shouldAutoSyncListing({ property: { calendarSyncEnabled: true }, typeData })).toBe(true);
+  });
+
+  it("skips listings without a feed and properties with sync turned off", () => {
+    expect(shouldAutoSyncListing({ property: {}, typeData: {} })).toBe(false);
+    expect(shouldAutoSyncListing({ property: {}, typeData: { iCalUrl: "   " } })).toBe(false);
+    expect(
+      shouldAutoSyncListing({ property: { calendarSyncEnabled: false }, typeData })
+    ).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import type { PreArrivalSubmission } from '../../lib/syncedBooking';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import GuestPreArrivalForm from './GuestPreArrivalForm';
 import GuestCheckInDiscoverNotes from './GuestCheckInDiscoverNotes';
+import GuestWrongDatesConfirmDialog from './GuestWrongDatesConfirmDialog';
 
 type BookingSummary = {
   start?: string;
@@ -59,6 +60,7 @@ export default function GuestPreArrivalShell({
   onSubmitted,
 }: Props) {
   const [formComplete, setFormComplete] = useState(booking?.preArrivalComplete === true);
+  const [wrongDatesConfirmOpen, setWrongDatesConfirmOpen] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useGuestLocale();
@@ -121,7 +123,7 @@ export default function GuestPreArrivalShell({
               {onChangeDates && (
                 <button
                   type="button"
-                  onClick={onChangeDates}
+                  onClick={() => setWrongDatesConfirmOpen(true)}
                   className="text-sm font-semibold text-[#C5A059] hover:text-[#d4b06a] underline underline-offset-2"
                 >
                   {t('checkInWrongDates')}
@@ -165,6 +167,16 @@ export default function GuestPreArrivalShell({
           </button>
         )}
       </div>
+
+      <GuestWrongDatesConfirmDialog
+        open={wrongDatesConfirmOpen}
+        t={t}
+        onCancel={() => setWrongDatesConfirmOpen(false)}
+        onConfirm={() => {
+          setWrongDatesConfirmOpen(false);
+          onChangeDates?.();
+        }}
+      />
     </div>
   );
 }

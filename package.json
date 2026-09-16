@@ -15,6 +15,9 @@
     "provision:login": "node scripts/provision-login.mjs",
     "deploy:staging": "firebase deploy --only hosting --project staging",
     "deploy:production": "firebase deploy --only hosting --project production",
+    "test": "vitest run && npm --prefix functions test",
+    "test:app": "vitest run",
+    "test:functions": "npm --prefix functions test",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -49,6 +52,7 @@
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vitest": "^3.2.7"
   }
 }

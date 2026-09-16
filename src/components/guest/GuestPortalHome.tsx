@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import GuestLanguageMenu from './GuestLanguageMenu';
 import PropertyEssentials from './PropertyEssentials';
+import GuestWrongDatesConfirmDialog from './GuestWrongDatesConfirmDialog';
 import GuestLocalServices, { type GuestPortalFeature } from './GuestLocalServices';
 import MirroredPhotoImg from '../shared/MirroredPhotoImg';
 import { openExternalUrl } from '../../lib/geocoding';
@@ -198,6 +199,7 @@ export default function GuestPortalHome(props: Props) {
   const [wifiVisible, setWifiVisible] = useState(false);
   const [thingsOpen, setThingsOpen] = useState(false);
   const [featuresExpanded, setFeaturesExpanded] = useState(false);
+  const [wrongDatesConfirmOpen, setWrongDatesConfirmOpen] = useState(false);
   const column = 'w-full max-w-[576px]';
   const contentPadding = 'px-[clamp(18px,6.6vw,38px)]';
 
@@ -462,7 +464,7 @@ export default function GuestPortalHome(props: Props) {
             {onRestartCheckIn && (
               <button
                 type="button"
-                onClick={onRestartCheckIn}
+                onClick={() => setWrongDatesConfirmOpen(true)}
                 disabled={restartingCheckIn}
                 className="shrink-0 text-[12px] font-semibold text-[#D4B57A] underline underline-offset-2 hover:text-[#E7C46F] disabled:opacity-60"
               >
@@ -636,6 +638,17 @@ export default function GuestPortalHome(props: Props) {
 
         {legalFooter}
       </div>
+
+      <GuestWrongDatesConfirmDialog
+        open={wrongDatesConfirmOpen}
+        busy={restartingCheckIn}
+        t={t}
+        onCancel={() => setWrongDatesConfirmOpen(false)}
+        onConfirm={() => {
+          setWrongDatesConfirmOpen(false);
+          onRestartCheckIn?.();
+        }}
+      />
     </>
   );
 }

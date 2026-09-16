@@ -17,11 +17,14 @@ module.exports = {
   },
   overrides: [
     {
-      files: ["**/*.spec.*"],
+      files: ["**/*.spec.*", "test/**/*.test.js"],
       env: {
         mocha: true,
       },
-      rules: {},
+      rules: {
+        "max-len": "off",
+        "require-jsdoc": "off",
+      },
     },
   ],
   globals: {},

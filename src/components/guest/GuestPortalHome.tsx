@@ -412,13 +412,13 @@ export default function GuestPortalHome(props: Props) {
                   className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(4,28,30,0.88)_0%,rgba(0,72,69,0.55)_42%,rgba(0,72,69,0.4)_100%)]"
                 />
                 <span className="absolute top-3.5 left-3.5 right-14 z-10 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
-                  <span className="block text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.22em] text-[#E7C46F] [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
-                    Local tips & hidden gems
-                  </span>
-                  <span className="mt-1.5 block font-luxury text-white text-[clamp(1.35rem,5.2vw,1.7rem)] leading-[1.05] tracking-[-0.02em] font-medium [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]">
+                  <span className="block font-luxury text-white text-[clamp(1.62rem,6.24vw,2.04rem)] leading-[1.05] tracking-[-0.02em] font-medium [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]">
                     {t('liveLikeLocalHero')}
                   </span>
-                  <span className="mt-1.5 block max-w-[22rem] text-white/88 text-[clamp(12px,2.6vw,14px)] leading-snug [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
+                  <span className="mt-1.5 block font-sans text-[clamp(1.14rem,4.2vw,1.35rem)] font-semibold leading-snug tracking-[-0.01em] text-[#E8D5A8] [text-shadow:0_1px_4px_rgba(0,0,0,0.5)]">
+                    {t('liveLikeLocalHeroMid')}
+                  </span>
+                  <span className="mt-1 block max-w-[22rem] text-white/88 text-[clamp(14.4px,3.12vw,16.8px)] leading-snug [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]">
                     {t('liveLikeLocalHeroSub')}
                   </span>
                 </span>
@@ -451,8 +451,8 @@ export default function GuestPortalHome(props: Props) {
           )}
           {showExcursions && (
             <DestinationCard
-              title="Book & Arrange"
-              subtitle="Turn good holidays into unforgettable ones."
+              title={t('bookArrangeHomeTitle')}
+              subtitle={t('bookArrangeHomeSub')}
               photoUrl="/portal-book-arrange-hero.png"
               onClick={() => onBookArrange()}
             />
@@ -563,7 +563,7 @@ export default function GuestPortalHome(props: Props) {
                 <span className="min-w-0 flex-1">
                   <p className="text-[15px] font-semibold text-[#0A2F32]">{t('thingsToKnow')}</p>
                   <p className="text-[13px] text-[#7A7266] leading-snug">
-                    Check-in, safety & emergency, house rules, daily needs and more.
+                    Check-in, Supermarkets, Bakeries, House rules and more.
                   </p>
                 </span>
                 <ChevronRight
@@ -746,14 +746,14 @@ function DestinationCard({
         </span>
       ) : null}
       <span className="absolute top-3 left-3 right-11 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
-        <span className="block font-luxury text-white text-[clamp(15px,3.4vw,17px)] leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
+        <span className="block font-luxury text-white text-[clamp(18px,4.08vw,20.4px)] leading-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
           {title}
         </span>
-        <span className="block text-white/92 text-[clamp(11px,2.2vw,12.5px)] mt-0.5 leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
+        <span className="block text-white/92 text-[clamp(13.2px,2.64vw,15px)] mt-0.5 leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
           {subtitle}
         </span>
         {detail ? (
-          <span className="block text-white/92 text-[clamp(11px,2.2vw,12.5px)] leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
+          <span className="block text-white/92 text-[clamp(13.2px,2.64vw,15px)] leading-snug [text-shadow:0_1px_2px_rgba(0,0,0,0.5)]">
             {detail}
           </span>
         ) : null}

@@ -174,10 +174,10 @@ export default function GuestFeaturedPreviewSheet({
               onClose();
               onAskAssistant();
             }}
-            className="guest-btn-action mt-6 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] hover:from-[#083a43] hover:to-[#072d34] transition-colors"
+            className="guest-btn-action mt-6 w-full min-w-0 h-auto min-h-[44px] flex items-center justify-center gap-2 px-3 py-3.5 rounded-xl whitespace-normal text-center leading-snug tracking-wide bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] hover:from-[#083a43] hover:to-[#072d34] transition-colors"
           >
             <Bot size={13} className="shrink-0" />
-            Ask the 24/7 Assistant for full details
+            <span className="min-w-0">Ask the 24/7 Assistant for full details</span>
           </button>
         </div>
       </div>

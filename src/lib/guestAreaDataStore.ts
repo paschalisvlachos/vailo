@@ -26,6 +26,12 @@ import {
   prefetchGuestExcursionCatalog,
   type GuestExcursionListing,
 } from './guestExcursions';
+import {
+  fetchBookArrangeSummary,
+  readBookArrangeCategoryCache,
+  syncBookArrangeSummaryFromListings,
+  writeBookArrangeCategoryCache,
+} from './bookArrangeSummary';
 import { parseNeighborAreaIds } from './areaNeighbors';
 import {
   countMergedNeighborItems,
@@ -69,6 +75,10 @@ export type GuestAreaDataSnapshot = {
   excursionListings: GuestExcursionListing[];
   excursionsLoading: boolean;
   excursionsAvailable: boolean;
+  /** Top-level Arrange & Book category ids for home chips (cache / summary / listings). */
+  bookArrangeCategoryIds: string[];
+  /** True until cache, summary, or home listings have resolved category chips. */
+  bookArrangeCategoriesLoading: boolean;
   neighborAreaIds: string[];
   neighborAreaNames: Record<string, string>;
   neighborBundles: NeighborContentBundle[];
@@ -105,6 +115,8 @@ const emptySnapshot: GuestAreaDataSnapshot = {
   excursionListings: [],
   excursionsLoading: true,
   excursionsAvailable: false,
+  bookArrangeCategoryIds: [],
+  bookArrangeCategoriesLoading: true,
   neighborAreaIds: [],
   neighborAreaNames: {},
   neighborBundles: [],
@@ -231,8 +243,8 @@ export function GuestAreaPrefetcher({
   const areaKey = `${propertyType?.country ?? ''}|${propertyType?.city ?? ''}|${locale}|${contentSettings.primaryLocale}|${propertyCoords?.lat ?? 'na'}:${propertyCoords?.lng ?? 'na'}`;
 
   useEffect(() => {
-    prefetchGuestExcursionCatalog();
-  }, []);
+    prefetchGuestExcursionCatalog(propertyType?.country);
+  }, [propertyType?.country]);
 
   useEffect(() => {
     if (prefetchKey === areaKey) return;
@@ -604,12 +616,42 @@ export function GuestAreaPrefetcher({
           excursionListings: [],
           excursionsLoading: false,
           excursionsAvailable: false,
+          bookArrangeCategoryIds: [],
+          bookArrangeCategoriesLoading: false,
         });
         return;
       }
 
-      prefetchGuestExcursionCatalog();
+      const { country, areaId } = listingAreaCtx;
+
+      // 1) Instant chips from local SWR cache (do not wait on neighbors).
+      const cached = readBookArrangeCategoryCache(country, areaId);
+      if (cached?.categoryIds.length) {
+        patchSnapshot({
+          bookArrangeCategoryIds: cached.categoryIds,
+          bookArrangeCategoriesLoading: false,
+        });
+      } else {
+        patchSnapshot({ bookArrangeCategoriesLoading: true });
+      }
+
+      prefetchGuestExcursionCatalog(country);
       patchSnapshot({ excursionsLoading: true });
+
+      // 2) Thin Firestore summary in parallel with listings (home chips).
+      void fetchBookArrangeSummary(country, areaId).then((summary) => {
+        if (cancelled || !summary?.categoryIds.length) return;
+        writeBookArrangeCategoryCache(country, areaId, summary);
+        const current = getGuestAreaDataSnapshot();
+        // Listings already painted chips — keep them.
+        if (!current.bookArrangeCategoriesLoading && current.bookArrangeCategoryIds.length > 0) {
+          return;
+        }
+        patchSnapshot({
+          bookArrangeCategoryIds: summary.categoryIds,
+          bookArrangeCategoriesLoading: false,
+        });
+      });
 
       const baseParams = {
         homeArea: listingAreaCtx,
@@ -617,25 +659,31 @@ export function GuestAreaPrefetcher({
       };
 
       try {
+        // 3) Home-area listings only — chips ready after this; neighbors never block.
         const homeItems = await loadGuestExcursionsForListing({
           ...baseParams,
           neighborAreas: [],
         });
         if (cancelled) return;
 
+        const homeSummary = syncBookArrangeSummaryFromListings(country, areaId, homeItems);
         const waitingForNeighbors =
           neighborOverlapEnabled && neighborAreaIds.length > 0;
+
         patchSnapshot({
           excursionListings: homeItems,
           excursionsLoading: waitingForNeighbors,
           excursionsAvailable: homeItems.length > 0,
+          bookArrangeCategoryIds: homeSummary.categoryIds,
+          bookArrangeCategoriesLoading: false,
         });
 
         if (!waitingForNeighbors) return;
 
-        const neighborAreas = neighborAreaIds.map((areaId) => ({
-          areaId,
-          areaName: neighborAreaNames[areaId] || areaId,
+        // 4) Neighbor enrichment in background — home chips already shown.
+        const neighborAreas = neighborAreaIds.map((id) => ({
+          areaId: id,
+          areaName: neighborAreaNames[id] || id,
         }));
         const fullItems = await loadGuestExcursionsForListing({
           ...baseParams,
@@ -647,6 +695,11 @@ export function GuestAreaPrefetcher({
           excursionListings: fullItems,
           excursionsLoading: false,
           excursionsAvailable: fullItems.length > 0,
+          // Keep home-derived category chips; neighbors shouldn't remove home categories.
+          bookArrangeCategoryIds: homeSummary.categoryIds.length
+            ? homeSummary.categoryIds
+            : syncBookArrangeSummaryFromListings(country, areaId, fullItems).categoryIds,
+          bookArrangeCategoriesLoading: false,
         });
       } catch (error) {
         console.error(error);
@@ -655,6 +708,7 @@ export function GuestAreaPrefetcher({
             excursionListings: [],
             excursionsLoading: false,
             excursionsAvailable: false,
+            bookArrangeCategoriesLoading: false,
           });
         }
       }

@@ -4,12 +4,14 @@ import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestUiTFormat } from '../../lib/guestLocaleUi';
 import { useSavedLocalGems } from '../../hooks/useSavedLocalGems';
 import LocalPickCard from './LocalPickCard';
+import { guestSubviewPositionClass } from '../../lib/guestPortalLayers';
 
 type Props = {
   propertyId: string;
   typeId: string;
   mapAreaHint: string;
   onClose: () => void;
+  isMobileFramePreview?: boolean;
 };
 
 export default function GuestSavedLocalGems({
@@ -17,6 +19,7 @@ export default function GuestSavedLocalGems({
   typeId,
   mapAreaHint,
   onClose,
+  isMobileFramePreview = false,
 }: Props) {
   const { t, locale } = useGuestLocale();
   const { items, categories } = useSavedLocalGems(propertyId, typeId);
@@ -47,7 +50,13 @@ export default function GuestSavedLocalGems({
   }, [filtered, categoryFilter]);
 
   return (
-    <div className="guest-mobile fixed inset-0 z-50 flex flex-col overflow-hidden bg-gradient-to-b from-vailo-teal to-vailo-teal-hover pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:shadow-[4px_0_48px_-8px_rgba(5,31,38,0.45)] md:border md:border-white/10">
+    <div
+      className={`guest-mobile ${guestSubviewPositionClass(isMobileFramePreview)} flex flex-col overflow-hidden bg-gradient-to-b from-vailo-teal to-vailo-teal-hover pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+        isMobileFramePreview
+          ? ''
+          : 'md:relative md:h-[800px] md:rounded-3xl md:shadow-[4px_0_48px_-8px_rgba(5,31,38,0.45)] md:border md:border-white/10'
+      }`}
+    >
       <div className="shrink-0 border-b border-white/10 px-4 py-3.5 flex items-center gap-3">
         <button
           type="button"

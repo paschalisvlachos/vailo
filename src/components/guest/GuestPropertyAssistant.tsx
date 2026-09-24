@@ -30,6 +30,7 @@ import {
 } from '../../lib/houseGuideAssistantContext';
 import { readGuestPortalSession } from '../../lib/guestAccess';
 import GuestLanguageMenu from './GuestLanguageMenu';
+import { guestSubviewPositionClass } from '../../lib/guestPortalLayers';
 
 const CONSENT_KEY = 'vailo:assistant-consent:v1';
 const MAX_USER_INPUT = 1000;
@@ -63,6 +64,7 @@ type Props = {
   onOpenPrivacy: () => void;
   onOpenTerms: () => void;
   onOpenReport: () => void;
+  isMobileFramePreview?: boolean;
 };
 function assistantReplyNeedsEscalation(text: string): boolean {
   const t = text.trim().toLowerCase();
@@ -196,6 +198,7 @@ export default function GuestPropertyAssistant({
   onOpenPrivacy,
   onOpenTerms,
   onOpenReport,
+  isMobileFramePreview = false,
 }: Props) {
   const { locale, setLocale, t, localeOptions } = useGuestLocale();
   const escalatingRef = useRef<Set<string>>(new Set());
@@ -509,7 +512,13 @@ export default function GuestPropertyAssistant({
   };
 
   return (
-    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+    <div
+      className={`guest-mobile ${guestSubviewPositionClass(isMobileFramePreview)} flex flex-col bg-gradient-to-b from-[#f4f7f6] to-[#eef2f1] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+        isMobileFramePreview
+          ? ''
+          : 'md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5'
+      }`}
+    >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
         .font-luxury { font-family: 'Lora', serif; }

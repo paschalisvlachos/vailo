@@ -15,7 +15,11 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
+import { GUEST_PORTAL_Z, guestSubviewPositionClass } from '../../lib/guestPortalLayers';
+import {
+  GUEST_BOTTOM_NAV_SHEET_CLEARANCE,
+  GUEST_BOTTOM_NAV_SHEET_MAX_H,
+} from './GuestPortalBottomNav';
 import { resolvePropertyTypeAreaContext } from '../../lib/listingAreaContext';
 import {
   excursionAudienceTag,
@@ -49,6 +53,7 @@ type Props = {
   prefetchedLoading?: boolean;
   onClose: () => void;
   onOverlayOpenChange?: (open: boolean) => void;
+  isMobileFramePreview?: boolean;
 };
 
 function categoryIcon(name: string) {
@@ -317,14 +322,14 @@ export function ExcursionDetailSheet({
 
   return (
     <div
-      className={`fixed inset-0 ${GUEST_PORTAL_Z.detailSheet} flex items-end sm:items-center justify-center bg-[#051F26]/60 backdrop-blur-md p-0 sm:p-5`}
+      className={`fixed inset-0 ${GUEST_PORTAL_Z.detailSheet} flex items-end sm:items-center justify-center bg-[#051F26]/60 backdrop-blur-md p-0 sm:p-5 ${GUEST_BOTTOM_NAV_SHEET_CLEARANCE}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="excursion-detail-title"
       onClick={onClose}
     >
       <div
-        className="bg-[#F8FAFA] w-full sm:max-w-lg max-h-[94vh] rounded-t-[28px] sm:rounded-[28px] shadow-[0_24px_80px_rgba(5,31,38,0.35)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300"
+        className={`bg-[#F8FAFA] w-full sm:max-w-lg ${GUEST_BOTTOM_NAV_SHEET_MAX_H} rounded-t-[28px] sm:rounded-[28px] shadow-[0_24px_80px_rgba(5,31,38,0.35)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0">
@@ -594,6 +599,7 @@ export default function GuestExcursions({
   prefetchedLoading,
   onClose,
   onOverlayOpenChange,
+  isMobileFramePreview = false,
 }: Props) {
   const { track } = useGuestAnalytics();
   const { t } = useGuestLocale();
@@ -614,6 +620,7 @@ export default function GuestExcursions({
 
   useEffect(() => {
     onOverlayOpenChange?.(overlayOpen);
+    return () => onOverlayOpenChange?.(false);
   }, [overlayOpen, onOverlayOpenChange]);
 
   useEffect(() => {
@@ -730,7 +737,13 @@ export default function GuestExcursions({
 
   return (
     <>
-      <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-[#F3F4F6] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5">
+      <div
+        className={`guest-mobile ${guestSubviewPositionClass(isMobileFramePreview)} flex flex-col bg-[#F3F4F6] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+          isMobileFramePreview
+            ? ''
+            : 'md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0B4F5C]/5'
+        }`}
+      >
         <header className="relative shrink-0 overflow-hidden border-b border-[#0B4F5C]/8">
           <div className="absolute inset-0 bg-gradient-to-br from-[#EAF2F2] via-white to-[#FDF9F3]" />
           <div className="absolute -top-12 -right-8 w-44 h-44 bg-[#C5A059]/14 blur-3xl rounded-full pointer-events-none" />

@@ -384,6 +384,8 @@ function GuestPortalPage({
   const {
     excursionListings,
     excursionsLoading,
+    bookArrangeCategoryIds,
+    bookArrangeCategoriesLoading,
     listingAreaCtx,
     parentCategories,
     subcategoriesByParentPrimary,
@@ -1032,7 +1034,9 @@ function GuestPortalPage({
 
       <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-clip flex flex-col relative ${
         isMobileFramePreview
-          ? 'md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
+          ? // min-h-screen kept at all breakpoints so absolute tabs + bottom nav stay in-frame
+            // when Book/Stay/Explore are shown (those shells are out-of-flow).
+            'min-h-screen md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
           : 'max-w-none min-h-screen'
       }`}>
         
@@ -1058,6 +1062,8 @@ function GuestPortalPage({
               showExcursions={showExcursionsPromo}
               onBookArrange={openBook}
               bookArrangeListings={excursionListings}
+              bookArrangeCategoryIds={bookArrangeCategoryIds}
+              bookArrangeCategoriesLoading={bookArrangeCategoriesLoading}
               liveLikeLocalHeroUrl={liveLikeLocalHeroUrl}
               hasPropertyCoords={hasPropertyCoords}
               onOpenMap={() => setPropertyMapOpen(true)}
@@ -1178,6 +1184,7 @@ function GuestPortalPage({
               locale={locale}
               setLocale={setLocale}
               localeOptions={localeOptions}
+              isMobileFramePreview={isMobileFramePreview}
             />
           </Suspense>
         ) : activeView === 'explore' ? (
@@ -1201,6 +1208,7 @@ function GuestPortalPage({
               googleRating={showGoogleRating ? googleRating : undefined}
               googleReviewUrl={googleReviewUrl}
               onOpenSaved={openSavedGems}
+              isMobileFramePreview={isMobileFramePreview}
             />
           </Suspense>
         ) : activeView === 'book' ? (
@@ -1226,6 +1234,7 @@ function GuestPortalPage({
               googleReviewUrl={googleReviewUrl}
               initialCategoryId={bookCategoryId}
               onOverlayOpenChange={setExcursionOverlayOpen}
+              isMobileFramePreview={isMobileFramePreview}
             />
           </Suspense>
         ) : activeView === 'stay' ? (
@@ -1253,6 +1262,7 @@ function GuestPortalPage({
               whatsappHref={whatsappHref}
               onAssistant={openAssistant}
               onOverlayOpenChange={setExcursionOverlayOpen}
+              isMobileFramePreview={isMobileFramePreview}
             />
           </Suspense>
         ) : activeView === 'excursions' ? (
@@ -1265,6 +1275,7 @@ function GuestPortalPage({
               prefetchedLoading={excursionsLoading}
               onClose={() => setActiveView('portal')}
               onOverlayOpenChange={setExcursionOverlayOpen}
+              isMobileFramePreview={isMobileFramePreview}
             />
           </Suspense>
         ) : activeView === 'savedGems' && propertyId && typeId ? (
@@ -1274,6 +1285,7 @@ function GuestPortalPage({
               typeId={typeId}
               mapAreaHint={mapAreaHint}
               onClose={() => setActiveView('explore')}
+              isMobileFramePreview={isMobileFramePreview}
             />
           </Suspense>
         ) : (
@@ -1291,11 +1303,12 @@ function GuestPortalPage({
               setActiveView('portal');
               setReportSheetOpen(true);
             }}
+            isMobileFramePreview={isMobileFramePreview}
           />
           </Suspense>
         )}
 
-        {!checkInOpen && !excursionOverlayOpen && (
+        {!checkInOpen && (
           <GuestPortalBottomNav
             activeTab={
               activeView === 'assistant'

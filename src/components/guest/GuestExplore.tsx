@@ -25,6 +25,7 @@ import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import type { SavedLocalGemInput } from '../../lib/savedLocalGems';
 import { openExternalUrl, getItemMapLinks, isValidExternalUrl } from '../../lib/geocoding';
 import type { GuestLocale } from '../../lib/guestLocale';
+import { guestSubviewPositionClass } from '../../lib/guestPortalLayers';
 
 export type ExploreGem = {
   id: string;
@@ -82,6 +83,7 @@ type Props = {
   googleRating?: number;
   googleReviewUrl?: string | null;
   onOpenSaved: () => void;
+  isMobileFramePreview?: boolean;
 };
 
 function categoryIconFor(label: string): CategoryIcon {
@@ -138,6 +140,7 @@ export default function GuestExplore({
   googleRating,
   googleReviewUrl,
   onOpenSaved,
+  isMobileFramePreview = false,
 }: Props) {
   const { contentPrimaryLocale, contentReviewedLocales, t } = useGuestLocale();
   /** Empty = All selected (default). Otherwise multi-select of category primaries. */
@@ -226,7 +229,13 @@ export default function GuestExplore({
   const bottomSections = sections.slice(2);
 
   return (
-    <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-[#F7F7F5] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0A2F32]/10">
+    <div
+      className={`guest-mobile ${guestSubviewPositionClass(isMobileFramePreview)} flex flex-col bg-[#F7F7F5] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+        isMobileFramePreview
+          ? ''
+          : 'md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0A2F32]/10'
+      }`}
+    >
       <div className="flex-1 min-h-0 overflow-y-auto">
         <section className="relative overflow-hidden">
           {heroPhoto ? (

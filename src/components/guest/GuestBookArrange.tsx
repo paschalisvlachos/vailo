@@ -56,6 +56,7 @@ import { buildExcursionImpressionKey } from '../../lib/guestAnalytics';
 import { buildWhatsAppUrl, normalizeWhatsAppPhone } from '../../lib/whatsappLink';
 import type { GuestLocale } from '../../lib/guestLocale';
 import type { GuestTKey } from '../../context/GuestLocaleContext';
+import { guestSubviewPositionClass } from '../../lib/guestPortalLayers';
 
 const GLASS =
   'relative z-30 flex items-center justify-center h-10 w-10 min-h-[40px] min-w-[40px] rounded-full bg-[#0A2F32]/45 backdrop-blur-md border border-[#D4B57A]/35 ring-1 ring-inset ring-white/10 text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] hover:bg-[#0A2F32]/60 transition-all';
@@ -83,6 +84,7 @@ type Props = {
   googleReviewUrl?: string | null;
   initialCategoryId?: string;
   onOverlayOpenChange?: (open: boolean) => void;
+  isMobileFramePreview?: boolean;
 };
 
 function categoryIconFor(id: string): CategoryIcon {
@@ -162,6 +164,7 @@ export default function GuestBookArrange({
   googleReviewUrl,
   initialCategoryId = '',
   onOverlayOpenChange,
+  isMobileFramePreview = false,
 }: Props) {
   const { t } = useGuestLocale();
   const { track } = useGuestAnalytics();
@@ -354,7 +357,13 @@ export default function GuestBookArrange({
 
   return (
     <>
-      <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-[#F7F7F5] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0A2F32]/10">
+      <div
+        className={`guest-mobile ${guestSubviewPositionClass(isMobileFramePreview)} flex flex-col bg-[#F7F7F5] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+          isMobileFramePreview
+            ? ''
+            : 'md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0A2F32]/10'
+        }`}
+      >
         <div className="flex-1 min-h-0 overflow-y-auto">
           {activeSubcategory ? (
             <SubcategoryListView

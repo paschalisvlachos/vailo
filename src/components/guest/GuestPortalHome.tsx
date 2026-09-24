@@ -62,6 +62,9 @@ type Props = {
   showExcursions: boolean;
   onBookArrange: (categoryId?: string) => void;
   bookArrangeListings?: GuestExcursionListing[];
+  /** Pre-resolved category ids (cache / summary / home listings). */
+  bookArrangeCategoryIds?: string[];
+  bookArrangeCategoriesLoading?: boolean;
   liveLikeLocalHeroUrl?: string;
   hasPropertyCoords: boolean;
   onOpenMap: () => void;
@@ -170,6 +173,8 @@ export default function GuestPortalHome(props: Props) {
     showExcursions,
     onBookArrange,
     bookArrangeListings = [],
+    bookArrangeCategoryIds,
+    bookArrangeCategoriesLoading = false,
     liveLikeLocalHeroUrl,
     hasPropertyCoords,
     onOpenMap,
@@ -226,12 +231,19 @@ export default function GuestPortalHome(props: Props) {
   }, [guide, locale, contentPrimaryLocale]);
 
   const bookArrangeCategories = useMemo(() => {
+    if (bookArrangeCategoryIds?.length) {
+      const idSet = new Set(bookArrangeCategoryIds);
+      return ARRANGE_AND_BOOK_CATEGORIES.filter((cat) => idSet.has(cat.id));
+    }
     return ARRANGE_AND_BOOK_CATEGORIES.filter((cat) =>
       bookArrangeListings.some((listing) =>
         offeringMatchesArrangeAndBook(listing.excursion.categories, cat.id)
       )
     );
-  }, [bookArrangeListings]);
+  }, [bookArrangeCategoryIds, bookArrangeListings]);
+
+  const showBookArrangeSection =
+    bookArrangeCategories.length > 0 || bookArrangeCategoriesLoading;
 
   const showLanguage = localeOptions.length > 1;
 
@@ -608,30 +620,37 @@ export default function GuestPortalHome(props: Props) {
           </section>
         )}
 
-        {bookArrangeCategories.length > 0 && (
+        {showBookArrangeSection && (
           <section className="pt-2">
             <p className="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#C4A574] mb-3">
               Book & Arrange
             </p>
             <div className="grid grid-cols-5 gap-x-1.5 gap-y-3 px-0.5">
-              {bookArrangeCategories.map((cat) => {
-                const Icon = bookArrangeCategoryIcon(cat.id);
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => onBookArrange(cat.id)}
-                    className="min-w-0 flex flex-col items-center gap-1.5"
-                  >
-                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#EEEAE3] bg-white text-[#0A3330] shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
-                      <Icon size={18} strokeWidth={1.6} />
-                    </span>
-                    <span className="w-full px-0.5 text-[10px] font-semibold text-[#0A2F32] text-center leading-[1.15] line-clamp-2 break-words hyphens-auto">
-                      {cat.label}
-                    </span>
-                  </button>
-                );
-              })}
+              {bookArrangeCategoriesLoading && bookArrangeCategories.length === 0
+                ? [0, 1, 2, 3].map((i) => (
+                    <div key={i} className="min-w-0 flex flex-col items-center gap-1.5" aria-hidden>
+                      <span className="flex h-12 w-12 shrink-0 animate-pulse rounded-full bg-[#E8E4DC]" />
+                      <span className="h-2.5 w-10 animate-pulse rounded bg-[#E8E4DC]" />
+                    </div>
+                  ))
+                : bookArrangeCategories.map((cat) => {
+                    const Icon = bookArrangeCategoryIcon(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => onBookArrange(cat.id)}
+                        className="min-w-0 flex flex-col items-center gap-1.5"
+                      >
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#EEEAE3] bg-white text-[#0A3330] shadow-[0_4px_14px_rgba(0,0,0,0.12)]">
+                          <Icon size={18} strokeWidth={1.6} />
+                        </span>
+                        <span className="w-full px-0.5 text-[10px] font-semibold text-[#0A2F32] text-center leading-[1.15] line-clamp-2 break-words hyphens-auto">
+                          {cat.label}
+                        </span>
+                      </button>
+                    );
+                  })}
             </div>
           </section>
         )}

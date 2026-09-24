@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { addDoc, collection, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { rebuildBookArrangeSummariesForProvider } from '../../../lib/bookArrangeSummary';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Image as ImageIcon, Loader2, Lock, Plus, Trash2 } from 'lucide-react';
 import { db, storage } from '../../../lib/firebase';
@@ -365,6 +366,10 @@ export default function ExcursionFormPage() {
         );
         toast.success('Listing created.');
       }
+
+      void rebuildBookArrangeSummariesForProvider(providerId).catch((error) => {
+        console.warn('Book & Arrange summary refresh failed', error);
+      });
 
       navigate(listPath);
     } catch (error) {

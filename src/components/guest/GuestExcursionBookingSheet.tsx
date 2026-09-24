@@ -17,6 +17,10 @@ import {
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
+import {
+  GUEST_BOTTOM_NAV_SHEET_CLEARANCE,
+  GUEST_BOTTOM_NAV_SHEET_MAX_H,
+} from './GuestPortalBottomNav';
 import { guestBookingNamePrefill } from '../../lib/guestAccess';
 import {
   EXCURSION_PROVIDER_COLLECTION,
@@ -358,14 +362,14 @@ export default function GuestExcursionBookingSheet({
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${GUEST_PORTAL_Z.detailSheet} flex items-end sm:items-center justify-center bg-[#051F26]/60 backdrop-blur-md p-0 sm:p-5`}
+      className={`fixed inset-0 ${GUEST_PORTAL_Z.detailSheet} flex items-end sm:items-center justify-center bg-[#051F26]/60 backdrop-blur-md p-0 sm:p-5 ${GUEST_BOTTOM_NAV_SHEET_CLEARANCE}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="excursion-booking-title"
       onClick={onClose}
     >
       <div
-        className="bg-[#F3F4F6] w-full sm:max-w-lg max-h-[94vh] rounded-t-[28px] sm:rounded-[28px] shadow-[0_24px_80px_rgba(5,31,38,0.35)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300"
+        className={`bg-[#F3F4F6] w-full sm:max-w-lg ${GUEST_BOTTOM_NAV_SHEET_MAX_H} rounded-t-[28px] sm:rounded-[28px] shadow-[0_24px_80px_rgba(5,31,38,0.35)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center pt-3 pb-1 sm:hidden shrink-0 bg-[#F3F4F6]">

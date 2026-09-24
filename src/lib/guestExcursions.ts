@@ -56,7 +56,7 @@ type ProviderMeta = {
 };
 
 const excursionListingsCache = new Map<string, Promise<GuestExcursionListing[]>>();
-let activeProvidersPromise: Promise<Map<string, ProviderMeta>> | null = null;
+const activeProvidersByCountry = new Map<string, Promise<Map<string, ProviderMeta>>>();
 let publishedExcursionsPromise: Promise<QueryDocumentSnapshot[]> | null = null;
 
 type AreaTarget = {
@@ -156,12 +156,12 @@ function providerIdFromExcursionDoc(excDoc: QueryDocumentSnapshot): string | nul
   return providerRef?.id ?? null;
 }
 
-async function loadActiveProviderMeta(): Promise<Map<string, ProviderMeta>> {
-  if (!activeProvidersPromise) {
-    activeProvidersPromise = getDocs(
-      query(collection(db, EXCURSION_PROVIDER_COLLECTION), where('status', '==', 'active'))
-    )
-      .then((snap) => {
+async function loadActiveProviderMeta(countryFilter?: string): Promise<Map<string, ProviderMeta>> {
+  const cacheKey = countryFilter?.trim() || '__all__';
+  let pending = activeProvidersByCountry.get(cacheKey);
+  if (!pending) {
+    pending = (async () => {
+      const parseSnap = (snap: Awaited<ReturnType<typeof getDocs>>) => {
         const byId = new Map<string, ProviderMeta>();
         for (const providerDoc of snap.docs) {
           const data = providerDoc.data() as Record<string, unknown>;
@@ -176,13 +176,38 @@ async function loadActiveProviderMeta(): Promise<Map<string, ProviderMeta>> {
           });
         }
         return byId;
-      })
-      .catch((error) => {
-        activeProvidersPromise = null;
-        throw error;
-      });
+      };
+
+      const country = countryFilter?.trim();
+      if (country) {
+        try {
+          const snap = await getDocs(
+            query(
+              collection(db, EXCURSION_PROVIDER_COLLECTION),
+              where('status', '==', 'active'),
+              where('countries', 'array-contains', country)
+            )
+          );
+          return parseSnap(snap);
+        } catch (error) {
+          console.warn(
+            'Guest excursions: country-filtered provider query failed, falling back to all active.',
+            error
+          );
+        }
+      }
+
+      const snap = await getDocs(
+        query(collection(db, EXCURSION_PROVIDER_COLLECTION), where('status', '==', 'active'))
+      );
+      return parseSnap(snap);
+    })().catch((error) => {
+      activeProvidersByCountry.delete(cacheKey);
+      throw error;
+    });
+    activeProvidersByCountry.set(cacheKey, pending);
   }
-  return activeProvidersPromise;
+  return pending;
 }
 
 async function loadPublishedExcursionDocs(): Promise<QueryDocumentSnapshot[]> {
@@ -300,20 +325,22 @@ async function loadGuestExcursionsUncached(
   const maxKm = effectiveMaxDistanceKm(params.maxRadiusKm ?? GUEST_EXCURSION_RADIUS_KM);
   const targets = buildAreaTargets(homeArea, neighborAreas, propertyCoords);
 
-  const providers = await loadActiveProviderMeta();
+  const providers = await loadActiveProviderMeta(homeArea.country);
 
   const matchingProviders = buildMatchingProviderTargets(providers, targets);
   if (matchingProviders.size === 0) return [];
 
+  // Prefer per-provider queries for matching providers only (much smaller than
+  // a global published collectionGroup scan).
   let excursionDocs: QueryDocumentSnapshot[];
   try {
-    excursionDocs = await loadPublishedExcursionDocs();
+    excursionDocs = await loadPublishedExcursionDocsForProviders([...matchingProviders.keys()]);
   } catch (error) {
     console.warn(
-      'Guest excursions: collection group query failed, falling back to provider queries.',
+      'Guest excursions: per-provider queries failed, falling back to collection group.',
       error
     );
-    excursionDocs = await loadPublishedExcursionDocsForProviders([...matchingProviders.keys()]);
+    excursionDocs = await loadPublishedExcursionDocs();
   }
 
   return listingsFromDocs(
@@ -351,7 +378,6 @@ export async function loadGuestExcursionsForArea(
 }
 
 /** Warm shared Firestore caches during portal boot. Safe to call without awaiting. */
-export function prefetchGuestExcursionCatalog(): void {
-  void loadActiveProviderMeta().catch(() => undefined);
-  void loadPublishedExcursionDocs().catch(() => undefined);
+export function prefetchGuestExcursionCatalog(country?: string): void {
+  void loadActiveProviderMeta(country).catch(() => undefined);
 }

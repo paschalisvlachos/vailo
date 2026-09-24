@@ -1,12 +1,21 @@
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Compass, ShoppingBag, Sparkles } from 'lucide-react';
+import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
 
 export type GuestPortalNavTab = 'home' | 'book' | 'assistant' | 'explore' | 'stay';
 
 /** Space to leave above the fixed bottom bar (bar + Ask Vailo overhang + safe area). */
 export const GUEST_BOTTOM_NAV_CONTENT_PAD =
   'pb-[calc(5rem+env(safe-area-inset-bottom,0px))]';
+
+/** Bottom padding so sheets sit above the portal nav (Request to book / Send request). */
+export const GUEST_BOTTOM_NAV_SHEET_CLEARANCE =
+  'pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] sm:pb-5';
+
+/** Max height for sheet panels when the portal nav stays visible. */
+export const GUEST_BOTTOM_NAV_SHEET_MAX_H =
+  'max-h-[calc(100dvh-4.75rem-env(safe-area-inset-bottom,0px))] sm:max-h-[94vh]';
 
 type Props = {
   activeTab: GuestPortalNavTab;
@@ -31,9 +40,9 @@ export default function GuestPortalBottomNav({
     <nav
       className={
         isMobileFramePreview
-          ? 'absolute inset-x-0 bottom-0 z-[60] bg-[#0A2F32] text-white/70 pt-2.5 pb-[max(0.45rem,env(safe-area-inset-bottom,0px))] md:rounded-b-[32px]'
+          ? `absolute inset-x-0 bottom-0 ${GUEST_PORTAL_Z.bottomNav} bg-[#0A2F32] text-white/70 pt-2.5 pb-[max(0.45rem,env(safe-area-inset-bottom,0px))] md:rounded-b-[32px]`
           : // Avoid transform centering (left-1/2 -translate-x-1/2) — breaks fixed bottom bars on some mobile WebKits.
-            'fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-[576px] bg-[#0A2F32] text-white/70 pt-2.5 pb-[max(0.45rem,env(safe-area-inset-bottom,0px))]'
+            `fixed inset-x-0 bottom-0 ${GUEST_PORTAL_Z.bottomNav} mx-auto w-full max-w-[576px] bg-[#0A2F32] text-white/70 pt-2.5 pb-[max(0.45rem,env(safe-area-inset-bottom,0px))]`
       }
       aria-label="Guest portal navigation"
     >

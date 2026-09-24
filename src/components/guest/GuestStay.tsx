@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Check,
   ChevronRight,
@@ -27,6 +27,7 @@ import {
 } from '../../lib/houseGuidePortal';
 import { resolveFeaturedPreviewLine } from '../../lib/propertyContentLocales';
 import type { GuestLocale } from '../../lib/guestLocale';
+import { guestSubviewPositionClass } from '../../lib/guestPortalLayers';
 import {
   Key,
   Zap,
@@ -107,6 +108,7 @@ type Props = {
   whatsappHref?: string | null;
   onAssistant: () => void;
   onOverlayOpenChange?: (open: boolean) => void;
+  isMobileFramePreview?: boolean;
 };
 
 function extractTimeFromText(text: string, allowBareHour = false): string | null {
@@ -160,6 +162,7 @@ export default function GuestStay({
   whatsappHref,
   onAssistant,
   onOverlayOpenChange,
+  isMobileFramePreview = false,
 }: Props) {
   const { t, contentPrimaryLocale, contentReviewedLocales } = useGuestLocale();
   const showLanguage = localeOptions.length > 1;
@@ -217,9 +220,19 @@ export default function GuestStay({
     onOverlayOpenChange?.(false);
   };
 
+  useEffect(() => {
+    return () => onOverlayOpenChange?.(false);
+  }, [onOverlayOpenChange]);
+
   return (
     <>
-      <div className="guest-mobile fixed inset-0 z-50 flex flex-col bg-[#F7F7F5] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0A2F32]/10">
+      <div
+        className={`guest-mobile ${guestSubviewPositionClass(isMobileFramePreview)} flex flex-col bg-[#F7F7F5] pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+          isMobileFramePreview
+            ? ''
+            : 'md:relative md:h-[800px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-[#0A2F32]/10'
+        }`}
+      >
         <div className="flex-1 min-h-0 overflow-y-auto">
           <section className="relative min-h-[14.5rem] overflow-hidden sm:min-h-[15.5rem]">
             {heroPhoto ? (

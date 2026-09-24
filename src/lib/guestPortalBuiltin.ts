@@ -14,8 +14,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Discover the best places and the best suggestions selected by locals.',
     liveLikeLocalHero: 'Live like a local',
-    liveLikeLocalHeroSub:
-      'Discover the best places and the best suggestions selected by locals.',
+    liveLikeLocalHeroMid: 'Discover the best places',
+    liveLikeLocalHeroSub: 'best suggestions selected by locals',
     checkInPromoTitle: 'Check in',
     checkInPromoSub: 'Complete your arrival details before you arrive.',
     checkInPromoContinue: 'Continue check-in',
@@ -67,8 +67,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     houseGuideMenuSubEmpty:
       'Your host hasn’t added a guide yet. Check-in, Wi‑Fi, and how-to tips for appliances will show here.',
     houseGuideEmpty: 'Your host has not added house guide details yet.',
-    assistantProperty: 'AI Chatbot',
-    assistantPropertySub: 'Ask anything about your stay',
+    assistantProperty: 'Property Info',
+    assistantPropertySub: 'Ask anything about the property',
+    bookArrangeHomeTitle: 'Experiences',
+    bookArrangeHomeSub: 'Boat Tours, Excursions, Kids Activities and more',
     savedLocalGemsTitle: 'Saved local gems',
     savedLocalGemsMenuSubEmpty: 'Places you save from Live like a local appear here — on this device only',
     savedLocalGemSavedToast: 'Saved! Open the menu — your saved items are under Saved local gems.',
@@ -116,8 +118,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Ανακαλύψτε τα καλύτερα μέρη και τις καλύτερες προτάσεις από ντόπιους.',
     liveLikeLocalHero: 'Ζήστε σαν ντόπιος',
-    liveLikeLocalHeroSub:
-      'Ανακαλύψτε τα καλύτερα μέρη και τις καλύτερες προτάσεις από ντόπιους.',
+    liveLikeLocalHeroMid: 'Ανακαλύψτε τα καλύτερα μέρη',
+    liveLikeLocalHeroSub: 'οι καλύτερες προτάσεις από ντόπιους',
     checkInPromoTitle: 'Check-in',
     checkInPromoSub: 'Συμπληρώστε τα στοιχεία άφιξης πριν φτάσετε.',
     checkInPromoContinue: 'Συνέχεια check-in',
@@ -169,8 +171,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     houseGuideMenuSubEmpty:
       'Ο οικοδεσπότης δεν έχει προσθέσει ακόμα οδηγό. Εδώ θα εμφανιστούν check-in, Wi‑Fi και οδηγίες συσκευών.',
     houseGuideEmpty: 'Ο οικοδεσπότης δεν έχει προσθέσει ακόμα οδηγό σπιτιού.',
-    assistantProperty: 'AI Chatbot',
-    assistantPropertySub: 'Ρωτήστε οτιδήποτε για τη διαμονή σας',
+    assistantProperty: 'Πληροφορίες καταλύματος',
+    assistantPropertySub: 'Ρωτήστε οτιδήποτε για το κατάλυμα',
+    bookArrangeHomeTitle: 'Εμπειρίες',
+    bookArrangeHomeSub: 'Βόλτες με σκάφος, εκδρομές, δραστηριότητες για παιδιά και άλλα',
     savedLocalGemsTitle: 'Αποθηκευμένα τοπικά σημεία',
     savedLocalGemsMenuSubEmpty: 'Τα σημεία που αποθηκεύετε από το «Ζήστε σαν ντόπιος» εμφανίζονται εδώ — μόνο σε αυτή τη συσκευή',
     savedLocalGemSavedToast: 'Αποθηκεύτηκε! Ανοίξτε το μενού — τα αποθηκευμένα βρίσκονται στα «Αποθηκευμένα τοπικά σημεία».',
@@ -218,8 +222,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Entdecken Sie die besten Orte und Empfehlungen, die Einheimische auswählen.',
     liveLikeLocalHero: 'Leben wie ein Einheimischer',
-    liveLikeLocalHeroSub:
-      'Entdecken Sie die besten Orte und Empfehlungen, die Einheimische auswählen.',
+    liveLikeLocalHeroMid: 'Entdecken Sie die besten Orte',
+    liveLikeLocalHeroSub: 'Empfehlungen, die Einheimische auswählen',
     checkInPromoTitle: 'Check-in',
     checkInPromoSub: 'Ergänzen Sie Ihre Anreisedaten vor der Ankunft.',
     checkInPromoContinue: 'Check-in fortsetzen',
@@ -271,8 +275,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     houseGuideMenuSubEmpty:
       'Noch kein Hausführer. Check-in, WLAN und Geräte-Anleitungen erscheinen hier, sobald der Gastgeber sie hinterlegt.',
     houseGuideEmpty: 'Ihr Gastgeber hat noch keinen Hausführer hinterlegt.',
-    assistantProperty: 'KI-Chatbot',
-    assistantPropertySub: 'Fragen Sie alles zu Ihrem Aufenthalt',
+    assistantProperty: 'Unterkunftsinfos',
+    assistantPropertySub: 'Fragen Sie alles zur Unterkunft',
+    bookArrangeHomeTitle: 'Erlebnisse',
+    bookArrangeHomeSub: 'Bootstouren, Ausflüge, Kinderaktivitäten und mehr',
     savedLocalGemsTitle: 'Gespeicherte lokale Tipps',
     savedLocalGemsMenuSubEmpty: 'Orte aus „Leben wie ein Einheimischer“ erscheinen hier — nur auf diesem Gerät',
     savedLocalGemSavedToast: 'Gespeichert! Öffnen Sie das Menü — unter „Gespeicherte lokale Tipps“.',
@@ -320,8 +326,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Découvrez les meilleurs endroits et suggestions choisies par les locaux.',
     liveLikeLocalHero: 'Vivre comme un local',
-    liveLikeLocalHeroSub:
-      'Découvrez les meilleurs endroits et suggestions choisies par les locaux.',
+    liveLikeLocalHeroMid: 'Découvrez les meilleurs endroits',
+    liveLikeLocalHeroSub: 'suggestions choisies par les locaux',
     checkInPromoTitle: 'Enregistrement',
     checkInPromoSub: 'Complétez vos informations d’arrivée avant de venir.',
     checkInPromoContinue: 'Continuer l’enregistrement',
@@ -373,8 +379,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     houseGuideMenuSubEmpty:
       'Pas encore de guide. Arrivée, Wi‑Fi et mode d’emploi des appareils apparaîtront ici quand l’hôte les ajoute.',
     houseGuideEmpty: 'Votre hôte n’a pas encore ajouté de guide.',
-    assistantProperty: 'Chatbot IA',
-    assistantPropertySub: 'Posez toutes vos questions sur votre séjour',
+    assistantProperty: 'Infos du logement',
+    assistantPropertySub: 'Posez toutes vos questions sur le logement',
+    bookArrangeHomeTitle: 'Expériences',
+    bookArrangeHomeSub: 'Sorties en bateau, excursions, activités enfants et plus',
     savedLocalGemsTitle: 'Adresses enregistrées',
     savedLocalGemsMenuSubEmpty: 'Les lieux enregistrés depuis « Vivre comme un local » apparaissent ici — sur cet appareil uniquement',
     savedLocalGemSavedToast: 'Enregistré ! Ouvrez le menu — sous « Adresses enregistrées ».',
@@ -422,8 +430,8 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     liveLikeLocalSub:
       'Scopri i migliori posti e i consigli scelti dai local.',
     liveLikeLocalHero: 'Vivi come un local',
-    liveLikeLocalHeroSub:
-      'Scopri i migliori posti e i consigli scelti dai local.',
+    liveLikeLocalHeroMid: 'Scopri i migliori posti',
+    liveLikeLocalHeroSub: 'consigli scelti dai local',
     checkInPromoTitle: 'Check-in',
     checkInPromoSub: 'Completa i dettagli di arrivo prima di arrivare.',
     checkInPromoContinue: 'Continua il check-in',
@@ -475,8 +483,10 @@ export const BUILTIN_PORTAL_MESSAGES: Record<BuiltinGuestLocale, Record<GuestLoc
     houseGuideMenuSubEmpty:
       'Guida non ancora disponibile. Check-in, Wi‑Fi e istruzioni per gli elettrodomestici compariranno qui.',
     houseGuideEmpty: 'L’host non ha ancora aggiunto la guida.',
-    assistantProperty: 'Chatbot IA',
-    assistantPropertySub: 'Chiedi qualsiasi cosa sul tuo soggiorno',
+    assistantProperty: 'Info sulla struttura',
+    assistantPropertySub: 'Chiedi qualsiasi cosa sulla struttura',
+    bookArrangeHomeTitle: 'Esperienze',
+    bookArrangeHomeSub: 'Tour in barca, escursioni, attività per bambini e altro',
     savedLocalGemsTitle: 'Consigli locali salvati',
     savedLocalGemsMenuSubEmpty: 'I posti salvati da « Vivi come un local » compaiono qui — solo su questo dispositivo',
     savedLocalGemSavedToast: 'Salvato! Apri il menu — sotto « Consigli locali salvati ».',

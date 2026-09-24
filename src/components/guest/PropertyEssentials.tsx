@@ -192,27 +192,29 @@ export default function PropertyEssentials({
                   isOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
-                <div className={`pb-5 ${hideHeader ? 'px-1 pl-12' : 'px-5'}`}>
-                  {digest ? (
-                    <GuestLinkifiedText
-                      text={digest}
-                      className={`whitespace-pre-wrap leading-relaxed ${
-                        hideHeader
-                          ? 'text-[13px] text-[#7A7266]'
-                          : 'text-base text-gray-600'
-                      }`}
-                    />
-                  ) : (
-                    <p
-                      className={`italic ${
-                        hideHeader
-                          ? 'text-[13px] text-[#7A7266]'
-                          : 'text-base text-gray-500'
-                      }`}
-                    >
-                      Your host has not added details for this section yet.
-                    </p>
-                  )}
+                <div className={`pb-4 ${hideHeader ? 'px-3' : 'px-5'}`}>
+                  <div className={hideHeader ? 'pl-12' : undefined}>
+                    {digest ? (
+                      <GuestLinkifiedText
+                        text={digest}
+                        className={`whitespace-pre-wrap leading-relaxed break-words ${
+                          hideHeader
+                            ? 'text-[13px] text-[#7A7266]'
+                            : 'text-base text-gray-600'
+                        }`}
+                      />
+                    ) : (
+                      <p
+                        className={`italic ${
+                          hideHeader
+                            ? 'text-[13px] text-[#7A7266]'
+                            : 'text-base text-gray-500'
+                        }`}
+                      >
+                        Your host has not added details for this section yet.
+                      </p>
+                    )}
+                  </div>
 
                   <button
                     type="button"
@@ -220,14 +222,14 @@ export default function PropertyEssentials({
                       e.stopPropagation();
                       onAskAssistant();
                     }}
-                    className={`guest-btn-action mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl transition-colors ${
+                    className={`guest-btn-action mt-4 w-full min-w-0 h-auto min-h-[44px] flex items-center justify-center gap-2 px-3 py-3 rounded-xl whitespace-normal text-center leading-snug tracking-wide transition-colors ${
                       hideHeader
                         ? 'bg-[#0A4544] text-[#E8D5A8] hover:bg-[#083937]'
                         : 'bg-gradient-to-r from-[#0B4F5C] to-[#083a43] text-[#C5A059] hover:from-[#083a43] hover:to-[#072d34]'
                     }`}
                   >
                     <Bot size={13} className="shrink-0" />
-                    Ask the 24/7 Assistant for full details
+                    <span className="min-w-0">Ask the 24/7 Assistant for full details</span>
                   </button>
                 </div>
               </div>

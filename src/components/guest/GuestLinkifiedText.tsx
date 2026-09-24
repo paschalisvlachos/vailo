@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { ExternalLink, Phone } from 'lucide-react';
 import { isValidExternalUrl, openExternalUrl } from '../../lib/geocoding';
 
 const URL_REGEX = /\b(https?:\/\/[^\s<>\])}"']+|www\.[^\s<>\])}"']+)/gi;
@@ -27,6 +28,43 @@ function telHref(phone: string): string {
   return `tel:${phone.replace(/[\s().\-/]/g, '')}`;
 }
 
+function formatPhoneDisplay(phone: string): string {
+  return phone.replace(/\s+/g, ' ').trim();
+}
+
+function ViewMoreLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openExternalUrl(href);
+      }}
+      className="inline-flex items-center gap-1 mx-0.5 align-baseline text-[0.95em] font-semibold text-[#0A4544] underline decoration-[#C5A059]/70 underline-offset-[3px] hover:text-[#083937] hover:decoration-[#C5A059]"
+    >
+      View more
+      <ExternalLink size={12} className="shrink-0 opacity-80" aria-hidden />
+    </a>
+  );
+}
+
+function PhoneChip({ phone }: { phone: string }) {
+  const display = formatPhoneDisplay(phone);
+  return (
+    <a
+      href={telHref(phone)}
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1.5 mx-0.5 my-0.5 align-middle max-w-full rounded-full border border-[#D4E3E2] bg-[#F3F8F7] px-2.5 py-1 text-[0.92em] font-semibold text-[#0A4544] no-underline shadow-[0_1px_2px_rgba(4,28,30,0.06)] hover:border-[#C5A059]/55 hover:bg-white"
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0A4544] text-[#E8D5A8]">
+        <Phone size={11} strokeWidth={2.25} aria-hidden />
+      </span>
+      <span className="min-w-0 truncate tabular-nums tracking-wide">{display}</span>
+    </a>
+  );
+}
+
 function linkifyPhones(segment: string, keyPrefix: number): ReactNode[] {
   const nodes: ReactNode[] = [];
   let last = 0;
@@ -40,15 +78,7 @@ function linkifyPhones(segment: string, keyPrefix: number): ReactNode[] {
       nodes.push(segment.slice(last, match.index));
     }
     if (isLikelyPhone(raw)) {
-      nodes.push(
-        <a
-          key={`${keyPrefix}-p-${key++}`}
-          href={telHref(raw)}
-          className="text-[#0B4F5C] font-medium underline underline-offset-2"
-        >
-          {raw}
-        </a>
-      );
+      nodes.push(<PhoneChip key={`${keyPrefix}-p-${key++}`} phone={raw} />);
     } else {
       nodes.push(raw);
     }
@@ -75,23 +105,9 @@ export function linkifyGuestText(text: string): ReactNode[] {
       nodes.push(...linkifyPhones(text.slice(lastIndex, match.index), urlKey * 100));
     }
 
-    const display = trimUrlTrailingPunctuation(raw);
     const href = hrefForUrl(raw);
     if (href) {
-      nodes.push(
-        <a
-          key={`u-${urlKey++}`}
-          href={href}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            openExternalUrl(href);
-          }}
-          className="text-[#0B4F5C] font-medium underline underline-offset-2 break-all"
-        >
-          {display}
-        </a>
-      );
+      nodes.push(<ViewMoreLink key={`u-${urlKey++}`} href={href} />);
     } else {
       nodes.push(raw);
     }

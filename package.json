@@ -14,7 +14,7 @@
     "clone:staging": "node scripts/clone-prod-to-staging.mjs",
     "provision:staging-login": "node scripts/provision-staging-login.mjs",
     "provision:login": "node scripts/provision-login.mjs",
-    "deploy:staging": "firebase deploy --only hosting --project staging",
+    "deploy:staging": "npm run build:staging && node scripts/deployHosting.mjs staging",
     "deploy:production": "firebase deploy --only hosting --project production",
     "test": "vitest run && npm --prefix functions test",
     "test:app": "vitest run",

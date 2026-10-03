@@ -23,6 +23,38 @@
         }
       },
       {
+        "source": "/",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/features",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/pricing",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/tour-providers",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/contact",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/privacy",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/terms",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/partner-agreement",
+        "destination": "/app/index.html"
+      },
+      {
         "source": "/admin",
         "destination": "/app/index.html"
       },

@@ -27,6 +27,7 @@
     "dompurify": "^3.4.5",
     "firebase": "^12.13.0",
     "firebase-admin": "^14.2.0",
+    "framer-motion": "^14.0.0",
     "lucide-react": "^1.14.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",

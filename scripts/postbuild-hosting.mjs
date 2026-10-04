@@ -19,13 +19,23 @@ mkdirSync(appDir, { recursive: true });
 // SPA shell + bundles (index.html references /app/assets/…)
 renameSync(join(dist, 'index.html'), join(appDir, 'index.html'));
 
+// Also serve the SPA at `/` as a real file. Firebase Hosting prefers an existing
+// `index.html` over rewrites — without this, a leftover static shell can win.
+cpSync(join(appDir, 'index.html'), join(dist, 'index.html'));
+
 const assetsDir = join(dist, 'assets');
 if (existsSync(assetsDir)) {
   renameSync(assetsDir, join(appDir, 'assets'));
 }
 
 const publicDir = join(process.cwd(), 'public');
-for (const name of ['V.png', 'vailoLogo.png', 'guest-portal-mockup.png']) {
+for (const name of [
+  'V.png',
+  'vailoLogo.png',
+  'guest-portal-mockup.png',
+  'portal-ai-chatbot-hero.png',
+  'portal-book-arrange-hero.png',
+]) {
   const src = join(publicDir, name);
   if (existsSync(src)) {
     cpSync(src, join(appDir, name));

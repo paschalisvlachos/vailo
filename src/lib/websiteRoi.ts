@@ -3,66 +3,106 @@
 /** ROI calculator assumptions (kept in one place so marketing can tweak them). */
 export const ROI = {
   hoursSavedPerGuest: 0.4,
-  excursionConversion: 0.15,
+  /** Share of guests who book an excursion through the portal. */
+  excursionConversion: 0.1,
   avgBookingEur: 50,
   hostShare: 0.33,
+  /** Typical full-time ops hours per month — used for “team capacity freed”. */
+  hoursPerFteMonth: 160,
 } as const;
 
 export type Plan = {
-  id: 'solo' | 'pro' | 'agency';
+  id: 'solo' | 'pro' | 'agency' | 'scale';
   name: string;
   tagline: string;
-  /** Maximum number of properties covered by the plan. */
-  properties: number;
+  /** Inclusive lower bound of the property band. */
+  minProperties: number;
+  /** Inclusive upper bound, or `null` for an open-ended 51+ tier. */
+  maxProperties: number | null;
   propertiesLabel: string;
-  priceEur: number;
+  /** Annual price per property in euros. */
+  pricePerPropertyEur: number;
   saving?: string;
   popular?: boolean;
 };
 
+/**
+ * Per-property annual pricing (fair volume discounts):
+ *  - 1      → €49 each
+ *  - 2–20   → €39 each
+ *  - 21–50  → €29 each
+ *  - 51+    → €19 each
+ */
 export const PLANS: Plan[] = [
   {
     id: 'solo',
     name: 'Solo Host',
     tagline: 'Everything you need for a single property.',
-    properties: 1,
+    minProperties: 1,
+    maxProperties: 1,
     propertiesLabel: '1 Property',
-    priceEur: 49,
+    pricePerPropertyEur: 49,
   },
   {
     id: 'pro',
     name: 'Pro Host',
-    tagline: 'For hosts growing a small portfolio.',
-    properties: 5,
-    propertiesLabel: 'Up to 5 Properties',
-    priceEur: 189,
-    saving: 'Save 22%',
+    tagline: 'For hosts and small portfolios.',
+    minProperties: 2,
+    maxProperties: 20,
+    propertiesLabel: '2–20 Properties',
+    pricePerPropertyEur: 39,
+    saving: 'Save 20%',
     popular: true,
   },
   {
     id: 'agency',
     name: 'Agency',
     tagline: 'Built for property managers at scale.',
-    properties: 20,
-    propertiesLabel: 'Up to 20 Properties',
-    priceEur: 599,
-    saving: 'Save 38%',
+    minProperties: 21,
+    maxProperties: 50,
+    propertiesLabel: '21–50 Properties',
+    pricePerPropertyEur: 29,
+    saving: 'Save 41%',
+  },
+  {
+    id: 'scale',
+    name: 'Scale',
+    tagline: 'Best rate for large portfolios.',
+    minProperties: 51,
+    maxProperties: null,
+    propertiesLabel: '51+ Properties',
+    pricePerPropertyEur: 19,
+    saving: 'Save 61%',
   },
 ];
 
 /**
  * Time & revenue estimate for a given number of guests per month.
  *  - hours saved  = guests × 0.4
- *  - income       = guests × 15% conversion × €50 average booking × 33% host share
+ *  - income       = guests × 10% conversion × €50 average booking × 33% host share
+ *  - fteFreed     = hours saved ÷ 160 (one ops FTE-month)
  */
 export function calcRoi(guestsPerMonth: number) {
   const hoursSaved = guestsPerMonth * ROI.hoursSavedPerGuest;
   const monthlyIncome =
     guestsPerMonth * ROI.excursionConversion * ROI.avgBookingEur * ROI.hostShare;
-  return { hoursSaved, monthlyIncome, yearlyIncome: monthlyIncome * 12 };
+  const fteFreed = hoursSaved / ROI.hoursPerFteMonth;
+  return { hoursSaved, monthlyIncome, yearlyIncome: monthlyIncome * 12, fteFreed };
 }
 
-/** Smallest plan that covers the property count, or `null` when above the largest tier. */
-export function pickPlan(properties: number): Plan | null {
-  return PLANS.find((p) => properties <= p.properties) ?? null;
+/** Plan that covers the property count (Scale for 51+). */
+export function pickPlan(properties: number): Plan {
+  return (
+    PLANS.find((p) => {
+      if (properties < p.minProperties) return false;
+      if (p.maxProperties === null) return true;
+      return properties <= p.maxProperties;
+    }) ?? PLANS[PLANS.length - 1]
+  );
+}
+
+/** Annual total for a portfolio: rate of the covering band × property count. */
+export function planAnnualTotal(properties: number): number {
+  const count = Math.max(1, Math.floor(properties));
+  return pickPlan(count).pricePerPropertyEur * count;
 }

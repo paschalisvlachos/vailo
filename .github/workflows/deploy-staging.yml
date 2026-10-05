@@ -1,10 +1,8 @@
 name: Deploy Staging Environment
 
 on:
-  push:
-    branches:
-      - staging
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   deploy:
@@ -45,10 +43,13 @@ jobs:
         run: echo '${{ secrets.GCP_SA_KEY_STAGING }}' > /tmp/gcp_staging.json
 
       - name: Deploy Hosting to Staging
-        run: firebase deploy --only hosting --project vailo-staging --non-interactive
+        run: node scripts/deployHosting.mjs staging
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_staging.json
           CI: 'true'
+
+      - name: Hosting URL
+        run: echo "Staging site: https://vailo-staging.web.app"
 
       - name: Remove Service Account Key
         if: always()

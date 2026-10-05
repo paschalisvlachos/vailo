@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState, type ComponentType } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import { isGuestPortalUrlPath } from "./lib/guestAccess";
+import { isWebsitePathname } from "./lib/websiteRoutes";
 import GuestPortalLoadingScreen from "./components/guest/GuestPortalLoadingScreen";
 import AdminAuthenticatedShell from "./components/admin/AdminAuthenticatedShell";
 import PropertiesPage from "./pages/admin/properties/PropertiesPage";
@@ -76,13 +77,23 @@ import { ADMIN_BASE, adminPath } from "./lib/adminRoutes";
 
 const GuestPortal = lazy(() => import("./pages/guest/GuestPortal"));
 
-/** Dev: root `/` is the Vite entry — send visitors to the static marketing site. */
-function DevMarketingRedirect() {
-  useEffect(() => {
-    window.location.replace('/website/index.html');
-  }, []);
-  return null;
-}
+/** Public marketing website (React rewrite of the static /website/index.html). */
+type WebsiteModule = typeof import("./pages/website/VailoWebsite");
+const lazyWebsite = (name: keyof WebsiteModule) =>
+  lazy(() =>
+    import("./pages/website/VailoWebsite").then((m) => ({
+      default: m[name] as ComponentType,
+    }))
+  );
+const WebsiteLayout = lazyWebsite("WebsiteLayout");
+const WebsiteHome = lazyWebsite("HomePage");
+const WebsiteImpact = lazyWebsite("ImpactPage");
+const WebsiteFeatures = lazyWebsite("FeaturesPage");
+const WebsitePricing = lazyWebsite("PricingPage");
+const WebsiteTourProviders = lazyWebsite("TourProvidersPage");
+const WebsiteContact = lazyWebsite("ContactPage");
+const WebsitePrivacy = lazyWebsite("PrivacyPage");
+const WebsiteTerms = lazyWebsite("TermsPage");
 
 /** Old admin URLs (pre-/admin) → /admin/… */
 function LegacyAdminRedirect() {
@@ -93,7 +104,9 @@ function LegacyAdminRedirect() {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(() =>
-    typeof window !== "undefined" ? !isGuestPortalUrlPath(window.location.pathname) : true
+    typeof window !== "undefined"
+      ? !isGuestPortalUrlPath(window.location.pathname) && !isWebsitePathname(window.location.pathname)
+      : true
   );
 
   useEffect(() => {
@@ -119,10 +132,24 @@ export default function App() {
     <ToastProvider>
     <BrowserRouter>
       <Routes>
-        {/* Dev only: production serves static marketing at / */}
-        {import.meta.env.DEV && (
-          <Route path="/" element={<DevMarketingRedirect />} />
-        )}
+        {/* Public marketing website. Production hosting still serves the static page at /
+            until firebase.json / postbuild-hosting.mjs are switched over. */}
+        <Route
+          element={
+            <Suspense fallback={<div className="min-h-screen bg-white" />}>
+              <WebsiteLayout />
+            </Suspense>
+          }
+        >
+          <Route path="/" element={<WebsiteHome />} />
+          <Route path="/impact" element={<WebsiteImpact />} />
+          <Route path="/features" element={<WebsiteFeatures />} />
+          <Route path="/pricing" element={<WebsitePricing />} />
+          <Route path="/tour-providers" element={<WebsiteTourProviders />} />
+          <Route path="/contact" element={<WebsiteContact />} />
+          <Route path="/privacy" element={<WebsitePrivacy />} />
+          <Route path="/terms" element={<WebsiteTerms />} />
+        </Route>
 
         {/* Legacy admin URLs → /admin/… */}
         <Route path="/properties/*" element={<LegacyAdminRedirect />} />

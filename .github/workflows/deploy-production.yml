@@ -1,10 +1,8 @@
 name: Deploy Production
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   deploy:
@@ -46,10 +44,13 @@ jobs:
         run: echo '${{ secrets.GCP_SA_KEY_PRODUCTION }}' > /tmp/gcp_prod.json
 
       - name: Deploy Hosting to Production
-        run: firebase deploy --only hosting --project vailoapp-497113 --non-interactive
+        run: node scripts/deployHosting.mjs production
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_prod.json
           CI: "true"
+
+      - name: Hosting URL
+        run: echo "Production site: https://vailo.app"
 
       - name: Remove Service Account Key
         if: always()

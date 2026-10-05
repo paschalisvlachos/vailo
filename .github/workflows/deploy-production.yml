@@ -50,7 +50,7 @@ jobs:
           CI: "true"
 
       - name: Hosting URL
-        run: echo "Production site: https://vailo.app"
+        run: 'echo "Production site: https://vailo.app"'
 
       - name: Remove Service Account Key
         if: always()

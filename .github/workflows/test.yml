@@ -8,6 +8,15 @@ on:
       - master
       - staging
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: After tests pass, deploy Firebase Hosting to
+        type: choice
+        options:
+          - none
+          - staging
+          - production
+        default: none
 
 jobs:
   unit:
@@ -36,3 +45,26 @@ jobs:
       - name: Run Functions Unit Tests
         working-directory: functions
         run: npm test
+
+  deploy-staging:
+    needs: unit
+    if: |
+      github.event_name != 'pull_request' &&
+      (
+        github.ref == 'refs/heads/staging' ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy == 'staging')
+      )
+    uses: ./.github/workflows/deploy-staging.yml
+    secrets: inherit
+
+  deploy-production:
+    needs: unit
+    if: |
+      github.event_name != 'pull_request' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/master' ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy == 'production')
+      )
+    uses: ./.github/workflows/deploy-production.yml
+    secrets: inherit

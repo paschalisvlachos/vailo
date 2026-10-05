@@ -26,7 +26,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { Link, NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AnimatePresence,
   motion,
@@ -193,7 +193,7 @@ const IMPACT_CAPABILITIES = [
     kpi: 'More answers ready · Fewer arrival problems',
     unit: 'House Guide coverage · Guest issues',
     mechanism:
-      'Setup is guided once. Analytics show what is missing. Guests get clearer rules and fewer problems — without hiring more staff.',
+      'You set the House Guide once — easy and automatic. Analytics show what is missing. Guests get clearer rules and fewer problems — without hiring more staff.',
     formula: 'Better guide → fewer unanswered questions → smoother stays',
   },
   {
@@ -230,6 +230,7 @@ const IMPACT_CAPABILITIES = [
 
 /** In-page anchors on the marketing home page (order matches section order). */
 const HOME_SECTION_LINKS = [
+  { hash: 'why-not-chatgpt', label: 'Why not ChatGPT?' },
   { hash: 'how-you-earn', label: 'How you earn' },
   { hash: 'how-vailo-works', label: 'How Vailo works' },
   { hash: 'guest-journey', label: 'The guest journey' },
@@ -238,6 +239,44 @@ const HOME_SECTION_LINKS = [
   { hash: 'for-hosts', label: 'Built for hosts' },
   { hash: 'property-analytics', label: 'Property analytics' },
 ] as const;
+
+/** Why Vailo instead of ChatGPT / general AI — comparison rows. */
+const WHY_NOT_CHATGPT = {
+  question: 'Why not ChatGPT or another AI?',
+  answerTitle: 'General AI is smart. It is not your co-host.',
+  answer:
+    'ChatGPT answers the open internet. Vailo runs your property: your House Guide, real local tips, guest access from booking day, and income for you.',
+  rows: [
+    {
+      chatgpt: 'Does not know your Wi-Fi, lockbox, or house rules',
+      vailo: 'Answers only from your House Guide',
+    },
+    {
+      chatgpt: 'Generic lists — can send guests to tourist traps',
+      vailo: 'Local tips shaped like real locals would give',
+    },
+    {
+      chatgpt: 'One generic answer for everyone',
+      vailo: 'Personalizes the stay to each guest’s needs',
+    },
+    {
+      chatgpt: 'Guests must open another app and paste questions',
+      vailo: 'Private link + QR for every booking, automatically',
+    },
+    {
+      chatgpt: 'No partner bookings or tour margin for you',
+      vailo: 'Promotes your partners and shares tour income',
+    },
+    {
+      chatgpt: 'No stay analytics for the host',
+      vailo: 'Shows what guests asked, opened, and booked',
+    },
+    {
+      chatgpt: 'Wrong property answers → calls and bad reviews',
+      vailo: 'Grounded in your content, safer for your reviews',
+    },
+  ],
+} as const;
 
 /** Why property owners benefit from Vailo admin Analytics. */
 const PROPERTY_ANALYTICS_HOST_BENEFITS = [
@@ -362,7 +401,7 @@ const SECTION_PAD_COMPACT = 'py-12 sm:py-16';
 const SECTION_SCROLL_MT = 'scroll-mt-24';
 
 const PLAN_INCLUDES = [
-  'Setup once: automated, effortless, fast',
+  'House Guide once: easy, automatic, then mostly leave it',
   'Auto guest link from booking day to checkout',
   'On-property QR poster, A5 or A4',
   '1/3 of Vailo’s excursion margin to you',
@@ -521,7 +560,7 @@ function Eyebrow({ children, light }: { children: ReactNode; light?: boolean }) 
   );
 }
 
-/** High-contrast readout for the one-time setup promise. */
+/** High-contrast readout for the one-time House Guide setup promise. */
 function SetupEaseLine({
   light,
   align = 'left',
@@ -541,11 +580,11 @@ function SetupEaseLine({
         className
       )}
     >
-      <span className={word}>Automated</span>
+      <span className={word}>Easy</span>
       <span className={sep}>, </span>
-      <span className={word}>effortless</span>
+      <span className={word}>automatic</span>
       <span className={sep}>, </span>
-      <span className={word}>fast</span>
+      <span className={word}>done once</span>
     </p>
   );
 }
@@ -561,7 +600,7 @@ function SectionHeading({
   eyebrow?: string;
   title: ReactNode;
   subtitle?: ReactNode;
-  /** Shows “Automated, effortless, fast” under the title for setup messaging. */
+  /** Shows “Easy, automatic, done once” under the title for House Guide setup messaging. */
   easeLine?: boolean;
   light?: boolean;
   align?: 'center' | 'left';
@@ -789,11 +828,20 @@ function ExploreDesktopMenu() {
 }
 
 function SiteHeader() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
+  const navigate = useNavigate();
   // Keyed by pathname so the mobile menu closes automatically after navigating.
   const [openFor, setOpenFor] = useState<string | null>(null);
   const open = openFor === pathname;
   const reduce = useReducedMotion();
+
+  const goHomeTop = () => {
+    if (pathname === '/') {
+      if (hash) navigate('/', { replace: true });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setOpenFor(null);
+  };
 
   // Lock body scroll while the drawer is open.
   useEffect(() => {
@@ -819,14 +867,38 @@ function SiteHeader() {
     <header className="sticky top-0 z-50 bg-white shadow-[0_8px_28px_-16px_rgba(5,31,38,0.28)]">
       <div className="mx-auto max-w-6xl">
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
-          <Link to="/" className="flex items-center" aria-label="Vailo home">
+          <Link
+            to="/"
+            className="flex items-center"
+            aria-label="Vailo home"
+            onClick={(e) => {
+              if (pathname === '/') {
+                e.preventDefault();
+                goHomeTop();
+              }
+            }}
+          >
             <img src="/vailoLogo.png" alt="Vailo" className="h-9 w-auto sm:h-10" />
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
             {NAV_LINKS.map((link) => (
               <div key={link.to} className="contents">
-                <NavLink to={link.to} end={link.end} className="relative rounded-xl px-4 py-2 text-sm font-semibold">
+                <NavLink
+                  to={link.to}
+                  end={link.end}
+                  onClick={
+                    link.to === '/'
+                      ? (e) => {
+                          if (pathname === '/') {
+                            e.preventDefault();
+                            goHomeTop();
+                          }
+                        }
+                      : undefined
+                  }
+                  className="relative rounded-xl px-4 py-2 text-sm font-semibold"
+                >
                   {({ isActive }) => (
                     <>
                       {isActive && (
@@ -919,7 +991,14 @@ function SiteHeader() {
                     <NavLink
                       to={link.to}
                       end={link.end}
-                      onClick={() => setOpenFor(null)}
+                      onClick={(e) => {
+                        if (link.to === '/' && pathname === '/') {
+                          e.preventDefault();
+                          goHomeTop();
+                          return;
+                        }
+                        setOpenFor(null);
+                      }}
                       className={({ isActive }) =>
                         cx(
                           'block rounded-2xl px-4 py-3.5 text-base font-semibold transition-colors',
@@ -2540,7 +2619,7 @@ function HostProof() {
     {
       icon: BookOpen,
       title: 'House Guide that powers the AI',
-      text: 'Guided fill-in once. Automated, effortless, fast. Featured cards on the guest portal, full text for the 24/7 assistant. Track what’s complete at a glance.',
+      text: 'You set the House Guide once — easy and automatic. Featured cards on the guest portal, full text for the 24/7 assistant. Track what’s complete at a glance.',
     },
     {
       icon: Wallet,
@@ -2555,9 +2634,9 @@ function HostProof() {
         <Reveal>
           <SectionHeading
             eyebrow="Built for hosts"
-            title="Set the property up once. Then mostly leave it alone."
+            title="Set the House Guide once. Then mostly leave it alone."
             easeLine
-            subtitle="Guided setup that takes little time. Guests get a private link from booking day, plus a QR on arrival. You see what’s working, and where each euro of booking income comes from."
+            subtitle="You set the House Guide once — easy and automatic. Guests get a private link from booking day, plus a QR on arrival. You see what’s working, and where each euro of booking income comes from."
           />
         </Reveal>
 
@@ -2786,7 +2865,7 @@ function FeaturesSection({ detailed = false }: { detailed?: boolean }) {
             eyebrow="Core features"
             title="Everything guests need from booking day to checkout. Nothing you answer twice."
             easeLine
-            subtitle="Set the property up once. From the day they book, Vailo supports guests, promotes your partners, and earns while you sleep."
+            subtitle="You set the House Guide once — easy and automatic. From the day they book, Vailo supports guests, promotes your partners, and earns while you sleep."
           />
         </Reveal>
         <div className="mt-14">
@@ -2916,7 +2995,7 @@ function PricingSection({ id = 'pricing-overview' }: { id?: string }) {
  * ========================================================================= */
 
 function FinalCta({
-  title = 'Set the property up once. Guests open from booking day.',
+  title = 'Set the House Guide once — easy and automatic.',
   subtitle =
     'Private guest link after every booking, QR on arrival, quieter inbox, plus clear income: 1/3 of Vailo’s excursion margin, and 100% of your featured-partner margins.',
   showEaseLine = true,
@@ -2975,6 +3054,79 @@ function FinalCta({
           </div>
         </div>
       </Reveal>
+    </section>
+  );
+}
+
+function WhyNotChatGptSection() {
+  return (
+    <section id="why-not-chatgpt" className={cx('relative overflow-hidden', SECTION_SCROLL_MT, SECTION_PAD_COMPACT)}>
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#eef5f4] via-white to-[#f7f3ea]" />
+      <Container>
+        <Reveal>
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-vailo-teal">
+              {WHY_NOT_CHATGPT.question}
+            </p>
+            <h2 className="font-luxury mt-4 text-3xl font-medium leading-tight tracking-tight text-vailo-dark sm:text-4xl lg:text-[2.75rem]">
+              {WHY_NOT_CHATGPT.answerTitle}
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-vailo-dark/65 sm:text-lg">
+              {WHY_NOT_CHATGPT.answer}
+            </p>
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.08}>
+          <div className="mx-auto mt-10 max-w-4xl overflow-hidden rounded-[1.75rem] bg-white shadow-[0_28px_60px_-28px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/8">
+            <div className="grid grid-cols-2 border-b border-vailo-dark/8 bg-[#f7faf9]">
+              <div className="border-r border-vailo-dark/8 px-4 py-4 sm:px-6">
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-dark/40">ChatGPT / general AI</p>
+              </div>
+              <div className="px-4 py-4 sm:px-6">
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-teal">Vailo</p>
+              </div>
+            </div>
+            <ul>
+              {WHY_NOT_CHATGPT.rows.map((row, i) => (
+                <li
+                  key={row.vailo}
+                  className={cx(
+                    'grid grid-cols-1 sm:grid-cols-2',
+                    i < WHY_NOT_CHATGPT.rows.length - 1 && 'border-b border-vailo-dark/8'
+                  )}
+                >
+                  <div className="flex gap-3 border-b border-vailo-dark/6 px-4 py-4 sm:border-b-0 sm:border-r sm:border-vailo-dark/8 sm:px-6 sm:py-5">
+                    <span
+                      className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-vailo-dark/8 text-vailo-dark/45"
+                      aria-hidden
+                    >
+                      <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                    </span>
+                    <p className="text-[14.5px] leading-relaxed text-vailo-dark/55">{row.chatgpt}</p>
+                  </div>
+                  <div className="flex gap-3 px-4 py-4 sm:px-6 sm:py-5">
+                    <span
+                      className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-vailo-teal/12 text-vailo-teal"
+                      aria-hidden
+                    >
+                      <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                    </span>
+                    <p className="text-[14.5px] font-semibold leading-relaxed text-vailo-dark">{row.vailo}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.12}>
+          <p className="mx-auto mt-8 max-w-2xl text-center text-sm font-semibold leading-relaxed text-vailo-dark/55">
+            Use ChatGPT for ideas. Use Vailo so every guest gets the right answer about{' '}
+            <span className="text-vailo-teal">your</span> property — without you typing it again.
+          </p>
+        </Reveal>
+      </Container>
     </section>
   );
 }
@@ -3282,14 +3434,13 @@ function HowItWorks({ compact }: { compact?: boolean } = {}) {
   const steps: { icon: LucideIcon; title: string; text: ReactNode }[] = [
     {
       icon: Sparkles,
-      title: 'Set the property up once',
+      title: 'Set the House Guide once',
       text: (
         <>
-          Guided setup you finish once.{' '}
-          <span className="font-semibold text-vailo-teal">Automated</span>,{' '}
-          <span className="font-semibold text-vailo-teal">effortless</span>,{' '}
-          <span className="font-semibold text-vailo-teal">fast</span>. Add your House Guide (appliances, Wi-Fi,
-          rules) and Vailo turns it into the guest portal.
+          You set the House Guide once —{' '}
+          <span className="font-semibold text-vailo-teal">easy</span> and{' '}
+          <span className="font-semibold text-vailo-teal">automatic</span>. Add appliances, Wi-Fi, and rules;
+          Vailo turns it into the guest portal and answers from it after that.
         </>
       ),
     },
@@ -3324,7 +3475,7 @@ function HowItWorks({ compact }: { compact?: boolean } = {}) {
                 eyebrow="How Vailo works"
                 title="Access from booking day, not only from arrival."
                 easeLine
-                subtitle="Set the property up once. Guests open a private link as soon as they book, use it until checkout, and can still scan the QR when they walk in."
+                subtitle="You set the House Guide once — easy and automatic. Guests open a private link as soon as they book, use it until checkout, and can still scan the QR when they walk in."
               />
             </Reveal>
             <ol className="mt-10 space-y-4">
@@ -3644,6 +3795,7 @@ export function HomePage() {
   return (
     <>
       <Hero />
+      <WhyNotChatGptSection />
       <RevenueShare compact />
       <HowItWorks compact />
       <GuestJourney />
@@ -3665,9 +3817,9 @@ export function FeaturesPage() {
     <>
       <PageHero
         eyebrow="Features"
-        title="Set the property up once. Guests help themselves from booking day."
+        title="Set the House Guide once — easy and automatic."
         easeLine
-        subtitle="Guided setup that takes little time. An automated link after every booking, a QR on arrival, then Vailo takes the repetitive work and turns early interest into partner and tour income."
+        subtitle="Then guests help themselves from booking day. An automated link after every booking, a QR on arrival, quieter inbox, and clearer income from partners and tours."
         image="/portal-ai-chatbot-hero.png"
         imagePosition="48% 38%"
         previews={[
@@ -3725,6 +3877,14 @@ export function PricingPage() {
             <Faq
               items={[
                 {
+                  q: 'What is Vailo?',
+                  a: 'Vailo is a private guest portal for your property. Guests get a link when they book, ask about your home, find local tips, and can book tours or your partners — without calling you for every detail. No app to install: link or QR in the browser, from booking day until checkout.',
+                },
+                {
+                  q: 'How do I earn from Vailo?',
+                  a: 'Two clear ways. On Vailo tours you get 1/3 of our margin. On partners you feature (for example car rentals) you keep 100% of the margin you agreed. Early access from booking day gives guests more time to book before they arrive.',
+                },
+                {
                   q: 'When do guests get access to Vailo?',
                   a: 'Right after booking, not only on arrival. They receive an automated private link and can use the portal from that day until checkout. The A5/A4 QR poster is for scanning at the property, same experience.',
                 },
@@ -3732,11 +3892,10 @@ export function PricingPage() {
                   q: 'How long does property setup take?',
                   a: (
                     <>
-                      You set the property up once.{' '}
-                      <span className="font-semibold text-vailo-teal">Automated</span>,{' '}
-                      <span className="font-semibold text-vailo-teal">effortless</span>,{' '}
-                      <span className="font-semibold text-vailo-teal">fast</span>. After that, guests help themselves
-                      from booking day onward.
+                      You set the House Guide once —{' '}
+                      <span className="font-semibold text-vailo-teal">easy</span> and{' '}
+                      <span className="font-semibold text-vailo-teal">automatic</span>. After that, guests help
+                      themselves from booking day onward.
                     </>
                   ),
                 },

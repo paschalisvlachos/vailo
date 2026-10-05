@@ -3152,7 +3152,7 @@ function StatsSection({
                     <AnimatedNumber
                       value={stat.value}
                       prefix={'prefix' in stat ? stat.prefix : ''}
-                      suffix={stat.suffix ?? ''}
+                      suffix={'suffix' in stat ? stat.suffix : ''}
                       decimals={'decimals' in stat ? stat.decimals : 0}
                     />
                   ) : (

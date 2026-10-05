@@ -54,14 +54,16 @@ import {
   Handshake,
   KeyRound,
   Lightbulb,
+  Link2,
   Loader2,
   Mail,
   MapPin,
   Car,
   Menu,
   MessageCircle,
+  MonitorSmartphone,
   MousePointerClick,
-  Printer,
+  Percent,
   QrCode,
   Send,
   ShieldCheck,
@@ -103,23 +105,268 @@ const HERO_BENEFITS = [
   'Upgrade your property and guest experience',
   'booking and airbnb AI messages',
   'online check-in for guests before arrival',
-  'Guests plan stays that fit their lifestyle',
+  'Guest activity and request analytics',
 ] as const;
 
 const NAV_LINKS = [
   { to: '/', label: 'Home', end: true },
   { to: '/features', label: 'Features', end: false },
   { to: '/pricing', label: 'Pricing', end: false },
+  { to: '/impact', label: 'Impact', end: false },
   { to: '/tour-providers', label: 'Tour Providers', end: false },
   { to: '/contact', label: 'Contact', end: false },
 ] as const;
 
+/** Simple breakdown of the home hero thesis + benefit set. */
+const IMPACT_SYSTEM = [
+  {
+    id: '1',
+    claim: 'Effortless for you. Perfect for your guests.',
+    variable: 'Your work vs guest happiness',
+    definition:
+      'You spend less time on the same guest questions. Guests find answers themselves. Both use the same House Guide.',
+    measure: 'Fewer messages for you · Guests solve problems without calling you',
+  },
+  {
+    id: '2',
+    claim: 'Automated access from booking day to checkout.',
+    variable: 'How long guests can use Vailo',
+    definition:
+      'Guests get a private link when they book — not only when they arrive. They can use Vailo until checkout. The QR code at the property opens the same portal.',
+    measure: 'Days of access before arrival · Guests who open Vailo early',
+  },
+  {
+    id: '3',
+    claim: 'Boost your revenue with early visitor access.',
+    variable: 'Time to book before arrival',
+    definition:
+      'More days before check-in means more time to book tours and your partners. On Vailo tours you keep 1/3 of our margin. On your own partners you keep 100% of your margin.',
+    measure: 'Bookings before arrival · Extra income per property each month',
+  },
+] as const;
+
+const IMPACT_CAPABILITIES = [
+  {
+    n: '01',
+    claim: 'Answers guests instantly and save up to 70% on management time',
+    lever: 'Your team time',
+    kpi: 'Up to 70% less time on repeat guest questions',
+    unit: 'Hours per guest · Inbox messages',
+    mechanism:
+      'The AI answers day and night from your House Guide. Common questions (Wi-Fi, lockbox, oven, checkout) do not need a person. You only handle special cases.',
+    formula: 'Time saved = common questions × time per answer × how often AI handles them',
+  },
+  {
+    n: '02',
+    claim: 'Personalized experiences recommended by locals',
+    lever: 'Better local tips',
+    kpi: 'Local tips that fit the stay, not generic lists',
+    unit: 'Clicks per stay · Saved places',
+    mechanism:
+      'Live Like a Local shows places and activities near your property. Guests discover more without you writing a new list for every stay.',
+    formula: 'More useful tips → more guest interest in your area',
+  },
+  {
+    n: '03',
+    claim: 'Promote your featured partnerships (i.e. car rentals)',
+    lever: 'Your partner income',
+    kpi: 'You keep 100% of your partner margin',
+    unit: 'Partner bookings · Margin in €',
+    mechanism:
+      'Your partners (cars, transfers, and more) appear in the guest portal. Vailo does not take a cut. Early access simply gives guests more time to book them.',
+    formula: 'Your partner income = bookings × your full margin',
+  },
+  {
+    n: '04',
+    claim: 'Get commissions from built-in excursion bookings',
+    lever: 'Tour income share',
+    kpi: 'You get 1/3 of Vailo’s tour margin',
+    unit: '€ per booking',
+    mechanism:
+      'Guests book Vailo tours inside the portal. We earn a margin on the booking (for example 10%). You get 1/3 of that margin — not 1/3 of the full ticket price.',
+    formula: 'Your € = ticket price × margin % × 1/3',
+  },
+  {
+    n: '05',
+    claim: 'Upgrade your property and guest experience',
+    lever: 'Guest experience quality',
+    kpi: 'More answers ready · Fewer arrival problems',
+    unit: 'House Guide coverage · Guest issues',
+    mechanism:
+      'Setup is guided once. Analytics show what is missing. Guests get clearer rules and fewer problems — without hiring more staff.',
+    formula: 'Better guide → fewer unanswered questions → smoother stays',
+  },
+  {
+    n: '06',
+    claim: 'Booking and Airbnb AI messages',
+    lever: 'Faster replies',
+    kpi: 'Quicker answers on booking channels',
+    unit: 'Reply time · Questions covered',
+    mechanism:
+      'AI helps you answer Booking.com and Airbnb messages faster. Routine questions clear quickly. Answers stay based on your property information.',
+    formula: 'Faster drafts → better response time for guests',
+  },
+  {
+    n: '07',
+    claim: 'Online check-in for guests before arrival',
+    lever: 'Arrival workload',
+    kpi: 'Guests who check in before they arrive',
+    unit: '% of stays checked in early',
+    mechanism:
+      'Guests fill in stay details in the portal before they arrive. Less waiting at the door. Fewer calls for you on arrival day.',
+    formula: 'Early check-in → less work at the door',
+  },
+  {
+    n: '08',
+    claim: 'Guest activity and request analytics',
+    lever: 'Clear stay insights',
+    kpi: 'See what guests used and asked',
+    unit: 'Portal visits · AI questions · Local picks · Tour bookings',
+    mechanism:
+      'In Vailo admin, each property has Analytics. You see portal use, AI questions, local picks, and tour bookings — stay by stay. Use this to improve the next booking.',
+    formula: 'Real guest activity → better House Guide and offers next time',
+  },
+] as const;
+
+/** In-page anchors on the marketing home page (order matches section order). */
+const HOME_SECTION_LINKS = [
+  { hash: 'how-you-earn', label: 'How you earn' },
+  { hash: 'how-vailo-works', label: 'How Vailo works' },
+  { hash: 'guest-journey', label: 'The guest journey' },
+  { hash: 'roi', label: 'ROI calculator' },
+  { hash: 'your-team', label: 'Your team' },
+  { hash: 'for-hosts', label: 'Built for hosts' },
+  { hash: 'property-analytics', label: 'Property analytics' },
+] as const;
+
+/** Why property owners benefit from Vailo admin Analytics. */
+const PROPERTY_ANALYTICS_HOST_BENEFITS = [
+  {
+    title: 'Stop guessing what guests need',
+    text: 'You see real questions and portal use — not only complaints after checkout.',
+  },
+  {
+    title: 'Improve the next stay, not only this one',
+    text: 'Fix House Guide gaps and weak local tips before the next booking arrives.',
+  },
+  {
+    title: 'Protect your time and reviews',
+    text: 'Fewer repeat messages and clearer arrival info mean calmer ops and happier guests.',
+  },
+  {
+    title: 'Grow partner and tour income',
+    text: 'See which offers guests open and book, so you promote what actually works.',
+  },
+] as const;
+
+/** Headline KPIs shown at the top of Property → Analytics in Vailo admin. */
+const PROPERTY_ANALYTICS_KPIS = [
+  { label: 'Sessions active', meaning: 'Stays that used the portal' },
+  { label: 'Portal visits', meaning: 'How many times guests opened it' },
+  { label: 'Live Like a Local', meaning: 'Local discovery opens' },
+  { label: 'Assistant turns', meaning: 'AI House Guide questions' },
+  { label: 'Excursions opened', meaning: 'Tour browsing started' },
+  { label: 'Excursion bookings', meaning: 'Bookings completed in-portal' },
+] as const;
+
+/** Deeper metrics tracked per property in Vailo admin Analytics. */
+const PROPERTY_ANALYTICS_METRICS = [
+  {
+    icon: ChartColumn,
+    title: 'Who is using the portal',
+    text: 'Active sessions and portal visits tell you which bookings actually opened Vailo — and which never did.',
+    action: 'Follow up on quiet stays or improve the guest link / QR placement.',
+  },
+  {
+    icon: Bot,
+    title: 'What guests ask the AI',
+    text: 'Assistant turns (and AI expert turns) show the questions your House Guide is answering — or failing to cover.',
+    action: 'Add missing Wi-Fi, appliance, or checkout answers before the next arrival.',
+  },
+  {
+    icon: Compass,
+    title: 'What they explore locally',
+    text: 'Live Like a Local opens, saved picks, and gem impressions show what guests care about in your area.',
+    action: 'Feature stronger local partners and gems that match real interest.',
+  },
+  {
+    icon: Ticket,
+    title: 'How tours convert',
+    text: 'Full excursion funnel: opens → detail views → booking starts → completed bookings, per stay.',
+    action: 'Fix weak listings or push high-interest tours earlier from booking day.',
+  },
+  {
+    icon: BookOpen,
+    title: 'Which House Guide parts they open',
+    text: 'Accordion opens show which guide sections guests actually expand during the stay.',
+    action: 'Rewrite thin sections and promote the ones guests rely on.',
+  },
+  {
+    icon: MonitorSmartphone,
+    title: 'Per-stay timeline',
+    text: 'Open any booking or visitor: first/last seen, device, and the event timeline of that stay.',
+    action: 'Diagnose a single guest journey instead of guessing from inbox noise.',
+  },
+] as const;
+
+/** Headline statistics used on Impact (aligned with ROI model + product economics). */
+const SITE_STATS = [
+  {
+    kind: 'number' as const,
+    value: 70,
+    suffix: '%',
+    label: 'Less time on repeat guest questions',
+    detail: 'Common stay questions answered from your House Guide',
+  },
+  {
+    kind: 'number' as const,
+    value: ROI.hoursSavedPerGuest,
+    decimals: 1,
+    suffix: 'h',
+    label: 'Hours saved per guest',
+    detail: 'Less messaging work for you or your team',
+  },
+  {
+    kind: 'text' as const,
+    display: '1/3',
+    label: 'Of Vailo tour margin goes to you',
+    detail: 'This is a share of our margin, not the full ticket price',
+  },
+  {
+    kind: 'number' as const,
+    value: 100,
+    suffix: '%',
+    label: 'Of your partner margin stays yours',
+    detail: 'Cars, transfers, and partners you already work with',
+  },
+  {
+    kind: 'text' as const,
+    display: '24/7',
+    label: 'AI answers any time of day',
+    detail: 'From the day guests book until they check out',
+  },
+  {
+    kind: 'number' as const,
+    value: 49,
+    prefix: '€',
+    label: 'From this price per property / year',
+    detail: 'Lower price per property when you manage more homes',
+  },
+] as const;
+
+/** Reference portfolio used to illustrate model outputs (same assumptions as the ROI calculator). */
+const STATS_REFERENCE_GUESTS = 100;
+
+const SECTION_PAD = 'py-20 sm:py-28';
+const SECTION_PAD_COMPACT = 'py-12 sm:py-16';
+const SECTION_SCROLL_MT = 'scroll-mt-24';
+
 const PLAN_INCLUDES = [
-  'Guided property setup (build once)',
-  'Printable QR poster · A5 or A4',
-  '24/7 AI Property Assistant',
-  'House Guide, Wi-Fi & local picks',
-  'Bookable excursions + 33% revenue share',
+  'Setup once: automated, effortless, fast',
+  'Auto guest link from booking day to checkout',
+  'On-property QR poster, A5 or A4',
+  '1/3 of Vailo’s excursion margin to you',
+  '100% of your featured-partner margins',
 ];
 
 type Feature = {
@@ -136,10 +383,10 @@ const FEATURES: Feature[] = [
     icon: Bot,
     title: '24/7 AI Property Assistant',
     blurb:
-      'Automated guest support built on your House Guide. Appliances, Wi-Fi, check-out rules — answered instantly, day or night.',
+      'Automated guest support built on your House Guide. Appliances, Wi-Fi, check-out rules, answered instantly, day or night.',
     detail: [
       'Answers come from your own House Guide, not guesswork',
-      'Guests chat from a simple link or QR code — no app to install',
+      'Guests open their private link from booking day, or scan the QR on arrival',
       'Spot the questions your guide is missing and fill the gaps',
     ],
   },
@@ -160,11 +407,11 @@ const FEATURES: Feature[] = [
     icon: Globe,
     title: 'Global Excursions',
     blurb:
-      'Arrange & book tours around the world directly from the guest portal — and earn 33% on every booking.',
+      'Guests can book tours and experiences from booking day. On Vailo-supplied bookings you earn 1/3 of our margin; on your featured partners you keep 100% of your agreed margin.',
     detail: [
-      'Bookable tours and experiences curated for your area',
-      'Guests book in a couple of taps, right inside their stay',
-      'A 33% revenue share lands with you, completely passively',
+      'Access from booking day means more time to book before they arrive',
+      'Vailo excursions: 1/3 of our commission margin goes to you (not of the ticket price)',
+      'Your featured partners: you keep the full margin you agreed with them',
     ],
   },
   {
@@ -172,9 +419,9 @@ const FEATURES: Feature[] = [
     icon: ClipboardCheck,
     title: 'Automated Check-in',
     blurb:
-      'Collect arrival details before guests even land: arrival time, party details and special requests — hands-free.',
+      'Collect arrival details before guests even land: arrival time, party details and special requests, hands-free.',
     detail: [
-      'Pre-arrival form sent before every stay',
+      'Pre-arrival form available as soon as they have the link from booking day',
       'Everything arrives in one place, ready for your welcome',
       'Fewer back-and-forth messages the day of arrival',
     ],
@@ -274,16 +521,48 @@ function Eyebrow({ children, light }: { children: ReactNode; light?: boolean }) 
   );
 }
 
+/** High-contrast readout for the one-time setup promise. */
+function SetupEaseLine({
+  light,
+  align = 'left',
+  className,
+}: {
+  light?: boolean;
+  align?: 'center' | 'left';
+  className?: string;
+}) {
+  const word = light ? 'text-vailo-gold' : 'text-vailo-teal';
+  const sep = light ? 'text-white/40' : 'text-vailo-dark/30';
+  return (
+    <p
+      className={cx(
+        'font-luxury text-[1.35rem] font-semibold leading-snug tracking-tight sm:text-[1.55rem]',
+        !className && (align === 'center' ? 'text-center' : 'text-left'),
+        className
+      )}
+    >
+      <span className={word}>Automated</span>
+      <span className={sep}>, </span>
+      <span className={word}>effortless</span>
+      <span className={sep}>, </span>
+      <span className={word}>fast</span>
+    </p>
+  );
+}
+
 function SectionHeading({
   eyebrow,
   title,
   subtitle,
+  easeLine,
   light,
   align = 'center',
 }: {
   eyebrow?: string;
   title: ReactNode;
   subtitle?: ReactNode;
+  /** Shows “Automated, effortless, fast” under the title for setup messaging. */
+  easeLine?: boolean;
   light?: boolean;
   align?: 'center' | 'left';
 }) {
@@ -298,15 +577,21 @@ function SectionHeading({
       >
         {title}
       </h2>
+      {easeLine && (
+        <div className="mt-4">
+          <SetupEaseLine light={light} align={align} />
+        </div>
+      )}
       {subtitle && (
-        <p
+        <div
           className={cx(
-            'mt-4 text-base leading-relaxed sm:text-lg',
+            'text-base leading-relaxed sm:text-lg',
+            easeLine ? 'mt-3' : 'mt-4',
             light ? 'text-white/70' : 'text-vailo-dark/65'
           )}
         >
           {subtitle}
-        </p>
+        </div>
       )}
     </div>
   );
@@ -436,6 +721,73 @@ function AnimatedNumber({
  * 3. LAYOUT — header, footer, shell
  * ========================================================================= */
 
+function ExploreDesktopMenu() {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+        className={cx(
+          'inline-flex items-center gap-1 rounded-xl px-4 py-2 text-sm font-semibold transition-colors',
+          open ? 'bg-vailo-teal/10 text-vailo-teal' : 'text-vailo-dark/70 hover:text-vailo-dark'
+        )}
+      >
+        Explore
+        <ChevronDown className={cx('h-4 w-4 transition-transform', open && 'rotate-180')} aria-hidden />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            aria-label="On the home page"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.18, ease: EASE }}
+            className="absolute left-0 top-full z-50 mt-2 w-[min(100vw-2rem,18rem)] overflow-hidden rounded-2xl bg-white p-2 shadow-[0_24px_50px_-20px_rgba(5,31,38,0.35)] ring-1 ring-vailo-dark/8"
+          >
+            <p className="px-3 pb-1.5 pt-2 text-[10px] font-extrabold uppercase tracking-[0.16em] text-vailo-dark/40">
+              On the home page
+            </p>
+            {HOME_SECTION_LINKS.map((link) => (
+              <Link
+                key={link.hash}
+                role="menuitem"
+                to={{ pathname: '/', hash: link.hash }}
+                onClick={() => setOpen(false)}
+                className="block rounded-xl px-3 py-2.5 text-sm font-semibold text-vailo-dark/75 transition hover:bg-vailo-teal/10 hover:text-vailo-teal"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function SiteHeader() {
   const { pathname } = useLocation();
   // Keyed by pathname so the mobile menu closes automatically after navigating.
@@ -473,27 +825,30 @@ function SiteHeader() {
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Main">
             {NAV_LINKS.map((link) => (
-              <NavLink key={link.to} to={link.to} end={link.end} className="relative rounded-xl px-4 py-2 text-sm font-semibold">
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="nav-active-pill"
-                        className="absolute inset-0 rounded-xl bg-vailo-teal/10"
-                        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                      />
-                    )}
-                    <span
-                      className={cx(
-                        'relative transition-colors',
-                        isActive ? 'text-vailo-teal' : 'text-vailo-dark/70 hover:text-vailo-dark'
+              <div key={link.to} className="contents">
+                <NavLink to={link.to} end={link.end} className="relative rounded-xl px-4 py-2 text-sm font-semibold">
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-active-pill"
+                          className="absolute inset-0 rounded-xl bg-vailo-teal/10"
+                          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                        />
                       )}
-                    >
-                      {link.label}
-                    </span>
-                  </>
-                )}
-              </NavLink>
+                      <span
+                        className={cx(
+                          'relative transition-colors',
+                          isActive ? 'text-vailo-teal' : 'text-vailo-dark/70 hover:text-vailo-dark'
+                        )}
+                      >
+                        {link.label}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+                {link.to === '/' && <ExploreDesktopMenu />}
+              </div>
             ))}
           </nav>
 
@@ -574,6 +929,23 @@ function SiteHeader() {
                     >
                       {link.label}
                     </NavLink>
+                    {link.to === '/' && (
+                      <div className="mt-2 mb-1 rounded-2xl bg-vailo-dark/[0.03] px-2 py-2">
+                        <p className="px-2 pb-1 pt-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-vailo-dark/40">
+                          Explore · On the home page
+                        </p>
+                        {HOME_SECTION_LINKS.map((section) => (
+                          <Link
+                            key={section.hash}
+                            to={{ pathname: '/', hash: section.hash }}
+                            onClick={() => setOpenFor(null)}
+                            className="block rounded-xl px-3 py-2.5 text-sm font-semibold text-vailo-dark/70 transition hover:bg-vailo-teal/10 hover:text-vailo-teal"
+                          >
+                            {section.label}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
                   </motion.div>
                 ))}
               </div>
@@ -619,6 +991,7 @@ function SiteFooter() {
           <FooterColumn
             title="Product"
             links={[
+              { to: '/impact', label: 'Impact' },
               { to: '/features', label: 'Features' },
               { to: '/pricing', label: 'Pricing' },
               { to: '/tour-providers', label: 'Tour Providers' },
@@ -721,83 +1094,162 @@ export function WebsiteLayout() {
 
 type ChatLine = { from: 'guest' | 'ai'; text: ReactNode };
 
-const HERO_CHAT: ChatLine[] = [
-  { from: 'guest', text: 'Hi! Where should we have dinner tonight? 🍷' },
+type HeroScenario = {
+  id: string;
+  guest: string;
+  ai: ReactNode;
+};
+
+/** Four realistic House Guide scenarios cycled on the hero phone. */
+const HERO_SCENARIOS: HeroScenario[] = [
   {
-    from: 'ai',
-    text: (
+    id: 'washer',
+    guest: 'The washing machine does not work.',
+    ai: (
       <>
-        Welcome, Sofia! Try <strong>Taverna Eleni</strong> — 6 min walk, a local favourite for grilled octopus. Want me
-        to book a table?
+        <p className="font-semibold">Bosch Serie 6, WAT28460</p>
+        <ol className="mt-1.5 space-y-1 text-[12px] text-vailo-dark/80">
+          <li>
+            <b className="text-vailo-teal">1.</b> Open the door fully, it locks if the drum is still spinning
+          </li>
+          <li>
+            <b className="text-vailo-teal">2.</b> Turn the dial to <b>Cotton 40°C</b>, then press <b>Start</b>
+          </li>
+          <li>
+            <b className="text-vailo-teal">3.</b> If it beeps E18: clean the filter under the front flap (coin tray)
+          </li>
+        </ol>
+        <p className="mt-2 text-[11px] text-vailo-dark/55">Detergent: drawer left, softener: middle</p>
       </>
     ),
   },
-  { from: 'guest', text: 'Yes please. And what’s the Wi-Fi?' },
   {
-    from: 'ai',
-    text: (
+    id: 'power',
+    guest: 'There is no electricity and I cannot open the garage door.',
+    ai: (
       <>
-        Done! ✅ Wi-Fi: <strong>Villa_Sunset</strong> · password <strong>sunset2026</strong>
+        <p className="font-semibold">Power + garage override</p>
+        <ol className="mt-1.5 space-y-1 text-[12px] text-vailo-dark/80">
+          <li>
+            <b className="text-vailo-teal">1.</b> Check the main breaker in the hallway cupboard (left of entrance)
+          </li>
+          <li>
+            <b className="text-vailo-teal">2.</b> Flip any red switch back up, label <b>Garage / Gate</b>
+          </li>
+          <li>
+            <b className="text-vailo-teal">3.</b> Manual garage: pull the red cord on the motor, then lift the door
+          </li>
+        </ol>
+        <p className="mt-2 text-[11px] text-vailo-dark/55">Still dark? Call host from Contacts in the portal.</p>
+      </>
+    ),
+  },
+  {
+    id: 'garbage',
+    guest: 'Where can I throw the garbage?',
+    ai: (
+      <>
+        <p className="font-semibold">Bins by the garden gate</p>
+        <ul className="mt-1.5 space-y-1 text-[12px] text-vailo-dark/80">
+          <li>
+            <b className="text-vailo-teal">Grey</b>, general waste
+          </li>
+          <li>
+            <b className="text-vailo-teal">Blue</b>, paper & cardboard
+          </li>
+          <li>
+            <b className="text-vailo-teal">Yellow</b>, plastic & cans
+          </li>
+          <li>
+            <b className="text-vailo-teal">Green</b>, glass (next to the olive tree)
+          </li>
+        </ul>
+        <p className="mt-2 text-[11px] text-vailo-dark/55">Collection: Mon, Wed, Fri mornings</p>
+      </>
+    ),
+  },
+  {
+    id: 'wifi',
+    guest: 'What is the Wi-Fi password?',
+    ai: (
+      <>
+        <p className="font-semibold">Wi-Fi details</p>
+        <p className="mt-1.5 text-[12px] text-vailo-dark/80">
+          Network: <b>Villa_Sunset_5G</b>
+        </p>
+        <p className="mt-1 text-[12px] text-vailo-dark/80">
+          Password: <b>sunsetvilla26</b>
+        </p>
+        <p className="mt-2 text-[11px] text-vailo-dark/55">Copy it from the Wi-Fi card on Stay → Essentials.</p>
       </>
     ),
   },
 ];
 
-function useChatSequence(script: ChatLine[]) {
+function useScenarioSequence(scenarios: HeroScenario[]) {
   const reduce = useReducedMotion();
-  const [count, setCount] = useState(reduce ? script.length : 0);
-  const [typing, setTyping] = useState(false);
+  const [scenarioIndex, setScenarioIndex] = useState(0);
+  const [phase, setPhase] = useState<'empty' | 'guest' | 'typing' | 'ai'>(reduce ? 'ai' : 'empty');
 
   useEffect(() => {
-    if (reduce) return;
+    if (reduce) {
+      setPhase('ai');
+      return;
+    }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let i = 0;
 
-    const step = () => {
+    const run = () => {
       if (cancelled) return;
-      if (i >= script.length) {
+      setScenarioIndex(i);
+      setPhase('empty');
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        setPhase('guest');
         timer = setTimeout(() => {
           if (cancelled) return;
-          i = 0;
-          setCount(0);
-          timer = setTimeout(step, 900);
-        }, 7000);
-        return;
-      }
-      const isAi = script[i].from === 'ai';
-      if (isAi) setTyping(true);
-      timer = setTimeout(
-        () => {
-          if (cancelled) return;
-          setTyping(false);
-          i += 1;
-          setCount(i);
-          step();
-        },
-        isAi ? 1500 : 1100
-      );
+          setPhase('typing');
+          timer = setTimeout(() => {
+            if (cancelled) return;
+            setPhase('ai');
+            timer = setTimeout(() => {
+              if (cancelled) return;
+              i = (i + 1) % scenarios.length;
+              run();
+            }, 4200);
+          }, 1400);
+        }, 900);
+      }, 400);
     };
 
-    timer = setTimeout(step, 700);
+    run();
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [reduce, script]);
+  }, [reduce, scenarios.length]);
 
-  return { count, typing };
+  const scenario = scenarios[scenarioIndex] ?? scenarios[0];
+  const lines: ChatLine[] = [];
+  if (phase === 'guest' || phase === 'typing' || phase === 'ai') {
+    lines.push({ from: 'guest', text: scenario.guest });
+  }
+  if (phase === 'ai') {
+    lines.push({ from: 'ai', text: scenario.ai });
+  }
+  return { lines, typing: phase === 'typing', scenarioId: scenario.id };
 }
 
 function PhoneMockup() {
   const reduce = useReducedMotion();
-  const { count, typing } = useChatSequence(HERO_CHAT);
+  const { lines, typing, scenarioId } = useScenarioSequence(HERO_SCENARIOS);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-  }, [count, typing]);
+  }, [lines.length, typing, scenarioId]);
 
   return (
     <div className="relative mx-auto w-[290px] sm:w-[320px]">
@@ -829,61 +1281,65 @@ function PhoneMockup() {
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-bold leading-tight text-vailo-dark">Vailo</p>
-                <p className="text-[11px] text-vailo-dark/55">Villa Sunset · your local best friend</p>
+                <p className="text-[11px] text-vailo-dark/55">Villa Sunset, House Guide</p>
               </div>
             </div>
 
-            {/* messages */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-hidden px-3.5 py-4">
-              <p className="text-center text-[10px] font-semibold uppercase tracking-wider text-vailo-dark/35">Today</p>
-              <AnimatePresence initial={false}>
-                {HERO_CHAT.slice(0, count).map((m, i) => (
-                  <motion.div
-                    key={`${i}-${m.from}`}
-                    initial={{ opacity: 0, y: 12, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.35, ease: EASE }}
-                    className={cx('flex', m.from === 'guest' ? 'justify-end' : 'justify-start')}
-                  >
-                    <div
-                      className={cx(
-                        'max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-snug shadow-sm',
-                        m.from === 'guest'
-                          ? 'rounded-br-md bg-vailo-teal text-white'
-                          : 'rounded-bl-md bg-white text-vailo-dark ring-1 ring-vailo-dark/5'
-                      )}
+            {/* messages — one scenario at a time */}
+            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3.5 py-4">
+              <p className="text-center text-[10px] font-semibold uppercase tracking-wider text-vailo-dark/35">
+                From your House Guide
+              </p>
+              <AnimatePresence mode="wait">
+                <motion.div key={scenarioId} className="space-y-3">
+                  {lines.map((m, i) => (
+                    <motion.div
+                      key={`${scenarioId}-${i}-${m.from}`}
+                      initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.35, ease: EASE }}
+                      className={cx('flex', m.from === 'guest' ? 'justify-end' : 'justify-start')}
                     >
-                      {m.text}
-                    </div>
-                  </motion.div>
-                ))}
-                {typing && (
-                  <motion.div
-                    key="typing"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="flex justify-start"
-                  >
-                    <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 ring-1 ring-vailo-dark/5">
-                      {[0, 1, 2].map((d) => (
-                        <motion.span
-                          key={d}
-                          className="h-1.5 w-1.5 rounded-full bg-vailo-teal/60"
-                          animate={{ y: [0, -4, 0] }}
-                          transition={{ duration: 0.8, repeat: Infinity, delay: d * 0.15 }}
-                        />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
+                      <div
+                        className={cx(
+                          'max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-snug shadow-sm',
+                          m.from === 'guest'
+                            ? 'rounded-br-md bg-vailo-teal text-white'
+                            : 'rounded-bl-md bg-white text-vailo-dark ring-1 ring-vailo-dark/5'
+                        )}
+                      >
+                        {m.text}
+                      </div>
+                    </motion.div>
+                  ))}
+                  {typing && (
+                    <motion.div
+                      key="typing"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="flex justify-start"
+                    >
+                      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 ring-1 ring-vailo-dark/5">
+                        {[0, 1, 2].map((d) => (
+                          <motion.span
+                            key={d}
+                            className="h-1.5 w-1.5 rounded-full bg-vailo-teal/60"
+                            animate={{ y: [0, -4, 0] }}
+                            transition={{ duration: 0.8, repeat: Infinity, delay: d * 0.15 }}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </motion.div>
               </AnimatePresence>
             </div>
 
             {/* quick actions + input */}
             <div className="border-t border-vailo-dark/5 bg-white/80 px-3.5 pb-5 pt-3 backdrop-blur">
               <div className="mb-3 flex gap-2 overflow-hidden">
-                {['House guide', 'Eat local', 'Tours'].map((chip) => (
+                {['Appliances', 'Power', 'Wi-Fi'].map((chip) => (
                   <span
                     key={chip}
                     className="whitespace-nowrap rounded-full bg-vailo-teal/8 px-3 py-1.5 text-[11px] font-semibold text-vailo-teal"
@@ -904,14 +1360,14 @@ function PhoneMockup() {
       </motion.div>
 
       {/* floating chips */}
-      <FloatChip className="-left-10 top-24 hidden sm:flex" delay={0} icon={Star} tone="gold">
-        Guest rating 4.9
+      <FloatChip className="-left-10 top-24 hidden sm:flex" delay={0} icon={BookOpen} tone="gold">
+        From House Guide
       </FloatChip>
-      <FloatChip className="-right-12 top-[45%] hidden sm:flex" delay={1.2} icon={Wallet} tone="teal">
-        +€16.50 earned
-      </FloatChip>
-      <FloatChip className="-left-6 bottom-20 hidden sm:flex" delay={2.1} icon={Clock} tone="teal">
+      <FloatChip className="-right-12 top-[45%] hidden sm:flex" delay={1.2} icon={Clock} tone="teal">
         Answered instantly
+      </FloatChip>
+      <FloatChip className="-left-6 bottom-20 hidden sm:flex" delay={2.1} icon={Check} tone="teal">
+        No host call needed
       </FloatChip>
     </div>
   );
@@ -955,30 +1411,64 @@ function FloatChip({
 
 function Hero() {
   return (
-    <section className="relative isolate min-h-[min(100svh,920px)] overflow-hidden pb-16 pt-28 sm:pb-24 sm:pt-36">
-      {/* Full-bleed atmosphere — vacation stay + AI presence.
-          Keep at z-0 (not -z-10) so it doesn't fall behind the page's white shell. */}
+    <section className="relative isolate min-h-[min(100svh,920px)] overflow-hidden pb-12 pt-28 sm:pb-16 sm:pt-36">
       <div className="absolute inset-0 z-0">
         <img
-          src="/portal-ai-chatbot-hero.png"
+          src="/hero-villa-pool.jpg"
           alt=""
           aria-hidden
-          className="h-full w-full scale-105 object-cover object-[42%_40%] sm:object-[48%_38%]"
+          className="h-full w-full scale-105 object-cover object-[50%_45%]"
         />
-        {/* Readability wash — keep the photo visible, especially toward the right */}
-        <div className="absolute inset-0 bg-gradient-to-r from-vailo-dark/88 via-vailo-dark/55 to-vailo-dark/20 sm:via-vailo-dark/45 sm:to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-vailo-dark/70 via-transparent to-vailo-dark/35" />
+        <div className="absolute inset-0 bg-vailo-dark/35" />
+        <div className="absolute inset-0 bg-gradient-to-r from-vailo-dark/92 via-vailo-dark/70 to-vailo-dark/45 sm:via-vailo-dark/60 sm:to-vailo-dark/30" />
+        <div className="absolute inset-0 bg-gradient-to-t from-vailo-dark/80 via-vailo-dark/20 to-vailo-dark/45" />
         <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-white to-transparent" />
       </div>
 
       <Container className="relative z-10">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
-          <div className="text-center lg:text-left">
+        <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
+          {/* Phone first on mobile; text first on desktop */}
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.9, delay: 0.12, ease: EASE }}
+            className="relative order-1 lg:order-2"
+          >
+            <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[85%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vailo-teal/25 blur-3xl" />
+            <PhoneMockup />
+          </motion.div>
+
+          <div className="order-2 text-center lg:order-1 lg:text-left">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.05, ease: EASE }}
+              className="flex flex-wrap items-center justify-center gap-2.5 lg:justify-start"
+            >
+              <Link
+                to="/pricing"
+                className="inline-flex items-center justify-center rounded-2xl border border-vailo-gold/40 bg-vailo-gold/15 px-4 py-2.5 text-left shadow-[0_10px_30px_-16px_rgba(197,160,89,0.55)] backdrop-blur-md transition hover:bg-vailo-gold/25"
+              >
+                <span className="text-[13px] font-medium leading-snug text-white/85 sm:text-sm">
+                  <span className="font-extrabold tracking-tight text-vailo-gold">€49 / year</span> per property,
+                  less as you add more
+                </span>
+              </Link>
+              <Link
+                to="/contact?intent=trial"
+                className="inline-flex items-center justify-center rounded-2xl border border-vailo-gold/40 bg-vailo-gold/15 px-4 py-2.5 text-left shadow-[0_10px_30px_-16px_rgba(197,160,89,0.55)] backdrop-blur-md transition hover:bg-vailo-gold/25"
+              >
+                <span className="text-[13px] font-medium leading-snug text-white/85 sm:text-sm">
+                  <span className="font-extrabold tracking-tight text-vailo-gold">1 week</span> free trial
+                </span>
+              </Link>
+            </motion.div>
+
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.08, ease: EASE }}
-              className="font-luxury text-[1.94rem] font-medium leading-[1.12] tracking-tight text-white sm:text-[2.025rem] lg:text-[2.75rem]"
+              transition={{ duration: 0.7, delay: 0.1, ease: EASE }}
+              className="font-luxury mt-5 text-[1.94rem] font-medium leading-[1.12] tracking-tight text-white sm:text-[2.025rem] lg:text-[2.75rem]"
             >
               Effortless for you. Perfect for your guests.
             </motion.h1>
@@ -986,10 +1476,10 @@ function Hero() {
             <motion.p
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.14, ease: EASE }}
+              transition={{ duration: 0.6, delay: 0.16, ease: EASE }}
               className="mx-auto mt-5 max-w-xl text-[17px] leading-relaxed text-white/75 sm:text-[18px] lg:mx-0"
             >
-              Automated access from booking to checkout.
+              Automated access from booking day to checkout.
               <br />
               Boost your revenue with early visitor access.
             </motion.p>
@@ -1013,17 +1503,6 @@ function Hero() {
               ))}
             </motion.ul>
           </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 40, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.9, delay: 0.2, ease: EASE }}
-            className="relative"
-          >
-            {/* Soft glow so the phone reads against the photo */}
-            <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[85%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vailo-teal/25 blur-3xl" />
-            <PhoneMockup />
-          </motion.div>
         </div>
       </Container>
     </section>
@@ -1107,7 +1586,7 @@ function OvenCard({ onClose }: { onClose: () => void }) {
               <b className="text-vailo-teal">1.</b> Turn the dial to <b>Top/Bottom heat</b>
             </li>
             <li>
-              <b className="text-vailo-teal">2.</b> Set the temperature — 180°C works for most dishes
+              <b className="text-vailo-teal">2.</b> Set the temperature, 180°C works for most dishes
             </li>
             <li>
               <b className="text-vailo-teal">3.</b> Press <b>▶ Start</b>. It beeps when preheated.
@@ -1126,9 +1605,9 @@ function OvenCard({ onClose }: { onClose: () => void }) {
 
 function LocalCard({ onClose }: { onClose: () => void }) {
   const spots = [
-    { name: 'Chez Marcelle', note: 'Family-run bistro · daily specials', walk: '4 min', tag: 'Local favourite', icon: Utensils },
-    { name: 'Marché du Quartier', note: 'Morning market · fresh and seasonal', walk: '9 min', tag: 'Hidden gem', icon: Store },
-    { name: 'Café des Artisans', note: 'Quiet courtyard · best croissants', walk: '6 min', tag: 'Locals only', icon: Coffee },
+    { name: 'Chez Marcelle', note: 'Family-run bistro, daily specials', walk: '4 min', tag: 'Local favourite', icon: Utensils },
+    { name: 'Marché du Quartier', note: 'Morning market, fresh and seasonal', walk: '9 min', tag: 'Hidden gem', icon: Store },
+    { name: 'Café des Artisans', note: 'Quiet courtyard, best croissants', walk: '6 min', tag: 'Locals only', icon: Coffee },
   ];
   return (
     <PopCard icon={Compass} title="Live Like a Local" subtitle="Curated by your AI local expert" onClose={onClose}>
@@ -1159,8 +1638,8 @@ function LocalCard({ onClose }: { onClose: () => void }) {
 function BookCard({ onClose }: { onClose: () => void }) {
   const [booked, setBooked] = useState<string | null>(null);
   const tours = [
-    { id: 'skip', name: 'Louvre Skip-the-Line Guided Tour', meta: '2.5 h · Small group', price: 59, rating: '4.8' },
-    { id: 'after', name: 'Louvre Highlights, Early Entry', meta: '2 h · Before the crowds', price: 79, rating: '4.9' },
+    { id: 'skip', name: 'Louvre Skip-the-Line Guided Tour', meta: '2.5 h, Small group', price: 59, rating: '4.8' },
+    { id: 'after', name: 'Louvre Highlights, Early Entry', meta: '2 h, Before the crowds', price: 79, rating: '4.9' },
   ];
   return (
     <PopCard icon={Ticket} title="Arrange & Book" subtitle="Tours bookable inside the portal" onClose={onClose}>
@@ -1210,7 +1689,7 @@ function BookCard({ onClose }: { onClose: () => void }) {
 
 function ArrivalCard({ onClose }: { onClose: () => void }) {
   return (
-    <PopCard icon={KeyRound} title="Arrival & Check-in" subtitle="From your House Guide · no 2am call" onClose={onClose}>
+    <PopCard icon={KeyRound} title="Arrival & Check-in" subtitle="From your House Guide, no 2am call" onClose={onClose}>
       <div className="space-y-3">
         <GuestMsg>How do we get in? There’s no key under the mat.</GuestMsg>
         <AiMsg>
@@ -1220,7 +1699,7 @@ function ArrivalCard({ onClose }: { onClose: () => void }) {
               <b className="text-vailo-teal">1.</b> Lockbox on the right of the wooden door
             </li>
             <li>
-              <b className="text-vailo-teal">2.</b> Code <b>4829</b> — then # to open
+              <b className="text-vailo-teal">2.</b> Code <b>4829</b>, then # to open
             </li>
             <li>
               <b className="text-vailo-teal">3.</b> White key card goes in the slot by the entrance to turn the power on
@@ -1239,12 +1718,12 @@ function ArrivalCard({ onClose }: { onClose: () => void }) {
 function TransferCard({ onClose }: { onClose: () => void }) {
   const [requested, setRequested] = useState(false);
   return (
-    <PopCard icon={Car} title="Arrange & Book" subtitle="Airport transfer · bookable tonight" onClose={onClose}>
+    <PopCard icon={Car} title="Arrange & Book" subtitle="Airport transfer, bookable tonight" onClose={onClose}>
       <div className="space-y-3">
         <GuestMsg>Can someone pick us up from the airport at 6am?</GuestMsg>
         <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-vailo-dark/5">
           <p className="text-[13px] font-bold text-vailo-dark">Private airport transfer</p>
-          <p className="mt-0.5 text-[11.5px] text-vailo-dark/55">CHQ → Villa Sunset · 35 min · up to 4 guests</p>
+          <p className="mt-0.5 text-[11.5px] text-vailo-dark/55">CHQ → Villa Sunset, 35 min, up to 4 guests</p>
           <div className="mt-2.5 flex items-center justify-between">
             <p className="text-[12px] text-vailo-dark/60">
               from <b className="text-base text-vailo-dark">€48</b>
@@ -1267,7 +1746,9 @@ function TransferCard({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
-        <p className="text-[11px] font-semibold text-vailo-teal">Host earns 33% when this books — passively.</p>
+        <p className="text-[11px] font-semibold text-vailo-teal">
+          You earn 1/3 of Vailo’s margin on this booking, not of the ticket price.
+        </p>
       </div>
     </PopCard>
   );
@@ -1284,7 +1765,7 @@ function WifiCard({ onClose }: { onClose: () => void }) {
   }, [copied]);
 
   return (
-    <PopCard icon={Wifi} title="Wi-Fi" subtitle="Instant answer · no waiting for your host" onClose={onClose}>
+    <PopCard icon={Wifi} title="Wi-Fi" subtitle="Instant answer, no waiting for your host" onClose={onClose}>
       <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-vailo-dark/5">
         <p className="text-[10.5px] font-bold uppercase tracking-wider text-vailo-dark/40">Network</p>
         <p className="mt-0.5 text-sm font-bold text-vailo-dark">Villa_Sunset_5G</p>
@@ -1317,14 +1798,14 @@ function WifiCard({ onClose }: { onClose: () => void }) {
 
 function CheckoutCard({ onClose }: { onClose: () => void }) {
   return (
-    <PopCard icon={DoorOpen} title="Check-out" subtitle="From your House Guide · no morning scramble" onClose={onClose}>
+    <PopCard icon={DoorOpen} title="Check-out" subtitle="From your House Guide, no morning scramble" onClose={onClose}>
       <div className="space-y-3">
         <GuestMsg>What time is check-out, and what do we need to do?</GuestMsg>
         <AiMsg>
           <p className="font-semibold">Easy check-out by 11:00 🏠</p>
           <ol className="mt-1.5 space-y-1 text-[12.5px] text-vailo-dark/80">
             <li>
-              <b className="text-vailo-teal">1.</b> Leave keys in the lockbox — same code as arrival
+              <b className="text-vailo-teal">1.</b> Leave keys in the lockbox, same code as arrival
             </li>
             <li>
               <b className="text-vailo-teal">2.</b> Put used towels in the bathroom hamper
@@ -1333,7 +1814,7 @@ function CheckoutCard({ onClose }: { onClose: () => void }) {
               <b className="text-vailo-teal">3.</b> Trash goes in the bins by the gate (green = recycling)
             </li>
           </ol>
-          <p className="mt-2 text-[12px] text-vailo-dark/60">Late check-out? Ask in chat — we’ll check availability.</p>
+          <p className="mt-2 text-[12px] text-vailo-dark/60">Late check-out? Ask in chat, we’ll check availability.</p>
         </AiMsg>
         <div className="flex items-center gap-1.5 pl-8 text-[11px] font-semibold text-vailo-teal">
           <BookOpen className="h-3.5 w-3.5" aria-hidden />
@@ -1346,9 +1827,9 @@ function CheckoutCard({ onClose }: { onClose: () => void }) {
 
 function BeachCard({ onClose }: { onClose: () => void }) {
   const spots = [
-    { name: 'Agios Pavlos Cove', note: 'Quiet pebbles · turquoise water', walk: '12 min drive', tag: 'Hidden gem', icon: Waves },
-    { name: 'Olive Grove Path', note: 'Shaded loop · sunset views', walk: '18 min walk', tag: 'Locals love it', icon: Trees },
-    { name: 'Harbour Swim Spot', note: 'Calm mornings · coffee nearby', walk: '8 min walk', tag: 'Family friendly', icon: MapPin },
+    { name: 'Agios Pavlos Cove', note: 'Quiet pebbles, turquoise water', walk: '12 min drive', tag: 'Hidden gem', icon: Waves },
+    { name: 'Olive Grove Path', note: 'Shaded loop, sunset views', walk: '18 min walk', tag: 'Locals love it', icon: Trees },
+    { name: 'Harbour Swim Spot', note: 'Calm mornings, coffee nearby', walk: '8 min walk', tag: 'Family friendly', icon: MapPin },
   ];
   return (
     <PopCard icon={Waves} title="Live Like a Local" subtitle="Beaches & nature near the property" onClose={onClose}>
@@ -1549,14 +2030,14 @@ function GuestJourney() {
   }, [close]);
 
   return (
-    <section id="how-it-works" className="relative scroll-mt-24 overflow-hidden py-20 sm:py-28">
+    <section id="guest-journey" className={cx('relative overflow-hidden', SECTION_SCROLL_MT, SECTION_PAD_COMPACT)}>
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white via-[#f3f7f6] to-white" />
       <Container>
         <Reveal>
           <SectionHeading
             eyebrow="The guest journey"
-            title="After they scan the poster, every question stays off your phone."
-            subtitle="Lockbox at 2am. A taverna that isn’t a trap. A 6am airport car. Pick a thought bubble — this is what guests get the moment they scan your QR."
+            title="From the day they book, every question stays off your phone."
+            subtitle="Lockbox at 2am. A taverna that isn’t a trap. A 6am airport car. Pick a thought bubble: this is what guests get from their private link from booking day, and again when they scan the QR on arrival."
           />
         </Reveal>
 
@@ -1772,10 +2253,10 @@ function RoiCalculator() {
   const annualTotal = planAnnualTotal(properties);
   const monthsToCover = monthlyIncome > 0 ? annualTotal / monthlyIncome : null;
   const conversionPct = Math.round(ROI.excursionConversion * 100);
-  const hostSharePct = Math.round(ROI.hostShare * 100);
+  const marginPct = Math.round(ROI.exampleMarginRate * 100);
 
   return (
-    <section id="roi" className="relative scroll-mt-24 overflow-hidden bg-vailo-dark py-20 text-white sm:py-28">
+    <section id="roi" className={cx('relative overflow-hidden bg-vailo-dark text-white', SECTION_SCROLL_MT, SECTION_PAD_COMPACT)}>
       <div className="absolute -left-32 top-0 h-[28rem] w-[28rem] rounded-full bg-vailo-teal/50 blur-3xl" />
       <div className="absolute -right-32 bottom-0 h-[26rem] w-[26rem] rounded-full bg-vailo-gold/20 blur-3xl" />
       <Container className="relative">
@@ -1810,9 +2291,9 @@ function RoiCalculator() {
                 />
               </div>
               <p className="mt-8 border-t border-white/10 pt-5 text-xs leading-relaxed text-white/45">
-                Estimates assume {conversionPct}% of guests book an excursion at an average of €{ROI.avgBookingEur}, with
-                a {hostSharePct}% host share, and {ROI.hoursSavedPerGuest} hours saved per guest on messaging. Actual
-                results vary.
+                Estimates assume {conversionPct}% of guests book a Vailo-supplied excursion at €{ROI.avgBookingEur}, a{' '}
+                {marginPct}% platform margin (example, real margins vary), and you receive 1/3 of that margin, not of
+                the ticket price. Also {ROI.hoursSavedPerGuest} hours saved per guest on messaging. Actual results vary.
               </p>
             </div>
           </Reveal>
@@ -1843,7 +2324,7 @@ function RoiCalculator() {
                     Full-time team capacity freed
                   </p>
                   <p className="mt-1 text-xs font-bold text-vailo-dark/55">
-                    reassign elsewhere — or save the hire
+                    reassign elsewhere, or save the hire
                   </p>
                 </div>
 
@@ -1855,10 +2336,10 @@ function RoiCalculator() {
                     <AnimatedNumber value={monthlyIncome} prefix="€" />
                   </p>
                   <p className="mt-2 text-sm font-semibold leading-snug text-vailo-dark/75">
-                    Estimated passive income via Excursions
+                    Your 1/3 of Vailo excursion margin
                   </p>
                   <p className="mt-1 text-xs font-bold text-vailo-dark/60">
-                    per month · ≈ €{formatInt(yearlyIncome)} per year
+                    per month, ≈ €{formatInt(yearlyIncome)} per year
                   </p>
                 </div>
               </div>
@@ -1894,8 +2375,8 @@ function RoiCalculator() {
               <Handshake className="h-5 w-5" aria-hidden />
             </span>
             <p className="text-sm font-medium leading-relaxed text-white/90 sm:text-base">
-              Every time a guest books an excursion through your portal, you earn a 33% revenue share — completely
-              passively. No partner brands in the guest experience; just income on top of quieter nights.
+              Access from booking day means more bookings before arrival. On Vailo-supplied excursions you earn 1/3 of
+              our margin; on your featured partnerships you keep 100% of the margin you agreed with your partner.
             </p>
           </div>
         </Reveal>
@@ -1905,7 +2386,93 @@ function RoiCalculator() {
 }
 
 /* ===========================================================================
- * 4d. SECTION — TEAM CAPACITY / LABOUR SAVINGS
+ * 4d. SECTION — HOW MONEY WORKS (very clear split)
+ * ========================================================================= */
+
+function RevenueShare({ compact }: { compact?: boolean } = {}) {
+  return (
+    <section
+      id="how-you-earn"
+      className={cx('relative overflow-hidden', SECTION_SCROLL_MT, compact ? SECTION_PAD_COMPACT : SECTION_PAD)}
+    >
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white via-[#eef5f4] to-white" />
+      <Container>
+        <Reveal>
+          <SectionHeading
+            eyebrow="How you earn"
+            title="Two income types. Zero confusion."
+            subtitle="What you keep depends on who supplies the booking: Vailo, or your own featured partner."
+          />
+        </Reveal>
+
+        <div className="mt-14 grid gap-6 lg:grid-cols-2">
+          <Reveal>
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[1.75rem] bg-vailo-dark p-7 text-white shadow-[0_28px_60px_-28px_rgba(5,31,38,0.55)] sm:p-8">
+              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-vailo-gold ring-1 ring-white/15">
+                <Percent className="h-3.5 w-3.5" aria-hidden />
+                Vailo-supplied excursions & services
+              </span>
+              <h3 className="font-luxury mt-5 text-2xl font-medium sm:text-3xl">1/3 of our margin to you</h3>
+              <p className="mt-3 text-[15px] leading-relaxed text-white/70">
+                When a guest books a tour or service supplied through Vailo, we earn a commission margin on that
+                booking (for example 8%, 10% or 20%, it varies by product). That margin is split:
+              </p>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-vailo-gold/20 p-4 ring-1 ring-vailo-gold/35">
+                  <p className="text-3xl font-extrabold text-vailo-gold">1/3</p>
+                  <p className="mt-1 text-sm font-semibold text-white">to the property</p>
+                </div>
+                <div className="rounded-2xl bg-white/8 p-4 ring-1 ring-white/12">
+                  <p className="text-3xl font-extrabold text-white/90">2/3</p>
+                  <p className="mt-1 text-sm font-semibold text-white/70">to Vailo</p>
+                </div>
+              </div>
+              <p className="mt-5 rounded-xl bg-white/8 px-4 py-3 text-sm font-semibold leading-snug text-vailo-gold ring-1 ring-vailo-gold/25">
+                Important: this is 1/3 of the margin, not 1/3 of the guest’s ticket price.
+              </p>
+            </div>
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[1.75rem] bg-white p-7 shadow-[0_28px_60px_-28px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/8 sm:p-8">
+              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-emerald-700 ring-1 ring-emerald-200">
+                <Handshake className="h-3.5 w-3.5" aria-hidden />
+                Your featured partnerships
+              </span>
+              <h3 className="font-luxury mt-5 text-2xl font-medium text-vailo-dark sm:text-3xl">
+                100% of your margin to you
+              </h3>
+              <p className="mt-3 text-[15px] leading-relaxed text-vailo-dark/65">
+                Car rentals, transfers, local partners, anything you feature that you already have an agreement with.
+                The margin you negotiated with that partner stays entirely yours.
+              </p>
+              <div className="mt-6 rounded-2xl bg-emerald-50 p-5 ring-1 ring-emerald-200">
+                <p className="text-4xl font-extrabold text-emerald-700">100%</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-800/80">
+                  of the partner margin you agreed, Vailo does not take a cut
+                </p>
+              </div>
+              <p className="mt-5 text-sm font-semibold leading-snug text-vailo-dark/55">
+                Guest-link access from booking day simply gives visitors more time to book these partners before they
+                arrive.
+              </p>
+            </div>
+          </Reveal>
+        </div>
+
+        <Reveal delay={0.12}>
+          <p className="mx-auto mt-10 max-w-2xl text-center text-sm font-semibold text-vailo-dark/55">
+            Example: €100 ticket with a 10% Vailo margin (€10) → you earn €3.33, Vailo €6.67. Your own car-rental partner
+            deal stays 100% yours.
+          </p>
+        </Reveal>
+      </Container>
+    </section>
+  );
+}
+
+/* ===========================================================================
+ * 4e. SECTION — TEAM CAPACITY / LABOUR SAVINGS
  * ========================================================================= */
 
 function TeamSavings() {
@@ -1913,28 +2480,28 @@ function TeamSavings() {
     {
       icon: MessageCircle,
       title: 'Fewer people glued to the inbox',
-      text: 'Wi-Fi, lockbox, oven, checkout — the questions that eat a guest-ops shift get answered by Vailo. Your team stops repeating themselves.',
+      text: 'Wi-Fi, lockbox, oven, checkout, the questions that eat a guest-ops shift get answered by Vailo. Your team stops repeating themselves.',
     },
     {
       icon: Users,
-      title: 'Reassign capacity — or don’t hire',
+      title: 'Reassign capacity, or don’t hire',
       text: 'The hours you free can go to upselling, owner relations, or on-property hospitality. Growing portfolios often skip the next guest-support hire.',
     },
     {
       icon: Wallet,
-      title: 'Labour savings on top of tour income',
-      text: 'You aren’t only earning 33% on excursions. You’re cutting the cost of answering the same messages every arrival — night and weekend cover included.',
+      title: 'Labour savings plus earlier bookings',
+      text: 'Cut night-and-weekend messaging, and give guests more time from booking day to book Vailo excursions and your featured partners.',
     },
   ];
   return (
-    <section id="team-savings" className="relative scroll-mt-24 overflow-hidden py-20 sm:py-28">
+    <section id="your-team" className={cx('relative overflow-hidden', SECTION_SCROLL_MT, SECTION_PAD_COMPACT)}>
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white via-[#f7f3ea] to-white" />
       <Container>
         <Reveal>
           <SectionHeading
             eyebrow="Your team"
             title="Guest support time your people can spend elsewhere."
-            subtitle="Vailo doesn’t replace hospitality — it removes the repetitive layer. Same guest experience, leaner ops, clearer payroll."
+            subtitle="Vailo doesn’t replace hospitality, it removes the repetitive layer from booking day onward. Leaner ops, clearer payroll, more booking income."
           />
         </Reveal>
         <div className="mt-14 grid gap-6 md:grid-cols-3">
@@ -1950,7 +2517,8 @@ function TeamSavings() {
         </div>
         <Reveal delay={0.12}>
           <p className="mx-auto mt-10 max-w-2xl text-center text-sm font-semibold text-vailo-dark/55">
-            Use the ROI calculator above — hours saved translate into full-time capacity you can redeploy or leave unhired.
+            Use the ROI calculator above: hours saved translate into full-time capacity you can redeploy or leave
+            unhired.
           </p>
         </Reveal>
       </Container>
@@ -1967,37 +2535,38 @@ function HostProof() {
     {
       icon: ChartColumn,
       title: 'Guest analytics per stay',
-      text: 'See portal visits, assistant questions, Live Like a Local usage and the excursion funnel — so you know what to fix before the next booking.',
+      text: 'See portal visits, assistant questions, Live Like a Local usage and the excursion funnel, so you know what to fix before the next booking.',
     },
     {
       icon: BookOpen,
       title: 'House Guide that powers the AI',
-      text: 'Fill sections once. Featured cards on the guest portal, full text for the 24/7 assistant. Track what’s complete at a glance.',
+      text: 'Guided fill-in once. Automated, effortless, fast. Featured cards on the guest portal, full text for the 24/7 assistant. Track what’s complete at a glance.',
     },
     {
       icon: Wallet,
-      title: 'Excursion revenue, visible',
-      text: 'When guests book tours through Arrange & Book, you earn 33%. The host view shows interest and bookings — not just chat volume.',
+      title: 'Two clear income streams',
+      text: 'Vailo excursions: 1/3 of our margin. Your featured partners: 100% of the margin you agreed. Link access from booking day means more of both before check-in.',
     },
   ];
 
   return (
-    <section id="for-hosts" className="scroll-mt-24 py-20 sm:py-28">
+    <section id="for-hosts" className={cx(SECTION_SCROLL_MT, SECTION_PAD_COMPACT)}>
       <Container>
         <Reveal>
           <SectionHeading
             eyebrow="Built for hosts"
-            title="Set it once in the dashboard. Then mostly leave it alone."
-            subtitle="Fill the House Guide, print the QR poster, and check in when you want. Day to day, guests help themselves — you see what’s working and where the tour income comes from."
+            title="Set the property up once. Then mostly leave it alone."
+            easeLine
+            subtitle="Guided setup that takes little time. Guests get a private link from booking day, plus a QR on arrival. You see what’s working, and where each euro of booking income comes from."
           />
         </Reveal>
 
-        <div className="mt-14 grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="mt-10 grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
           <Reveal>
             <div className="relative pb-16 sm:pb-20">
               <div className="overflow-hidden rounded-3xl bg-vailo-dark p-2 shadow-[0_40px_80px_-30px_rgba(5,31,38,0.55)] ring-1 ring-vailo-dark/10">
                 <img
-                  src="/screenshots/admin-analytics-list.png"
+                  src="/website/screenshots/admin-analytics-list.png"
                   alt="Vailo host analytics: sessions, portal visits, assistant turns and Live Like a Local usage"
                   className="w-full rounded-2xl bg-white"
                   loading="lazy"
@@ -2011,7 +2580,7 @@ function HostProof() {
                 className="absolute bottom-0 right-4 w-[min(100%,320px)] overflow-hidden rounded-2xl shadow-[0_24px_50px_-20px_rgba(5,31,38,0.45)] ring-1 ring-vailo-dark/10 sm:right-8 sm:w-[380px]"
               >
                 <img
-                  src="/screenshots/admin-house-guide.png"
+                  src="/website/screenshots/admin-house-guide.png"
                   alt="Vailo House Guide completion view for hosts"
                   className="w-full bg-white"
                   loading="lazy"
@@ -2157,7 +2726,7 @@ function FeaturesGrid({ detailed = false }: { detailed?: boolean }) {
               What time is check-out?
             </p>
             <p className="w-fit max-w-[90%] rounded-2xl rounded-bl-md bg-white px-3.5 py-2 text-[13px] text-vailo-dark">
-              Check-out is at 11:00. Leave the keys on the kitchen table — safe travels! 👋
+              Check-out is at 11:00. Leave the keys on the kitchen table, safe travels! 👋
             </p>
             <p className="flex items-center gap-1.5 text-[11px] font-semibold text-vailo-gold">
               <BookOpen className="h-3.5 w-3.5" aria-hidden /> Answered from your House Guide
@@ -2215,8 +2784,9 @@ function FeaturesSection({ detailed = false }: { detailed?: boolean }) {
         <Reveal>
           <SectionHeading
             eyebrow="Core features"
-            title="Everything guests need after they scan. Nothing you answer twice."
-            subtitle="You set the property up once. From then on Vailo supports guests, showcases your area, and earns while you sleep."
+            title="Everything guests need from booking day to checkout. Nothing you answer twice."
+            easeLine
+            subtitle="Set the property up once. From the day they book, Vailo supports guests, promotes your partners, and earns while you sleep."
           />
         </Reveal>
         <div className="mt-14">
@@ -2331,8 +2901,8 @@ function PricingSection({ id = 'pricing-overview' }: { id?: string }) {
         <Reveal delay={0.1}>
           <div className="mx-auto mt-12 flex max-w-3xl items-start gap-4 rounded-3xl border border-vailo-gold/40 bg-gradient-to-r from-[#fdf6e3] to-[#f9ecc9] p-5 shadow-[0_20px_50px_-24px_rgba(197,160,89,0.7)] sm:items-center sm:p-6">
             <p className="text-center text-sm font-semibold leading-relaxed text-vailo-dark sm:text-base">
-              💡 Pays for itself: With our 33% revenue share on excursions, Vailo covers its own yearly cost with just 1
-              or 2 guest bookings!
+              💡 Clear economics: on Vailo excursions you earn 1/3 of our margin; on your featured partners you keep
+              100% of your agreed margin. Access from booking day gives more time for both.
             </p>
           </div>
         </Reveal>
@@ -2346,30 +2916,61 @@ function PricingSection({ id = 'pricing-overview' }: { id?: string }) {
  * ========================================================================= */
 
 function FinalCta({
-  title = 'Set it up once. Let Vailo run the stay.',
-  subtitle = 'Guided property setup, automatic QR poster, then only the benefits — quieter inbox, happier guests, and 33% on tours.',
+  title = 'Set the property up once. Guests open from booking day.',
+  subtitle =
+    'Private guest link after every booking, QR on arrival, quieter inbox, plus clear income: 1/3 of Vailo’s excursion margin, and 100% of your featured-partner margins.',
+  showEaseLine = true,
+  compact = false,
 }: {
   title?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
+  showEaseLine?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <section className="px-3 pb-20 sm:px-6 sm:pb-28">
+    <section className={cx('px-3 sm:px-6', compact ? 'pb-12 sm:pb-16' : 'pb-20 sm:pb-28')}>
       <Reveal>
-        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-vailo-dark via-[#073a45] to-vailo-teal px-6 py-16 text-center text-white shadow-[0_40px_80px_-30px_rgba(5,31,38,0.7)] sm:px-12 sm:py-20">
+        <div
+          className={cx(
+            'relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-vailo-dark via-[#073a45] to-vailo-teal text-center text-white shadow-[0_40px_80px_-30px_rgba(5,31,38,0.7)]',
+            compact ? 'px-6 py-12 sm:px-12 sm:py-14' : 'px-6 py-16 sm:px-12 sm:py-20'
+          )}
+        >
           <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-vailo-gold/30 blur-3xl" />
           <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl" />
           <div className="relative mx-auto max-w-2xl">
             <h2 className="font-luxury text-3xl font-medium leading-tight sm:text-4xl lg:text-5xl">{title}</h2>
-            <p className="mt-4 text-base text-white/70 sm:text-lg">{subtitle}</p>
+            {showEaseLine && (
+              <div className="mt-4">
+                <SetupEaseLine light align="center" />
+              </div>
+            )}
+            <div className={cx('text-base text-white/70 sm:text-lg', showEaseLine ? 'mt-3' : 'mt-4')}>
+              {subtitle}
+            </div>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <Button to="/contact?intent=demo" size="lg">
-                Book a Demo
-                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden />
-              </Button>
-              <Button href={LIVE_DEMO_HREF} variant="glass" size="lg">
-                Try guest demo
-                <ExternalLink className="h-4 w-4 opacity-80" aria-hidden />
-              </Button>
+              {compact ? (
+                <>
+                  <Button to="/contact?intent=trial" size="lg">
+                    Start 1 week free
+                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden />
+                  </Button>
+                  <Button to="/contact?intent=demo" variant="glass" size="lg">
+                    Book a Demo
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button to="/contact?intent=demo" size="lg">
+                    Book a Demo
+                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden />
+                  </Button>
+                  <Button href={LIVE_DEMO_HREF} variant="glass" size="lg">
+                    Try guest demo
+                    <ExternalLink className="h-4 w-4 opacity-80" aria-hidden />
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -2378,53 +2979,341 @@ function FinalCta({
   );
 }
 
-function QrPosterMock() {
+function PropertyAnalyticsSection() {
   return (
-    <div className="relative mx-auto w-full max-w-[220px]">
+    <section id="property-analytics" className={cx('relative overflow-hidden', SECTION_SCROLL_MT, SECTION_PAD_COMPACT)}>
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-white via-[#eef5f4] to-white" />
+      <Container>
+        <Reveal>
+          <SectionHeading
+            eyebrow="Property analytics"
+            title="For property owners: see how guests use your stay."
+            subtitle="In Vailo admin, every property has Analytics. You see if guests opened the portal, what they asked the AI, which local tips they used, and which tours they booked — stay by stay."
+          />
+        </Reveal>
+
+        <Reveal delay={0.05}>
+          <div className="mt-8 rounded-[1.5rem] border border-vailo-gold/35 bg-vailo-gold/10 px-5 py-6 sm:px-7 sm:py-7">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-gold-muted">
+              Why this helps you as a host
+            </p>
+            <p className="mt-2 max-w-2xl text-base font-semibold text-vailo-dark sm:text-lg">
+              Analytics are not just charts. They help you run the property with less guesswork.
+            </p>
+            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
+              {PROPERTY_ANALYTICS_HOST_BENEFITS.map((b) => (
+                <li key={b.title} className="flex gap-3">
+                  <span
+                    className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-vailo-gold/25 text-vailo-gold-muted"
+                    aria-hidden
+                  >
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-vailo-dark">{b.title}</p>
+                    <p className="mt-1 text-sm leading-relaxed text-vailo-dark/65">{b.text}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.08}>
+          <div className="mt-10 overflow-hidden rounded-[1.5rem] bg-vailo-dark text-white shadow-[0_28px_60px_-28px_rgba(5,31,38,0.5)]">
+            <div className="border-b border-white/10 px-5 py-4 sm:px-6">
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-gold">
+                What you see at the top of Analytics
+              </p>
+              <p className="mt-1 text-sm text-white/60">Six totals for your property — explained in plain words.</p>
+            </div>
+            <div className="grid gap-px bg-white/10 sm:grid-cols-2 lg:grid-cols-3">
+              {PROPERTY_ANALYTICS_KPIS.map((kpi) => (
+                <div key={kpi.label} className="bg-vailo-dark px-5 py-5 sm:px-6">
+                  <p className="text-base font-bold text-white">{kpi.label}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-white/55">{kpi.meaning}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+
+        <div className="mt-10 grid items-start gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+          <ul className="space-y-3">
+            {PROPERTY_ANALYTICS_METRICS.map((m, i) => (
+              <Reveal key={m.title} delay={i * 0.04}>
+                <li className="rounded-2xl bg-white p-5 shadow-[0_14px_40px_-24px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/6">
+                  <div className="flex gap-3">
+                    <IconTile icon={m.icon} className="h-11 w-11 flex-none" />
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-vailo-dark">{m.title}</h3>
+                      <p className="mt-1.5 text-[14px] leading-relaxed text-vailo-dark/65">{m.text}</p>
+                      <p className="mt-2 text-[13px] font-semibold text-vailo-teal">→ {m.action}</p>
+                    </div>
+                  </div>
+                </li>
+              </Reveal>
+            ))}
+          </ul>
+
+          <Reveal delay={0.08}>
+            <div className="lg:sticky lg:top-28">
+              <div className="overflow-hidden rounded-3xl bg-vailo-dark p-2 shadow-[0_40px_80px_-30px_rgba(5,31,38,0.55)] ring-1 ring-vailo-dark/10">
+                <img
+                  src="/website/screenshots/admin-analytics-list.png"
+                  alt="Vailo admin property analytics: sessions, portal visits, assistant turns, Live Like a Local and excursion activity"
+                  className="w-full rounded-2xl bg-white"
+                  loading="lazy"
+                />
+              </div>
+              <div className="mt-5 rounded-2xl bg-white p-5 shadow-[0_14px_40px_-24px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/6">
+                <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-teal">How to read it</p>
+                <ol className="mt-3 space-y-2.5 text-sm leading-relaxed text-vailo-dark/70">
+                  <li>
+                    <span className="font-bold text-vailo-dark">1.</span> Check the six totals — is the portal being used?
+                  </li>
+                  <li>
+                    <span className="font-bold text-vailo-dark">2.</span> Open a stay row to see that guest’s activity.
+                  </li>
+                  <li>
+                    <span className="font-bold text-vailo-dark">3.</span> Fix the House Guide, local picks, or tours before the next booking.
+                  </li>
+                </ol>
+                <p className="mt-4 text-[13px] font-semibold text-vailo-dark/45">
+                  Only real guest activity is tracked. Admin preview and tester codes are excluded.
+                </p>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </Container>
+    </section>
+  );
+}
+
+function StatsSection({
+  tone = 'light',
+  showReference = false,
+}: {
+  tone?: 'light' | 'dark';
+  showReference?: boolean;
+}) {
+  const dark = tone === 'dark';
+  const ref = useMemo(() => calcRoi(STATS_REFERENCE_GUESTS), []);
+  const conversionPct = Math.round(ROI.excursionConversion * 100);
+  const marginPct = Math.round(ROI.exampleMarginRate * 100);
+
+  return (
+    <section
+      id="stats"
+      className={cx(
+        'relative overflow-hidden',
+        SECTION_SCROLL_MT,
+        SECTION_PAD_COMPACT,
+        dark ? 'bg-vailo-dark text-white' : ''
+      )}
+    >
+      {!dark && <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#eef5f4] via-white to-white" />}
+      {dark && (
+        <>
+          <div className="absolute -left-24 top-0 h-72 w-72 rounded-full bg-vailo-teal/40 blur-3xl" />
+          <div className="absolute -right-20 bottom-0 h-64 w-64 rounded-full bg-vailo-gold/20 blur-3xl" />
+        </>
+      )}
+      <Container className="relative">
+        <Reveal>
+          <SectionHeading
+            light={dark}
+            align="left"
+            eyebrow="By the numbers"
+            title="Key numbers, explained simply."
+            subtitle="These are the main rates behind Vailo. Use the ROI calculator on the home page to try them with your own guest numbers."
+          />
+        </Reveal>
+
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {SITE_STATS.map((stat, i) => (
+            <Reveal key={stat.label} delay={i * 0.05}>
+              <div
+                className={cx(
+                  'h-full rounded-[1.5rem] p-6 ring-1',
+                  dark
+                    ? 'bg-white/5 ring-white/10'
+                    : 'bg-white shadow-[0_18px_50px_-28px_rgba(5,31,38,0.28)] ring-vailo-dark/8'
+                )}
+              >
+                <p
+                  className={cx(
+                    'font-luxury text-4xl font-medium tracking-tight sm:text-5xl',
+                    dark ? 'text-vailo-gold' : 'text-vailo-teal'
+                  )}
+                >
+                  {stat.kind === 'number' ? (
+                    <AnimatedNumber
+                      value={stat.value}
+                      prefix={'prefix' in stat ? stat.prefix : ''}
+                      suffix={stat.suffix ?? ''}
+                      decimals={'decimals' in stat ? stat.decimals : 0}
+                    />
+                  ) : (
+                    stat.display
+                  )}
+                </p>
+                <p className={cx('mt-3 text-base font-bold leading-snug', dark ? 'text-white' : 'text-vailo-dark')}>
+                  {stat.label}
+                </p>
+                <p className={cx('mt-1.5 text-sm leading-relaxed', dark ? 'text-white/55' : 'text-vailo-dark/55')}>
+                  {stat.detail}
+                </p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        {showReference && (
+          <Reveal delay={0.12}>
+            <div
+              className={cx(
+                'mt-8 overflow-hidden rounded-[1.5rem] ring-1',
+                dark ? 'bg-white/5 ring-white/10' : 'bg-white ring-vailo-dark/8 shadow-[0_18px_50px_-28px_rgba(5,31,38,0.28)]'
+              )}
+            >
+              <div
+                className={cx(
+                  'flex flex-col gap-2 border-b px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6',
+                  dark ? 'border-white/10' : 'border-vailo-dark/8'
+                )}
+              >
+                <div>
+                  <p
+                    className={cx(
+                      'text-[11px] font-extrabold uppercase tracking-[0.16em]',
+                      dark ? 'text-vailo-gold' : 'text-vailo-teal'
+                    )}
+                  >
+                    Example
+                  </p>
+                  <p className={cx('mt-1 text-base font-bold', dark ? 'text-white' : 'text-vailo-dark')}>
+                    {STATS_REFERENCE_GUESTS} guests per month
+                  </p>
+                </div>
+                <p className={cx('text-sm', dark ? 'text-white/50' : 'text-vailo-dark/50')}>
+                  Same rules as the ROI calculator
+                </p>
+              </div>
+              <div className="grid gap-px sm:grid-cols-2 lg:grid-cols-4" style={{ background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(5,31,38,0.08)' }}>
+                {[
+                  {
+                    label: 'Hours saved / month',
+                    node: <AnimatedNumber value={ref.hoursSaved} suffix=" h" />,
+                  },
+                  {
+                    label: 'Tour margin to you / month',
+                    node: <AnimatedNumber value={ref.monthlyIncome} prefix="€" decimals={2} />,
+                  },
+                  {
+                    label: 'Tour margin to you / year',
+                    node: <AnimatedNumber value={ref.yearlyIncome} prefix="€" decimals={0} />,
+                  },
+                  {
+                    label: 'Team time freed',
+                    node: <AnimatedNumber value={ref.fteFreed} suffix=" full-time months" decimals={2} />,
+                  },
+                ].map((cell) => (
+                  <div key={cell.label} className={cx('px-5 py-5 sm:px-6', dark ? 'bg-vailo-dark' : 'bg-white')}>
+                    <p className={cx('text-[11px] font-extrabold uppercase tracking-[0.16em]', dark ? 'text-white/40' : 'text-vailo-dark/40')}>
+                      {cell.label}
+                    </p>
+                    <p className={cx('mt-2 font-luxury text-3xl font-medium', dark ? 'text-vailo-gold' : 'text-vailo-teal')}>
+                      {cell.node}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <p className={cx('px-5 py-4 text-sm leading-relaxed sm:px-6', dark ? 'text-white/50' : 'text-vailo-dark/55')}>
+                This example assumes {conversionPct}% of guests book a Vailo tour at €{ROI.avgBookingEur}, with a{' '}
+                {marginPct}% margin (example only). You get 1/3 of that margin, plus about {ROI.hoursSavedPerGuest} hours
+                saved per guest. Income from your own partners is extra and stays 100% yours. Real results can differ.
+              </p>
+            </div>
+          </Reveal>
+        )}
+      </Container>
+    </section>
+  );
+}
+
+function GuestAccessMock() {
+  return (
+    <div className="relative mx-auto w-full max-w-[280px] space-y-3">
       <div className="absolute -inset-4 rounded-3xl bg-vailo-gold/20 blur-2xl" />
       <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-[0_28px_60px_-24px_rgba(5,31,38,0.45)] ring-1 ring-vailo-dark/10">
-        <div className="flex items-center justify-between gap-2">
-          <img src="/V.png" alt="" className="h-7 w-7 object-contain" />
-          <span className="rounded-full bg-vailo-teal/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-vailo-teal">
-            A5 · A4
+        <div className="flex items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-vailo-teal/10 text-vailo-teal">
+            <Link2 className="h-4 w-4" aria-hidden />
           </span>
+          <div className="min-w-0">
+            <p className="text-[10px] font-extrabold uppercase tracking-wider text-vailo-teal">From booking day</p>
+            <p className="truncate text-sm font-bold text-vailo-dark">Guest link, auto-sent</p>
+          </div>
         </div>
-        <p className="mt-3 font-luxury text-lg font-medium leading-tight text-vailo-dark">Scan for your stay</p>
-        <p className="mt-1 text-[11px] font-medium text-vailo-dark/50">Wi-Fi · house guide · local tips · tours</p>
-        <div className="mx-auto mt-4 flex h-36 w-36 items-center justify-center rounded-xl bg-[#f3f6f5] ring-1 ring-vailo-dark/8">
-          <QrCode className="h-24 w-24 text-vailo-dark" strokeWidth={1.25} aria-hidden />
+        <p className="mt-3 rounded-xl bg-[#f3f6f5] px-3 py-2.5 font-mono text-[11px] font-semibold text-vailo-dark/70 ring-1 ring-vailo-dark/6">
+          vailo.app/villa-sunset/…
+        </p>
+        <p className="mt-3 text-[12px] leading-relaxed text-vailo-dark/60">
+          Opened the day they book, used until checkout. More time for partners, transfers and tours.
+        </p>
+      </div>
+      <div className="relative flex items-center gap-3 overflow-hidden rounded-2xl bg-white p-4 shadow-[0_18px_40px_-24px_rgba(5,31,38,0.35)] ring-1 ring-vailo-dark/8">
+        <span className="flex h-14 w-14 flex-none items-center justify-center rounded-xl bg-[#f3f6f5] text-vailo-dark ring-1 ring-vailo-dark/8">
+          <QrCode className="h-9 w-9" strokeWidth={1.25} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[10px] font-extrabold uppercase tracking-wider text-vailo-dark/40">On arrival</p>
+          <p className="text-sm font-bold text-vailo-dark">QR poster, A5 / A4</p>
+          <p className="mt-0.5 text-[11px] text-vailo-dark/55">Same portal, scan in the property</p>
         </div>
-        <p className="mt-4 text-center text-[11px] font-bold text-vailo-teal">vailo.app · no app needed</p>
       </div>
     </div>
   );
 }
 
-function HowItWorks() {
-  const steps = [
+function HowItWorks({ compact }: { compact?: boolean } = {}) {
+  const steps: { icon: LucideIcon; title: string; text: ReactNode }[] = [
     {
       icon: Sparkles,
-      title: 'Build the property once',
-      text: 'A guided, mostly automatic setup. Add your House Guide — appliances, Wi-Fi, rules — and Vailo turns it into the guest portal.',
+      title: 'Set the property up once',
+      text: (
+        <>
+          Guided setup you finish once.{' '}
+          <span className="font-semibold text-vailo-teal">Automated</span>,{' '}
+          <span className="font-semibold text-vailo-teal">effortless</span>,{' '}
+          <span className="font-semibold text-vailo-teal">fast</span>. Add your House Guide (appliances, Wi-Fi,
+          rules) and Vailo turns it into the guest portal.
+        </>
+      ),
     },
     {
-      icon: Printer,
-      title: 'Print the QR poster',
-      text: 'Vailo generates a print-ready poster in A5 or A4. One click, no designer, no extra tools.',
+      icon: Link2,
+      title: 'Guests get a link when they book',
+      text: 'Right after booking (your site, Airbnb, Booking.com…), they receive an automated private link. Access starts that day, not only on arrival, and lasts until they leave.',
     },
     {
       icon: QrCode,
-      title: 'Hang it in the property',
-      text: 'Put the poster where guests see it on arrival. They scan — no app, no sign-up — and they’re in.',
+      title: 'QR poster for arrival',
+      text: 'Print the A5/A4 poster for the property. Guests who prefer to scan on arrival open the same portal, no app needed.',
     },
     {
       icon: Wallet,
-      title: 'Forget it. Keep the benefits.',
-      text: 'Vailo answers 24/7, recommends like a local, and books tours. You get quieter nights and 33% of excursion revenue.',
+      title: 'Promote partners. Keep the upside.',
+      text: 'Access from booking day means more bookings before check-in. Vailo excursions: 1/3 of our margin to you. Your featured partners: you keep 100% of your agreed margin.',
     },
   ];
   return (
-    <section id="set-once" className="relative scroll-mt-24 overflow-hidden py-20 sm:py-28">
+    <section
+      id="how-vailo-works"
+      className={cx('relative overflow-hidden', SECTION_SCROLL_MT, compact ? SECTION_PAD_COMPACT : SECTION_PAD)}
+    >
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#eef5f4] via-white to-white" />
       <Container>
         <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
@@ -2433,8 +3322,9 @@ function HowItWorks() {
               <SectionHeading
                 align="left"
                 eyebrow="How Vailo works"
-                title="You build it once. Then you forget it."
-                subtitle="Each property is a one-time setup. After the QR poster is on the wall, Vailo does the guest work — you only collect the upside."
+                title="Access from booking day, not only from arrival."
+                easeLine
+                subtitle="Set the property up once. Guests open a private link as soon as they book, use it until checkout, and can still scan the QR when they walk in."
               />
             </Reveal>
             <ol className="mt-10 space-y-4">
@@ -2457,9 +3347,9 @@ function HowItWorks() {
             </ol>
           </div>
           <Reveal delay={0.12} className="lg:pl-4">
-            <QrPosterMock />
+            <GuestAccessMock />
             <p className="mx-auto mt-6 max-w-xs text-center text-sm font-semibold text-vailo-dark/55">
-              Automatic QR poster — print A5 or A4, hang once, done.
+              Link first for early bookings. QR on arrival for the same stay portal.
             </p>
           </Reveal>
         </div>
@@ -2512,6 +3402,7 @@ function PageHero({
   eyebrow,
   title,
   subtitle,
+  easeLine,
   children,
   image = '/portal-book-arrange-hero.png',
   imagePosition = '50% 40%',
@@ -2519,7 +3410,8 @@ function PageHero({
 }: {
   eyebrow: string;
   title: ReactNode;
-  subtitle: string;
+  subtitle: ReactNode;
+  easeLine?: boolean;
   children?: ReactNode;
   image?: string;
   imagePosition?: string;
@@ -2556,14 +3448,22 @@ function PageHero({
             >
               {title}
             </h1>
-            <p
+            {easeLine && (
+              <div className={cx('mt-4 max-w-2xl', !hasPreviews ? 'mx-auto' : 'mx-auto lg:mx-0')}>
+                <SetupEaseLine
+                  className={!hasPreviews ? 'text-center' : 'text-center lg:text-left'}
+                />
+              </div>
+            )}
+            <div
               className={cx(
-                'mt-5 max-w-2xl text-lg leading-relaxed text-vailo-dark/65',
+                'max-w-2xl text-lg leading-relaxed text-vailo-dark/65',
+                easeLine ? 'mt-3' : 'mt-5',
                 !hasPreviews && 'mx-auto'
               )}
             >
               {subtitle}
-            </p>
+            </div>
             {children && (
               <div className={cx('mt-8 flex flex-col gap-3 sm:flex-row', hasPreviews ? 'justify-center lg:justify-start' : 'justify-center')}>
                 {children}
@@ -2609,73 +3509,165 @@ function PageHero({
  * 5. PAGES
  * ========================================================================= */
 
-export function HomePage() {
+export function ImpactPage() {
   usePageMeta(
-    'Vailo — AI guest portal for vacation rentals',
-    'Build each property once, print an A5/A4 QR poster, hang it, and forget guest messages. Vailo answers 24/7 and shares 33% of tour bookings with you.'
+    'Impact, Vailo',
+    'For property owners: how Vailo saves your time, helps your guests, and creates extra income from booking day to checkout.'
   );
   return (
     <>
-      <Hero />
-      <HowItWorks />
-      <GuestJourney />
-      <RoiCalculator />
-      <TeamSavings />
-      <HostProof />
-      <FeaturesSection />
-      <PricingSection />
-      <HomeFaq />
-      <FinalCta />
+      <PageHero
+        eyebrow="For property owners"
+        title="What Vailo changes for your property."
+        subtitle="Written for owners and hosts. Simple steps: less work for you, a better stay for guests, and clearer ways to earn more."
+        image="/portal-ai-chatbot-hero.png"
+        imagePosition="48% 38%"
+      >
+        <Button to="/contact?intent=demo" size="lg">
+          Book a Demo
+        </Button>
+        <Button to="/contact?intent=trial" variant="secondary" size="lg">
+          Start 1 week free
+        </Button>
+      </PageHero>
+
+      <StatsSection tone="dark" showReference />
+
+      <section className="pb-12 pt-16 sm:pb-16 sm:pt-24">
+        <Container>
+          <Reveal>
+            <SectionHeading
+              title="Three things you get as an owner."
+              subtitle="These are the three lines from the home page. Here is what each one means for your property."
+            />
+          </Reveal>
+
+          <div className="mt-10 space-y-5">
+            {IMPACT_SYSTEM.map((row, i) => (
+              <Reveal key={row.id} delay={i * 0.05}>
+                <article className="rounded-[1.5rem] bg-vailo-dark p-6 text-white shadow-[0_28px_60px_-28px_rgba(5,31,38,0.55)] sm:p-8">
+                  <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-gold">
+                    Promise {row.id}
+                  </p>
+                  <h3 className="font-luxury mt-3 text-2xl font-medium leading-snug sm:text-3xl">{row.claim}</h3>
+                  <p className="mt-4 max-w-3xl text-base leading-relaxed text-white/70 sm:text-[17px]">
+                    {row.definition}
+                  </p>
+                  <div className="mt-6 grid gap-4 border-t border-white/10 pt-5 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/40">
+                        What changes
+                      </p>
+                      <p className="mt-1.5 text-sm font-semibold text-white/90 sm:text-base">{row.variable}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/40">
+                        What we look at
+                      </p>
+                      <p className="mt-1.5 text-sm font-medium text-vailo-gold/90 sm:text-base">{row.measure}</p>
+                    </div>
+                  </div>
+                </article>
+              </Reveal>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      <section className="pb-16 sm:pb-24">
+        <Container>
+          <Reveal>
+            <SectionHeading
+              eyebrow="Owner benefits"
+              title="Eight ways Vailo helps your property."
+              subtitle="Same points as the home-page checklist. For each one: what changes for you, the key number, and how it works."
+            />
+          </Reveal>
+
+          <ol className="mt-10 space-y-5">
+            {IMPACT_CAPABILITIES.map((cap, i) => (
+              <Reveal key={cap.n} delay={Math.min(i * 0.04, 0.24)}>
+                <li className="overflow-hidden rounded-[1.5rem] bg-white p-6 shadow-[0_18px_50px_-28px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/8 sm:p-8">
+                  <div className="flex items-start gap-4">
+                    <p className="font-mono text-2xl font-bold tracking-tight text-vailo-teal">{cap.n}</p>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-xl font-bold leading-snug text-vailo-dark sm:text-2xl">{cap.claim}</h3>
+                      <p className="mt-3 max-w-3xl text-base leading-relaxed text-vailo-dark/70">{cap.mechanism}</p>
+                      <p className="mt-4 rounded-xl bg-[#f3f6f5] px-4 py-3 text-sm font-semibold leading-relaxed text-vailo-dark/75 ring-1 ring-vailo-dark/6">
+                        In short: {cap.formula}
+                      </p>
+                      <dl className="mt-5 grid gap-4 border-t border-vailo-dark/8 pt-5 sm:grid-cols-3">
+                        <div>
+                          <dt className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-dark/40">
+                            What it changes
+                          </dt>
+                          <dd className="mt-1.5 text-sm font-semibold text-vailo-dark sm:text-base">{cap.lever}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-dark/40">
+                            Key number
+                          </dt>
+                          <dd className="mt-1.5 text-sm font-semibold text-vailo-teal sm:text-base">{cap.kpi}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-vailo-dark/40">
+                            Measured in
+                          </dt>
+                          <dd className="mt-1.5 text-sm font-medium text-vailo-dark/70 sm:text-base">{cap.unit}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </div>
+                </li>
+              </Reveal>
+            ))}
+          </ol>
+        </Container>
+      </section>
+
+      <PropertyAnalyticsSection />
+
+      <FinalCta
+        title="Ready to see this on your property?"
+        subtitle="Start a free week, or book a short demo. We will show you the guest portal and the analytics for a property like yours."
+        showEaseLine={false}
+      />
     </>
   );
 }
 
-function HomeFaq() {
+export function HomePage() {
+  usePageMeta(
+    'Vailo, AI guest portal for vacation rentals',
+    'Guests get an automated Vailo link from booking day to checkout, plus a QR on arrival. Earn 1/3 of Vailo’s excursion margin, keep 100% of your featured-partner margins, and cut guest messages.'
+  );
   return (
-    <section id="faq" className="scroll-mt-24 py-20 sm:py-24">
-      <Container>
-        <Reveal>
-          <SectionHeading eyebrow="FAQ" title="Questions buyers usually ask." />
-        </Reveal>
-        <Reveal delay={0.08} className="mt-10">
-          <Faq
-            items={[
-              {
-                q: 'How much work is setup, really?',
-                a: 'Build each property once in a guided flow. Print the A5/A4 QR poster, hang it, and you’re done — guests scan and self-serve from then on.',
-              },
-              {
-                q: 'Can this free people on my team for other work?',
-                a: 'Yes. Repetitive guest questions move to Vailo. Redeploy that capacity to hospitality and owners — or skip the next support hire as you grow. The ROI block shows hours and full-time capacity freed.',
-              },
-              {
-                q: 'Do guests need an app?',
-                a: 'No. Scan the poster or open the link in any browser — no download, no account.',
-              },
-              {
-                q: 'How do I earn money with Vailo?',
-                a: 'You keep 33% when guests book excursions through your portal, on top of the messaging time you save.',
-              },
-              {
-                q: 'What’s included in every plan?',
-                a: 'The same product: AI assistant, House Guide, Live Like a Local, bookable excursions, QR poster. Price only changes with property count.',
-              },
-            ]}
-          />
-        </Reveal>
-      </Container>
-    </section>
+    <>
+      <Hero />
+      <RevenueShare compact />
+      <HowItWorks compact />
+      <GuestJourney />
+      <RoiCalculator />
+      <TeamSavings />
+      <HostProof />
+      <PropertyAnalyticsSection />
+      <FinalCta compact />
+    </>
   );
 }
 
 export function FeaturesPage() {
-  usePageMeta('Features — Vailo', 'AI property assistant, Live Like a Local, global excursions and automated check-in — all in one guest portal.');
+  usePageMeta(
+    'Features, Vailo',
+    'AI property assistant, Live Like a Local, global excursions and automated check-in, all in one guest portal.'
+  );
   return (
     <>
       <PageHero
         eyebrow="Features"
-        title="Set the property up once. Guests get four ways to help themselves."
-        subtitle="Build the portal, print the QR poster, hang it — then Vailo takes the repetitive work and turns guest curiosity into income."
+        title="Set the property up once. Guests help themselves from booking day."
+        easeLine
+        subtitle="Guided setup that takes little time. An automated link after every booking, a QR on arrival, then Vailo takes the repetitive work and turns early interest into partner and tour income."
         image="/portal-ai-chatbot-hero.png"
         imagePosition="48% 38%"
         previews={[
@@ -2694,19 +3686,24 @@ export function FeaturesPage() {
       </PageHero>
       <FeaturesSection detailed />
       <HowItWorks />
+      <RevenueShare />
+      <PropertyAnalyticsSection />
       <FinalCta />
     </>
   );
 }
 
 export function PricingPage() {
-  usePageMeta('Pricing — Vailo', 'Simple annual pricing from €49 per property. Vailo pays for itself through its 33% excursion revenue share.');
+  usePageMeta(
+    'Pricing, Vailo',
+    'Simple annual pricing from €49 per property. Earn 1/3 of Vailo’s excursion margin; keep 100% of your featured-partner margins.'
+  );
   return (
     <>
       <PageHero
         eyebrow="Pricing"
         title="Priced to disappear into your margins."
-        subtitle="Annual plans for every portfolio size, with a revenue share on excursions that works in your favour."
+        subtitle="Annual plans for every portfolio size, with clear booking economics that favour the host."
         image="/portal-ai-chatbot-hero.png"
         imagePosition="30% 55%"
         previews={[
@@ -2718,6 +3715,7 @@ export function PricingPage() {
       <div className="-mt-10">
         <PricingSection id="plans" />
       </div>
+      <RevenueShare />
       <section className="pb-20 sm:pb-28">
         <Container>
           <Reveal>
@@ -2727,28 +3725,40 @@ export function PricingPage() {
             <Faq
               items={[
                 {
-                  q: 'How much work is setup, really?',
-                  a: 'You build each property once through a guided, mostly automatic flow. When you’re done, Vailo generates a print-ready QR poster (A5 or A4). Hang it once — after that guests scan and self-serve.',
+                  q: 'When do guests get access to Vailo?',
+                  a: 'Right after booking, not only on arrival. They receive an automated private link and can use the portal from that day until checkout. The A5/A4 QR poster is for scanning at the property, same experience.',
+                },
+                {
+                  q: 'How long does property setup take?',
+                  a: (
+                    <>
+                      You set the property up once.{' '}
+                      <span className="font-semibold text-vailo-teal">Automated</span>,{' '}
+                      <span className="font-semibold text-vailo-teal">effortless</span>,{' '}
+                      <span className="font-semibold text-vailo-teal">fast</span>. After that, guests help themselves
+                      from booking day onward.
+                    </>
+                  ),
+                },
+                {
+                  q: 'How does early access help me earn more?',
+                  a: 'Guests have days or weeks from booking day to book before arrival. That means more Vailo excursions (you earn 1/3 of our margin) and more of your featured-partner bookings (you keep 100% of your agreed margin).',
                 },
                 {
                   q: 'Do my guests need to install an app?',
-                  a: 'No. They scan the poster QR (or open your link) in any browser. Nothing to download, nothing to sign up for.',
+                  a: 'No. They open the link or scan the QR in any browser. Nothing to download, nothing to sign up for.',
                 },
                 {
                   q: 'Can this reduce how many people I need on guest support?',
-                  a: 'Yes. Vailo takes the repetitive Wi-Fi, arrival, appliance and local-tip questions. Many hosts reassign that capacity to hospitality or owner work — growing portfolios often avoid hiring the next guest-ops person. The ROI calculator shows hours saved and full-time capacity freed.',
+                  a: 'Yes. Vailo takes the repetitive Wi-Fi, arrival, appliance and local-tip questions. Many hosts reassign that capacity, and growing portfolios often avoid hiring the next guest-ops person.',
                 },
                 {
-                  q: 'How does the 33% revenue share work?',
-                  a: 'When a guest books an excursion through your Vailo portal, you earn 33% of that booking. It’s passive income on top of the time you save — no need to chase partners yourself.',
-                },
-                {
-                  q: 'What does the AI assistant know?',
-                  a: 'It answers from the House Guide you provide — appliances, Wi-Fi, house rules, check-out and more — plus curated local knowledge for the area around the property.',
+                  q: 'How does the 1/3 revenue share work?',
+                  a: 'Only on Vailo-supplied excursions and services, and only on our commission margin, not the guest ticket price. Example: 10% margin on €100 = €10 → you get ~€3.33, Vailo ~€6.67. Featured partnerships you bring keep 100% of your margin.',
                 },
                 {
                   q: 'Is every plan the same product?',
-                  a: 'Yes. Pricing only changes with how many properties you manage. Every plan includes the AI assistant, House Guide, Live Like a Local, excursions with revenue share, and the printable QR poster.',
+                  a: 'Yes. Pricing only changes with how many properties you manage. Every plan includes the guest link, QR poster, AI assistant, House Guide, Live Like a Local, Vailo excursions, and your featured partners.',
                 },
                 {
                   q: 'How is the annual total calculated?',
@@ -2756,25 +3766,29 @@ export function PricingPage() {
                 },
                 {
                   q: 'What if I manage a large team already?',
-                  a: 'Keep the people who create great stays — free them from inbox triage. Vailo is built so guest messaging doesn’t scale linearly with your portfolio.',
+                  a: 'Keep the people who create great stays, free them from inbox triage. Vailo is built so guest messaging doesn’t scale linearly with your portfolio.',
                 },
               ]}
             />
           </Reveal>
         </Container>
       </section>
+      <PropertyAnalyticsSection />
       <FinalCta />
     </>
   );
 }
 
 export function TourProvidersPage() {
-  usePageMeta('Tour Providers — Vailo', 'List your tours and experiences with Vailo and reach guests while they plan their stay.');
+  usePageMeta(
+    'Tour Providers, Vailo',
+    'List your tours and experiences with Vailo and reach guests while they plan their stay, from booking day onward.'
+  );
   const benefits = [
     {
       icon: MapPin,
       title: 'Reach guests at the right moment',
-      text: 'Your experiences appear inside the guest portal of the property they’re staying in — right when they’re deciding what to do.',
+      text: 'Your experiences appear inside the guest portal from booking day, right when they’re deciding what to do.',
     },
     {
       icon: CalendarCheck,
@@ -2858,6 +3872,7 @@ export function TourProvidersPage() {
       <FinalCta
         title="Let’s fill your next departure."
         subtitle="Join the tour operators already reaching travellers through Vailo."
+        showEaseLine={false}
       />
     </>
   );
@@ -2869,16 +3884,17 @@ const CONTACT_COPY: Record<ContactIntent, { eyebrow: string; title: string; subt
   demo: {
     eyebrow: 'Book a demo',
     title: 'See Vailo on a property like yours.',
-    subtitle: 'Tell us a little about your portfolio and we’ll set up a short walkthrough — no fake “trial” button.',
+    subtitle: 'Tell us a little about your portfolio and we’ll set up a short walkthrough, no fake “trial” button.',
     message: (plan) =>
       `Hi Vailo team, I’d like to book a demo${plan ? ` (interested in ${plan})` : ''}.`,
     role: '',
   },
   trial: {
-    eyebrow: 'Get started',
-    title: 'Get Vailo on your properties.',
-    subtitle: 'Leave your details and we’ll help you get set up.',
-    message: (plan) => `Hi Vailo team, I’d like to get started${plan ? ` with the ${plan} plan` : ''}.`,
+    eyebrow: '1 week free trial',
+    title: 'Start your free week on Vailo.',
+    subtitle: 'Leave your details and we’ll get your 1 week free trial set up.',
+    message: (plan) =>
+      `Hi Vailo team, I’d like to start the 1 week free trial${plan ? ` (${plan} plan)` : ''}.`,
     role: '',
   },
   partner: {
@@ -2908,7 +3924,7 @@ export function ContactPage() {
   const plan = params.get('plan') ?? '';
   const copy = CONTACT_COPY[intent];
 
-  usePageMeta('Contact — Vailo', 'Book a demo, start a free trial or get in touch with the Vailo team.');
+  usePageMeta('Contact, Vailo', 'Book a demo, start a free trial or get in touch with the Vailo team.');
 
   const [status, setStatus] = useState<FormStatus>('idle');
   const [error, setError] = useState('');
@@ -3146,7 +4162,7 @@ export function ContactPage() {
 function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
   const isPrivacy = kind === 'privacy';
   const title = isPrivacy ? 'Privacy Policy' : 'Terms of Use';
-  usePageMeta(`${title} — Vailo`, `${title} for the Vailo platform.`);
+  usePageMeta(`${title}, Vailo`, `${title} for the Vailo platform.`);
   const { resolved, loading } = usePlatformLegal('en');
   const live = isPrivacy ? resolved.privacyPolicy : resolved.termsOfUse;
   const html = !loading && !legalContentIsEmpty(live) ? live : getPlatformLegalTemplate('en', isPrivacy ? 'privacyPolicy' : 'termsOfUse');

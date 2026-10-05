@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcRoi, pickPlan, planAnnualTotal } from './websiteRoi';
+import { calcRoi, pickPlan, planAnnualTotal, ROI } from './websiteRoi';
 
 describe('calcRoi', () => {
   it('saves 0.4 hours per guest', () => {
@@ -7,18 +7,19 @@ describe('calcRoi', () => {
     expect(calcRoi(10).hoursSaved).toBeCloseTo(4);
   });
 
-  it('earns guests × 10% × €50 × 33% in monthly passive income', () => {
-    // 100 guests -> 10 bookings -> €500 -> 33% = €165
-    expect(calcRoi(100).monthlyIncome).toBeCloseTo(165);
-    expect(calcRoi(1000).monthlyIncome).toBeCloseTo(1650);
+  it('pays host 1/3 of Vailo margin — not of the guest ticket price', () => {
+    // 100 guests → 10 bookings → €500 ticket total → 10% margin = €50 → host 1/3 = €16.67
+    const expected =
+      100 * ROI.excursionConversion * ROI.avgBookingEur * ROI.exampleMarginRate * ROI.hostShareOfMargin;
+    expect(calcRoi(100).monthlyIncome).toBeCloseTo(expected);
+    expect(calcRoi(100).monthlyIncome).toBeCloseTo(50 / 3);
   });
 
   it('annualises monthly income', () => {
-    expect(calcRoi(100).yearlyIncome).toBeCloseTo(165 * 12);
+    expect(calcRoi(100).yearlyIncome).toBeCloseTo(calcRoi(100).monthlyIncome * 12);
   });
 
   it('estimates team capacity freed in FTE-months', () => {
-    // 160 hours saved → 1.0 FTE
     expect(calcRoi(400).fteFreed).toBeCloseTo(1);
     expect(calcRoi(120).fteFreed).toBeCloseTo(48 / 160);
   });

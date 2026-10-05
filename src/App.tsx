@@ -87,6 +87,7 @@ const lazyWebsite = (name: keyof WebsiteModule) =>
   );
 const WebsiteLayout = lazyWebsite("WebsiteLayout");
 const WebsiteHome = lazyWebsite("HomePage");
+const WebsiteImpact = lazyWebsite("ImpactPage");
 const WebsiteFeatures = lazyWebsite("FeaturesPage");
 const WebsitePricing = lazyWebsite("PricingPage");
 const WebsiteTourProviders = lazyWebsite("TourProvidersPage");
@@ -141,6 +142,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<WebsiteHome />} />
+          <Route path="/impact" element={<WebsiteImpact />} />
           <Route path="/features" element={<WebsiteFeatures />} />
           <Route path="/pricing" element={<WebsitePricing />} />
           <Route path="/tour-providers" element={<WebsiteTourProviders />} />

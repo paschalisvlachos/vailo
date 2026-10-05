@@ -1,6 +1,7 @@
 /** Public marketing website pages served by the SPA (see `src/pages/website`). */
 export const WEBSITE_PATHS = [
   '/',
+  '/impact',
   '/features',
   '/pricing',
   '/tour-providers',

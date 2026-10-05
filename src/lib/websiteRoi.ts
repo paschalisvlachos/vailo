@@ -3,10 +3,16 @@
 /** ROI calculator assumptions (kept in one place so marketing can tweak them). */
 export const ROI = {
   hoursSavedPerGuest: 0.4,
-  /** Share of guests who book an excursion through the portal. */
+  /** Share of guests who book a Vailo-supplied excursion through the portal. */
   excursionConversion: 0.1,
   avgBookingEur: 50,
-  hostShare: 0.33,
+  /**
+   * Example platform margin on Vailo-supplied excursions/services (varies by product:
+   * e.g. 8%, 10%, 20%). Host share is taken from this margin — not the guest price.
+   */
+  exampleMarginRate: 0.1,
+  /** Host’s cut of that margin on Vailo-supplied bookings (1/3). Vailo keeps 2/3. */
+  hostShareOfMargin: 1 / 3,
   /** Typical full-time ops hours per month — used for “team capacity freed”. */
   hoursPerFteMonth: 160,
 } as const;
@@ -79,13 +85,18 @@ export const PLANS: Plan[] = [
 /**
  * Time & revenue estimate for a given number of guests per month.
  *  - hours saved  = guests × 0.4
- *  - income       = guests × 10% conversion × €50 average booking × 33% host share
+ *  - host income  = guests × conversion × booking × example margin × 1/3
+ *    (1/3 of Vailo’s margin on Vailo-supplied excursions — not of the ticket price)
  *  - fteFreed     = hours saved ÷ 160 (one ops FTE-month)
  */
 export function calcRoi(guestsPerMonth: number) {
   const hoursSaved = guestsPerMonth * ROI.hoursSavedPerGuest;
   const monthlyIncome =
-    guestsPerMonth * ROI.excursionConversion * ROI.avgBookingEur * ROI.hostShare;
+    guestsPerMonth *
+    ROI.excursionConversion *
+    ROI.avgBookingEur *
+    ROI.exampleMarginRate *
+    ROI.hostShareOfMargin;
   const fteFreed = hoursSaved / ROI.hoursPerFteMonth;
   return { hoursSaved, monthlyIncome, yearlyIncome: monthlyIncome * 12, fteFreed };
 }

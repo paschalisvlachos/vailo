@@ -10,10 +10,9 @@ import {
 } from './areaRadarGeo';
 import { PLACES_ENDPOINT_UNIT_COST_USD } from './placesApiUsage';
 
-export const AREA_RADAR_CANDIDATES_PER_CATEGORY = 15;
-export const AREA_RADAR_GRID_CANDIDATES_PER_CATEGORY = 8;
+/** Default global AI result cap for a radar run. */
+export const AREA_RADAR_DEFAULT_MAX_RESULTS = 50;
 export const AREA_RADAR_GRID_SPACING_KM = 3;
-export const AREA_RADAR_CATEGORY_BATCH_SIZE = 4;
 /** Run extra grid-anchor scout passes when the polygon exceeds this area. */
 export const AREA_RADAR_LARGE_AREA_KM2 = 50;
 export const AREA_RADAR_MAX_GRID_PASSES = 8;
@@ -25,6 +24,8 @@ export type AreaRadarPreviewInput = {
   categoryCount: number;
   localGemsCount: number;
   discoveredPlacesCount: number;
+  /** Global cap on AI candidates across all categories. */
+  maxResults?: number;
 };
 
 export type AreaRadarPreview = {
@@ -41,7 +42,7 @@ export type AreaRadarPreview = {
   categoryCount: number;
   localGemsCount: number;
   discoveredPlacesCount: number;
-  /** Upper bound if Gemini fills every slot on every pass (actual runs are usually much lower). */
+  /** Hard cap on AI candidates for this run (admin-chosen global total). */
   maxCandidates: number;
   estimatedGeminiCalls: number;
   estimatedGoogleTextSearchCalls: number;
@@ -66,6 +67,12 @@ function gridPassCountForArea(areaKm2: number, anchorCount: number): number {
   return Math.min(anchorCount, AREA_RADAR_MAX_GRID_PASSES);
 }
 
+/** Clamp admin-chosen global result cap to a safe range. */
+export function clampAreaRadarMaxResults(value: number): number {
+  if (!Number.isFinite(value)) return AREA_RADAR_DEFAULT_MAX_RESULTS;
+  return Math.min(500, Math.max(1, Math.round(value)));
+}
+
 export function buildAreaRadarPreview(input: AreaRadarPreviewInput): AreaRadarPreview {
   const ring = ringFromGeoJson(input.searchRegion);
   const centroid = polygonCentroid(ring);
@@ -74,22 +81,12 @@ export function buildAreaRadarPreview(input: AreaRadarPreviewInput): AreaRadarPr
   const anchors = gridAnchorsInPolygon(ring, AREA_RADAR_GRID_SPACING_KM);
   const anchorCount = anchors.length;
   const gridPassCount = gridPassCountForArea(areaKm2, anchorCount);
+  const maxCandidates = clampAreaRadarMaxResults(
+    input.maxResults ?? AREA_RADAR_DEFAULT_MAX_RESULTS
+  );
 
-  const categoryBatchCount =
-    input.categoryCount > 0
-      ? Math.ceil(input.categoryCount / AREA_RADAR_CATEGORY_BATCH_SIZE)
-      : 0;
-  const estimatedGeminiCalls = categoryBatchCount + gridPassCount;
-
-  const batchCandidateCap =
-    input.categoryCount > 0
-      ? input.categoryCount * AREA_RADAR_CANDIDATES_PER_CATEGORY
-      : 0;
-  const gridCandidateCap =
-    gridPassCount > 0
-      ? gridPassCount * input.categoryCount * AREA_RADAR_GRID_CANDIDATES_PER_CATEGORY
-      : 0;
-  const maxCandidates = batchCandidateCap + gridCandidateCap;
+  // One main scout pass over all categories, plus optional grid sector passes.
+  const estimatedGeminiCalls = (input.categoryCount > 0 ? 1 : 0) + gridPassCount;
 
   const gridCoveragePct =
     anchorCount > 0 && gridPassCount > 0

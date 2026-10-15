@@ -129,6 +129,8 @@ export async function resolvePlacePhoto(params: {
   discoverSource?: string;
   discoverCategory?: string;
   discoverDescription?: string;
+  discoverConfidence?: string;
+  discoverLocality?: string;
 }): Promise<ResolvedPlacePhoto> {
   const normalized = normalizePlaceName(params.title);
   const coordSuffix =
@@ -156,6 +158,8 @@ export async function resolvePlacePhoto(params: {
     discoverSource: params.discoverSource,
     discoverCategory: params.discoverCategory,
     discoverDescription: params.discoverDescription,
+    discoverConfidence: params.discoverConfidence,
+    discoverLocality: params.discoverLocality,
   });
 
   const data = result.data as ResolvedPlacePhoto;

@@ -1220,6 +1220,16 @@ exports.resolvePlacePhoto = onCall(async (request) => {
   const discoverSource = String(payload.discoverSource || "").trim();
   const discoverCategory = String(payload.discoverCategory || "").trim();
   const discoverDescription = String(payload.discoverDescription || "").trim();
+  const discoverConfidence = String(payload.discoverConfidence || "")
+    .trim()
+    .toLowerCase();
+  const discoverLocality = String(payload.discoverLocality || "").trim();
+  const radarConfidence =
+    discoverConfidence === "high" ||
+    discoverConfidence === "medium" ||
+    discoverConfidence === "low"
+      ? discoverConfidence
+      : "";
 
   if (!title) {
     throw new HttpsError("invalid-argument", "Place title is required.");
@@ -1390,6 +1400,11 @@ exports.resolvePlacePhoto = onCall(async (request) => {
       promotedToLocalGemId: null,
       firstSeenAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(radarConfidence ? { radarConfidence } : {}),
+      ...(discoverLocality ? { locality: discoverLocality } : {}),
+      ...(discoverSource === "admin_radar"
+        ? { radarWhyRecommend: discoverDescription || place.description || "" }
+        : {}),
     };
 
     let savedData = newDoc;

@@ -99,6 +99,11 @@ type DiscoveredPlace = {
   lastFailureReason?: string;
   lastMatchedTitle?: string;
   suggestedByVailo?: boolean;
+  /** Area Radar scout confidence (Phase A). */
+  radarConfidence?: 'high' | 'medium' | 'low' | string;
+  /** Area Radar host-style why-recommend (Phase A). */
+  radarWhyRecommend?: string;
+  locality?: string;
 };
 
 /** Rating ≤ 4.0 — highlight row for review. */
@@ -132,6 +137,18 @@ function placeMatchesSearch(place: DiscoveredPlace, query: string): boolean {
 
 function isAiGuestPlace(place: DiscoveredPlace): boolean {
   return String(place.source || '').toLowerCase() === 'ai_guest';
+}
+
+function isRadarPlace(place: DiscoveredPlace): boolean {
+  return String(place.source || '').toLowerCase() === 'admin_radar';
+}
+
+function radarConfidenceLabel(value: string | undefined): string | null {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (raw === 'high' || raw === 'medium' || raw === 'low') return raw;
+  return null;
 }
 
 function parseCoord(value: string | number | null | undefined): number | null {
@@ -377,9 +394,18 @@ export default function AreaDiscoveredPlaces() {
     const ref = collection(db, 'countries', decodedCountry, 'areas', areaId, 'discoveredPlaces');
     return onSnapshot(ref, (snapshot) => {
       const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as DiscoveredPlace[];
+      const confidenceRank = (place: DiscoveredPlace) => {
+        const c = radarConfidenceLabel(place.radarConfidence);
+        if (c === 'high') return 0;
+        if (c === 'medium') return 1;
+        if (c === 'low') return 2;
+        return 3;
+      };
       rows.sort((a, b) => {
         if (a.reviewStatus === 'new' && b.reviewStatus !== 'new') return -1;
         if (b.reviewStatus === 'new' && a.reviewStatus !== 'new') return 1;
+        const byConfidence = confidenceRank(a) - confidenceRank(b);
+        if (byConfidence !== 0) return byConfidence;
         return (b.usageCount || 0) - (a.usageCount || 0);
       });
       setPlaces(rows);
@@ -1697,6 +1723,8 @@ export default function AreaDiscoveredPlaces() {
               const isEditing = editingId === place.id;
               const isNew = place.reviewStatus === 'new' && place.status !== 'hidden';
               const isAiGuest = isAiGuestPlace(place);
+              const isRadar = isRadarPlace(place);
+              const radarConfidence = radarConfidenceLabel(place.radarConfidence);
               const isHidden = place.status === 'hidden';
               const lowRating = isLowGoogleRating(place.rating);
               const highRating = isHighGoogleRating(place.rating);
@@ -1719,6 +1747,8 @@ export default function AreaDiscoveredPlaces() {
                 (isHidden && !place.promotedToLocalGemId);
               const canSelect = showSelectionColumn && !place.promotedToLocalGemId;
               const isSelected = selectedIds.has(place.id);
+              const whyText =
+                String(place.radarWhyRecommend || place.description || '').trim() || null;
 
               return (
                 <li
@@ -1745,9 +1775,27 @@ export default function AreaDiscoveredPlaces() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-semibold text-sm text-vailo-dark truncate">{place.name}</span>
-                          {isNew && !isAiGuest && (
+                          {isNew && !isAiGuest && !isRadar && (
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-gold/15 text-vailo-gold-muted">
                               New
+                            </span>
+                          )}
+                          {isRadar && (
+                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-teal-100 text-teal-800">
+                              Radar
+                            </span>
+                          )}
+                          {radarConfidence && (
+                            <span
+                              className={`shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                                radarConfidence === 'high'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : radarConfidence === 'medium'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-gray-200 text-gray-600'
+                              }`}
+                            >
+                              {radarConfidence}
                             </span>
                           )}
                           {isAiGuest && (
@@ -1778,6 +1826,9 @@ export default function AreaDiscoveredPlaces() {
                             primaryLocale={localeSettings.primaryLocale}
                             primaryClassName="truncate text-gray-500"
                           />
+                          {place.locality && (
+                            <span className="shrink-0 truncate">· {place.locality}</span>
+                          )}
                           <span className="shrink-0">· {place.usageCount || 1}×</span>
                           {place.rating != null && place.rating > 0 && (
                             <span
@@ -1798,9 +1849,9 @@ export default function AreaDiscoveredPlaces() {
                             </span>
                           )}
                         </div>
-                        {place.description && (
+                        {whyText && (
                           <p className="hidden sm:block text-[11px] text-gray-400 truncate mt-0.5 max-w-xl">
-                            {place.description}
+                            {isRadar ? `Why: ${whyText}` : whyText}
                           </p>
                         )}
                         {place.lastFailureReason && (

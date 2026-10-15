@@ -35,7 +35,11 @@ import {
   type GeoJsonPolygon,
   type LatLng,
 } from '../../../lib/areaRadarGeo';
-import { buildAreaRadarPreview } from '../../../lib/areaRadarPreview';
+import {
+  AREA_RADAR_DEFAULT_MAX_RESULTS,
+  buildAreaRadarPreview,
+  clampAreaRadarMaxResults,
+} from '../../../lib/areaRadarPreview';
 import {
   geocodeAreaCenter,
   getGoogleMapsApiKey,
@@ -58,6 +62,8 @@ type PlaceDiscoveryConfig = {
   /** @deprecated GeoJSON nested arrays are invalid in Firestore — use searchRegionRing */
   searchRegion?: GeoJsonPolygon | null;
   searchRegionRing?: Array<{ lat: number; lng: number }> | null;
+  /** Global cap on AI candidates across all categories when running radar. */
+  maxResults?: number;
   lastRunAt?: string;
   lastRunStats?: AreaRadarRunResult;
 };
@@ -88,6 +94,7 @@ export default function AreaRadar() {
   const [runProgress, setRunProgress] = useState<AreaRadarRunProgress | null>(null);
   const [lastRunStats, setLastRunStats] = useState<AreaRadarRunResult | null>(null);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
+  const [maxResults, setMaxResults] = useState(AREA_RADAR_DEFAULT_MAX_RESULTS);
 
   const [categoryDocs, setCategoryDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>(
     []
@@ -138,6 +145,9 @@ export default function AreaRadar() {
       }
       if (cfg.lastRunStats) setLastRunStats(cfg.lastRunStats);
       if (cfg.lastRunAt) setLastRunAt(cfg.lastRunAt);
+      if (typeof cfg.maxResults === 'number') {
+        setMaxResults(clampAreaRadarMaxResults(cfg.maxResults));
+      }
     });
   }, [areaRef]);
 
@@ -162,8 +172,16 @@ export default function AreaRadar() {
         categoryCount: radarParentCategories.length,
         localGemsCount: gems.length,
         discoveredPlacesCount: discoveredPlaces.length,
+        maxResults,
       }),
-    [draftRing, searchRegion, radarParentCategories.length, gems.length, discoveredPlaces.length]
+    [
+      draftRing,
+      searchRegion,
+      radarParentCategories.length,
+      gems.length,
+      discoveredPlaces.length,
+      maxResults,
+    ]
   );
 
   const clearPreviewLine = useCallback(() => {
@@ -443,9 +461,10 @@ export default function AreaRadar() {
       toast.warning(preview.validationMessage);
       return;
     }
+    const resultCap = clampAreaRadarMaxResults(maxResults);
     if (
       !window.confirm(
-        `Run Area Radar?\n\nEstimated Google Text Search calls: ~${preview.estimatedGoogleTextSearchCalls}\nEstimated cost: ~$${preview.estimatedCostUsd.toFixed(2)}\n\nThis will add new places to Discovered Places for your review.`
+        `Run Area Radar?\n\nMax results (all categories): ${resultCap}\nEstimated Google Text Search calls: ~${preview.estimatedGoogleTextSearchCalls}\nEstimated cost: ~$${preview.estimatedCostUsd.toFixed(2)}\n\nThis will add new places to Discovered Places for your review.`
       )
     ) {
       return;
@@ -474,6 +493,7 @@ export default function AreaRadar() {
         }>,
         knownGemNamesByCategory,
         primaryLocale,
+        maxResults: resultCap,
         onProgress: setRunProgress,
       });
 
@@ -481,6 +501,7 @@ export default function AreaRadar() {
       if (areaRef) {
         await updateDoc(areaRef, {
           'placeDiscoveryConfig.searchRegionRing': ringToFirestore(draftRing),
+          'placeDiscoveryConfig.maxResults': resultCap,
           'placeDiscoveryConfig.lastRunAt': runAt,
           'placeDiscoveryConfig.lastRunStats': stats,
           'placeDiscoveryConfig.updatedAt': runAt,
@@ -491,7 +512,7 @@ export default function AreaRadar() {
       setLastRunAt(runAt);
 
       toast.success(
-        `Radar complete: ${stats.created} new · ${stats.skippedDuplicate} duplicates · ${stats.candidatesFound} AI suggestions · ${stats.failedVerification} failed verification`
+        `Radar complete — Phase C: review in Discovered Places. ${stats.created} new · ${stats.skippedDuplicate} duplicates · ${stats.candidatesFound} AI suggestions · ${stats.failedVerification} failed verification`
       );
     } catch (err) {
       console.error(err);
@@ -512,18 +533,19 @@ export default function AreaRadar() {
           Area Radar
         </h2>
         <p className="text-sm text-gray-500 mt-2">
-          Draw a search region on the map for{' '}
+          Draw a search region for{' '}
           <span className="font-semibold text-vailo-teal">
             {areaName}, {country}
           </span>
-          . Review the preview, then run radar to scout new places into{' '}
+          . Radar curates host-worthy places for this area&apos;s opened categories (quality over
+          quantity), verifies them with Google, then queues them in{' '}
           <Link
             to={adminPath(`/area/${encodeURIComponent(country)}/${encodeURIComponent(areaId)}/discovered-places`)}
             className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
           >
             Discovered Places
-          </Link>
-          .
+          </Link>{' '}
+          for your review.
         </p>
       </div>
 
@@ -647,11 +669,11 @@ export default function AreaRadar() {
                   <dd className="font-medium text-vailo-dark">{preview.categoryCount}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gray-500">Up to (AI cap)</dt>
+                  <dt className="text-gray-500">Max results</dt>
                   <dd className="font-medium text-vailo-dark text-right">
                     {preview.maxCandidates}
                     <span className="block text-[11px] font-normal text-gray-400">
-                      Actual runs are usually much lower
+                      Shared across all categories
                     </span>
                   </dd>
                 </div>
@@ -693,6 +715,34 @@ export default function AreaRadar() {
                 </div>
               </div>
             )}
+
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <label
+                htmlFor="area-radar-max-results"
+                className="block text-sm font-bold text-gray-700 mb-1"
+              >
+                Max results
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Global host-curation budget across opened categories. Sparse categories may get few
+                or none; abundant ones many. Prefer fewer strong places over filling the cap.
+              </p>
+              <input
+                id="area-radar-max-results"
+                type="number"
+                min={1}
+                max={500}
+                step={1}
+                value={maxResults}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next)) return;
+                  setMaxResults(clampAreaRadarMaxResults(next));
+                }}
+                disabled={isRunning}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal outline-none text-sm"
+              />
+            </div>
 
             <AdminButton
               type="button"

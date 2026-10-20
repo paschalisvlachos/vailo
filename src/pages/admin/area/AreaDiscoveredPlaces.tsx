@@ -14,10 +14,6 @@ import {
   extractPlaceIdFromPlacesPhotoUrl,
 } from '../../../lib/geocoding';
 import {
-  isVerifiedGoogleMapsShortUrl,
-  verifiedGoogleMapsUrlHint,
-} from '../../../lib/verifiedGoogleMapsUrl';
-import {
   compareDiscoveredPlaces,
   type CompareDiscoveredPlacesResult,
 } from '../../../lib/discoveredPlaceCompare';
@@ -39,7 +35,6 @@ import {
 } from '../../../lib/googlePlaceCategories';
 import {
   categoryPrimaryName,
-  gemCategoryPrimaries,
   normalizeCategorySelectionList,
 } from '../../../lib/categoryLocale';
 import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
@@ -64,6 +59,7 @@ import {
   Search,
   GitCompare,
   GitMerge,
+  Undo2,
 } from 'lucide-react';
 import {
   AdminBackHeader,
@@ -99,10 +95,6 @@ type DiscoveredPlace = {
   lastFailureReason?: string;
   lastMatchedTitle?: string;
   suggestedByVailo?: boolean;
-  /** Area Radar scout confidence (Phase A). */
-  radarConfidence?: 'high' | 'medium' | 'low' | string;
-  /** Area Radar host-style why-recommend (Phase A). */
-  radarWhyRecommend?: string;
   locality?: string;
 };
 
@@ -135,22 +127,6 @@ function placeMatchesSearch(place: DiscoveredPlace, query: string): boolean {
   return false;
 }
 
-function isAiGuestPlace(place: DiscoveredPlace): boolean {
-  return String(place.source || '').toLowerCase() === 'ai_guest';
-}
-
-function isRadarPlace(place: DiscoveredPlace): boolean {
-  return String(place.source || '').toLowerCase() === 'admin_radar';
-}
-
-function radarConfidenceLabel(value: string | undefined): string | null {
-  const raw = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (raw === 'high' || raw === 'medium' || raw === 'low') return raw;
-  return null;
-}
-
 function parseCoord(value: string | number | null | undefined): number | null {
   if (typeof value === 'number' && !Number.isNaN(value)) return value;
   const parsed = parseFloat(String(value ?? '').trim());
@@ -162,7 +138,15 @@ function placeCategoryLabels(
   catalogDocs: Record<string, unknown>[],
   primaryLocale: string
 ): string[] {
-  return gemCategoryPrimaries(place as Record<string, unknown>, catalogDocs, primaryLocale);
+  return normalizeCategorySelectionList(
+    [
+      ...(Array.isArray(place.categories) ? place.categories : []),
+      place.category,
+      ...(Array.isArray(place.googleCategories) ? place.googleCategories : []),
+    ].filter((v): v is string => Boolean(v && String(v).trim())),
+    catalogDocs,
+    primaryLocale
+  );
 }
 
 function formatPlaceCategoryDisplay(
@@ -216,11 +200,12 @@ function PlaceCategoryDisplay({
 function getPromoteBlockReason(place: DiscoveredPlace): string | null {
   if (place.promotedToLocalGemId) return 'Already promoted';
   if (place.reviewStatus !== 'reviewed') return 'Not reviewed';
-  if (!isVerifiedGoogleMapsShortUrl((place.verifiedGoogleMapsUrl || '').trim())) {
-    return 'Missing verified Maps link';
-  }
   if (placeCategoryLabels(place, [], 'en').length === 0) return 'Missing category';
   return null;
+}
+
+function placeMapsUrl(place: DiscoveredPlace): string {
+  return String(place.googleMapsUrl || place.verifiedGoogleMapsUrl || '').trim();
 }
 
 function placeToLocalGemPayload(
@@ -237,7 +222,7 @@ function placeToLocalGemPayload(
     description: place.description || '',
     latitude: place.latitude != null ? String(place.latitude) : '',
     longitude: place.longitude != null ? String(place.longitude) : '',
-    googleMapsUrl: (place.verifiedGoogleMapsUrl || '').trim(),
+    googleMapsUrl: placeMapsUrl(place),
     photoUrl: place.photoUrl || '',
     isDailyTrip: false,
     suggestedByVailo: Boolean(place.suggestedByVailo),
@@ -300,7 +285,7 @@ export default function AreaDiscoveredPlaces() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isMagicFilling, setIsMagicFilling] = useState(false);
-  const [filter, setFilter] = useState<'needsReview' | 'aiGuest' | 'reviewed' | 'hidden'>('needsReview');
+  const [filter, setFilter] = useState<'needsReview' | 'reviewed' | 'hidden'>('needsReview');
   const [searchText, setSearchText] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [compareOpen, setCompareOpen] = useState(false);
@@ -309,7 +294,8 @@ export default function AreaDiscoveredPlaces() {
   const [mergePlan, setMergePlan] = useState<DiscoveredPlaceMergePlan | null>(null);
   const [isMerging, setIsMerging] = useState(false);
   const [isBulkPromoting, setIsBulkPromoting] = useState(false);
-  const [enrichingId, setEnrichingId] = useState<string | null>(null);
+  const [isBulkReviewing, setIsBulkReviewing] = useState(false);
+  const [isBulkUnreviewing, setIsBulkUnreviewing] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -318,7 +304,7 @@ export default function AreaDiscoveredPlaces() {
     description: '',
     latitude: '',
     longitude: '',
-    verifiedGoogleMapsUrl: '',
+    googleMapsUrl: '',
     photoUrl: '',
     rating: '',
     alternateTitlesText: '',
@@ -394,18 +380,9 @@ export default function AreaDiscoveredPlaces() {
     const ref = collection(db, 'countries', decodedCountry, 'areas', areaId, 'discoveredPlaces');
     return onSnapshot(ref, (snapshot) => {
       const rows = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as DiscoveredPlace[];
-      const confidenceRank = (place: DiscoveredPlace) => {
-        const c = radarConfidenceLabel(place.radarConfidence);
-        if (c === 'high') return 0;
-        if (c === 'medium') return 1;
-        if (c === 'low') return 2;
-        return 3;
-      };
       rows.sort((a, b) => {
         if (a.reviewStatus === 'new' && b.reviewStatus !== 'new') return -1;
         if (b.reviewStatus === 'new' && a.reviewStatus !== 'new') return 1;
-        const byConfidence = confidenceRank(a) - confidenceRank(b);
-        if (byConfidence !== 0) return byConfidence;
         return (b.usageCount || 0) - (a.usageCount || 0);
       });
       setPlaces(rows);
@@ -414,16 +391,7 @@ export default function AreaDiscoveredPlaces() {
   }, [decodedCountry, areaId]);
 
   const needsReviewPlaces = places.filter(
-    (p) =>
-      p.status !== 'hidden' &&
-      p.reviewStatus === 'new' &&
-      !isAiGuestPlace(p)
-  );
-  const aiGuestPlaces = places.filter(
-    (p) =>
-      p.status !== 'hidden' &&
-      isAiGuestPlace(p) &&
-      p.reviewStatus === 'new'
+    (p) => p.status !== 'hidden' && p.reviewStatus === 'new'
   );
   const reviewedPlaces = places.filter(
     (p) =>
@@ -437,11 +405,9 @@ export default function AreaDiscoveredPlaces() {
   const visiblePlaces =
     filter === 'needsReview'
       ? needsReviewPlaces
-      : filter === 'aiGuest'
-        ? aiGuestPlaces
-        : filter === 'reviewed'
-          ? reviewedPlaces
-          : hiddenPlaces;
+      : filter === 'reviewed'
+        ? reviewedPlaces
+        : hiddenPlaces;
 
   const hasSearch = searchText.trim().length > 0;
   const searchPool = hasSearch ? places : visiblePlaces;
@@ -588,7 +554,7 @@ export default function AreaDiscoveredPlaces() {
       description: place.description || '',
       latitude: place.latitude != null ? String(place.latitude) : '',
       longitude: place.longitude != null ? String(place.longitude) : '',
-      verifiedGoogleMapsUrl: place.verifiedGoogleMapsUrl || '',
+      googleMapsUrl: placeMapsUrl(place),
       photoUrl: place.photoUrl || '',
       rating: place.rating != null ? String(place.rating) : '',
       alternateTitlesText: filterAlternateTitleVocabularyVariants(
@@ -603,30 +569,19 @@ export default function AreaDiscoveredPlaces() {
   };
 
   const buildSavePayload = async (placeName: string) => {
-    const verifiedUrl = formData.verifiedGoogleMapsUrl.trim();
-    const isVerified = isVerifiedGoogleMapsShortUrl(verifiedUrl);
-
-    let alternateTitles: string[];
-    if (isVerified) {
-      const manualTitles = formData.alternateTitlesText
-        .split(/[\n,]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      alternateTitles = await suggestAlternatePlaceTitles(placeName, {
-        areaName: decodedArea,
-        category: normalizedFormCategories[0] || formData.category,
-        existing: mergeAlternateTitleLists(
-          placeName,
-          manualTitles,
-          filterAlternateTitleVocabularyVariants(placeName, editingPlace?.alternateTitles || [])
-        ),
-      });
-    } else {
-      alternateTitles = filterAlternateTitleVocabularyVariants(
+    const manualTitles = formData.alternateTitlesText
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const alternateTitles = await suggestAlternatePlaceTitles(placeName, {
+      areaName: decodedArea,
+      category: normalizedFormCategories[0] || formData.category,
+      existing: mergeAlternateTitleLists(
         placeName,
-        editingPlace?.alternateTitles || []
-      );
-    }
+        manualTitles,
+        filterAlternateTitleVocabularyVariants(placeName, editingPlace?.alternateTitles || [])
+      ),
+    });
 
     return {
       name: formData.name.trim(),
@@ -635,7 +590,7 @@ export default function AreaDiscoveredPlaces() {
       description: formData.description,
       latitude: formData.latitude ? parseFloat(formData.latitude) : null,
       longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-      verifiedGoogleMapsUrl: verifiedUrl || null,
+      googleMapsUrl: formData.googleMapsUrl.trim() || null,
       photoUrl: formData.photoUrl,
       rating: formData.rating ? parseFloat(formData.rating) : null,
       alternateTitles,
@@ -645,22 +600,8 @@ export default function AreaDiscoveredPlaces() {
     };
   };
 
-  const requireVerifiedMapsUrl = (url: string): boolean => {
-    if (!isVerifiedGoogleMapsShortUrl(url)) {
-      toast.warning(`Paste a verified Maps link (${verifiedGoogleMapsUrlHint()}).`);
-      return false;
-    }
-    return true;
-  };
-
-  const handleSave = async (markVerified = false) => {
+  const handleSave = async (markReviewedOnSave = false) => {
     if (!editingId) return;
-    const verifiedUrl = formData.verifiedGoogleMapsUrl.trim();
-    if (verifiedUrl && !isVerifiedGoogleMapsShortUrl(verifiedUrl)) {
-      requireVerifiedMapsUrl(verifiedUrl);
-      return;
-    }
-    if (markVerified && !requireVerifiedMapsUrl(verifiedUrl)) return;
 
     setIsSaving(true);
     try {
@@ -668,11 +609,11 @@ export default function AreaDiscoveredPlaces() {
       const savePayload = await buildSavePayload(formData.name.trim());
       await updateDoc(ref, {
         ...savePayload,
-        ...(markVerified
+        ...(markReviewedOnSave
           ? { reviewStatus: 'reviewed', needsReview: false }
           : {}),
       });
-      if (markVerified) {
+      if (markReviewedOnSave) {
         toast.success('Saved and marked as reviewed.');
       }
       setEditingId(null);
@@ -685,8 +626,11 @@ export default function AreaDiscoveredPlaces() {
   };
 
   const handleMagicFill = async () => {
-    const url = formData.verifiedGoogleMapsUrl.trim();
-    if (!requireVerifiedMapsUrl(url)) return;
+    const url = formData.googleMapsUrl.trim();
+    if (!url.startsWith('http')) {
+      toast.warning('Add a Google Maps link before using Magic Fill.');
+      return;
+    }
 
     const hasExistingPhoto = Boolean(
       formData.photoUrl?.trim() || editingPlace?.photoUrl?.trim()
@@ -715,7 +659,7 @@ export default function AreaDiscoveredPlaces() {
         latitude: filled.latitude != null ? String(filled.latitude) : prev.latitude,
         longitude: filled.longitude != null ? String(filled.longitude) : prev.longitude,
         photoUrl: hasExistingPhoto ? prev.photoUrl : filled.photoUrl || prev.photoUrl,
-        verifiedGoogleMapsUrl: url,
+        googleMapsUrl: filled.googleMapsUrl || url,
         googleCategoriesText: mergeGoogleCategoriesText(
           prev.googleCategoriesText,
           filled.googleCategory
@@ -732,103 +676,11 @@ export default function AreaDiscoveredPlaces() {
       toast.error(
         httpsCallableMessage(
           error,
-          'Could not load this place. Check the maps.app.goo.gl link and try again.'
+          'Could not load this place. Check the Maps link and try again.'
         )
       );
     } finally {
       setIsMagicFilling(false);
-    }
-  };
-
-  const quickEnrichAndReview = async (place: DiscoveredPlace) => {
-    const url = String(place.googleMapsUrl || '').trim();
-    if (!url.startsWith('http')) {
-      toast.warning('Add a Google Maps link on this record before enriching.');
-      return;
-    }
-    if (enrichingId) return;
-
-    setEnrichingId(place.id);
-    try {
-      const existingCategories = placeCategoryLabels(
-        place,
-        categoryCatalogDocs,
-        localeSettings.primaryLocale
-      );
-      const hasExistingPhoto = Boolean(place.photoUrl?.trim());
-      const filled = await resolveMagicFillFromUrl(url, {
-        placeNameFallback: place.name || '',
-        existingCategories,
-        hasExistingPhoto,
-        existingDescription: place.description,
-        biasLat: parseCoord(place.latitude),
-        biasLng: parseCoord(place.longitude),
-        googlePlaceId: place.googlePlaceId ?? null,
-        photoUrl: place.photoUrl ?? null,
-      });
-
-      const alternateTitles = await suggestAlternatePlaceTitles(filled.primaryName, {
-        areaName: decodedArea,
-        category: filled.categories[0] || place.category,
-        existing: mergeAlternateTitleLists(
-          filled.primaryName,
-          place.lastMatchedTitle && place.lastMatchedTitle !== filled.primaryName
-            ? [place.lastMatchedTitle]
-            : [],
-          place.name && place.name !== filled.primaryName ? [place.name] : [],
-          filterAlternateTitleVocabularyVariants(
-            filled.primaryName,
-            place.alternateTitles || []
-          )
-        ),
-      });
-
-      const ref = doc(
-        db,
-        'countries',
-        decodedCountry,
-        'areas',
-        areaId,
-        'discoveredPlaces',
-        place.id
-      );
-      await updateDoc(ref, {
-        name: filled.primaryName,
-        category: filled.categories[0] || place.category || '',
-        categories: filled.categories.length > 0 ? filled.categories : existingCategories,
-        description: filled.description || place.description || '',
-        latitude: filled.latitude ?? place.latitude ?? null,
-        longitude: filled.longitude ?? place.longitude ?? null,
-        googleMapsUrl: filled.googleMapsUrl || url,
-        ...(filled.googlePlaceId ? { googlePlaceId: filled.googlePlaceId } : {}),
-        photoUrl: hasExistingPhoto ? place.photoUrl : filled.photoUrl || place.photoUrl || null,
-        rating: filled.rating ?? place.rating ?? null,
-        googleCategories: parseGoogleCategoriesText(
-          mergeGoogleCategoriesText(
-            formatGoogleCategoriesList(
-              googleCategoriesFromPlace(place, categoryCatalogDocs, localeSettings.primaryLocale)
-            ),
-            filled.googleCategory
-          )
-        ),
-        alternateTitles,
-        reviewStatus: 'reviewed',
-        needsReview: false,
-        updatedAt: new Date(),
-      });
-
-      if (editingId === place.id) setEditingId(null);
-      toast.success('Enriched from Maps link and marked as reviewed.');
-    } catch (error) {
-      console.error('Quick enrich error:', error);
-      toast.error(
-        httpsCallableMessage(
-          error,
-          'Could not enrich this place from its Maps link. Check the link and try again.'
-        )
-      );
-    } finally {
-      setEnrichingId(null);
     }
   };
 
@@ -931,13 +783,102 @@ export default function AreaDiscoveredPlaces() {
   const markReviewed = async (placeId: string) => {
     const place = places.find((p) => p.id === placeId);
     if (!place) return;
-    if (!isVerifiedGoogleMapsShortUrl(place.verifiedGoogleMapsUrl || '')) {
-      openEdit(place);
-      toast.warning(`Add a verified Maps link (${verifiedGoogleMapsUrlHint()}) before marking reviewed.`);
-      return;
-    }
     const ref = doc(db, 'countries', decodedCountry, 'areas', areaId, 'discoveredPlaces', placeId);
     await updateDoc(ref, { reviewStatus: 'reviewed', needsReview: false, updatedAt: new Date() });
+  };
+
+  const bulkMarkReviewed = async () => {
+    const selected = getSelectedPlaces();
+    if (selected.length === 0) return;
+
+    const toReview = selected.filter(
+      (p) => p.status !== 'hidden' && p.reviewStatus !== 'reviewed'
+    );
+    if (toReview.length === 0) {
+      toast.success('Selected places are already reviewed.');
+      clearSelection();
+      return;
+    }
+
+    setIsBulkReviewing(true);
+    try {
+      const now = new Date();
+      const chunkSize = 400;
+      for (let i = 0; i < toReview.length; i += chunkSize) {
+        const chunk = toReview.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        for (const place of chunk) {
+          batch.update(
+            doc(db, 'countries', decodedCountry, 'areas', areaId, 'discoveredPlaces', place.id),
+            {
+              reviewStatus: 'reviewed',
+              needsReview: false,
+              updatedAt: now,
+            }
+          );
+        }
+        await batch.commit();
+      }
+      if (editingId && toReview.some((p) => p.id === editingId)) {
+        setEditingId(null);
+      }
+      clearSelection();
+      toast.success(
+        `Marked ${toReview.length} place${toReview.length === 1 ? '' : 's'} as reviewed.`
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to mark selected places as reviewed.');
+    } finally {
+      setIsBulkReviewing(false);
+    }
+  };
+
+  const bulkUnreview = async () => {
+    const selected = getSelectedPlaces();
+    if (selected.length === 0) return;
+
+    const toUnreview = selected.filter(
+      (p) => p.status !== 'hidden' && p.reviewStatus === 'reviewed'
+    );
+    if (toUnreview.length === 0) {
+      toast.success('Selected places are already in needs review.');
+      clearSelection();
+      return;
+    }
+
+    setIsBulkUnreviewing(true);
+    try {
+      const now = new Date();
+      const chunkSize = 400;
+      for (let i = 0; i < toUnreview.length; i += chunkSize) {
+        const chunk = toUnreview.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        for (const place of chunk) {
+          batch.update(
+            doc(db, 'countries', decodedCountry, 'areas', areaId, 'discoveredPlaces', place.id),
+            {
+              reviewStatus: 'new',
+              needsReview: true,
+              updatedAt: now,
+            }
+          );
+        }
+        await batch.commit();
+      }
+      if (editingId && toUnreview.some((p) => p.id === editingId)) {
+        setEditingId(null);
+      }
+      clearSelection();
+      toast.success(
+        `Sent ${toUnreview.length} place${toUnreview.length === 1 ? '' : 's'} back to needs review.`
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to move selected places to needs review.');
+    } finally {
+      setIsBulkUnreviewing(false);
+    }
   };
 
   const hidePlace = async (placeId: string) => {
@@ -984,7 +925,7 @@ export default function AreaDiscoveredPlaces() {
           description: formData.description,
           latitude: formData.latitude ? parseFloat(formData.latitude) : place.latitude,
           longitude: formData.longitude ? parseFloat(formData.longitude) : place.longitude,
-          verifiedGoogleMapsUrl: formData.verifiedGoogleMapsUrl.trim(),
+          googleMapsUrl: formData.googleMapsUrl.trim(),
           photoUrl: formData.photoUrl,
           rating: formData.rating ? parseFloat(formData.rating) : place.rating,
           suggestedByVailo: formData.suggestedByVailo,
@@ -994,11 +935,6 @@ export default function AreaDiscoveredPlaces() {
     const blockReason = getPromoteBlockReason(effectivePlace);
     if (blockReason === 'Not reviewed') {
       toast.warning('Mark this place as reviewed before promoting to Local Gems.');
-      return;
-    }
-    if (blockReason === 'Missing verified Maps link') {
-      openEdit(place);
-      toast.warning(`Add a verified Maps link (${verifiedGoogleMapsUrlHint()}) before promoting.`);
       return;
     }
     if (blockReason === 'Missing category') {
@@ -1042,7 +978,7 @@ export default function AreaDiscoveredPlaces() {
 
     if (promotable.length === 0) {
       toast.warning(
-        'No selected places are ready. Each needs reviewed status, a category, and a verified Maps link.'
+        'No selected places are ready. Each needs reviewed status and a category.'
       );
       return;
     }
@@ -1096,10 +1032,6 @@ export default function AreaDiscoveredPlaces() {
   };
 
   const renderEditPanel = () => {
-    const canEditAlternates = isVerifiedGoogleMapsShortUrl(
-      formData.verifiedGoogleMapsUrl.trim()
-    );
-
     return (
     <div className="px-3 sm:px-4 py-3 bg-vailo-surface-elevated/80 border-t border-gray-100">
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
@@ -1146,31 +1078,19 @@ export default function AreaDiscoveredPlaces() {
             onChange={(e) => setFormData({ ...formData, photoUrl: e.target.value })}
           />
         </div>
-        {editingPlace?.googleMapsUrl ? (
-          <div className="col-span-2 sm:col-span-4 lg:col-span-6">
-            <AdminLabel>Discovered Maps link</AdminLabel>
-            <AdminInput
-              className="py-2 text-xs bg-gray-50 text-gray-500"
-              value={editingPlace.googleMapsUrl}
-              readOnly
-            />
-          </div>
-        ) : null}
         <div className="col-span-2 sm:col-span-4 lg:col-span-6">
-          <AdminLabel>Verified Maps link (required)</AdminLabel>
+          <AdminLabel>Google Maps link</AdminLabel>
           <div className="flex flex-col sm:flex-row gap-2">
             <AdminInput
               className="py-2 text-xs flex-1"
-              value={formData.verifiedGoogleMapsUrl}
-              onChange={(e) =>
-                setFormData({ ...formData, verifiedGoogleMapsUrl: e.target.value })
-              }
-              placeholder={verifiedGoogleMapsUrlHint()}
+              value={formData.googleMapsUrl}
+              onChange={(e) => setFormData({ ...formData, googleMapsUrl: e.target.value })}
+              placeholder="https://maps.google.com/… or maps.app.goo.gl/…"
             />
             <AdminButton
               type="button"
               onClick={handleMagicFill}
-              disabled={isMagicFilling || !formData.verifiedGoogleMapsUrl.trim()}
+              disabled={isMagicFilling || !formData.googleMapsUrl.trim()}
               className="text-xs py-2 px-3 shrink-0"
             >
               {isMagicFilling ? (
@@ -1182,7 +1102,7 @@ export default function AreaDiscoveredPlaces() {
             </AdminButton>
           </div>
           <p className="text-[10px] text-gray-400 mt-1">
-            Paste a maps.app.goo.gl short link. Required to verify and promote.
+            Optional. Used for Maps open/promote and Magic Fill.
             {formData.photoUrl || editingPlace?.photoUrl
               ? ' Magic Fill keeps your existing photo and skips Google photo lookup.'
               : ''}
@@ -1216,23 +1136,13 @@ export default function AreaDiscoveredPlaces() {
           <AdminLabel>Alternative titles (spelling variants)</AdminLabel>
           <AdminTextarea
             rows={3}
-            className={`py-2 text-xs min-h-[72px] ${canEditAlternates ? '' : 'bg-gray-50 text-gray-500 cursor-not-allowed'}`}
+            className="py-2 text-xs min-h-[72px]"
             value={formData.alternateTitlesText}
             onChange={(e) =>
               setFormData({ ...formData, alternateTitlesText: e.target.value })
             }
-            readOnly={!canEditAlternates}
-            placeholder={
-              canEditAlternates
-                ? 'One per line — spelling variants only (e.g. Georgioupolis, Kalivaki). Regenerated on save.'
-                : 'Add a verified Maps link first — then edit spelling variants for AI matching.'
-            }
+            placeholder="One per line — spelling variants only (e.g. Georgioupolis, Kalivaki). Regenerated on save."
           />
-          {!canEditAlternates && formData.alternateTitlesText.trim() && (
-            <p className="text-[10px] text-amber-700 mt-1">
-              Showing saved variants. Verify this place to edit or refresh them.
-            </p>
-          )}
         </div>
         <div className="col-span-2 sm:col-span-4 lg:col-span-6">
           <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2.5">
@@ -1301,10 +1211,8 @@ export default function AreaDiscoveredPlaces() {
         title="Discovered Places"
         description={`${decodedArea}, ${decodedCountry}`}
         badge={
-          needsReviewPlaces.length + aiGuestPlaces.length > 0 ? (
-            <AdminBadge variant="gold">
-              {needsReviewPlaces.length + aiGuestPlaces.length} new
-            </AdminBadge>
+          needsReviewPlaces.length > 0 ? (
+            <AdminBadge variant="gold">{needsReviewPlaces.length} new</AdminBadge>
           ) : undefined
         }
       />
@@ -1314,10 +1222,6 @@ export default function AreaDiscoveredPlaces() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
           <span>
             <strong className="text-vailo-gold">{needsReviewPlaces.length}</strong> to review
-          </span>
-          <span className="text-gray-300">|</span>
-          <span>
-            <strong className="text-violet-600">{aiGuestPlaces.length}</strong> unverified AI
           </span>
           <span className="text-gray-300">|</span>
           <span>
@@ -1347,17 +1251,6 @@ export default function AreaDiscoveredPlaces() {
             }`}
           >
             Needs review ({needsReviewPlaces.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('aiGuest')}
-            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-              filter === 'aiGuest'
-                ? 'bg-violet-600 text-white'
-                : 'text-gray-500 hover:text-violet-600'
-            }`}
-          >
-            Unverified AI ({aiGuestPlaces.length})
           </button>
           <button
             type="button"
@@ -1439,25 +1332,71 @@ export default function AreaDiscoveredPlaces() {
           >
             <GitCompare size={14} /> Compare
           </AdminButton>
-          {isReviewedTab && (
+          {!isReviewedTab && (
             <AdminButton
               type="button"
-              onClick={bulkPromoteToLocalGems}
-              disabled={selectedCount === 0 || isBulkPromoting}
+              onClick={() => void bulkMarkReviewed()}
+              disabled={
+                selectedCount === 0 ||
+                isBulkReviewing ||
+                isBulkUnreviewing ||
+                isBulkPromoting
+              }
               className="text-xs py-1.5 px-3"
             >
-              {isBulkPromoting ? (
+              {isBulkReviewing ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
-                <Gem size={14} />
+                <CheckCircle2 size={14} />
               )}{' '}
-              Send to gems
+              Reviewed
             </AdminButton>
+          )}
+          {isReviewedTab && (
+            <>
+              <AdminButton
+                type="button"
+                onClick={() => void bulkUnreview()}
+                disabled={
+                  selectedCount === 0 ||
+                  isBulkUnreviewing ||
+                  isBulkReviewing ||
+                  isBulkPromoting
+                }
+                className="text-xs py-1.5 px-3"
+              >
+                {isBulkUnreviewing ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Undo2 size={14} />
+                )}{' '}
+                Unreview
+              </AdminButton>
+              <AdminButton
+                type="button"
+                onClick={bulkPromoteToLocalGems}
+                disabled={
+                  selectedCount === 0 ||
+                  isBulkPromoting ||
+                  isBulkReviewing ||
+                  isBulkUnreviewing
+                }
+                className="text-xs py-1.5 px-3"
+              >
+                {isBulkPromoting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Gem size={14} />
+                )}{' '}
+                Send to gems
+              </AdminButton>
+            </>
           )}
           <AdminButton
             type="button"
             variant="secondary"
             onClick={clearSelection}
+            disabled={isBulkReviewing || isBulkUnreviewing || isBulkPromoting}
             className="text-xs py-1.5 px-3"
           >
             Clear selection
@@ -1467,7 +1406,7 @@ export default function AreaDiscoveredPlaces() {
           )}
           {isReviewedTab && selectedCount > 0 && (
             <span className="text-[11px] text-gray-500">
-              Ready rows need a category and verified Maps link.
+              Ready rows need a category.
             </span>
           )}
         </div>
@@ -1669,22 +1608,18 @@ export default function AreaDiscoveredPlaces() {
               ? 'No matching places'
               : filter === 'needsReview'
                 ? 'All caught up'
-                : filter === 'aiGuest'
-                  ? 'No unverified AI picks'
-                  : filter === 'reviewed'
-                    ? 'No reviewed places'
-                    : 'No hidden places'
+                : filter === 'reviewed'
+                  ? 'No reviewed places'
+                  : 'No hidden places'
           }
           description={
             hasSearch
               ? `Nothing in this tab matches "${searchText.trim()}".`
               : filter === 'needsReview'
-                ? 'No Google-resolved venues awaiting review.'
-                : filter === 'aiGuest'
-                  ? 'When guests see AI suggestions that fail verification, they appear here for you to fix or hide.'
-                  : filter === 'reviewed'
-                    ? 'Mark places as reviewed to see them here before promoting to Local Gems.'
-                    : 'Hidden places are excluded from guest AI plans.'
+                ? 'No places awaiting review.'
+                : filter === 'reviewed'
+                  ? 'Mark places as reviewed to see them here before promoting to Local Gems.'
+                  : 'Hidden places are excluded from guest AI plans.'
           }
         />
       ) : (
@@ -1722,22 +1657,13 @@ export default function AreaDiscoveredPlaces() {
             {filteredPlaces.map((place, index) => {
               const isEditing = editingId === place.id;
               const isNew = place.reviewStatus === 'new' && place.status !== 'hidden';
-              const isAiGuest = isAiGuestPlace(place);
-              const isRadar = isRadarPlace(place);
-              const radarConfidence = radarConfidenceLabel(place.radarConfidence);
               const isHidden = place.status === 'hidden';
               const lowRating = isLowGoogleRating(place.rating);
               const highRating = isHighGoogleRating(place.rating);
-              const hasVerifiedMaps = isVerifiedGoogleMapsShortUrl(
-                place.verifiedGoogleMapsUrl || ''
-              );
-              const hasMapsLink = String(place.googleMapsUrl || '').trim().startsWith('http');
-              const canQuickEnrich = isNew && hasMapsLink;
-              const isEnriching = enrichingId === place.id;
-              const canMarkReviewed = isNew && hasVerifiedMaps;
+              const mapsUrl = placeMapsUrl(place);
+              const canMarkReviewed = isNew;
               const canPromote =
                 place.reviewStatus === 'reviewed' &&
-                hasVerifiedMaps &&
                 !place.promotedToLocalGemId &&
                 !isHidden;
               const canDelete =
@@ -1747,8 +1673,7 @@ export default function AreaDiscoveredPlaces() {
                 (isHidden && !place.promotedToLocalGemId);
               const canSelect = showSelectionColumn && !place.promotedToLocalGemId;
               const isSelected = selectedIds.has(place.id);
-              const whyText =
-                String(place.radarWhyRecommend || place.description || '').trim() || null;
+              const whyText = String(place.description || '').trim() || null;
 
               return (
                 <li
@@ -1775,42 +1700,14 @@ export default function AreaDiscoveredPlaces() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-semibold text-sm text-vailo-dark truncate">{place.name}</span>
-                          {isNew && !isAiGuest && !isRadar && (
+                          {isNew && (
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-gold/15 text-vailo-gold-muted">
                               New
-                            </span>
-                          )}
-                          {isRadar && (
-                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-teal-100 text-teal-800">
-                              Radar
-                            </span>
-                          )}
-                          {radarConfidence && (
-                            <span
-                              className={`shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
-                                radarConfidence === 'high'
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : radarConfidence === 'medium'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-gray-200 text-gray-600'
-                              }`}
-                            >
-                              {radarConfidence}
-                            </span>
-                          )}
-                          {isAiGuest && (
-                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
-                              AI pick
                             </span>
                           )}
                           {place.suggestedByVailo && (
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-vailo-gold/15 text-vailo-dark">
                               Vailo
-                            </span>
-                          )}
-                          {hasVerifiedMaps && !isHidden && (
-                            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                              Verified
                             </span>
                           )}
                           {isHidden && (
@@ -1851,7 +1748,7 @@ export default function AreaDiscoveredPlaces() {
                         </div>
                         {whyText && (
                           <p className="hidden sm:block text-[11px] text-gray-400 truncate mt-0.5 max-w-xl">
-                            {isRadar ? `Why: ${whyText}` : whyText}
+                            {whyText}
                           </p>
                         )}
                         {place.lastFailureReason && (
@@ -1914,36 +1811,11 @@ export default function AreaDiscoveredPlaces() {
                       <IconBtn title="Edit" onClick={() => (isEditing ? setEditingId(null) : openEdit(place))}>
                         <Pencil size={15} />
                       </IconBtn>
-                      {canQuickEnrich && (
+                      {canMarkReviewed && (
                         <IconBtn
-                          title="Enrich from Maps link, add alternate titles, mark reviewed"
-                          onClick={() => void quickEnrichAndReview(place)}
-                          className={`${
-                            isEnriching
-                              ? 'opacity-60 cursor-wait'
-                              : 'hover:text-violet-700 hover:bg-violet-50'
-                          }`}
-                        >
-                          {isEnriching ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : (
-                            <Wand2 size={15} />
-                          )}
-                        </IconBtn>
-                      )}
-                      {isNew && (
-                        <IconBtn
-                          title={
-                            hasVerifiedMaps
-                              ? 'Mark reviewed'
-                              : 'Add verified Maps link first'
-                          }
+                          title="Mark reviewed"
                           onClick={() => markReviewed(place.id)}
-                          className={`${
-                            canMarkReviewed
-                              ? 'hover:text-emerald-600 hover:bg-emerald-50'
-                              : 'opacity-40 cursor-not-allowed'
-                          }`}
+                          className="hover:text-emerald-600 hover:bg-emerald-50"
                         >
                           <CheckCircle2 size={15} />
                         </IconBtn>
@@ -1957,11 +1829,8 @@ export default function AreaDiscoveredPlaces() {
                           <Gem size={15} />
                         </IconBtn>
                       )}
-                      {(place.verifiedGoogleMapsUrl || place.googleMapsUrl) && (
-                        <IconBtn
-                          title="Open in Maps"
-                          href={place.verifiedGoogleMapsUrl || place.googleMapsUrl}
-                        >
+                      {mapsUrl && (
+                        <IconBtn title="Open in Maps" href={mapsUrl}>
                           <ExternalLink size={15} />
                         </IconBtn>
                       )}

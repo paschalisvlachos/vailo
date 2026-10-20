@@ -16,7 +16,6 @@ import {
   Plus,
   Loader2,
   Radar,
-  ScanSearch,
   Link2,
   Footprints,
 } from 'lucide-react';
@@ -48,8 +47,7 @@ const MODULES: Array<{
   { id: 'features-categories', title: 'Features Categories', icon: Layers, desc: 'Category structure for local features', group: 'features' },
   { id: 'features', title: 'Master Features', icon: Briefcase, desc: 'Car rentals, chefs, transfers, and more', group: 'features' },
   { id: 'features-photos', title: 'Features Photos', icon: ImageIcon, desc: 'Default stock photos for features', group: 'features' },
-  { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review AI-imported venues from guest plans', group: 'other' },
-  { id: 'area-radar', title: 'Area Radar', icon: ScanSearch, desc: 'Draw a region on the map and bulk-scout new places', group: 'other' },
+  { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review curated and imported places before promoting to Local Gems', group: 'other' },
   { id: 'overlap-preview', title: 'Overlap preview', icon: Link2, desc: 'Preview home vs nearby guest content for a property pin', group: 'other' },
 ];
 

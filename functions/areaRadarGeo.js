@@ -1,4 +1,4 @@
-/** Geo helpers for Area Radar (server-side polygon boundary checks). */
+/** Geo helpers for server-side polygon boundary checks (e.g. resolvePlacePhoto). */
 
 function pointInPolygon(lat, lng, ring) {
   if (!Array.isArray(ring) || ring.length < 3) return false;

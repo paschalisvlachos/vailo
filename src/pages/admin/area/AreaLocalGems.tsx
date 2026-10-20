@@ -42,6 +42,7 @@ import {
   resolveCategoryLabel,
 } from '../../../lib/categoryLocale';
 import { isHikingTrailsCategory } from '../../../lib/localTrailsGuest';
+import { isExcludedFromLiveLikeLocal } from '../../../lib/liveLikeLocalCategories';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
 import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
@@ -124,21 +125,29 @@ export default function AreaLocalGems() {
     [formData.categories, categoryCatalogDocs, localeSettings.primaryLocale]
   );
 
-  const categoryFilterOptions = useMemo(
-    () =>
-      categories
-        .map((cat) => {
-          const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-          const label = resolveCategoryLabel(
-            cat.data,
-            localeSettings.primaryLocale,
-            localeSettings.primaryLocale
-          );
-          return { value: primaryName, label: label || primaryName };
-        })
-        .filter((opt) => !isHikingTrailsCategory(opt.value)),
-    [categories, localeSettings.primaryLocale]
-  );
+  const categoryFilterOptions = useMemo(() => {
+    const options = categories
+      .map((cat) => {
+        const primaryName = categoryPrimaryName(cat.data, localeSettings.primaryLocale);
+        const label = resolveCategoryLabel(
+          cat.data,
+          localeSettings.primaryLocale,
+          localeSettings.primaryLocale
+        );
+        return {
+          value: primaryName,
+          label: label || primaryName,
+          liveLikeLocal: !isExcludedFromLiveLikeLocal(cat.data),
+        };
+      })
+      .filter((opt) => !isHikingTrailsCategory(opt.value));
+    // Live like a local first, then local-gems-only
+    options.sort((a, b) => {
+      if (a.liveLikeLocal !== b.liveLikeLocal) return a.liveLikeLocal ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+    return options;
+  }, [categories, localeSettings.primaryLocale]);
 
   const gemAssignableCategories = useMemo(
     () =>
@@ -822,34 +831,57 @@ export default function AreaLocalGems() {
         </div>
       </div>
 
-      {/* Category filters */}
+      {/* Category filters — teal = Live like a local, slate = local gems only */}
       {!isLoading && sortedGems.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setCategoryFilter('all')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
-              categoryFilter === 'all'
-                ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-700'
-            }`}
-          >
-            All ({gemCountForCategory('all')})
-          </button>
-          {categoryFilterOptions.map((opt) => (
+        <div className="mb-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-vailo-teal" aria-hidden />
+              Live like a local
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-slate-400" aria-hidden />
+              Local gems only
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
             <button
-              key={opt.value}
               type="button"
-              onClick={() => setCategoryFilter(opt.value)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${
-                categoryFilter === opt.value
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-sm'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-orange-300 hover:text-orange-700'
+              onClick={() => setCategoryFilter('all')}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                categoryFilter === 'all'
+                  ? 'bg-gray-800 text-white border-gray-800 shadow-sm'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400 hover:text-gray-800'
               }`}
             >
-              {opt.label} ({gemCountForCategory(opt.value)})
+              All ({gemCountForCategory('all')})
             </button>
-          ))}
+            {categoryFilterOptions.map((opt) => {
+              const selected = categoryFilter === opt.value;
+              const pillClass = opt.liveLikeLocal
+                ? selected
+                  ? 'bg-vailo-teal text-white border-vailo-teal shadow-sm'
+                  : 'bg-vailo-teal/10 text-vailo-teal border-vailo-teal/30 hover:border-vailo-teal hover:bg-vailo-teal/15'
+                : selected
+                  ? 'bg-slate-600 text-white border-slate-600 shadow-sm'
+                  : 'bg-slate-100 text-slate-600 border-slate-300 hover:border-slate-400 hover:bg-slate-200/80';
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  title={
+                    opt.liveLikeLocal
+                      ? 'Visible in Live like a local'
+                      : 'Hidden from Live like a local (local gems only)'
+                  }
+                  onClick={() => setCategoryFilter(opt.value)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${pillClass}`}
+                >
+                  {opt.label} ({gemCountForCategory(opt.value)})
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

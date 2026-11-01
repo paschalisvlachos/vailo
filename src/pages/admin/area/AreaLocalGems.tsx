@@ -26,6 +26,8 @@ import {
   RefreshCw,
   ExternalLink,
   Search,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { AdminCard, AdminEmptyState, AdminInput } from '../../../components/admin/AdminPageHeader';
 import { adminPath } from '../../../lib/adminRoutes';
@@ -44,10 +46,12 @@ import {
 import { isHikingTrailsCategory } from '../../../lib/localTrailsGuest';
 import { isExcludedFromLiveLikeLocal } from '../../../lib/liveLikeLocalCategories';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
+import AreaLocalGemsMap from '../../../components/admin/AreaLocalGemsMap';
 import { syncAllPropertyGemsToArea } from '../../../lib/propertyGemAreaSync';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
 import { dedupeAlternateTitles } from '../../../lib/alternateTitles';
+import { colorForGemCategory } from '../../../lib/areaLocalGemsMap';
 
 function areaGemRowClass(index: number): string {
   return index % 2 === 0 ? 'bg-white' : 'bg-gray-50/90';
@@ -70,6 +74,7 @@ export default function AreaLocalGems() {
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [showGemsMap, setShowGemsMap] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [editingGemId, setEditingGemId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -831,6 +836,41 @@ export default function AreaLocalGems() {
         </div>
       </div>
 
+      {!isLoading && sortedGems.length > 0 && (
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setShowGemsMap((v) => !v)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-800"
+            aria-expanded={showGemsMap}
+          >
+            <Map size={16} className="text-orange-600" aria-hidden />
+            {showGemsMap ? 'Hide map' : 'Show map'}
+            {showGemsMap ? (
+              <ChevronUp size={16} className="text-gray-400" aria-hidden />
+            ) : (
+              <ChevronDown size={16} className="text-gray-400" aria-hidden />
+            )}
+          </button>
+          {showGemsMap && (
+            <div className="mt-3">
+              <AreaLocalGemsMap
+                gems={sortedGems}
+                categoryCatalogDocs={categoryCatalogDocs}
+                primaryLocale={localeSettings.primaryLocale}
+                categoryFilter={categoryFilter}
+                onCategoryFilterChange={setCategoryFilter}
+                categoryOptions={categoryFilterOptions.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                }))}
+                onDeleteGem={handleDelete}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Category filters — teal = Live like a local, slate = local gems only */}
       {!isLoading && sortedGems.length > 0 && (
         <div className="mb-4 space-y-2">
@@ -858,6 +898,7 @@ export default function AreaLocalGems() {
             </button>
             {categoryFilterOptions.map((opt) => {
               const selected = categoryFilter === opt.value;
+              const mapColor = colorForGemCategory(opt.value);
               const pillClass = opt.liveLikeLocal
                 ? selected
                   ? 'bg-vailo-teal text-white border-vailo-teal shadow-sm'
@@ -875,8 +916,13 @@ export default function AreaLocalGems() {
                       : 'Hidden from Live like a local (local gems only)'
                   }
                   onClick={() => setCategoryFilter(opt.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${pillClass}`}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border whitespace-nowrap ${pillClass}`}
                 >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full ring-1 ring-black/10"
+                    style={{ backgroundColor: mapColor }}
+                    aria-hidden
+                  />
                   {opt.label} ({gemCountForCategory(opt.value)})
                 </button>
               );

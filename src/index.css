@@ -131,6 +131,12 @@
   .admin-back-link {
     @apply inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors mb-4;
   }
+
+  /* Leaflet divIcon reset for Area Local Gems map pins */
+  .area-gems-map-pin {
+    background: transparent !important;
+    border: none !important;
+  }
 }
 
 @layer utilities {

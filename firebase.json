@@ -16,6 +16,20 @@
         }
       },
       {
+        "source": "/api/plan-checkout",
+        "function": {
+          "functionId": "submitPlanCheckout",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/stripe/plan-webhook",
+        "function": {
+          "functionId": "stripePlanWebhook",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/api/resend/webhook",
         "function": {
           "functionId": "resendInboundWebhook",
@@ -52,6 +66,10 @@
       },
       {
         "source": "/terms",
+        "destination": "/app/index.html"
+      },
+      {
+        "source": "/buy",
         "destination": "/app/index.html"
       },
       {

@@ -23,7 +23,7 @@ export type Plan = {
   tagline: string;
   /** Inclusive lower bound of the property band. */
   minProperties: number;
-  /** Inclusive upper bound, or `null` for an open-ended 51+ tier. */
+  /** Inclusive upper bound, or `null` for an open-ended tier. */
   maxProperties: number | null;
   propertiesLabel: string;
   /** Annual price per property in euros. */
@@ -33,11 +33,11 @@ export type Plan = {
 };
 
 /**
- * Per-property annual pricing (fair volume discounts):
- *  - 1      → €49 each
- *  - 2–20   → €39 each
- *  - 21–50  → €29 each
- *  - 51+    → €19 each
+ * All-units annual pricing (every property at the plan rate):
+ *  - 1      → €49
+ *  - 2–10   → €39
+ *  - 11–50  → €29
+ *  - 51+    → €24 down to €19 as count grows (see {@link scalePricePerProperty})
  */
 export const PLANS: Plan[] = [
   {
@@ -54,21 +54,21 @@ export const PLANS: Plan[] = [
     name: 'Pro Host',
     tagline: 'For hosts and small portfolios.',
     minProperties: 2,
-    maxProperties: 20,
-    propertiesLabel: '2–20 Properties',
+    maxProperties: 10,
+    propertiesLabel: '2–10 Properties',
     pricePerPropertyEur: 39,
     saving: 'Save 20%',
-    popular: true,
   },
   {
     id: 'agency',
     name: 'Agency',
     tagline: 'Built for property managers at scale.',
-    minProperties: 21,
+    minProperties: 11,
     maxProperties: 50,
-    propertiesLabel: '21–50 Properties',
+    propertiesLabel: '11–50 Properties',
     pricePerPropertyEur: 29,
     saving: 'Save 41%',
+    popular: true,
   },
   {
     id: 'scale',
@@ -77,10 +77,19 @@ export const PLANS: Plan[] = [
     minProperties: 51,
     maxProperties: null,
     propertiesLabel: '51+ Properties',
-    pricePerPropertyEur: 19,
-    saving: 'Save 61%',
+    /** Starting Scale rate; live rate slides down to {@link SCALE_RATE.endEur}. */
+    pricePerPropertyEur: 24,
+    saving: 'Save 51%',
   },
 ];
+
+/** Scale tier: €24/pp at 51 homes, linearly down to €19/pp by 200 homes. */
+export const SCALE_RATE = {
+  startEur: 24,
+  endEur: 19,
+  startAt: 51,
+  endAt: 200,
+} as const;
 
 /**
  * Time & revenue estimate for a given number of guests per month.
@@ -112,8 +121,28 @@ export function pickPlan(properties: number): Plan {
   );
 }
 
-/** Annual total for a portfolio: rate of the covering band × property count. */
+/**
+ * Per-property annual rate for a given portfolio size.
+ * Scale slides from €24 → €19 between 51 and 200 properties.
+ */
+export function planPricePerProperty(properties: number): number {
+  const count = Math.max(1, Math.floor(properties));
+  const plan = pickPlan(count);
+  if (plan.id === 'scale') return scalePricePerProperty(count);
+  return plan.pricePerPropertyEur;
+}
+
+/** Scale rate: €24 at 51 properties, €19 from 200 upward (linear in between). */
+export function scalePricePerProperty(properties: number): number {
+  const n = Math.max(1, Math.floor(properties));
+  if (n <= SCALE_RATE.startAt) return SCALE_RATE.startEur;
+  if (n >= SCALE_RATE.endAt) return SCALE_RATE.endEur;
+  const t = (n - SCALE_RATE.startAt) / (SCALE_RATE.endAt - SCALE_RATE.startAt);
+  return SCALE_RATE.startEur + (SCALE_RATE.endEur - SCALE_RATE.startEur) * t;
+}
+
+/** Annual total: effective per-property rate × property count. */
 export function planAnnualTotal(properties: number): number {
   const count = Math.max(1, Math.floor(properties));
-  return pickPlan(count).pricePerPropertyEur * count;
+  return planPricePerProperty(count) * count;
 }

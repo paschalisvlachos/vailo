@@ -47,6 +47,7 @@ import {
   Compass,
   ChartColumn,
   Copy,
+  CreditCard,
   DoorOpen,
   ExternalLink,
   Flame,
@@ -56,14 +57,17 @@ import {
   Lightbulb,
   Link2,
   Loader2,
+  Lock,
   Mail,
   MapPin,
   Car,
   Menu,
   MessageCircle,
+  Minus,
   MonitorSmartphone,
   MousePointerClick,
   Percent,
+  Plus,
   QrCode,
   Send,
   ShieldCheck,
@@ -85,7 +89,15 @@ import {
 import { usePlatformLegal } from '../../hooks/usePlatformLegal';
 import { getPlatformLegalTemplate } from '../../lib/platformLegalDefaults';
 import { legalContentIsEmpty, sanitizeLegalHtml } from '../../lib/legalHtml';
-import { PLANS, ROI, calcRoi, pickPlan, planAnnualTotal, type Plan } from '../../lib/websiteRoi';
+import {
+  PLANS,
+  ROI,
+  calcRoi,
+  pickPlan,
+  planAnnualTotal,
+  planPricePerProperty,
+  type Plan,
+} from '../../lib/websiteRoi';
 
 /* ===========================================================================
  * 1. CONFIG & CONTENT
@@ -388,7 +400,7 @@ const SITE_STATS = [
     kind: 'number' as const,
     value: 49,
     prefix: '€',
-    label: 'From this price per property / year',
+    label: 'From this price per property per year',
     detail: 'Lower price per property when you manage more homes',
   },
 ] as const;
@@ -406,6 +418,29 @@ const PLAN_INCLUDES = [
   'On-property QR poster, A5 or A4',
   '1/3 of Vailo’s excursion margin to you',
   '100% of your featured-partner margins',
+];
+
+const BUY_SETUP_STEPS: { icon: LucideIcon; title: string; body: string }[] = [
+  {
+    icon: Sparkles,
+    title: 'AI collects what you already have',
+    body: 'From your website, Booking.com, Airbnb link, docs and manuals — Vailo gathers the facts so you don’t retype them.',
+  },
+  {
+    icon: ClipboardCheck,
+    title: 'Wizard fills only what’s missing',
+    body: 'A short guided pass helps you add the gaps. Easy answers, no blank-page busywork.',
+  },
+  {
+    icon: Bot,
+    title: 'Then Vailo runs without you',
+    body: 'Guests get answers and guidance on their own. You’re not glued to the inbox just to keep the stay on track.',
+  },
+  {
+    icon: SlidersHorizontal,
+    title: 'Shape it to what you need',
+    body: 'Keep only what matches your properties. Fine-tune anytime later in Settings.',
+  },
 ];
 
 type Feature = {
@@ -1525,11 +1560,11 @@ function Hero() {
               className="flex flex-wrap items-center justify-center gap-2.5 lg:justify-start"
             >
               <Link
-                to="/pricing"
+                to="/buy"
                 className="inline-flex items-center justify-center rounded-2xl border border-vailo-gold/40 bg-vailo-gold/15 px-4 py-2.5 text-left shadow-[0_10px_30px_-16px_rgba(197,160,89,0.55)] backdrop-blur-md transition hover:bg-vailo-gold/25"
               >
                 <span className="text-[13px] font-medium leading-snug text-white/85 sm:text-sm">
-                  <span className="font-extrabold tracking-tight text-vailo-gold">€49 / year</span> per property,
+                  <span className="font-extrabold tracking-tight text-vailo-gold">From €49 / year</span> per property,
                   less as you add more
                 </span>
               </Link>
@@ -2429,7 +2464,7 @@ function RoiCalculator() {
                   <span>
                     For {properties} {properties === 1 ? 'property' : 'properties'} we’d suggest{' '}
                     <b className="text-white">
-                      {plan.name} (€{plan.pricePerPropertyEur} × {properties} = €{formatInt(annualTotal)}/yr)
+                      {plan.name} (€{formatInt(annualTotal)}/yr)
                     </b>
                     .{' '}
                     {monthsToCover !== null && (
@@ -2880,10 +2915,16 @@ function FeaturesSection({ detailed = false }: { detailed?: boolean }) {
  * 4e. SECTION — PRICING
  * ========================================================================= */
 
+function planExampleCount(plan: Plan): number {
+  if (plan.id === 'solo') return 1;
+  if (plan.id === 'pro') return 6;
+  if (plan.id === 'agency') return 25;
+  return 80;
+}
+
 function PricingCard({ plan }: { plan: Plan }) {
-  const exampleCount =
-    plan.id === 'solo' ? 1 : plan.id === 'pro' ? 10 : plan.id === 'agency' ? 30 : 60;
-  const exampleTotal = plan.pricePerPropertyEur * exampleCount;
+  const exampleCount = planExampleCount(plan);
+  const exampleTotal = planAnnualTotal(exampleCount);
   return (
     <motion.div
       whileHover={{ y: -6 }}
@@ -2905,32 +2946,31 @@ function PricingCard({ plan }: { plan: Plan }) {
         </>
       )}
 
-      <div className="relative flex items-start justify-between gap-3">
-        <div>
+      <div className="relative">
+        <div className="flex items-start justify-between gap-3">
           <h3 className="font-luxury text-2xl font-medium text-vailo-dark">{plan.name}</h3>
-          <p className="mt-1 text-sm text-vailo-dark/60">{plan.tagline}</p>
+          {plan.saving && (
+            <span className="mt-1 flex-none rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 ring-1 ring-emerald-200">
+              {plan.saving}
+            </span>
+          )}
         </div>
-        {plan.saving && (
-          <span className="flex-none rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 ring-1 ring-emerald-200">
-            {plan.saving}
-          </span>
-        )}
+        <p className="mt-1 text-sm text-vailo-dark/60">{plan.tagline}</p>
       </div>
 
       <div className="relative mt-6">
-        <p className="flex items-baseline gap-1.5">
-          <span className="text-5xl font-extrabold tracking-tight text-vailo-dark">
-            €{plan.pricePerPropertyEur}
+        <PlanCardPrice plan={plan} />
+        <div className="mt-3 flex justify-center">
+          <span className="inline-flex items-center rounded-full bg-vailo-teal/10 px-3 py-1 text-xs font-bold text-vailo-teal">
+            {plan.propertiesLabel}
           </span>
-          <span className="text-base font-semibold text-vailo-dark/50">/ property / year</span>
-        </p>
-        <p className="mt-2 inline-flex items-center gap-2 rounded-xl bg-vailo-teal/8 px-3 py-1.5 text-sm font-bold text-vailo-teal">
-          {plan.propertiesLabel}
-        </p>
-        <p className="mt-2 text-xs font-medium text-vailo-dark/50">
+        </div>
+        <p className="mt-2.5 text-center text-xs font-medium text-vailo-dark/50">
           {plan.id === 'solo'
             ? '€49 billed annually'
-            : `e.g. ${exampleCount} properties → €${formatInt(exampleTotal)}/yr`}
+            : plan.id === 'scale'
+              ? `e.g. ${exampleCount} homes → €${formatInt(exampleTotal)}/yr`
+              : `e.g. ${exampleCount} properties → €${formatInt(exampleTotal)}/yr`}
         </p>
       </div>
 
@@ -2946,12 +2986,12 @@ function PricingCard({ plan }: { plan: Plan }) {
       </ul>
 
       <Button
-        to={`/contact?intent=demo&plan=${encodeURIComponent(plan.name)}`}
+        to={`/buy?plan=${plan.id}`}
         variant={plan.popular ? 'primary' : 'dark'}
         size="lg"
         className="relative mt-8 w-full"
       >
-        Book a Demo
+        Select plan
       </Button>
     </motion.div>
   );
@@ -3921,7 +3961,7 @@ export function PricingPage() {
                 },
                 {
                   q: 'How is the annual total calculated?',
-                  a: 'You pay the per-property rate for your portfolio size × the number of properties. One property is €49/year; 2–20 are €39 each; 21–50 are €29 each; 51+ are €19 each.',
+                  a: 'You pay the per-property rate for your portfolio size × the number of properties. One property is €49/year; 2–10 are €39 each; 11–50 are €29 each; from 51 homes the Scale rate starts at €24 pp and slides down to €19 pp by 200 homes.',
                 },
                 {
                   q: 'What if I manage a large team already?',
@@ -4349,3 +4389,1010 @@ function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
 
 export const PrivacyPage = () => <LegalPage kind="privacy" />;
 export const TermsPage = () => <LegalPage kind="terms" />;
+
+/** Soft upper bound for the open-ended Scale tier in the buy flow. */
+const BUY_SCALE_MAX_PROPERTIES = 200;
+
+function buyPlanPropertyBounds(plan: Plan): { min: number; max: number } {
+  return {
+    min: plan.minProperties,
+    max: plan.maxProperties ?? BUY_SCALE_MAX_PROPERTIES,
+  };
+}
+
+function PlanCardPrice({ plan }: { plan: Plan }) {
+  if (plan.id === 'scale') {
+    return (
+      <div className="text-center">
+        <div className="flex items-center justify-center gap-2.5">
+          <span className="text-[2.75rem] font-extrabold leading-none tracking-tight text-vailo-dark sm:text-[3rem]">
+            €24
+          </span>
+          <span className="text-lg font-semibold text-vailo-dark/25" aria-hidden>
+            →
+          </span>
+          <span className="text-[2.75rem] font-extrabold leading-none tracking-tight text-vailo-teal sm:text-[3rem]">
+            €19
+          </span>
+        </div>
+        <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.12em] text-vailo-dark/40">
+          per property per year
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center">
+      <p className="text-[2.75rem] font-extrabold leading-none tracking-tight text-vailo-dark sm:text-[3rem]">
+        €{plan.pricePerPropertyEur}
+      </p>
+      <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.12em] text-vailo-dark/40">
+        per property per year
+      </p>
+    </div>
+  );
+}
+
+function BuyPlanCard({
+  plan,
+  selected,
+  onSelect,
+}: {
+  plan: Plan;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const exampleCount = planExampleCount(plan);
+  const exampleTotal = planAnnualTotal(exampleCount);
+  const exampleLine =
+    plan.id === 'solo'
+      ? 'Billed annually'
+      : plan.id === 'scale'
+        ? `e.g. ${exampleCount} homes → €${formatInt(exampleTotal)}/yr`
+        : `e.g. ${exampleCount} homes → €${formatInt(exampleTotal)}/yr`;
+
+  return (
+    <div className="relative flex h-full flex-col pt-4">
+      {plan.popular && !selected && (
+        <span className="absolute left-1/2 top-0 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-[#d9b66f] to-vailo-gold px-3.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-vailo-dark shadow-md">
+          <Star className="h-3 w-3 fill-current" aria-hidden />
+          Most Popular
+        </span>
+      )}
+      {selected && (
+        <span className="absolute left-1/2 top-0 z-10 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-vailo-teal px-3.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-md">
+          <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
+          Selected
+        </span>
+      )}
+
+      <motion.button
+        type="button"
+        whileHover={{ y: -5 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+        onClick={onSelect}
+        aria-pressed={selected}
+        className={cx(
+          'group relative mt-auto flex h-full min-h-[22rem] w-full flex-col rounded-[1.75rem] px-6 pb-6 pt-7 text-left transition-shadow sm:px-7 sm:pb-7 sm:pt-8',
+          selected
+            ? 'bg-white shadow-[0_28px_60px_-28px_rgba(13,107,99,0.55)] ring-2 ring-vailo-teal'
+            : plan.popular
+              ? 'bg-white shadow-[0_28px_60px_-28px_rgba(197,160,89,0.55)] ring-2 ring-vailo-gold'
+              : 'bg-white shadow-[0_16px_40px_-28px_rgba(5,31,38,0.35)] ring-1 ring-vailo-dark/8 hover:shadow-[0_22px_48px_-28px_rgba(5,31,38,0.4)] hover:ring-vailo-teal/35'
+        )}
+      >
+        {(plan.popular || selected) && (
+          <div
+            className={cx(
+              'pointer-events-none absolute inset-0 rounded-[1.75rem]',
+              selected
+                ? 'bg-gradient-to-b from-vailo-teal/8 via-transparent to-transparent'
+                : 'bg-gradient-to-b from-vailo-gold/12 via-transparent to-transparent'
+            )}
+          />
+        )}
+
+        <div className="relative flex min-h-[4.75rem] flex-col">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-luxury text-[1.65rem] leading-tight font-medium text-vailo-dark">
+              {plan.name}
+            </h3>
+            {plan.saving && (
+              <span className="mt-0.5 flex-none rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-200/80">
+                {plan.saving}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-[13px] leading-snug text-vailo-dark/55">{plan.tagline}</p>
+        </div>
+
+      <div className="relative mt-5 border-t border-vailo-dark/6 pt-5">
+        <PlanCardPrice plan={plan} />
+        <div className="mt-4 flex justify-center">
+          <span className="inline-flex items-center rounded-full bg-vailo-teal/10 px-3 py-1 text-xs font-bold text-vailo-teal">
+            {plan.propertiesLabel}
+          </span>
+        </div>
+        <p className="mt-2.5 min-h-[2.5rem] text-center text-[12px] font-medium leading-snug text-vailo-dark/45">
+          {exampleLine}
+        </p>
+      </div>
+
+        <div className="relative mt-auto w-full pt-6">
+          <span
+            className={cx(
+              'flex w-full items-center justify-center rounded-2xl px-5 py-3.5 text-sm font-bold transition-colors',
+              selected
+                ? 'bg-vailo-teal text-white'
+                : plan.popular
+                  ? 'bg-gradient-to-r from-[#d9b66f] to-vailo-gold text-vailo-dark group-hover:brightness-105'
+                  : 'bg-vailo-dark text-white group-hover:bg-vailo-teal'
+            )}
+          >
+            {selected ? 'Selected' : 'Select plan'}
+          </span>
+        </div>
+      </motion.button>
+    </div>
+  );
+}
+
+const buyInputClass =
+  'w-full rounded-2xl border border-vailo-dark/10 bg-white px-4 py-3 text-[15px] text-vailo-dark outline-none transition placeholder:text-vailo-dark/35 focus:border-vailo-teal/60 focus:ring-4 focus:ring-vailo-teal/10';
+const buyLabelClass = 'mb-1.5 block text-sm font-bold text-vailo-dark/80';
+
+type BuyCheckoutStatus = 'idle' | 'sending' | 'redirecting' | 'done' | 'error';
+
+type BuyAccountKind = 'owner' | 'agent';
+
+function defaultAccountKindForPlan(planId: Plan['id']): BuyAccountKind {
+  return planId === 'agency' || planId === 'scale' ? 'agent' : 'owner';
+}
+
+function BuyCheckoutSection({
+  plan,
+  propertyCount,
+}: {
+  plan: Plan;
+  propertyCount: number;
+}) {
+  const annualTotal = planAnnualTotal(propertyCount);
+  const unitRate = planPricePerProperty(propertyCount);
+  const unitRateLabel =
+    plan.id === 'scale'
+      ? `€${unitRate.toFixed(unitRate % 1 === 0 ? 0 : 2)}`
+      : `€${plan.pricePerPropertyEur}`;
+
+  const [accountKind, setAccountKind] = useState<BuyAccountKind>(() =>
+    defaultAccountKindForPlan(plan.id)
+  );
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [company, setCompany] = useState('');
+  const [vatNumber, setVatNumber] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [country, setCountry] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [status, setStatus] = useState<BuyCheckoutStatus>('idle');
+  const [error, setError] = useState('');
+  const [doneMessage, setDoneMessage] = useState('');
+
+  useEffect(() => {
+    setAccountKind(defaultAccountKindForPlan(plan.id));
+  }, [plan.id]);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (fullName.trim().length < 2) return fail('Please enter your full name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return fail('Please enter a valid email.');
+    if (!/^[\d\s+\-().]{6,}$/.test(phone.trim())) return fail('Please enter a valid phone number.');
+    if (!billingAddress.trim() || !city.trim() || !postalCode.trim() || !country.trim()) {
+      return fail('Please complete your billing address.');
+    }
+    if (password.length < 6) return fail('Password must be at least 6 characters.');
+    if (password !== passwordConfirm) return fail('Passwords do not match.');
+
+    setStatus('sending');
+    setError('');
+    try {
+      const res = await fetch('/api/plan-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planId: plan.id,
+          propertyCount,
+          accountKind,
+          role: accountKind,
+          fullName: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim(),
+          company: company.trim(),
+          vatNumber: vatNumber.trim(),
+          billingAddress: billingAddress.trim(),
+          city: city.trim(),
+          postalCode: postalCode.trim(),
+          country: country.trim(),
+          password,
+          website: '',
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        mode?: string;
+        checkoutUrl?: string;
+        message?: string;
+        adminPath?: string;
+      };
+      if (!res.ok || body.ok !== true) {
+        throw new Error(body.error || 'Something went wrong. Please try again.');
+      }
+      if (body.mode === 'stripe' && body.checkoutUrl) {
+        setStatus('redirecting');
+        window.location.assign(body.checkoutUrl);
+        return;
+      }
+      setDoneMessage(
+        body.message ||
+          'Your Vailo Admin account is ready. Sign in with the email and password you just set.'
+      );
+      setStatus('done');
+    } catch (err) {
+      setStatus('error');
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : `Could not complete checkout. Please email ${CONTACT_EMAIL}.`
+      );
+    }
+  }
+
+  function fail(message: string) {
+    setStatus('error');
+    setError(message);
+  }
+
+  if (status === 'done') {
+    return (
+      <div className="rounded-[1.75rem] bg-white p-6 text-center shadow-[0_28px_60px_-28px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/8 sm:p-10">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+          <Check className="h-7 w-7" strokeWidth={2.5} aria-hidden />
+        </span>
+        <h3 className="mt-5 font-luxury text-2xl font-medium text-vailo-dark sm:text-3xl">
+          You’re in — welcome to Vailo.
+        </h3>
+        <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-vailo-dark/60 sm:text-base">
+          {doneMessage}
+        </p>
+        <a
+          href="/admin"
+          className="mt-8 inline-flex items-center justify-center gap-2 rounded-2xl bg-vailo-dark px-6 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-vailo-dark/20 transition hover:bg-vailo-teal"
+        >
+          Open Vailo Admin
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="rounded-[1.75rem] bg-white p-6 shadow-[0_28px_60px_-28px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/8 sm:p-8 lg:p-10"
+      noValidate
+    >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-10">
+        <div className="min-w-0 max-w-xl">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-vailo-teal">Checkout</p>
+          <h3 className="mt-2 font-luxury text-2xl font-medium leading-snug text-vailo-dark sm:text-3xl">
+            Create your Vailo Admin account.
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed text-vailo-dark/60 sm:text-base">
+            Create your Admin login and billing profile, then pay to activate. You’ll add properties
+            from Admin after you’re in.
+          </p>
+        </div>
+        <aside className="w-full shrink-0 rounded-2xl bg-vailo-dark px-5 py-4 text-white sm:w-[15rem]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">Order</p>
+          <p className="mt-2 text-sm font-semibold text-white/85">{plan.name}</p>
+          <p className="mt-0.5 text-sm text-white/60">
+            {propertyCount} {propertyCount === 1 ? 'property' : 'properties'} · {unitRateLabel}
+            /pp
+          </p>
+          <p className="mt-2 font-luxury text-3xl font-medium tracking-tight">
+            €{formatInt(annualTotal)}
+            <span className="ml-1 text-sm font-bold text-white/55">/yr</span>
+          </p>
+        </aside>
+      </div>
+
+      <div className="mt-8 grid gap-8 lg:grid-cols-2">
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-vailo-teal" aria-hidden />
+            <h4 className="text-sm font-extrabold text-vailo-dark">Account</h4>
+          </div>
+          <fieldset>
+            <legend className={buyLabelClass}>I am registering as *</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  {
+                    value: 'owner' as const,
+                    title: 'Property owner',
+                    hint: 'Host or owner managing your own homes',
+                  },
+                  {
+                    value: 'agent' as const,
+                    title: 'Agency',
+                    hint: 'Property manager or agency portfolio',
+                  },
+                ] as const
+              ).map((opt) => {
+                const selected = accountKind === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setAccountKind(opt.value)}
+                    className={cx(
+                      'rounded-2xl px-4 py-3 text-left ring-1 transition',
+                      selected
+                        ? 'bg-vailo-teal/10 ring-vailo-teal/40'
+                        : 'bg-white ring-vailo-dark/10 hover:ring-vailo-teal/25'
+                    )}
+                  >
+                    <span className="block text-sm font-extrabold text-vailo-dark">{opt.title}</span>
+                    <span className="mt-0.5 block text-xs text-vailo-dark/55">{opt.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-vailo-dark/45">
+              {plan.id === 'agency' || plan.id === 'scale'
+                ? `${plan.name} is usually an agency account — change above if you’re a host.`
+                : `${plan.name} is usually a property-owner account — switch to Agency if you manage for others.`}
+            </p>
+          </fieldset>
+          <div>
+            <label className={buyLabelClass} htmlFor="buy-fullName">
+              Full name *
+            </label>
+            <input
+              id="buy-fullName"
+              className={buyInputClass}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              autoComplete="name"
+              required
+            />
+          </div>
+          <div>
+            <label className={buyLabelClass} htmlFor="buy-email">
+              Email (Admin login) *
+            </label>
+            <input
+              id="buy-email"
+              type="email"
+              className={buyInputClass}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
+          <div>
+            <label className={buyLabelClass} htmlFor="buy-phone">
+              Phone *
+            </label>
+            <input
+              id="buy-phone"
+              type="tel"
+              className={buyInputClass}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              autoComplete="tel"
+              required
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={buyLabelClass} htmlFor="buy-company">
+                Company
+              </label>
+              <input
+                id="buy-company"
+                className={buyInputClass}
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                autoComplete="organization"
+              />
+            </div>
+            <div>
+              <label className={buyLabelClass} htmlFor="buy-vat">
+                VAT number
+              </label>
+              <input
+                id="buy-vat"
+                className={buyInputClass}
+                value={vatNumber}
+                onChange={(e) => setVatNumber(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={buyLabelClass} htmlFor="buy-password">
+                Admin password *
+              </label>
+              <input
+                id="buy-password"
+                type="password"
+                className={buyInputClass}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+                minLength={6}
+              />
+            </div>
+            <div>
+              <label className={buyLabelClass} htmlFor="buy-password2">
+                Confirm password *
+              </label>
+              <input
+                id="buy-password2"
+                type="password"
+                className={buyInputClass}
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                autoComplete="new-password"
+                required
+                minLength={6}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-vailo-teal" aria-hidden />
+            <h4 className="text-sm font-extrabold text-vailo-dark">Billing</h4>
+          </div>
+          <div>
+            <label className={buyLabelClass} htmlFor="buy-address">
+              Billing address *
+            </label>
+            <input
+              id="buy-address"
+              className={buyInputClass}
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
+              autoComplete="street-address"
+              required
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={buyLabelClass} htmlFor="buy-city">
+                City *
+              </label>
+              <input
+                id="buy-city"
+                className={buyInputClass}
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                autoComplete="address-level2"
+                required
+              />
+            </div>
+            <div>
+              <label className={buyLabelClass} htmlFor="buy-postal">
+                Postal code *
+              </label>
+              <input
+                id="buy-postal"
+                className={buyInputClass}
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                autoComplete="postal-code"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className={buyLabelClass} htmlFor="buy-country">
+              Country *
+            </label>
+            <input
+              id="buy-country"
+              className={buyInputClass}
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              autoComplete="country-name"
+              required
+            />
+          </div>
+          <p className="rounded-2xl bg-[#f6faf9] px-4 py-3 text-sm leading-relaxed text-vailo-dark/60 ring-1 ring-vailo-dark/6">
+            Your plan covers{' '}
+            <span className="font-semibold text-vailo-dark">
+              {propertyCount} {propertyCount === 1 ? 'property' : 'properties'}
+            </span>
+            . Add each one from Admin after checkout — name, country, and area included.
+          </p>
+        </section>
+      </div>
+
+      <section className="mt-8 rounded-2xl bg-gradient-to-br from-[#f6faf9] to-white p-5 ring-1 ring-vailo-dark/8 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-3">
+            <span className="flex h-11 w-11 flex-none items-center justify-center rounded-2xl bg-vailo-teal text-white shadow-md shadow-vailo-teal/25">
+              <CreditCard className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <h4 className="text-sm font-extrabold text-vailo-dark">Payment</h4>
+              <p className="mt-0.5 text-sm text-vailo-dark/55">
+                Annual billing · €{formatInt(annualTotal)} charged securely. Card details are
+                entered on Stripe’s checkout when enabled.
+              </p>
+            </div>
+          </div>
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-vailo-dark/45">
+            <Lock className="h-3.5 w-3.5" aria-hidden />
+            Encrypted checkout
+          </p>
+        </div>
+      </section>
+
+      {/* Honeypot */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        className="absolute left-[-9999px] h-0 w-0 opacity-0"
+        aria-hidden
+      />
+
+      {(status === 'error' || error) && (
+        <p className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 ring-1 ring-red-100">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-6 flex flex-col gap-3 border-t border-vailo-dark/6 pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-vailo-dark/50">
+          By continuing you agree to Vailo’s{' '}
+          <Link to="/terms" className="font-semibold text-vailo-teal hover:underline">
+            Terms
+          </Link>{' '}
+          and{' '}
+          <Link to="/privacy" className="font-semibold text-vailo-teal hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+        <button
+          type="submit"
+          disabled={status === 'sending' || status === 'redirecting'}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-vailo-teal px-6 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-vailo-teal/25 transition hover:brightness-105 disabled:cursor-wait disabled:opacity-70"
+        >
+          {status === 'sending' || status === 'redirecting' ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              {status === 'redirecting' ? 'Redirecting to pay…' : 'Preparing checkout…'}
+            </>
+          ) : (
+            <>
+              Pay €{formatInt(annualTotal)}/yr & activate
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </>
+          )}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function BuySetupPromiseSection({
+  plan,
+  propertyCount,
+  onContinue,
+}: {
+  plan: Plan;
+  propertyCount: number;
+  onContinue: () => void;
+}) {
+  const annualTotal = planAnnualTotal(propertyCount);
+
+  return (
+    <div className="rounded-[1.75rem] bg-white p-6 shadow-[0_28px_60px_-28px_rgba(5,31,38,0.28)] ring-1 ring-vailo-dark/8 sm:p-8 lg:p-10">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+        <div className="min-w-0 max-w-2xl flex-1">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-vailo-teal">
+            What you get · {plan.name}
+          </p>
+          <h3 className="mt-2 font-luxury text-2xl font-medium leading-snug text-vailo-dark sm:text-3xl">
+            Vailo does the heavy lifting — you only steer.
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed text-vailo-dark/60 sm:text-base">
+            AI builds your House Guide from what you already publish. You finish the gaps with the
+            wizard, then guests are looked after without you spending your days answering the same
+            questions.
+          </p>
+        </div>
+        <aside className="w-full shrink-0 rounded-2xl bg-gradient-to-br from-vailo-teal to-vailo-teal-light px-5 py-4 text-white shadow-lg shadow-vailo-teal/25 sm:w-[13.5rem]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/75">
+            Your selection
+          </p>
+          <p className="mt-2 text-sm font-semibold text-white/90">
+            {propertyCount} {propertyCount === 1 ? 'property' : 'properties'}
+          </p>
+          <p className="mt-1 font-luxury text-3xl font-medium tracking-tight text-white">
+            €{formatInt(annualTotal)}
+            <span className="ml-1 text-sm font-bold text-white/70">/yr</span>
+          </p>
+        </aside>
+      </div>
+
+      <div className="mt-8 grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:gap-10">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-vailo-dark/40">
+            Every plan includes
+          </p>
+          <ul className="mt-4 space-y-3">
+            {PLAN_INCLUDES.map((item) => (
+              <li key={item} className="flex items-start gap-3 text-sm font-medium text-vailo-dark/80">
+                <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-vailo-teal/10 text-vailo-teal">
+                  <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
+                </span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-vailo-dark/40">
+            How setup actually works
+          </p>
+          <ol className="mt-4 space-y-4">
+            {BUY_SETUP_STEPS.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <li key={step.title} className="flex gap-3.5">
+                  <span className="flex h-10 w-10 flex-none items-center justify-center rounded-2xl bg-gradient-to-br from-vailo-teal to-vailo-teal-light text-white shadow-md shadow-vailo-teal/20">
+                    <Icon className="h-[1.1rem] w-[1.1rem]" aria-hidden />
+                  </span>
+                  <div className="min-w-0 pt-0.5">
+                    <p className="text-sm font-bold text-vailo-dark">
+                      <span className="mr-1.5 text-vailo-teal/70">{i + 1}.</span>
+                      {step.title}
+                    </p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-vailo-dark/60">{step.body}</p>
+                    {i === 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {['Website', 'Booking.com', 'Airbnb', 'Docs & manuals'].map((source) => (
+                          <span
+                            key={source}
+                            className="rounded-full bg-vailo-teal/8 px-2.5 py-0.5 text-[11px] font-semibold text-vailo-teal"
+                          >
+                            {source}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="mt-5 flex items-start gap-3 rounded-2xl bg-[#f6faf9] px-4 py-3.5 ring-1 ring-vailo-dark/6">
+            <SlidersHorizontal className="mt-0.5 h-4 w-4 flex-none text-vailo-teal" aria-hidden />
+            <p className="text-sm leading-relaxed text-vailo-dark/65">
+              Start with only what you need for your properties. Change anything later from{' '}
+              <span className="font-semibold text-vailo-dark">Settings</span> — nothing is locked in.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8 flex flex-col gap-3 border-t border-vailo-dark/6 pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-vailo-dark/50">
+          Next: confirm your details and activate Vailo for your portfolio.
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-vailo-dark px-6 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-vailo-dark/20 transition hover:bg-vailo-teal"
+        >
+          Continue to checkout
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BuyPropertyCountBar({
+  plan,
+  propertyCount,
+  onPropertyCountChange,
+  onContinue,
+}: {
+  plan: Plan;
+  propertyCount: number;
+  onPropertyCountChange: (n: number) => void;
+  onContinue: () => void;
+}) {
+  const { min, max } = buyPlanPropertyBounds(plan);
+  const annualTotal = planAnnualTotal(propertyCount);
+  const unitRate = planPricePerProperty(propertyCount);
+  const unitRateLabel =
+    plan.id === 'scale'
+      ? `€${unitRate.toFixed(unitRate % 1 === 0 ? 0 : 2)}`
+      : `€${plan.pricePerPropertyEur}`;
+  const canDecrease = propertyCount > min;
+  const canIncrease = propertyCount < max;
+  const rangePct = max === min ? 100 : ((propertyCount - min) / (max - min)) * 100;
+
+  return (
+    <div className="relative overflow-hidden rounded-[1.75rem] bg-vailo-dark p-px shadow-[0_28px_60px_-28px_rgba(5,31,38,0.45)]">
+      <div className="pointer-events-none absolute -left-16 top-0 h-40 w-40 rounded-full bg-vailo-teal/30 blur-3xl" />
+      <div className="pointer-events-none absolute -right-10 bottom-0 h-36 w-36 rounded-full bg-vailo-gold/25 blur-3xl" />
+
+      <div className="relative rounded-[1.7rem] bg-gradient-to-br from-[#0a3d48] via-vailo-dark to-[#062830] px-5 py-5 text-white sm:px-7 sm:py-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:gap-8">
+          <div className="min-w-0 lg:max-w-[12.5rem]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-vailo-gold">
+              {plan.name}
+            </p>
+            <p className="mt-1 text-2xl font-extrabold tracking-tight text-white">{unitRateLabel}</p>
+            <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/40">
+              per property per year
+            </p>
+            <p className="mt-1 text-xs text-white/40">{plan.propertiesLabel}</p>
+          </div>
+
+          <div className="h-px w-full bg-white/10 lg:h-14 lg:w-px lg:shrink-0" />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-white/80">How many properties?</span>
+              <div className="inline-flex items-center gap-1 rounded-2xl bg-white/10 p-1 ring-1 ring-white/15 backdrop-blur-sm">
+                <button
+                  type="button"
+                  aria-label="Fewer properties"
+                  disabled={!canDecrease}
+                  onClick={() => onPropertyCountChange(Math.max(min, propertyCount - 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <Minus className="h-4 w-4" aria-hidden />
+                </button>
+                <span className="min-w-[3.25rem] text-center text-xl font-extrabold tabular-nums text-white">
+                  {propertyCount}
+                </span>
+                <button
+                  type="button"
+                  aria-label="More properties"
+                  disabled={!canIncrease}
+                  onClick={() => onPropertyCountChange(Math.min(max, propertyCount + 1))}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </div>
+            {max > min && (
+              <input
+                type="range"
+                min={min}
+                max={max}
+                step={1}
+                value={propertyCount}
+                onChange={(e) => onPropertyCountChange(Number(e.target.value))}
+                className="vailo-range"
+                style={{ ['--range-pct' as string]: `${rangePct}%` }}
+                aria-label="Number of properties"
+              />
+            )}
+          </div>
+
+          <div className="h-px w-full bg-white/10 lg:h-14 lg:w-px lg:shrink-0" />
+
+          <div className="flex items-center gap-4 sm:gap-5 lg:shrink-0">
+            <div className="min-w-[6.5rem]">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                Annual total
+              </p>
+              <p className="text-2xl font-extrabold tabular-nums tracking-tight text-white sm:text-3xl">
+                €{formatInt(annualTotal)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onContinue}
+              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-gradient-to-r from-[#d9b66f] to-vailo-gold px-5 py-3.5 text-sm font-extrabold text-vailo-dark shadow-[0_12px_30px_-12px_rgba(197,160,89,0.8)] transition hover:brightness-105"
+            >
+              Continue
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Self-serve plan purchase: pick a plan, then choose property count. */
+export function BuyPlanPage() {
+  usePageMeta('Buy a plan, Vailo', 'Choose and purchase a Vailo plan for your vacation rental.');
+  const [searchParams] = useSearchParams();
+  const [selectedPlanId, setSelectedPlanId] = useState<Plan['id'] | null>(null);
+  const [propertyCount, setPropertyCount] = useState(1);
+  const [showSetupPromise, setShowSetupPromise] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const propertyBarRef = useRef<HTMLDivElement | null>(null);
+  const setupPromiseRef = useRef<HTMLDivElement | null>(null);
+  const checkoutRef = useRef<HTMLDivElement | null>(null);
+
+  const purchaseResult = searchParams.get('purchase');
+
+  const selectedPlan = useMemo(
+    () => PLANS.find((p) => p.id === selectedPlanId) ?? null,
+    [selectedPlanId]
+  );
+
+  const selectPlan = useCallback((plan: Plan) => {
+    setSelectedPlanId(plan.id);
+    const { min } = buyPlanPropertyBounds(plan);
+    setPropertyCount(min);
+    setShowSetupPromise(false);
+    setShowCheckout(false);
+  }, []);
+
+  useEffect(() => {
+    const planParam = searchParams.get('plan')?.toLowerCase();
+    if (!planParam) return;
+    const plan = PLANS.find((p) => p.id === planParam);
+    if (plan) selectPlan(plan);
+  }, [searchParams, selectPlan]);
+
+  useEffect(() => {
+    if (!selectedPlan || !propertyBarRef.current) return;
+    if (showSetupPromise || showCheckout) return;
+    propertyBarRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selectedPlanId, selectedPlan, showSetupPromise, showCheckout]);
+
+  useEffect(() => {
+    if (!showSetupPromise || showCheckout || !setupPromiseRef.current) return;
+    setupPromiseRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [showSetupPromise, showCheckout]);
+
+  useEffect(() => {
+    if (!showCheckout || !checkoutRef.current) return;
+    checkoutRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [showCheckout]);
+
+  return (
+    <section className="pb-20 pt-36 sm:pb-28 sm:pt-44">
+      <Container>
+        {purchaseResult === 'success' && (
+          <div className="mb-10 rounded-[1.75rem] bg-white p-6 text-center shadow-[0_28px_60px_-28px_rgba(5,31,38,0.28)] ring-1 ring-emerald-200 sm:p-10">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+              <Check className="h-7 w-7" strokeWidth={2.5} aria-hidden />
+            </span>
+            <h2 className="mt-5 font-luxury text-2xl font-medium text-vailo-dark sm:text-3xl">
+              Payment received — your Admin is ready.
+            </h2>
+            <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-vailo-dark/60 sm:text-base">
+              Sign in with the email and password you chose at checkout to manage your properties.
+            </p>
+            <a
+              href="/admin"
+              className="mt-8 inline-flex items-center justify-center gap-2 rounded-2xl bg-vailo-dark px-6 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-vailo-dark/20 transition hover:bg-vailo-teal"
+            >
+              Open Vailo Admin
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </a>
+          </div>
+        )}
+
+        {purchaseResult === 'cancelled' && (
+          <div className="mb-10 rounded-2xl bg-amber-50 px-5 py-4 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+            Payment was cancelled. Pick a plan below when you’re ready to try again.
+          </div>
+        )}
+
+        <Reveal>
+          <SectionHeading
+            eyebrow="Buy a plan"
+            title="Choose the plan that fits your portfolio."
+            subtitle="Select a plan, then set how many properties you need. Pay per property at that plan’s rate, billed annually."
+          />
+        </Reveal>
+
+        <div className="mt-14 grid items-stretch gap-6 overflow-visible md:grid-cols-2 xl:grid-cols-4">
+          {PLANS.map((plan, i) => (
+            <Reveal key={plan.id} delay={i * 0.06} className="h-full overflow-visible">
+              <BuyPlanCard
+                plan={plan}
+                selected={selectedPlanId === plan.id}
+                onSelect={() => selectPlan(plan)}
+              />
+            </Reveal>
+          ))}
+        </div>
+
+        <AnimatePresence initial={false}>
+          {selectedPlan && (
+            <motion.div
+              ref={propertyBarRef}
+              key={`bar-${selectedPlan.id}`}
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              transition={{ duration: 0.28, ease: EASE }}
+              className="mt-8 overflow-hidden"
+            >
+              <BuyPropertyCountBar
+                plan={selectedPlan}
+                propertyCount={propertyCount}
+                onPropertyCountChange={(n) => {
+                  setPropertyCount(n);
+                  setShowCheckout(false);
+                }}
+                onContinue={() => {
+                  setShowSetupPromise(true);
+                  setShowCheckout(false);
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {selectedPlan && showSetupPromise && (
+            <motion.div
+              ref={setupPromiseRef}
+              key={`setup-${selectedPlan.id}`}
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="mt-8 overflow-hidden"
+            >
+              <BuySetupPromiseSection
+                plan={selectedPlan}
+                propertyCount={propertyCount}
+                onContinue={() => setShowCheckout(true)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {selectedPlan && showCheckout && (
+            <motion.div
+              ref={checkoutRef}
+              key={`checkout-${selectedPlan.id}-${propertyCount}`}
+              initial={{ opacity: 0, y: -8, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -8, height: 0 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className="mt-8 overflow-hidden"
+            >
+              <BuyCheckoutSection plan={selectedPlan} propertyCount={propertyCount} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Container>
+    </section>
+  );
+}

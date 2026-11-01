@@ -1922,6 +1922,14 @@ registerGuestPreArrivalPurge({ firestore, logger, firebaseExports: exports });
 const { registerMarketingContact } = require("./marketingContact");
 registerMarketingContact({ firestore, logger, firebaseExports: exports });
 
+const { registerPlanPurchase } = require("./planPurchase");
+registerPlanPurchase({
+  firestore,
+  auth: admin.auth(),
+  logger,
+  firebaseExports: exports,
+});
+
 const { registerResendInbox } = require("./resendInbox");
 registerResendInbox({ firestore, logger, firebaseExports: exports });
 

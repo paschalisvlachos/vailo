@@ -93,6 +93,7 @@ const WebsiteTourProviders = lazyWebsite("TourProvidersPage");
 const WebsiteContact = lazyWebsite("ContactPage");
 const WebsitePrivacy = lazyWebsite("PrivacyPage");
 const WebsiteTerms = lazyWebsite("TermsPage");
+const WebsiteBuyPlan = lazyWebsite("BuyPlanPage");
 
 /** Old admin URLs (pre-/admin) → /admin/… */
 function LegacyAdminRedirect() {
@@ -148,6 +149,7 @@ export default function App() {
           <Route path="/contact" element={<WebsiteContact />} />
           <Route path="/privacy" element={<WebsitePrivacy />} />
           <Route path="/terms" element={<WebsiteTerms />} />
+          <Route path="/buy" element={<WebsiteBuyPlan />} />
         </Route>
 
         {/* Legacy admin URLs → /admin/… */}

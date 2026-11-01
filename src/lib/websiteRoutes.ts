@@ -8,6 +8,7 @@ export const WEBSITE_PATHS = [
   '/contact',
   '/privacy',
   '/terms',
+  '/buy',
 ] as const;
 
 /** True for public marketing pages (no auth, so the app shell should not wait for Firebase Auth). */

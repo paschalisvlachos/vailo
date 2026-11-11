@@ -1,10 +1,14 @@
-import { collection, getDocs, query, where, limit } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
   GuestAnonymousAnalyticsSummary,
   GuestStayAnalyticsEvent,
   GuestStayAnalyticsSummary,
 } from './guestAnalytics';
+import {
+  EXCURSION_PROVIDER_COLLECTION,
+  EXCURSION_SUBCOLLECTION,
+} from './excursionProvider';
 
 function deviceFieldsFromDoc(data: Record<string, unknown>) {
   return {
@@ -176,6 +180,178 @@ export function eventTypeLabel(type: string): string {
     live_like_local_pick_dislike: 'Live like a local pick disliked',
   };
   return labels[type] || type;
+}
+
+/** Soft accent used in admin analytics UI chips/timeline. */
+export function eventTypeTone(
+  type: string
+): { bg: string; text: string; ring: string; bar: string } {
+  if (type.startsWith('assistant_') || type.startsWith('ai_expert_')) {
+    return {
+      bg: 'bg-violet-50',
+      text: 'text-violet-800',
+      ring: 'ring-violet-100',
+      bar: 'bg-violet-500',
+    };
+  }
+  if (type.startsWith('excursion') || type === 'book_arrange_open' || type === 'excursions_open') {
+    return {
+      bg: 'bg-amber-50',
+      text: 'text-amber-900',
+      ring: 'ring-amber-100',
+      bar: 'bg-amber-500',
+    };
+  }
+  if (type.startsWith('gem_') || type.startsWith('live_like_local')) {
+    return {
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-900',
+      ring: 'ring-emerald-100',
+      bar: 'bg-emerald-500',
+    };
+  }
+  if (type === 'guide_accordion_open') {
+    return {
+      bg: 'bg-sky-50',
+      text: 'text-sky-900',
+      ring: 'ring-sky-100',
+      bar: 'bg-sky-500',
+    };
+  }
+  return {
+    bg: 'bg-teal-50',
+    text: 'text-teal-900',
+    ring: 'ring-teal-100',
+    bar: 'bg-vailo-teal',
+  };
+}
+
+export type ParsedAnalyticsPlanStop = {
+  name: string;
+  category?: string;
+  description?: string;
+  time?: string;
+};
+
+export type ParsedAnalyticsPlan = {
+  title?: string;
+  summary?: string;
+  stops: ParsedAnalyticsPlanStop[];
+};
+
+/**
+ * Resolve `providerId:excursionId` impression keys to human titles from the catalog.
+ * Returns labels like "Sunset Cruise · Aegean Boats".
+ */
+export async function resolveExcursionTitlesByImpressionKeys(
+  keys: string[]
+): Promise<Record<string, string>> {
+  const unique = [...new Set(keys.map((k) => String(k || '').trim()).filter(Boolean))];
+  if (!unique.length) return {};
+
+  const titles: Record<string, string> = {};
+  const providerNameById: Record<string, string> = {};
+
+  const loadProviderName = async (providerId: string) => {
+    if (providerNameById[providerId] !== undefined) return providerNameById[providerId];
+    try {
+      const snap = await getDoc(doc(db, EXCURSION_PROVIDER_COLLECTION, providerId));
+      const name = String(snap.data()?.businessName || '').trim();
+      providerNameById[providerId] = name;
+      return name;
+    } catch {
+      providerNameById[providerId] = '';
+      return '';
+    }
+  };
+
+  await Promise.all(
+    unique.map(async (key) => {
+      const colon = key.indexOf(':');
+      if (colon <= 0) return;
+      const providerId = key.slice(0, colon).trim();
+      const excursionId = key.slice(colon + 1).trim();
+      if (!providerId || !excursionId) return;
+      try {
+        const snap = await getDoc(
+          doc(db, EXCURSION_PROVIDER_COLLECTION, providerId, EXCURSION_SUBCOLLECTION, excursionId)
+        );
+        if (!snap.exists()) return;
+        const title = String(snap.data()?.title || '').trim();
+        if (!title) return;
+        const providerName = await loadProviderName(providerId);
+        titles[key] = providerName ? `${title} · ${providerName}` : title;
+        // Also index by bare excursion id for older/partial keys.
+        if (!titles[excursionId]) titles[excursionId] = titles[key];
+      } catch (err) {
+        console.warn('Analytics excursion title lookup failed', key, err);
+      }
+    })
+  );
+
+  return titles;
+}
+
+/** Turn stored plan JSON into a readable structure for admin UI. */
+export function parseAnalyticsPlanData(raw: unknown): ParsedAnalyticsPlan | null {
+  if (raw == null) return null;
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      return { title: 'Day plan', summary: trimmed.slice(0, 400), stops: [] };
+    }
+  }
+  if (!value || typeof value !== 'object') return null;
+  const obj = value as Record<string, unknown>;
+
+  const title =
+    String(obj.title || obj.name || obj.planTitle || '').trim() || undefined;
+  const summary =
+    String(obj.summary || obj.description || obj.intro || '').trim() || undefined;
+
+  const stopArrays = [obj.stops, obj.places, obj.items, obj.itinerary, obj.days];
+  let stopsRaw: unknown[] = [];
+  for (const candidate of stopArrays) {
+    if (Array.isArray(candidate) && candidate.length) {
+      stopsRaw = candidate;
+      break;
+    }
+  }
+
+  // Some plans nest stops inside days[].
+  if (!stopsRaw.length && Array.isArray(obj.days)) {
+    stopsRaw = obj.days.flatMap((day) => {
+      if (!day || typeof day !== 'object') return [];
+      const d = day as Record<string, unknown>;
+      const nested = d.stops || d.places || d.items;
+      return Array.isArray(nested) ? nested : [];
+    });
+  }
+
+  const stops: ParsedAnalyticsPlanStop[] = [];
+  for (const row of stopsRaw) {
+    if (typeof row === 'string' && row.trim()) {
+      stops.push({ name: row.trim() });
+      continue;
+    }
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const name = String(r.name || r.title || r.placeName || r.label || '').trim();
+    if (!name) continue;
+    stops.push({
+      name,
+      category: String(r.category || r.type || r.tag || '').trim() || undefined,
+      description: String(r.description || r.blurb || r.notes || '').trim() || undefined,
+      time: String(r.time || r.startTime || r.when || '').trim() || undefined,
+    });
+  }
+
+  if (!title && !summary && stops.length === 0) return null;
+  return { title, summary, stops };
 }
 
 export function formatAnalyticsSubjectLabel(row: {

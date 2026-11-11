@@ -1,6 +1,7 @@
-import { getGenerativeModel, type Part } from 'firebase/ai';
+import { httpsCallable } from 'firebase/functions';
 import { guestLocaleDisplayName } from './guestAiLanguage';
-import { ai } from './firebase';
+import { cloudFunctions } from './firebase';
+import { httpsCallableMessage } from './callableError';
 import { normalizeLocaleCode } from './propertyContentLocales';
 import {
   HOUSE_GUIDE_CATEGORIES,
@@ -23,6 +24,21 @@ export type ImportSourceFile = {
   inlineData?: { mimeType: string; data: string };
 };
 
+export type HouseGuideImportSourceKind = 'paste' | 'file' | 'url';
+
+export type HouseGuideImportSource = {
+  id: string;
+  kind: HouseGuideImportSourceKind;
+  label: string;
+  text?: string;
+  url?: string;
+  mimeType?: string;
+  inlineData?: { mimeType: string; data: string };
+  /** Filled after server fetch for URL sources. */
+  fetchStatus?: 'ok' | 'failed' | 'skipped' | 'pending';
+  fetchNote?: string;
+};
+
 export type HouseGuideFieldAssignment = {
   id: string;
   categoryId: string;
@@ -34,6 +50,10 @@ export type HouseGuideFieldAssignment = {
   mergeMode: 'append' | 'replace';
   excerpt: string;
   enabled: boolean;
+  sourceId: string;
+  sourceLabel: string;
+  sourceKind: HouseGuideImportSourceKind | 'unknown';
+  sourceUrl?: string;
 };
 
 export type HouseGuideImportQuestion = {
@@ -45,12 +65,28 @@ export type HouseGuideImportQuestion = {
   resolvedCategoryId: string;
   resolvedFieldId: string;
   enabled: boolean;
+  sourceId: string;
+  sourceLabel: string;
+  sourceKind: HouseGuideImportSourceKind | 'unknown';
+  sourceUrl?: string;
+};
+
+export type HouseGuideImportSkippedRow = {
+  kind: 'assignment' | 'question';
+  reason: string;
+  raw: Record<string, unknown>;
 };
 
 export type HouseGuideImportResult = {
   summary: string;
   assignments: HouseGuideFieldAssignment[];
   questions: HouseGuideImportQuestion[];
+  /** Full model JSON text — shown in admin for development review. */
+  rawText: string;
+  /** Rows the normalizer dropped (bad category/field/empty). */
+  skipped: HouseGuideImportSkippedRow[];
+  /** Labeled inputs used for this run (including URL fetch status). */
+  sources: HouseGuideImportSource[];
 };
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -176,30 +212,88 @@ function normalizeArrayItems(
   return out;
 }
 
-function normalizeAssignments(parsed: unknown): HouseGuideFieldAssignment[] {
-  if (!parsed || typeof parsed !== 'object') return [];
+function resolveSourceMeta(
+  row: Record<string, unknown>,
+  sourcesById: Map<string, HouseGuideImportSource>
+): Pick<
+  HouseGuideFieldAssignment,
+  'sourceId' | 'sourceLabel' | 'sourceKind' | 'sourceUrl'
+> {
+  const sourceId = str(row.sourceId);
+  const fromMap = sourceId ? sourcesById.get(sourceId) : undefined;
+  if (fromMap) {
+    return {
+      sourceId: fromMap.id,
+      sourceLabel: fromMap.label,
+      sourceKind: fromMap.kind,
+      sourceUrl: fromMap.url,
+    };
+  }
+  const label = str(row.sourceLabel) || str(row.source) || 'Unknown source';
+  const kindRaw = str(row.sourceKind).toLowerCase();
+  const sourceKind: HouseGuideImportSourceKind | 'unknown' =
+    kindRaw === 'paste' || kindRaw === 'file' || kindRaw === 'url' ? kindRaw : 'unknown';
+  return {
+    sourceId: sourceId || 'unknown',
+    sourceLabel: label,
+    sourceKind,
+    sourceUrl: str(row.sourceUrl) || undefined,
+  };
+}
+
+function normalizeAssignments(
+  parsed: unknown,
+  sourcesById: Map<string, HouseGuideImportSource>
+): {
+  assignments: HouseGuideFieldAssignment[];
+  skipped: HouseGuideImportSkippedRow[];
+} {
+  if (!parsed || typeof parsed !== 'object') return { assignments: [], skipped: [] };
   const raw = (parsed as { assignments?: unknown }).assignments;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) return { assignments: [], skipped: [] };
 
   const out: HouseGuideFieldAssignment[] = [];
+  const skipped: HouseGuideImportSkippedRow[] = [];
   let idx = 0;
 
   for (const row of raw) {
-    if (!row || typeof row !== 'object') continue;
+    if (!row || typeof row !== 'object') {
+      skipped.push({
+        kind: 'assignment',
+        reason: 'Row was not an object',
+        raw: { value: row as unknown as string },
+      });
+      continue;
+    }
     const r = row as Record<string, unknown>;
     const categoryId = str(r.categoryId);
     const fieldId = str(r.fieldId);
     const fieldType = resolveFieldType(categoryId, fieldId);
-    if (!fieldType) continue;
+    if (!fieldType) {
+      skipped.push({
+        kind: 'assignment',
+        reason: `Unknown category/field: ${categoryId || '(empty)'}/${fieldId || '(empty)'}`,
+        raw: r,
+      });
+      continue;
+    }
 
     const confidenceRaw = str(r.confidence);
     const mergeRaw = str(r.mergeMode);
     const confidence = isConfidence(confidenceRaw) ? confidenceRaw : 'medium';
     const mergeMode = isMergeMode(mergeRaw) ? mergeRaw : 'append';
+    const source = resolveSourceMeta(r, sourcesById);
 
     if (fieldType === 'textarea') {
       const content = str(r.content);
-      if (!content) continue;
+      if (!content) {
+        skipped.push({
+          kind: 'assignment',
+          reason: `Empty textarea content for ${categoryId}/${fieldId}`,
+          raw: r,
+        });
+        continue;
+      }
       out.push({
         id: `a-${idx++}`,
         categoryId,
@@ -209,11 +303,19 @@ function normalizeAssignments(parsed: unknown): HouseGuideFieldAssignment[] {
         confidence,
         mergeMode,
         excerpt: content.slice(0, 160),
-        enabled: confidence !== 'low',
+        enabled: true,
+        ...source,
       });
     } else {
       const items = normalizeArrayItems(fieldType, r.items);
-      if (items.length === 0) continue;
+      if (items.length === 0) {
+        skipped.push({
+          kind: 'assignment',
+          reason: `No usable items for ${categoryId}/${fieldId} (${fieldType})`,
+          raw: r,
+        });
+        continue;
+      }
       out.push({
         id: `a-${idx++}`,
         categoryId,
@@ -223,27 +325,49 @@ function normalizeAssignments(parsed: unknown): HouseGuideFieldAssignment[] {
         confidence,
         mergeMode,
         excerpt: `${items.length} structured ${fieldType.replace('array_', '')} entr${items.length === 1 ? 'y' : 'ies'}`,
-        enabled: confidence !== 'low',
+        enabled: true,
+        ...source,
       });
     }
   }
 
-  return out;
+  return { assignments: out, skipped };
 }
 
-function normalizeQuestions(parsed: unknown): HouseGuideImportQuestion[] {
-  if (!parsed || typeof parsed !== 'object') return [];
+function normalizeQuestions(
+  parsed: unknown,
+  sourcesById: Map<string, HouseGuideImportSource>
+): {
+  questions: HouseGuideImportQuestion[];
+  skipped: HouseGuideImportSkippedRow[];
+} {
+  if (!parsed || typeof parsed !== 'object') return { questions: [], skipped: [] };
   const raw = (parsed as { questions?: unknown }).questions;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) return { questions: [], skipped: [] };
 
   const out: HouseGuideImportQuestion[] = [];
+  const skipped: HouseGuideImportSkippedRow[] = [];
   let idx = 0;
 
   for (const row of raw) {
-    if (!row || typeof row !== 'object') continue;
+    if (!row || typeof row !== 'object') {
+      skipped.push({
+        kind: 'question',
+        reason: 'Row was not an object',
+        raw: { value: row as unknown as string },
+      });
+      continue;
+    }
     const r = row as Record<string, unknown>;
     const content = str(r.content);
-    if (!content) continue;
+    if (!content) {
+      skipped.push({
+        kind: 'question',
+        reason: 'Empty question content',
+        raw: r,
+      });
+      continue;
+    }
 
     const suggestedCategoryId = str(r.suggestedCategoryId) || undefined;
     const suggestedFieldId = str(r.suggestedFieldId) || undefined;
@@ -255,6 +379,7 @@ function normalizeQuestions(parsed: unknown): HouseGuideImportQuestion[] {
       resolvedCategoryId && suggestedFieldId && resolveFieldType(resolvedCategoryId, suggestedFieldId)
         ? suggestedFieldId
         : '';
+    const source = resolveSourceMeta(r, sourcesById);
 
     out.push({
       id: `q-${idx++}`,
@@ -265,10 +390,122 @@ function normalizeQuestions(parsed: unknown): HouseGuideImportQuestion[] {
       resolvedCategoryId,
       resolvedFieldId,
       enabled: true,
+      ...source,
     });
   }
 
-  return out;
+  return { questions: out, skipped };
+}
+
+function guessUrlLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    if (host.includes('airbnb')) return 'Airbnb listing page';
+    if (host.includes('booking.com')) return 'Booking.com listing page';
+    if (host.includes('google') || host.includes('maps.app.goo.gl') || host === 'share.google') {
+      return 'Google Maps / share page';
+    }
+    if (host.includes('vrbo') || host.includes('homeaway')) return 'VRBO listing page';
+    return host;
+  } catch {
+    return 'Web page';
+  }
+}
+
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]]+/gi;
+const LABELED_URL_RE =
+  /^(Airbnb|Booking\.com|Booking|Google Maps|Maps|Website|Other|iCal|VRBO|Listing)\s*:\s*(https?:\/\/\S+)/gim;
+const MANUAL_RECOVERY_BLOCK_RE =
+  /--- Manual copy from:[\s\S]*?--- End manual copy ---/gi;
+
+/** Drop manually pasted recovery blocks so their URLs are not re-fetched. */
+function textWithoutManualRecoveryBlocks(text: string): string {
+  return String(text || '').replace(MANUAL_RECOVERY_BLOCK_RE, ' ');
+}
+
+function extractManualRecoveryUrls(text: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const block of String(text || '').matchAll(MANUAL_RECOVERY_BLOCK_RE)) {
+    const chunk = String(block[0] || '');
+    const urlMatch = chunk.match(/^URL:\s*(\S+)/im);
+    const url = String(urlMatch?.[1] || '')
+      .trim()
+      .replace(/[.,;]+$/, '');
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
+function extractUrlsFromText(text: string): { url: string; label: string }[] {
+  const found: { url: string; label: string }[] = [];
+  const seen = new Set<string>();
+  const scanText = textWithoutManualRecoveryBlocks(text);
+
+  for (const match of scanText.matchAll(LABELED_URL_RE)) {
+    const label = String(match[1] || '').trim();
+    const url = String(match[2] || '')
+      .trim()
+      .replace(/[.,;]+$/, '');
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    found.push({ url, label: `${label} page` });
+  }
+
+  for (const match of scanText.matchAll(URL_IN_TEXT_RE)) {
+    const url = String(match[0] || '')
+      .trim()
+      .replace(/[.,;]+$/, '');
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    found.push({ url, label: guessUrlLabel(url) });
+  }
+
+  return found.slice(0, 8);
+}
+
+function buildImportSources(
+  pastedText: string,
+  files: ImportSourceFile[]
+): HouseGuideImportSource[] {
+  const sources: HouseGuideImportSource[] = [];
+  let n = 1;
+
+  const pasted = pastedText.trim();
+  if (pasted) {
+    sources.push({
+      id: `src-${n++}`,
+      kind: 'paste',
+      label: 'Pasted notes / wizard seed',
+      text: pasted,
+    });
+  }
+
+  for (const file of files) {
+    sources.push({
+      id: `src-${n++}`,
+      kind: 'file',
+      label: `File: ${file.name}`,
+      text: file.text,
+      mimeType: file.mimeType,
+      inlineData: file.inlineData,
+    });
+  }
+
+  const urls = extractUrlsFromText(pasted);
+  for (const row of urls) {
+    sources.push({
+      id: `src-${n++}`,
+      kind: 'url',
+      label: row.label,
+      url: row.url,
+      fetchStatus: 'pending',
+    });
+  }
+
+  return sources;
 }
 
 export async function analyzeHouseGuideImport(opts: {
@@ -277,22 +514,28 @@ export async function analyzeHouseGuideImport(opts: {
   contentLocale: string;
 }): Promise<HouseGuideImportResult> {
   const pasted = opts.pastedText.trim();
-  const fileTexts = opts.files.map((f) => f.text?.trim()).filter(Boolean) as string[];
+  const sources = buildImportSources(pasted, opts.files);
 
-  if (!pasted && fileTexts.length === 0 && !opts.files.some((f) => f.inlineData)) {
+  if (sources.length === 0) {
     throw new Error('Add pasted text or upload at least one file.');
   }
 
   const targetLocale = normalizeLocaleCode(opts.contentLocale) || 'en';
   const targetLabel = guestLocaleDisplayName(targetLocale);
+  const sourceIndex = sources
+    .map((s) => `- ${s.id} [${s.kind}] ${s.label}${s.url ? ` → ${s.url}` : ''}`)
+    .join('\n');
 
-  const prompt = `You are a vacation-rental house guide organiser. Read the SOURCE MATERIAL and split it into the correct House Guide categories and fields. Put leftover facts that do not match any dedicated section into General Info (categoryId "general", fieldId "generalInfo").
+  const prompt = `You are a vacation-rental house guide organiser. Read the labeled SOURCE MATERIAL and split it into the correct House Guide categories and fields. Put leftover facts that do not match any dedicated section into General Info (categoryId "general", fieldId "generalInfo").
 
 TARGET LANGUAGE (mandatory): ${targetLabel} (${targetLocale})
 - Write ALL output text in ${targetLabel}: summary, assignment "content", array item strings, and question "content".
 - The host is editing the ${targetLabel} language tab — never place Greek, German, or other source-language prose into fields when the target is ${targetLabel}.
 - If the source material is in another language, translate it accurately into ${targetLabel}. Keep numbers, codes, URLs, phone numbers, Wi-Fi credentials, and proper nouns unchanged unless a standard exonym exists.
 - Emergency "category" values must stay exactly one of the English catalog options listed below (even when target language is not English).
+
+SOURCE INDEX (cite these exact sourceId values):
+${sourceIndex}
 
 CATEGORY CATALOG (use exact categoryId and fieldId values):
 ${buildCategoryCatalog()}
@@ -313,6 +556,7 @@ RULES:
 - Put ambiguous snippets in "questions" (not assignments) with suggestedCategoryId / suggestedFieldId when possible.
 - Do not invent facts not present in the source.
 - Split content across multiple assignments when it clearly belongs in different fields.
+- PROVENANCE (mandatory): every assignment and question MUST include "sourceId" from the SOURCE INDEX (the block the fact came from). Also include "sourceLabel" (human label) and for web pages "sourceUrl". If a fact appears in multiple sources, pick the most specific one (prefer a fetched URL page over the paste that only listed the URL).
 
 Return ONLY JSON:
 {
@@ -324,7 +568,10 @@ Return ONLY JSON:
       "content": "for textarea only",
       "items": [],
       "confidence": "high|medium|low",
-      "mergeMode": "append|replace"
+      "mergeMode": "append|replace",
+      "sourceId": "src-1",
+      "sourceLabel": "Pasted notes / wizard seed",
+      "sourceUrl": ""
     }
   ],
   "questions": [
@@ -332,47 +579,98 @@ Return ONLY JSON:
       "content": "snippet needing host decision",
       "reason": "why uncertain",
       "suggestedCategoryId": "...",
-      "suggestedFieldId": "..."
+      "suggestedFieldId": "...",
+      "sourceId": "src-1",
+      "sourceLabel": "Pasted notes / wizard seed",
+      "sourceUrl": ""
     }
   ]
 }`;
 
-  const parts: Part[] = [];
-  for (const file of opts.files) {
-    if (file.inlineData) {
-      parts.push({
-        inlineData: { mimeType: file.inlineData.mimeType, data: file.inlineData.data },
-      } as Part);
-    }
-  }
-
+  const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
   const textBlocks: string[] = [];
-  if (pasted) textBlocks.push(`PASTED TEXT:\n"""\n${pasted}\n"""`);
-  for (const file of opts.files) {
-    if (file.text?.trim()) {
-      textBlocks.push(`FILE "${file.name}":\n"""\n${file.text.trim()}\n"""`);
-    } else if (file.inlineData) {
-      textBlocks.push(`FILE "${file.name}" attached (${file.mimeType}) — extract all readable text and facts.`);
+
+  for (const source of sources) {
+    if (source.kind === 'url') continue;
+    if (source.inlineData) {
+      parts.push({
+        inlineData: {
+          mimeType: source.inlineData.mimeType,
+          data: source.inlineData.data,
+        },
+      });
+      textBlocks.push(
+        `SOURCE [${source.id}] kind=${source.kind} label="${source.label}"\nAttached binary/file — extract all readable text and facts from the matching attachment.`
+      );
+      continue;
+    }
+    if (source.text?.trim()) {
+      textBlocks.push(
+        `SOURCE [${source.id}] kind=${source.kind} label="${source.label}"\n"""\n${source.text.trim()}\n"""`
+      );
     }
   }
-  parts.push({ text: `${prompt}\n\nSOURCE MATERIAL:\n${textBlocks.join('\n\n')}` } as Part);
 
-  const model = getGenerativeModel(ai, {
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.2,
-    },
-  });
+  parts.push({ text: `${prompt}\n\nSOURCE MATERIAL:\n${textBlocks.join('\n\n')}` });
 
-  const response = await model.generateContent(parts);
-  const parsed = parseJsonObject(response.response.text());
+  const fetchUrls = sources
+    .filter((s) => s.kind === 'url' && s.url)
+    .map((s) => ({ id: s.id, label: s.label, url: s.url! }));
+  const skipFetchUrls = extractManualRecoveryUrls(pasted);
 
-  return {
-    summary: str((parsed as { summary?: unknown }).summary) || 'Content analysed.',
-    assignments: normalizeAssignments(parsed),
-    questions: normalizeQuestions(parsed),
-  };
+  try {
+    const analyze = httpsCallable(cloudFunctions, 'analyzeHouseGuideImport', {
+      timeout: 180000,
+    });
+    const result = await analyze({ parts, fetchUrls, skipFetchUrls });
+    const payload = result.data as {
+      text?: string;
+      fetchedSources?: {
+        id: string;
+        url: string;
+        label: string;
+        status: 'ok' | 'failed' | 'skipped';
+        note?: string;
+        textPreview?: string;
+      }[];
+    };
+    const rawText = String(payload?.text || '');
+    const parsed = parseJsonObject(rawText);
+
+    const enrichedSources = sources.map((s) => {
+      if (s.kind !== 'url') return s;
+      const fetched = (payload.fetchedSources || []).find((f) => f.id === s.id);
+      if (!fetched) {
+        return { ...s, fetchStatus: 'skipped' as const, fetchNote: 'Not fetched' };
+      }
+      return {
+        ...s,
+        fetchStatus: fetched.status,
+        fetchNote: fetched.note,
+        text: fetched.textPreview || s.text,
+      };
+    });
+
+    const sourcesById = new Map(enrichedSources.map((s) => [s.id, s]));
+    const { assignments, skipped: skippedAssignments } = normalizeAssignments(
+      parsed,
+      sourcesById
+    );
+    const { questions, skipped: skippedQuestions } = normalizeQuestions(parsed, sourcesById);
+
+    return {
+      summary: str((parsed as { summary?: unknown }).summary) || 'Content analysed.',
+      assignments,
+      questions,
+      rawText,
+      skipped: [...skippedAssignments, ...skippedQuestions],
+      sources: enrichedSources,
+    };
+  } catch (err) {
+    throw new Error(
+      httpsCallableMessage(err, 'House Guide AI Import failed. Please try again.')
+    );
+  }
 }
 
 export function applyHouseGuideImport(

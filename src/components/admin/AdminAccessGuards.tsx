@@ -23,7 +23,7 @@ export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
   if (!profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.
@@ -53,7 +53,7 @@ export function ExcursionPortalGuard({ children }: { children: React.ReactNode }
   if (!profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.
@@ -107,7 +107,7 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
   if (authUser && !profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.
@@ -136,7 +136,7 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
     const isProvider = profile?.role === 'excursion_provider';
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">No assignments</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">No assignments</h2>
         <p className="text-gray-500 text-sm">
           {isProvider
             ? 'Your account is not linked to an excursion business yet. Contact your Vailo administrator.'
@@ -165,7 +165,7 @@ export function AgentOwnersGuard({ children }: { children: React.ReactNode }) {
   if (!profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.

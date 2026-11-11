@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { normalizeAdminEmail } from '../../lib/adminAccess';
-import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { AlertCircle, Check } from 'lucide-react';
 import VailoMark from '../guest/VailoMark';
 import { AdminAlert, AdminButton, AdminInput, AdminLabel } from './AdminPageHeader';
 
@@ -54,17 +54,30 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-vailo-dark via-vailo-teal to-vailo-teal-hover flex flex-col justify-center py-10 px-4 sm:px-6">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
-        <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-vailo-gold/30 to-vailo-gold/10 border border-vailo-gold/30 mb-5 shadow-lg shadow-vailo-dark/20 p-2.5">
-          <VailoMark className="h-full w-full object-contain" alt="Vailo" />
+    <div className="admin-auth min-h-screen flex items-center justify-center py-10 px-4 bg-[#fafafa]">
+      <div
+        className="w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 bg-white overflow-hidden"
+        style={{ boxShadow: '1px 1px 15px rgba(0,0,0,0.1)' }}
+      >
+        <div className="relative min-h-[220px] md:min-h-full bg-gradient-to-br from-[#282a39] via-[#323232] to-[#84ba3f] p-8 md:p-10 flex flex-col justify-between text-white">
+          <div>
+            <div className="h-12 w-12 rounded bg-white/15 flex items-center justify-center p-2 mb-6">
+              <VailoMark className="h-full w-full object-contain" alt="Vailo" />
+            </div>
+            <h2 className="text-2xl font-semibold text-white mb-4">Hello world!</h2>
+            <p className="text-white/80 text-sm leading-relaxed">
+              Sign in to manage properties, guest experiences, and hospitality operations.
+            </p>
+          </div>
+          <ul className="mt-8 flex flex-wrap gap-4 text-xs text-white/70">
+            <li>Hospitality management</li>
+            <li>Guest portal</li>
+            <li>Arrange &amp; Book</li>
+          </ul>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight font-luxury">Vailo Admin</h1>
-        <p className="mt-2 text-sm text-white/55">Sign in to manage properties and guest experiences</p>
-      </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white/95 backdrop-blur-xl py-8 px-5 sm:px-10 rounded-2xl shadow-2xl border border-white/20">
+        <div className="p-8 md:p-10">
+          <h3 className="text-xl font-semibold text-vailo-dark mb-6">Sign In To Admin</h3>
           <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
               <AdminAlert variant="warning" icon={<AlertCircle size={18} />}>
@@ -73,42 +86,34 @@ export default function Login() {
             )}
 
             <div>
-              <AdminLabel htmlFor="email">Email</AdminLabel>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <AdminInput
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  placeholder="admin@vailo.com"
-                  autoComplete="username"
-                />
-              </div>
+              <AdminLabel htmlFor="email">Email*</AdminLabel>
+              <AdminInput
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="User name"
+                autoComplete="username"
+              />
             </div>
 
             <div>
-              <AdminLabel htmlFor="password">Password</AdminLabel>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <AdminInput
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </div>
+              <AdminLabel htmlFor="password">Password*</AdminLabel>
+              <AdminInput
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+              />
             </div>
 
-            <AdminButton type="submit" disabled={isLoading} className="w-full py-3 shadow-lg shadow-vailo-teal/25">
-              {isLoading ? 'Signing in…' : 'Sign in'}
-              {!isLoading && <ArrowRight className="h-4 w-4" />}
+            <AdminButton type="submit" disabled={isLoading} className="w-full">
+              <span>{isLoading ? 'Signing in…' : 'Log in'}</span>
+              {!isLoading && <Check className="h-4 w-4" />}
             </AdminButton>
           </form>
         </div>

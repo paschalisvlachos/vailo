@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import type { LucideIcon } from 'lucide-react';
@@ -49,6 +49,11 @@ import {
 } from '../../../lib/houseGuideCategories';
 import { Languages } from 'lucide-react';
 import HouseGuideImportPanel from '../../../components/admin/HouseGuideImportPanel';
+import {
+  buildListingOnboardingSeedText,
+  takeWizardOnboardingSeed,
+  type WizardListingDraft,
+} from '../../../lib/wizardListingOnboarding';
 
 // --- TYPE DEFINITIONS ---
 type Device = { room: string; device: string; brand: string; model: string };
@@ -62,6 +67,27 @@ type FormData = Record<string, string | ArrayItem[] | undefined>;
 type PropertyType = {
   id: string;
   propertyTypeName?: string;
+  urlSlug?: string;
+  googleMapsUrl?: string;
+  listingUrl?: string;
+  airbnbUrl?: string;
+  bookingUrl?: string;
+  iCalUrl?: string;
+  addressLine?: string;
+  country?: string;
+  city?: string;
+  area?: string;
+  postCode?: string;
+  onboardingNotes?: string;
+  latitude?: string | number;
+  longitude?: string | number;
+  googlePlaceId?: string;
+  googleRating?: string | number;
+  photoUrl?: string;
+  wifiName?: string;
+  wifiPassword?: string;
+  whatsapp?: string;
+  internalRefCode?: string;
 };
 
 type FieldDef = {
@@ -128,6 +154,8 @@ export default function HouseGuide() {
   const { propertyId, property, propertyAccess, lockedListingId } =
     useOutletContext<PropertyOutletContext>();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const fromWizard = searchParams.get('fromWizard') === '1';
   const isListingOnly = propertyAccess.level === 'listing_only';
   const localeSettings = usePropertyContentLocaleSettings(property as Record<string, unknown>);
   const { languages } = usePlatformLanguages();
@@ -137,6 +165,9 @@ export default function HouseGuide() {
   );
   const [contentLocale, setContentLocale] = useState(localeSettings.primaryLocale);
   const [isLocaleTranslating, setIsLocaleTranslating] = useState(false);
+  const [wizardImportSeed, setWizardImportSeed] = useState('');
+  const [wizardHandoff, setWizardHandoff] = useState(fromWizard);
+  const wizardSeedLoadedFor = useRef<string>('');
 
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
 
@@ -172,6 +203,11 @@ export default function HouseGuide() {
     lockedListingId,
   });
 
+  const selectedListing = useMemo(
+    () => propertyTypes.find((t) => t.id === selectedTypeId) || null,
+    [propertyTypes, selectedTypeId]
+  );
+
   // 1. Fetch Property Types
   useEffect(() => {
     if (!propertyId) return;
@@ -181,6 +217,75 @@ export default function HouseGuide() {
     });
     return () => unsubscribe();
   }, [propertyId]);
+
+  // Prefill AI Import after Add Property wizard (session seed, else rebuild from listing fields).
+  useEffect(() => {
+    if (!propertyId || !selectedTypeId || !selectedListing) return;
+    const loadKey = `${propertyId}:${selectedTypeId}`;
+    if (wizardSeedLoadedFor.current === loadKey) return;
+
+    const fromSession = takeWizardOnboardingSeed(propertyId, selectedTypeId);
+    if (fromSession.trim()) {
+      wizardSeedLoadedFor.current = loadKey;
+      setWizardImportSeed(fromSession);
+      setWizardHandoff(true);
+      return;
+    }
+
+    if (!fromWizard) return;
+
+    wizardSeedLoadedFor.current = loadKey;
+    const listingRecord = selectedListing as {
+      referenceUrls?: string[];
+      listingUrl?: string;
+      airbnbUrl?: string;
+      bookingUrl?: string;
+    };
+    const legacyUrls = [
+      ...(Array.isArray(listingRecord.referenceUrls) ? listingRecord.referenceUrls : []),
+      listingRecord.listingUrl || '',
+      listingRecord.airbnbUrl || '',
+      listingRecord.bookingUrl || '',
+    ]
+      .map((u) => String(u || '').trim())
+      .filter(Boolean);
+    const draft: WizardListingDraft = {
+      propertyTypeName: selectedListing.propertyTypeName || '',
+      urlSlug: selectedListing.urlSlug || '',
+      googleMapsUrl: selectedListing.googleMapsUrl || '',
+      referenceUrls: legacyUrls.length ? legacyUrls : [''],
+      iCalUrl: selectedListing.iCalUrl || '',
+      addressLine: selectedListing.addressLine || '',
+      country: selectedListing.country || '',
+      city: selectedListing.city || '',
+      area: selectedListing.area || '',
+      postCode: selectedListing.postCode || '',
+      latitude: String(selectedListing.latitude || ''),
+      longitude: String(selectedListing.longitude || ''),
+      googlePlaceId: selectedListing.googlePlaceId || '',
+      googleRating: String(selectedListing.googleRating || ''),
+      photoUrl: selectedListing.photoUrl || '',
+      onboardingNotes: selectedListing.onboardingNotes || '',
+      wifiName: selectedListing.wifiName || '',
+      wifiPassword: selectedListing.wifiPassword || '',
+      whatsapp: selectedListing.whatsapp || '',
+      internalRefCode: selectedListing.internalRefCode || '',
+    };
+    setWizardImportSeed(buildListingOnboardingSeedText(draft));
+    setWizardHandoff(true);
+  }, [propertyId, selectedTypeId, selectedListing, fromWizard]);
+
+  useEffect(() => {
+    if (!fromWizard) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('fromWizard');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [fromWizard, setSearchParams]);
 
   // 2. Fetch Data
   useEffect(() => {
@@ -958,6 +1063,9 @@ export default function HouseGuide() {
         formData={formData as Record<string, string | unknown[] | undefined>}
         contentLocale={contentLocale}
         primaryLocale={localeSettings.primaryLocale}
+        initialImportText={wizardImportSeed}
+        fromWizard={wizardHandoff}
+        autoAnalyze={wizardHandoff}
         onApply={async (next) => {
           await saveToFirebase({
             formDataOverride: next as FormData,

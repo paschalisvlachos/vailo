@@ -14,7 +14,7 @@ export default function AdminPageHeader({ title, description, icon, action }: Ad
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8">
       <div className="min-w-0">
-        <h2 className="text-xl sm:text-2xl lg:text-[1.65rem] font-bold text-vailo-dark font-luxury flex items-center gap-2.5">
+        <h2 className="text-xl sm:text-2xl lg:text-[1.65rem] font-semibold text-vailo-dark flex items-center gap-2.5 capitalize">
           {icon && <span className="text-vailo-teal shrink-0">{icon}</span>}
           <span className="truncate">{title}</span>
         </h2>
@@ -59,7 +59,7 @@ export function AdminBackHeader({
       </a>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-xl sm:text-2xl font-bold text-vailo-dark font-luxury">{title}</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold text-vailo-dark capitalize">{title}</h2>
           {description && <p className="text-gray-500 mt-1 text-sm sm:text-base">{description}</p>}
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -80,16 +80,18 @@ export function AdminButton({
   variant?: 'primary' | 'secondary' | 'gold' | 'danger' | 'ghost';
 }) {
   const variants = {
-    primary: 'bg-vailo-teal hover:bg-vailo-teal-hover text-white shadow-sm shadow-vailo-teal/20',
-    secondary: 'bg-white hover:bg-vailo-surface-elevated text-vailo-teal border border-gray-200',
-    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark shadow-sm shadow-vailo-gold/25',
-    danger: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200',
-    ghost: 'bg-transparent hover:bg-vailo-teal/5 text-vailo-teal',
+    primary:
+      'bg-vailo-teal hover:bg-vailo-dark text-white border-2 border-vailo-teal hover:border-vailo-dark uppercase tracking-wide',
+    secondary:
+      'bg-white hover:bg-vailo-surface-elevated text-vailo-teal border-2 border-[#eeeeee] hover:border-vailo-teal',
+    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark border-2 border-vailo-gold uppercase tracking-wide',
+    danger: 'bg-red-50 hover:bg-red-100 text-red-700 border-2 border-red-200',
+    ghost: 'bg-transparent hover:bg-vailo-teal/10 text-vailo-teal border-2 border-transparent',
   };
 
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -110,15 +112,16 @@ export function AdminButtonLink({
 }) {
   const variants = {
     primary:
-      'bg-vailo-teal hover:bg-vailo-teal-hover text-white shadow-sm shadow-vailo-teal/20',
-    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark shadow-sm shadow-vailo-gold/25',
-    secondary: 'bg-white hover:bg-vailo-surface-elevated text-vailo-teal border border-gray-200',
+      'bg-vailo-teal hover:bg-vailo-dark text-white border-2 border-vailo-teal hover:border-vailo-dark uppercase tracking-wide',
+    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark border-2 border-vailo-gold uppercase tracking-wide',
+    secondary:
+      'bg-white hover:bg-vailo-surface-elevated text-vailo-teal border-2 border-[#eeeeee] hover:border-vailo-teal',
   };
 
   return (
     <Link
       to={to}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded text-sm font-medium transition-colors ${variants[variant]} ${className}`}
     >
       {children}
     </Link>
@@ -136,7 +139,7 @@ export function AdminCard({
 }) {
   return (
     <div
-      className={`bg-white rounded-2xl border border-gray-100 shadow-[0_2px_16px_-6px_rgba(11,79,92,0.1)] ${padding ? 'p-4 sm:p-6' : ''} ${className}`}
+      className={`bg-white rounded border-0 shadow-[1px_1px_15px_rgba(0,0,0,0.1)] ${padding ? 'p-4 sm:p-6' : ''} ${className}`}
     >
       {children}
     </div>
@@ -156,10 +159,10 @@ export function AdminEmptyState({
 }) {
   return (
     <AdminCard className="p-8 sm:p-12 text-center flex flex-col items-center justify-center min-h-[320px]">
-      <div className="h-14 w-14 sm:h-16 sm:w-16 bg-vailo-teal/8 rounded-2xl flex items-center justify-center text-vailo-teal mb-4">
+      <div className="h-14 w-14 sm:h-16 sm:w-16 bg-vailo-teal/10 rounded flex items-center justify-center text-vailo-teal mb-4">
         {icon}
       </div>
-      <h3 className="text-lg sm:text-xl font-bold text-vailo-dark font-luxury mb-2">{title}</h3>
+      <h3 className="text-lg sm:text-xl font-semibold text-vailo-dark mb-2">{title}</h3>
       <p className="text-gray-500 max-w-md mb-6 text-sm sm:text-base leading-relaxed">{description}</p>
       {action}
     </AdminCard>
@@ -180,10 +183,10 @@ export function AdminAlert({
   className?: string;
 }) {
   const styles = {
-    info: 'bg-vailo-teal/5 border-vailo-teal/15 text-vailo-dark',
+    info: 'bg-vailo-teal/5 border-vailo-teal/20 text-vailo-dark',
     warning: 'bg-amber-50 border-amber-200/80 text-amber-900',
     success: 'bg-emerald-50 border-emerald-200/80 text-emerald-900',
-    gold: 'bg-vailo-gold/10 border-vailo-gold/25 text-vailo-dark',
+    gold: 'bg-vailo-gold/10 border-vailo-gold/30 text-vailo-dark',
   };
   const iconColors = {
     info: 'text-vailo-teal',
@@ -193,10 +196,10 @@ export function AdminAlert({
   };
 
   return (
-    <div className={`rounded-2xl border p-4 sm:p-5 flex items-start gap-3 ${styles[variant]} ${className}`}>
+    <div className={`rounded border p-4 sm:p-5 flex items-start gap-3 ${styles[variant]} ${className}`}>
       {icon && <span className={`shrink-0 mt-0.5 ${iconColors[variant]}`}>{icon}</span>}
       <div className="min-w-0 text-sm leading-relaxed">
-        {title && <p className="font-bold mb-1">{title}</p>}
+        {title && <p className="font-semibold mb-1">{title}</p>}
         {children}
       </div>
     </div>
@@ -211,12 +214,12 @@ export function AdminBadge({
   variant?: 'teal' | 'gold' | 'neutral';
 }) {
   const styles = {
-    teal: 'bg-vailo-teal/8 text-vailo-teal border-vailo-teal/15',
-    gold: 'bg-vailo-gold/15 text-vailo-gold-muted border-vailo-gold/25',
+    teal: 'bg-vailo-teal/10 text-vailo-teal border-vailo-teal/20',
+    gold: 'bg-vailo-gold/15 text-vailo-gold-muted border-vailo-gold/30',
     neutral: 'bg-gray-100 text-gray-600 border-gray-200',
   };
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border tracking-wide ${styles[variant]}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold border tracking-wide ${styles[variant]}`}>
       {children}
     </span>
   );

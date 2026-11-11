@@ -36,36 +36,88 @@
 }
 
 @layer components {
+  /*
+   * Admin (Webmin) theme — scoped so guest portal / marketing keep Vailo brand colours.
+   * Palette from html/scss/_variables.scss
+   */
+  .admin-shell,
+  .admin-auth {
+    --color-vailo-dark: #323232;
+    --color-vailo-teal: #84ba3f;
+    --color-vailo-teal-hover: #6fa032;
+    --color-vailo-teal-light: #9acc55;
+    --color-vailo-teal-muted: #84ba3f1a;
+    --color-vailo-gold: #ffc107;
+    --color-vailo-gold-hover: #e0a800;
+    --color-vailo-gold-muted: #856404;
+    --color-vailo-surface: #fafafa;
+    --color-vailo-surface-elevated: #f6f7f8;
+    --font-luxury: "Poppins", sans-serif;
+    --admin-sidebar: #282a39;
+    --admin-border: #eeeeee;
+    --admin-muted: #626262;
+    --admin-shadow: 1px 1px 15px rgba(0, 0, 0, 0.1);
+    font-family: "Poppins", sans-serif;
+    color: var(--admin-muted);
+    background-color: var(--color-vailo-surface);
+  }
+
+  .admin-shell .font-luxury,
+  .admin-auth .font-luxury,
+  .admin-shell h1,
+  .admin-shell h2,
+  .admin-shell h3,
+  .admin-shell h4,
+  .admin-auth h1,
+  .admin-auth h2,
+  .admin-auth h3 {
+    font-family: "Poppins", sans-serif;
+  }
+
+  /* Soften luxury radii toward Webmin’s sharper cards/buttons */
+  .admin-shell .rounded-2xl,
+  .admin-auth .rounded-2xl {
+    border-radius: 0.25rem;
+  }
+  .admin-shell .rounded-xl,
+  .admin-auth .rounded-xl {
+    border-radius: 0.25rem;
+  }
+  .admin-shell .rounded-lg,
+  .admin-auth .rounded-lg {
+    border-radius: 0.2rem;
+  }
+
   .admin-page {
     @apply w-full pb-8 sm:pb-10;
   }
 
   .admin-label {
-    @apply block text-sm font-semibold text-vailo-dark/80 mb-1.5;
+    @apply block text-sm font-medium text-vailo-dark mb-1.5;
   }
 
   .admin-input {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-white outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15;
+    @apply w-full px-3.5 py-2.5 border border-[#eeeeee] rounded text-sm text-vailo-dark bg-white outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal focus:ring-1 focus:ring-vailo-teal/25;
   }
 
   .admin-input-muted {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15 focus:bg-white;
+    @apply w-full px-3.5 py-2.5 border border-[#eeeeee] rounded text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal focus:ring-1 focus:ring-vailo-teal/25 focus:bg-white;
   }
 
   .admin-select {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15 focus:bg-white disabled:opacity-50;
+    @apply w-full px-3.5 py-2.5 border border-[#eeeeee] rounded text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all focus:border-vailo-teal focus:ring-1 focus:ring-vailo-teal/25 focus:bg-white disabled:opacity-50;
   }
 
   .admin-textarea {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-white outline-none transition-all resize-y min-h-[100px] placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15;
+    @apply w-full px-3.5 py-2.5 border border-[#eeeeee] rounded text-sm text-vailo-dark bg-white outline-none transition-all resize-y min-h-[100px] placeholder:text-gray-400 focus:border-vailo-teal focus:ring-1 focus:ring-vailo-teal/25;
   }
 
   .admin-section-title {
-    @apply text-base sm:text-lg font-bold text-vailo-dark flex items-center gap-2 border-b border-gray-100 pb-4 mb-5;
+    @apply text-base sm:text-lg font-semibold text-vailo-dark flex items-center gap-2 border-b border-[#eeeeee] pb-4 mb-5 capitalize;
   }
 
   .admin-table-wrap {
-    @apply overflow-x-auto rounded-xl border border-gray-100;
+    @apply overflow-x-auto rounded border border-[#eeeeee];
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
   }
@@ -73,7 +125,7 @@
     height: 4px;
   }
   .admin-table-wrap::-webkit-scrollbar-thumb {
-    background: rgb(11 79 92 / 0.25);
+    background: rgb(132 186 63 / 0.35);
     border-radius: 9999px;
   }
 
@@ -90,39 +142,40 @@
   }
 
   .admin-table td {
-    @apply px-4 py-3.5 border-t border-gray-50 text-gray-700;
+    @apply px-4 py-3.5 border-t border-[#eeeeee] text-gray-700;
   }
 
   .admin-table tbody tr {
-    @apply hover:bg-vailo-teal/[0.03] transition-colors;
+    @apply hover:bg-vailo-teal/[0.04] transition-colors;
   }
 
   .admin-icon-box {
-    @apply flex items-center justify-center h-11 w-11 rounded-xl text-vailo-teal shrink-0;
-    background-color: color-mix(in srgb, var(--color-vailo-teal) 8%, transparent);
+    @apply flex items-center justify-center h-11 w-11 rounded text-vailo-teal shrink-0;
+    background-color: color-mix(in srgb, var(--color-vailo-teal) 12%, transparent);
   }
 
   .admin-icon-box-gold {
-    @apply flex items-center justify-center h-11 w-11 rounded-xl text-vailo-gold shrink-0;
-    background-color: color-mix(in srgb, var(--color-vailo-gold) 15%, transparent);
+    @apply flex items-center justify-center h-11 w-11 rounded text-vailo-gold shrink-0;
+    background-color: color-mix(in srgb, var(--color-vailo-gold) 18%, transparent);
   }
 
   .admin-module-card {
-    @apply flex flex-col items-start p-5 sm:p-6 text-left rounded-2xl border border-gray-100 bg-white hover:border-vailo-teal/20 transition-all duration-200 h-full;
+    @apply flex flex-col items-start p-5 sm:p-6 text-left rounded border-0 bg-white transition-all duration-200 h-full;
+    box-shadow: var(--admin-shadow);
   }
   .admin-module-card:hover {
-    box-shadow: 0 8px 30px -12px rgba(11, 79, 92, 0.18);
+    box-shadow: 0 8px 24px -8px rgba(40, 42, 57, 0.22);
   }
   .admin-module-card-gems {
     background-color: color-mix(in srgb, var(--color-vailo-gold) 10%, white);
-    border-color: color-mix(in srgb, var(--color-vailo-gold) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-vailo-gold) 22%, transparent);
   }
   .admin-module-card-gems:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--color-vailo-gold) 42%, transparent);
   }
   .admin-module-card-features {
     background-color: color-mix(in srgb, var(--color-vailo-teal) 8%, white);
-    border-color: color-mix(in srgb, var(--color-vailo-teal) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-vailo-teal) 18%, transparent);
   }
   .admin-module-card-features:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--color-vailo-teal) 35%, transparent);
@@ -130,6 +183,61 @@
 
   .admin-back-link {
     @apply inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors mb-4;
+  }
+
+  /* Webmin shell chrome */
+  .admin-topbar {
+    background: #ffffff;
+    box-shadow: var(--admin-shadow);
+  }
+
+  .admin-sidebar-panel {
+    background: var(--admin-sidebar);
+    box-shadow: 0 5px 5px rgba(0, 0, 0, 0.35);
+  }
+
+  .admin-nav-section-title {
+    @apply px-5 pt-4 pb-2 text-[11px] font-medium uppercase tracking-wide;
+    color: #878787;
+  }
+
+  .admin-nav-link {
+    @apply flex items-center gap-3 px-5 py-3 text-[13px] capitalize transition-colors;
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .admin-nav-link:hover,
+  .admin-nav-link:focus {
+    background: rgba(0, 0, 0, 0.2);
+    color: #ffffff;
+  }
+  .admin-nav-link.is-active {
+    background: rgba(0, 0, 0, 0.2);
+    color: #ffffff;
+  }
+  .admin-nav-link.is-active .admin-nav-icon {
+    color: var(--color-vailo-teal);
+  }
+
+  .admin-content-panel {
+    background: var(--color-vailo-surface);
+  }
+
+  .admin-shell .rich-text-editor h2,
+  .admin-shell .legal-document-content h2,
+  .admin-shell .rich-text-editor h3,
+  .admin-shell .legal-document-content h3 {
+    color: var(--color-vailo-dark);
+    font-family: "Poppins", sans-serif;
+  }
+
+  .admin-shell .rich-text-editor a,
+  .admin-shell .legal-document-content a {
+    color: var(--color-vailo-teal);
+  }
+
+  .admin-shell input[type='checkbox'],
+  .admin-shell input[type='radio'] {
+    accent-color: var(--color-vailo-teal);
   }
 
   /* Leaflet divIcon reset for Area Local Gems map pins */
@@ -149,7 +257,7 @@
     height: 4px;
   }
   .admin-scroll-x::-webkit-scrollbar-thumb {
-    background: rgb(11 79 92 / 0.25);
+    background: color-mix(in srgb, var(--color-vailo-teal) 35%, transparent);
     border-radius: 9999px;
   }
   .font-luxury {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
@@ -21,7 +21,37 @@ import {
 import { useToast } from '../../../context/ToastContext';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
-import { ArrowLeft, Plus, Link2, MapPin, Wand2, Building, Pencil, Trash2, User, CalendarSync, ExternalLink, Image as ImageIcon, UploadCloud, Loader2, MessageCircle, QrCode, Smartphone, Copy, Check, ClipboardCopy, ClipboardPaste, X } from 'lucide-react';
+import { adminPath } from '../../../lib/adminRoutes';
+import { DEFAULT_PRIMARY_LOCALE } from '../../../lib/propertyContentLocales';
+import {
+  serializeGuideFormDataForSave,
+  type HouseGuideFormData,
+} from '../../../lib/houseGuideLocales';
+import {
+  ArrowLeft,
+  Plus,
+  Link2,
+  MapPin,
+  Wand2,
+  Building,
+  Pencil,
+  Trash2,
+  User,
+  CalendarSync,
+  ExternalLink,
+  Image as ImageIcon,
+  UploadCloud,
+  Loader2,
+  MessageCircle,
+  QrCode,
+  Smartphone,
+  Copy,
+  Check,
+  ClipboardCopy,
+  ClipboardPaste,
+  X,
+  Sparkles,
+} from 'lucide-react';
 import type { PropertyOutletContext } from './PropertyLayout';
 import { LISTING_ALLOCATION_ROLES } from '../../../lib/adminAccess';
 import {
@@ -44,11 +74,27 @@ import {
   readCopiedListing,
   type CopiedPropertyListing,
 } from '../../../lib/propertyListingCopy';
+import { ensureAreaDocument } from '../../../lib/ensureAreaDocument';
+import MunicipalityAreaField from '../../../components/admin/MunicipalityAreaField';
+import PropertyWizardListingStep from '../../../components/admin/PropertyWizardListingStep';
+import HouseGuideImportPanel from '../../../components/admin/HouseGuideImportPanel';
+import {
+  EMPTY_WIZARD_LISTING,
+  buildListingOnboardingSeedText,
+  firstWizardListingErrorKey,
+  getWizardListingFieldErrors,
+  normalizeWizardReferenceUrls,
+  scrollToWizardListingField,
+  type WizardListingDraft,
+  type WizardListingFieldErrors,
+  type WizardListingFieldKey,
+} from '../../../lib/wizardListingOnboarding';
 
 export default function PropertyTypes() {
   const { property, propertyId, propertyAccess, lockedListingId } =
     useOutletContext<PropertyOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const toast = useToast();
   const { isPlatformAdmin, isAgent, profile } = useAdminSession();
   const isEndOwner = profile?.role === 'owner';
@@ -74,7 +120,6 @@ export default function PropertyTypes() {
   const [isMagicFilling, setIsMagicFilling] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
   const [slugBeforeEdit, setSlugBeforeEdit] = useState('');
-  const invalidCityWarnedRef = useRef(false);
   
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -89,16 +134,49 @@ export default function PropertyTypes() {
   );
   const [isICalSyncing, setIsICalSyncing] = useState(false);
 
+  /** Add-listing wizard (same UX as Add Property → First listing). */
+  const [listingDraft, setListingDraft] = useState<WizardListingDraft>(EMPTY_WIZARD_LISTING);
+  const [listingFieldErrors, setListingFieldErrors] = useState<WizardListingFieldErrors>({});
+  const [listingPhotoFile, setListingPhotoFile] = useState<File | null>(null);
+  const [listingPhotoPreview, setListingPhotoPreview] = useState<string | null>(null);
+  const [onboardingFiles, setOnboardingFiles] = useState<File[]>([]);
+  const [allocatedOwnerId, setAllocatedOwnerId] = useState('');
+  const [guideFormData, setGuideFormData] = useState<HouseGuideFormData>({});
+  const [guideSaving, setGuideSaving] = useState(false);
+  const [postCreateImport, setPostCreateImport] = useState<{
+    listingId: string;
+    seedText: string;
+    files: File[];
+  } | null>(null);
+
   // Master Area Database States
   const [countries, setCountries] = useState<string[]>([]);
   const [dbAreas, setDbAreas] = useState<string[]>([]);
   
   const initialFormState = {
-    listingUrl: '', googleMapsUrl: '', propertyTypeName: '', urlSlug: '', 
-    latitude: '', longitude: '', wifiName: '', wifiPassword: '', whatsapp: '', internalRefCode: '',
-    googleRating: '', googlePlaceId: '',
-    ownerId: '', iCalUrl: '', 
-    photoUrl: '', addressLine: '', area: '', city: '', postCode: '', country: ''
+    listingUrl: '',
+    airbnbUrl: '',
+    bookingUrl: '',
+    googleMapsUrl: '',
+    propertyTypeName: '',
+    urlSlug: '',
+    latitude: '',
+    longitude: '',
+    wifiName: '',
+    wifiPassword: '',
+    whatsapp: '',
+    internalRefCode: '',
+    googleRating: '',
+    googlePlaceId: '',
+    ownerId: '',
+    iCalUrl: '',
+    photoUrl: '',
+    addressLine: '',
+    area: '',
+    city: '',
+    postCode: '',
+    country: '',
+    onboardingNotes: '',
   };
   const [typeFormData, setTypeFormData] = useState(initialFormState);
 
@@ -147,26 +225,6 @@ export default function PropertyTypes() {
     }
   }, [isFormOpen, editingTypeId]);
 
-  const cityIsInvalid =
-    !!typeFormData.city &&
-    dbAreas.length > 0 &&
-    !dbAreas.some((a) => a.toLowerCase() === typeFormData.city.toLowerCase());
-
-  useEffect(() => {
-    if (!isFormOpen) {
-      invalidCityWarnedRef.current = false;
-      return;
-    }
-    if (!typeFormData.city || dbAreas.length === 0 || !cityIsInvalid) return;
-    if (!invalidCityWarnedRef.current) {
-      toast.warning(
-        `"${typeFormData.city}" is not a valid City/Master Area. Select the correct region (e.g. Chania) and save.`
-      );
-      invalidCityWarnedRef.current = true;
-    }
-    setTypeFormData((prev) => ({ ...prev, city: '' }));
-  }, [isFormOpen, dbAreas, typeFormData.city, cityIsInvalid, toast]);
-
   const visiblePropertyTypes = useMemo(() => {
     if (!allowedTypeIds) return propertyTypes;
     return propertyTypes.filter((t) => allowedTypeIds.includes(t.id));
@@ -208,7 +266,9 @@ export default function PropertyTypes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when single assigned listing loads
   }, [isListingOnly, lockedListingId, propertyTypes, propertyAccess]);
 
-  const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleTypeChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
     if (e.target.name === 'urlSlug' && canEditUrlSlug) setIsSlugManuallyEdited(true);
 
     setTypeFormData(prev => {
@@ -362,7 +422,9 @@ export default function PropertyTypes() {
         }));
         toast.info('Could not load full place details, but coordinates were extracted from the URL.');
       } else {
-        toast.error('Could not process this link. Paste a full Google Maps place URL or a maps.app.goo.gl short link.');
+        toast.error(
+          'Could not process this link. Paste a full google.com/maps/place URL, maps.app.goo.gl, or share.google link.'
+        );
       }
     } finally {
       setIsMagicFilling(false);
@@ -518,17 +580,19 @@ export default function PropertyTypes() {
       return;
     }
 
-    if (
-      !typeFormData.city ||
-      !dbAreas.some((a) => a.toLowerCase() === typeFormData.city.toLowerCase())
-    ) {
-      toast.warning('Please select a valid City/Master Area (e.g. Chania) from the dropdown.');
+    if (!typeFormData.country?.trim() || !typeFormData.city?.trim()) {
+      toast.warning('Please set country and city / master area for this listing.');
       return;
     }
 
     setIsSubmittingType(true);
     
     try {
+      const ensuredArea = await ensureAreaDocument({
+        country: typeFormData.country,
+        areaName: typeFormData.city,
+      });
+
       let finalPhotoUrl = typeFormData.photoUrl;
 
       if (photoFile) {
@@ -555,6 +619,8 @@ export default function PropertyTypes() {
       const slugChanged = canEditUrlSlug && newSlug !== getTypePublicSlug(existingType ?? {});
       const payload: Record<string, unknown> = {
         ...typeFormData,
+        country: typeFormData.country.trim(),
+        city: ensuredArea.areaName,
         urlSlug: newSlug,
         typeSlug: newSlug,
         photoUrl: finalPhotoUrl,
@@ -591,6 +657,14 @@ export default function PropertyTypes() {
           ...payload, createdAt: new Date().toISOString()
         });
       }
+
+      // Keep property-level location in sync for portfolio list / fallbacks.
+      await updateDoc(doc(db, 'properties', propertyId), {
+        country: typeFormData.country.trim(),
+        area: ensuredArea.areaName,
+        city: ensuredArea.areaName,
+        updatedAt: new Date().toISOString(),
+      });
       
       cancelForm();
     } catch (error) {
@@ -609,6 +683,152 @@ export default function PropertyTypes() {
     setPhotoFile(null);
     setPhotoPreview(null);
     setIsSlugManuallyEdited(false);
+    setListingDraft(EMPTY_WIZARD_LISTING);
+    setListingFieldErrors({});
+    setListingPhotoFile(null);
+    setListingPhotoPreview(null);
+    setOnboardingFiles([]);
+    setAllocatedOwnerId('');
+    setGuideFormData({});
+    setPostCreateImport(null);
+  };
+
+  const openAddListingWizard = () => {
+    if (isListingOnly) {
+      toast.error('You cannot create new property listings.');
+      return;
+    }
+    setEditingTypeId(null);
+    setTypeFormData(initialFormState);
+    setListingDraft(EMPTY_WIZARD_LISTING);
+    setListingFieldErrors({});
+    setListingPhotoFile(null);
+    setListingPhotoPreview(null);
+    setOnboardingFiles([]);
+    setAllocatedOwnerId('');
+    setPostCreateImport(null);
+    setGuideFormData({});
+    setIsFormOpen(true);
+  };
+
+  const submitAddListingWizard = async () => {
+    if (isListingOnly) {
+      toast.error('You cannot create new property listings.');
+      return;
+    }
+    const errors = getWizardListingFieldErrors(listingDraft);
+    setListingFieldErrors(errors);
+    const firstKey = firstWizardListingErrorKey(errors);
+    if (firstKey) {
+      toast.warning('Please complete the highlighted listing fields.');
+      window.setTimeout(() => scrollToWizardListingField(firstKey), 50);
+      return;
+    }
+    if (
+      isAgent &&
+      allocatedOwnerId &&
+      !isAllocatedOwnerIdAllowed(profile, allocatedOwnerId, owners)
+    ) {
+      toast.error('You can only assign owners from your list.');
+      return;
+    }
+
+    setIsSubmittingType(true);
+    try {
+      const latNum = parseFloat(listingDraft.latitude);
+      const lngNum = parseFloat(listingDraft.longitude);
+      const ensuredArea = await ensureAreaDocument({
+        country: listingDraft.country,
+        areaName: listingDraft.city,
+        lat: Number.isFinite(latNum) ? latNum : undefined,
+        lng: Number.isFinite(lngNum) ? lngNum : undefined,
+      });
+
+      let finalPhotoUrl = listingDraft.photoUrl;
+      if (listingPhotoFile) {
+        const storage = getStorage();
+        const fileRef = ref(
+          storage,
+          `propertyTypes/${propertyId}/${Date.now()}_${listingPhotoFile.name}`
+        );
+        await uploadBytes(fileRef, listingPhotoFile);
+        finalPhotoUrl = await getDownloadURL(fileRef);
+      } else if (finalPhotoUrl) {
+        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+          googlePlaceId: listingDraft.googlePlaceId,
+        });
+      }
+
+      const listingSlug =
+        formatGuestSlug(listingDraft.urlSlug) ||
+        slugFromPropertyTypeName(listingDraft.propertyTypeName);
+      const referenceUrls = normalizeWizardReferenceUrls(listingDraft.referenceUrls);
+      const primaryListingUrl = referenceUrls[0] || '';
+      const ownerId = isEndOwner ? '' : allocatedOwnerId;
+
+      const listingRef = await addDoc(collection(db, 'properties', propertyId, 'propertyTypes'), {
+        propertyTypeName: listingDraft.propertyTypeName.trim(),
+        urlSlug: listingSlug,
+        typeSlug: listingSlug,
+        previousUrlSlugs: [],
+        listingUrl: primaryListingUrl,
+        referenceUrls,
+        airbnbUrl: '',
+        bookingUrl: '',
+        googleMapsUrl: listingDraft.googleMapsUrl.trim(),
+        iCalUrl: calendarSyncEnabled ? listingDraft.iCalUrl.trim() : '',
+        addressLine: listingDraft.addressLine.trim(),
+        country: listingDraft.country.trim(),
+        city: ensuredArea.areaName,
+        area: listingDraft.area.trim(),
+        postCode: listingDraft.postCode.trim(),
+        latitude: listingDraft.latitude,
+        longitude: listingDraft.longitude,
+        googlePlaceId: listingDraft.googlePlaceId,
+        googleRating: listingDraft.googleRating,
+        photoUrl: finalPhotoUrl,
+        wifiName: listingDraft.wifiName.trim(),
+        wifiPassword: listingDraft.wifiPassword.trim(),
+        whatsapp: listingDraft.whatsapp.trim(),
+        internalRefCode:
+          listingDraft.internalRefCode.trim() ||
+          `TYP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        ownerId,
+        onboardingNotes: listingDraft.onboardingNotes.trim(),
+        createdAt: new Date().toISOString(),
+      });
+
+      await updateDoc(doc(db, 'properties', propertyId), {
+        country: listingDraft.country.trim(),
+        area: ensuredArea.areaName,
+        city: ensuredArea.areaName,
+        updatedAt: new Date().toISOString(),
+      });
+
+      const seedText = buildListingOnboardingSeedText({
+        ...listingDraft,
+        city: ensuredArea.areaName,
+      });
+
+      toast.success('Listing saved. AI Import is starting on this page.');
+      setGuideFormData({});
+      setPostCreateImport({
+        listingId: listingRef.id,
+        seedText,
+        files: onboardingFiles,
+      });
+      window.setTimeout(() => {
+        document.getElementById('wizard-house-guide-import')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 120);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save property listing.');
+    } finally {
+      setIsSubmittingType(false);
+    }
   };
 
   const handleICalSync = async () => {
@@ -698,7 +918,11 @@ export default function PropertyTypes() {
               </button>
             )}
             {!isListingOnly && (
-              <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
+              <button
+                type="button"
+                onClick={openAddListingWizard}
+                className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm"
+              >
                 <Plus size={18} className="mr-2" /> Add Property Listing
               </button>
             )}
@@ -916,27 +1140,286 @@ export default function PropertyTypes() {
     );
   }
 
-  // --- RENDER FORM VIEW --- //
+  // --- RENDER ADD WIZARD + AI IMPORT --- //
+  if (isFormOpen && !editingTypeId) {
+    return (
+      <div className="admin-page space-y-6">
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={cancelForm}
+            className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+            disabled={Boolean(postCreateImport)}
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">
+              {postCreateImport ? 'House Guide · AI Import' : 'Add New Property Listing'}
+            </h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {postCreateImport
+                ? 'Review AI placements, then continue to another listing or finish.'
+                : 'Same flow as Add Property — Maps autofill, reference URLs, notes, files, then AI House Guide.'}
+            </p>
+          </div>
+        </div>
+
+        {!postCreateImport ? (
+          <>
+            <div className="rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50/90 via-teal-50/40 to-emerald-50/30 px-5 py-5 sm:px-6">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-800 mb-1 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-amber-500" />
+                New listing · {property?.propertyName || 'Property'}
+              </p>
+              <h4 className="text-lg font-bold text-vailo-dark font-luxury">
+                Listing identity, links &amp; House Guide seed
+              </h4>
+              <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
+                Maps Auto-fill is the fastest path. Reference URLs, notes, and files carry into AI Import
+                when you create the listing.
+              </p>
+            </div>
+
+            <PropertyWizardListingStep
+              value={listingDraft}
+              onChange={(next) => {
+                setListingDraft(next);
+                setListingFieldErrors({});
+              }}
+              photoFile={listingPhotoFile}
+              onPhotoFileChange={(file, preview) => {
+                setListingPhotoFile(file);
+                setListingPhotoPreview(preview);
+                if (preview) {
+                  setListingDraft((prev) => ({ ...prev, photoUrl: preview }));
+                }
+              }}
+              photoPreview={listingPhotoPreview || listingDraft.photoUrl || null}
+              calendarSyncEnabled={calendarSyncEnabled}
+              fieldErrors={listingFieldErrors}
+              onClearFieldError={(key: WizardListingFieldKey) =>
+                setListingFieldErrors((prev) => {
+                  const next = { ...prev };
+                  delete next[key];
+                  return next;
+                })
+              }
+              onboardingFiles={onboardingFiles}
+              onOnboardingFilesChange={setOnboardingFiles}
+              ownerSlot={
+                canAssignAllocatedOwner ? (
+                  <div>
+                    <label className="block text-sm font-bold text-slate-800 mb-1">
+                      Allocated Owner
+                    </label>
+                    <select
+                      value={allocatedOwnerId}
+                      onChange={(e) => setAllocatedOwnerId(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl admin-input outline-none bg-white"
+                    >
+                      <option value="">Select an owner…</option>
+                      {(isPlatformAdmin
+                        ? owners.filter((o) => o.role === 'owner')
+                        : allocatableOwners
+                      ).map((owner) => (
+                        <option key={owner.id} value={owner.id}>
+                          {owner.fullName} {owner.company ? `(${owner.company})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {isAgent && allocatableOwners.length === 0 ? (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Add owners under <strong>Owners</strong> in the sidebar, then assign them
+                        here.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Allocated Owner
+                    </label>
+                    <p className="text-sm text-gray-400 italic mb-1">No owner assigned</p>
+                    <p className="text-xs text-gray-500">
+                      To change allocated owner, contact Vailo at{' '}
+                      <a
+                        href="mailto:contact@vailo.app"
+                        className="font-semibold text-vailo-teal underline hover:text-vailo-teal-hover"
+                      >
+                        contact@vailo.app
+                      </a>
+                      .
+                    </p>
+                  </div>
+                )
+              }
+            />
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={cancelForm}
+                className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingType}
+                onClick={() => void submitAddListingWizard()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-xl disabled:opacity-50 transition-colors shadow-sm"
+              >
+                {isSubmittingType ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                {isSubmittingType ? 'Saving…' : 'Create & open House Guide AI'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div id="wizard-house-guide-import" className="space-y-4">
+            <div className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-teal-50/50 p-5 sm:p-6">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-800 mb-1 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-amber-500" />
+                House Guide · AI Import
+              </p>
+              <h4 className="text-xl font-bold text-vailo-dark font-luxury">
+                Review what AI found for your guide
+              </h4>
+              <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
+                Your listing is saved. Import starts automatically from your notes, links, and files —
+                this can take up to a minute.
+              </p>
+            </div>
+
+            <HouseGuideImportPanel
+              formData={guideFormData}
+              contentLocale={DEFAULT_PRIMARY_LOCALE}
+              primaryLocale={DEFAULT_PRIMARY_LOCALE}
+              initialImportText={postCreateImport.seedText}
+              initialFiles={postCreateImport.files}
+              fromWizard
+              autoAnalyze
+              disabled={guideSaving}
+              footerActions={{
+                onContinueListing: () => {
+                  setPostCreateImport(null);
+                  setListingDraft(EMPTY_WIZARD_LISTING);
+                  setListingFieldErrors({});
+                  setListingPhotoFile(null);
+                  setListingPhotoPreview(null);
+                  setOnboardingFiles([]);
+                  setAllocatedOwnerId('');
+                  setGuideFormData({});
+                  toast.success('Ready to add another listing.');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+                onFinishHouseGuide: () =>
+                  navigate(
+                    adminPath(
+                      `/properties/${propertyId}/house-guide?listing=${encodeURIComponent(postCreateImport.listingId)}`
+                    )
+                  ),
+                onFinishProperties: () => {
+                  cancelForm();
+                  navigate(adminPath('/properties'));
+                },
+              }}
+              onApply={async (next) => {
+                setGuideSaving(true);
+                try {
+                  const payload = serializeGuideFormDataForSave(next, DEFAULT_PRIMARY_LOCALE);
+                  await setDoc(
+                    doc(
+                      db,
+                      'properties',
+                      propertyId,
+                      'propertyTypes',
+                      postCreateImport.listingId,
+                      'houseGuide',
+                      'data'
+                    ),
+                    {
+                      ...payload,
+                      updatedAt: new Date().toISOString(),
+                    },
+                    { merge: true }
+                  );
+                  setGuideFormData(next);
+                } finally {
+                  setGuideSaving(false);
+                }
+              }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- RENDER EDIT FORM VIEW --- //
   return (
     <div className="admin-page">
       <div className="flex items-center mb-6">
         <button onClick={cancelForm} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={20} />
         </button>
-        <h3 className="text-xl font-bold text-gray-900">
-          {editingTypeId ? 'Edit Property Listing' : 'Add New Property Listing'}
-        </h3>
+        <h3 className="text-xl font-bold text-gray-900">Edit Property Listing</h3>
       </div>
       <form onSubmit={submitPropertyType} className="border border-gray-200 rounded-xl shadow-sm overflow-hidden bg-white">
         
         {/* URL Scraping / Auto-fill Section */}
         <div className="p-6 border-b border-gray-100 bg-gray-50 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Airbnb listing URL</label>
+              <div className="relative">
+                <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                <input
+                  type="url"
+                  name="airbnbUrl"
+                  value={typeFormData.airbnbUrl}
+                  onChange={handleTypeChange}
+                  placeholder="https://www.airbnb.com/rooms/…"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Booking.com listing URL</label>
+              <div className="relative">
+                <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                <input
+                  type="url"
+                  name="bookingUrl"
+                  value={typeFormData.bookingUrl}
+                  onChange={handleTypeChange}
+                  placeholder="https://www.booking.com/hotel/…"
+                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
+                />
+              </div>
+            </div>
+          </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Website URL</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Other website / channel URL</label>
             <div className="relative">
               <Link2 className="absolute left-3 top-2.5 text-gray-400" size={18} />
               <input type="url" name="listingUrl" value={typeFormData.listingUrl} onChange={handleTypeChange} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Onboarding / import notes</label>
+            <textarea
+              name="onboardingNotes"
+              value={typeFormData.onboardingNotes}
+              onChange={handleTypeChange}
+              rows={3}
+              placeholder="Wi‑Fi, check-in notes, extra URLs…"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-textarea outline-none bg-white text-sm"
+            />
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Google Maps Location Link</label>
@@ -948,7 +1431,7 @@ export default function PropertyTypes() {
                   name="googleMapsUrl"
                   value={typeFormData.googleMapsUrl}
                   onChange={handleTypeChange}
-                  placeholder="Full google.com/maps/place/… or maps.app.goo.gl/…"
+                  placeholder="Full maps place URL, maps.app.goo.gl, or share.google/…"
                   className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white"
                 />
               </div>
@@ -1219,23 +1702,24 @@ export default function PropertyTypes() {
                 <option value="" disabled>Select Country</option>
                 {countries.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Country for this listing. Each property can be in a different place (for example Paris or Athens).
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City / Master Area *</label>
-              <select required name="city" value={typeFormData.city} onChange={handleTypeChange} disabled={!typeFormData.country} className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white disabled:opacity-50">
-                <option value="" disabled>{dbAreas.length === 0 ? 'No areas setup for this country' : 'Select City/Area'}</option>
-                {dbAreas.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-              {cityIsInvalid && (
-                <p className="text-xs text-red-500 mt-1">
-                  Invalid master area stored. Re-select from the list (e.g. Chania) and save.
-                </p>
-              )}
-              {typeFormData.country && dbAreas.length === 0 && (
-                <p className="text-xs text-red-500 mt-1">Please add areas in Area Functionality first.</p>
-              )}
-            </div>
+            <MunicipalityAreaField
+              country={typeFormData.country}
+              value={typeFormData.city}
+              required
+              label="City / Master Area *"
+              helpText="Type the city or municipality for this listing. New places are created automatically when you save."
+              onChange={(next) =>
+                setTypeFormData((prev) => ({
+                  ...prev,
+                  city: next.name,
+                }))
+              }
+            />
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Neighborhood / Area *</label>

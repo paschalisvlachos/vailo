@@ -18,11 +18,11 @@ export default function DashboardPage() {
       {newDiscoveredCount > 0 && (
         <Link
           to={adminPath('/area')}
-          className="flex items-start gap-4 p-4 sm:p-5 mb-6 bg-vailo-gold/10 border border-vailo-gold/25 rounded-2xl hover:bg-vailo-gold/15 transition-colors"
+          className="flex items-start gap-4 p-4 sm:p-5 mb-6 bg-vailo-gold/10 border border-vailo-gold/30 rounded hover:bg-vailo-gold/15 transition-colors"
         >
           <AlertCircle className="text-vailo-gold shrink-0 mt-0.5" size={22} />
           <div className="min-w-0">
-            <p className="font-bold text-vailo-dark text-sm sm:text-base">
+            <p className="font-semibold text-vailo-dark text-sm sm:text-base">
               {newDiscoveredCount} discovered place{newDiscoveredCount === 1 ? '' : 's'} need review
             </p>
             <p className="text-sm text-vailo-gold-muted mt-1">
@@ -41,11 +41,11 @@ export default function DashboardPage() {
           { icon: Sparkles, label: 'Billing', to: adminPath('/billing'), desc: 'API usage & costs' },
         ].map((item) => (
             <Link key={item.label} to={item.to}>
-              <AdminCard className="p-5 sm:p-6 hover:shadow-[0_8px_30px_-12px_rgba(11,79,92,0.18)] hover:border-vailo-teal/15 transition-all h-full group">
+              <AdminCard className="p-5 sm:p-6 hover:shadow-[0_8px_24px_-8px_rgba(40,42,57,0.22)] transition-all h-full group">
                 <div className="admin-icon-box mb-4 group-hover:bg-vailo-gold/15 group-hover:text-vailo-gold transition-colors">
                   <item.icon size={20} />
                 </div>
-                <p className="font-bold text-vailo-dark font-luxury">{item.label}</p>
+                <p className="font-semibold text-vailo-dark">{item.label}</p>
                 <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">{item.desc}</p>
               </AdminCard>
             </Link>

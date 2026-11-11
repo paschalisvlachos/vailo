@@ -79,6 +79,15 @@ type PropertyType = {
   area?: string;
   postCode?: string;
   onboardingNotes?: string;
+  latitude?: string | number;
+  longitude?: string | number;
+  googlePlaceId?: string;
+  googleRating?: string | number;
+  photoUrl?: string;
+  wifiName?: string;
+  wifiPassword?: string;
+  whatsapp?: string;
+  internalRefCode?: string;
 };
 
 type FieldDef = {
@@ -251,12 +260,16 @@ export default function HouseGuide() {
       city: selectedListing.city || '',
       area: selectedListing.area || '',
       postCode: selectedListing.postCode || '',
-      latitude: '',
-      longitude: '',
-      googlePlaceId: '',
-      googleRating: '',
-      photoUrl: '',
+      latitude: String(selectedListing.latitude || ''),
+      longitude: String(selectedListing.longitude || ''),
+      googlePlaceId: selectedListing.googlePlaceId || '',
+      googleRating: String(selectedListing.googleRating || ''),
+      photoUrl: selectedListing.photoUrl || '',
       onboardingNotes: selectedListing.onboardingNotes || '',
+      wifiName: selectedListing.wifiName || '',
+      wifiPassword: selectedListing.wifiPassword || '',
+      whatsapp: selectedListing.whatsapp || '',
+      internalRefCode: selectedListing.internalRefCode || '',
     };
     setWizardImportSeed(buildListingOnboardingSeedText(draft));
     setWizardHandoff(true);

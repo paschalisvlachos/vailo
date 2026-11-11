@@ -1,12 +1,17 @@
 const { onRequest } = require("firebase-functions/v2/https");
-const { defineSecret, defineString } = require("firebase-functions/params");
+const { defineSecret } = require("firebase-functions/params");
 const { FieldValue } = require("firebase-admin/firestore");
 const Stripe = require("stripe");
 
 const resendApiKey = defineSecret("RESEND_API_KEY");
-/** Optional — when set, checkout redirects to Stripe; otherwise account is created and invoiced. */
-const stripeSecretKey = defineString("STRIPE_SECRET_KEY", { default: "" });
-const stripeWebhookSecret = defineString("STRIPE_PLAN_WEBHOOK_SECRET", { default: "" });
+
+/** Optional — set in functions/.env when ready; without them checkout provisions + invoices manually. */
+function stripeSecretKeyValue() {
+  return String(process.env.STRIPE_SECRET_KEY || "").trim();
+}
+function stripeWebhookSecretValue() {
+  return String(process.env.STRIPE_PLAN_WEBHOOK_SECRET || "").trim();
+}
 
 const CONTACT_TO = "info@vailo.app";
 const CONTACT_FROM = "Vailo Website <contact@vailo.app>";
@@ -385,7 +390,7 @@ function registerPlanPurchase({ firestore, auth, logger, firebaseExports }) {
       }
 
       const purchaseId = purchaseRef.id;
-      const stripeKey = String(stripeSecretKey.value() || "").trim();
+      const stripeKey = stripeSecretKeyValue();
 
       // Stripe configured → hosted Checkout; otherwise provision now and invoice manually.
       if (stripeKey) {
@@ -520,8 +525,8 @@ function registerPlanPurchase({ firestore, auth, logger, firebaseExports }) {
         return;
       }
 
-      const stripeKey = String(stripeSecretKey.value() || "").trim();
-      const whSecret = String(stripeWebhookSecret.value() || "").trim();
+      const stripeKey = stripeSecretKeyValue();
+      const whSecret = stripeWebhookSecretValue();
       if (!stripeKey || !whSecret) {
         res.status(503).send("Stripe not configured");
         return;

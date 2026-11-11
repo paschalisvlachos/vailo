@@ -440,19 +440,82 @@ function pickClosestPlace(places, lat, lng) {
 }
 
 function isGenericMapsTitle(name) {
-  const n = String(name || "").trim();
-  return !n || n.includes("Google Maps") || n.includes("302 Moved");
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return true;
+  return (
+    n.includes("google maps") ||
+    n.includes("google search") ||
+    n === "google" ||
+    n.includes("302 moved") ||
+    n.includes("before you continue") ||
+    n.includes("sign in")
+  );
 }
 
-/** Parse place name / coords from a Maps URL without HTTP fetch. */
+function isLikelyMapsShortLink(url) {
+  try {
+    const host = new URL(String(url || "").trim()).hostname.toLowerCase();
+    return (
+      host === "share.google" ||
+      host === "maps.app.goo.gl" ||
+      host === "goo.gl" ||
+      host.endsWith(".app.goo.gl") ||
+      host === "g.co"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function unwrapGoogleContinueUrl(rawUrl) {
+  let current = String(rawUrl || "").trim();
+  for (let i = 0; i < 4; i++) {
+    try {
+      const u = new URL(current);
+      const cont = u.searchParams.get("continue");
+      if (!cont) return current;
+      current = cont;
+    } catch {
+      return current;
+    }
+  }
+  return current;
+}
+
+function placeNameFromSearchQueryParam(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return "";
+  if (/^-?\d+\.\d+\s*,\s*-?\d+\.\d+$/.test(value)) return "";
+  if (isGenericMapsTitle(value)) return "";
+  return value;
+}
+
+/** Parse place name / coords from a Maps or share.google URL without HTTP fetch. */
 function extractMapsUrlHints(url) {
   const hints = { placeName: "", lat: null, lng: null };
-  const raw = String(url || "").trim();
+  const raw = unwrapGoogleContinueUrl(String(url || "").trim());
   if (!raw.startsWith("http")) return hints;
 
   const placeMatch = raw.match(/\/place\/([^/?@]+)/i);
   if (placeMatch?.[1]) {
     hints.placeName = decodeURIComponent(placeMatch[1].replace(/\+/g, " ")).trim();
+  }
+
+  if (!hints.placeName) {
+    const pathSearch = raw.match(/\/(?:place|search)\/([^/?@]+)/i);
+    if (pathSearch?.[1]) {
+      hints.placeName = decodeURIComponent(pathSearch[1].replace(/\+/g, " ")).trim();
+    }
+  }
+
+  try {
+    const u = new URL(raw);
+    if (!hints.placeName) {
+      hints.placeName = placeNameFromSearchQueryParam(u.searchParams.get("q") || "");
+    }
+  } catch {
+    /* ignore */
   }
 
   const coordMatch =
@@ -464,6 +527,68 @@ function extractMapsUrlHints(url) {
     hints.lng = parseFloat(coordMatch[2]);
   }
   return hints;
+}
+
+function mergeSetCookieIntoJar(jar, response) {
+  let cookies = [];
+  if (typeof response.headers.getSetCookie === "function") {
+    cookies = response.headers.getSetCookie();
+  } else {
+    const single = response.headers.get("set-cookie");
+    if (single) cookies = [single];
+  }
+  for (const sc of cookies) {
+    const match = String(sc).match(/^([^=;\s]+)=([^;]*)/);
+    if (match) jar.set(match[1], match[2]);
+  }
+}
+
+/**
+ * Follow Google short-link redirects while keeping cookies.
+ * share.google often needs this to reach the search/maps destination.
+ */
+async function fetchFollowRedirectsWithCookies(startUrl, options = {}) {
+  const maxRedirects = options.maxRedirects ?? 10;
+  const headers = {
+    "User-Agent":
+      options.userAgent ||
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    ...(options.headers || {}),
+  };
+
+  let url = String(startUrl || "").trim();
+  const jar = new Map();
+  let lastStatus = 0;
+
+  for (let i = 0; i <= maxRedirects; i++) {
+    const cookieHeader = [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+    const res = await fetch(url, {
+      redirect: "manual",
+      headers: {
+        ...headers,
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      },
+    });
+    lastStatus = res.status;
+    mergeSetCookieIntoJar(jar, res);
+
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) {
+        const text = await res.text().catch(() => "");
+        return { url, text, status: res.status };
+      }
+      url = unwrapGoogleContinueUrl(new URL(loc, url).href);
+      continue;
+    }
+
+    const text = await res.text();
+    return { url: unwrapGoogleContinueUrl(url), text, status: res.status };
+  }
+
+  throw new Error(`Too many redirects resolving Maps link (last ${lastStatus}).`);
 }
 
 function bareGooglePlaceId(raw) {
@@ -497,6 +622,117 @@ function extractPlaceIdFromMapsUrl(url) {
   return null;
 }
 
+/** Decimal Google Maps CID from ?cid=… share links (maps.google.com/?cid=…). */
+function extractCidFromMapsUrl(url) {
+  const match = String(url || "").match(/[?&]cid=(\d{5,})/i);
+  return match?.[1] || null;
+}
+
+function cidToFeatureId(cid) {
+  try {
+    return `0x0:0x${BigInt(String(cid)).toString(16)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a Maps CID (?cid=…) to a ChIJ place id.
+ * Prefers legacy Place Details (cid=) when enabled; otherwise tries Places API (New) text search.
+ */
+async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
+  const cidValue = String(cid || "").trim();
+  if (!/^\d{5,}$/.test(cidValue) || !apiKey) return null;
+
+  // 1) Legacy Place Details still accepts cid when Places API (legacy) is enabled.
+  try {
+    const response = await axios.get("https://maps.googleapis.com/maps/api/place/details/json", {
+      params: {
+        cid: cidValue,
+        fields: "place_id,name,url",
+        key: apiKey,
+      },
+      timeout: 20000,
+    });
+    if (usageSource) {
+      await recordPlacesApiCall(firestore, {
+        endpoint: "place_details",
+        source: usageSource,
+      });
+    }
+    const status = String(response.data?.status || "");
+    const placeId = bareGooglePlaceId(response.data?.result?.place_id);
+    if (status === "OK" && placeId) return placeId;
+    logger.warn("CID legacy Place Details miss", {
+      cid: cidValue,
+      status,
+      errorMessage: response.data?.error_message || null,
+    });
+  } catch (e) {
+    logger.warn("CID legacy Place Details failed:", e.response?.data || e.message || e);
+  }
+
+  // 2) Places API (New) text search — server keys can sometimes resolve the share URL / ftid.
+  const featureId = cidToFeatureId(cidValue);
+  const queries = [
+    `https://www.google.com/maps?cid=${cidValue}`,
+    `https://maps.google.com/?cid=${cidValue}`,
+    featureId ? `https://www.google.com/maps?ftid=${featureId}` : null,
+    featureId,
+  ].filter(Boolean);
+
+  for (const textQuery of queries) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const place = await fetchPlaceFromGoogle(textQuery, apiKey, null, null, "", {
+        skipPhoto: true,
+        usageSource,
+        pickClosestWithinMeters: 0,
+      });
+      const placeId = bareGooglePlaceId(place?.googlePlaceId);
+      if (placeId && /^ChIJ/i.test(placeId)) {
+        logger.info("CID resolved via Places text search", { cid: cidValue, placeId, textQuery });
+        return placeId;
+      }
+    } catch (e) {
+      logger.warn("CID text search attempt failed", {
+        cid: cidValue,
+        textQuery,
+        message: e?.message || e,
+      });
+    }
+  }
+
+  // 3) Headless Chromium expands cid → /maps/place/… then Places text search by name.
+  try {
+    const { resolveMapsCidInBrowser } = require("./resolveMapsCidBrowser");
+    const hints = await resolveMapsCidInBrowser(cidValue);
+    if (hints?.placeName) {
+      const place = await fetchPlaceFromGoogle(
+        hints.placeName,
+        apiKey,
+        hints.lat,
+        hints.lng,
+        hints.placeName,
+        { skipPhoto: true, usageSource }
+      );
+      const placeId = bareGooglePlaceId(place?.googlePlaceId);
+      if (placeId && /^ChIJ/i.test(placeId)) {
+        logger.info("CID resolved via browser expand + Places search", {
+          cid: cidValue,
+          placeId,
+          placeName: hints.placeName,
+        });
+        return placeId;
+      }
+    }
+  } catch (e) {
+    logger.warn("CID browser expand failed:", e.message || e);
+  }
+
+  return null;
+}
+
 function extractPlaceIdFromPlacesPhotoUrl(url) {
   const raw = String(url || "").trim();
   const match = raw.match(/places\.googleapis\.com\/v1\/places\/(ChIJ[\w-]+)\//i);
@@ -511,21 +747,24 @@ async function resolvePlaceIdFromMapsUrlFetch(url) {
   if (direct) return direct;
 
   try {
-    const res = await fetch(trimmed, {
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-    let finalUrl = res.url;
-    if (finalUrl.includes("consent.google.com") && finalUrl.includes("continue=")) {
-      try {
-        finalUrl = new URL(finalUrl).searchParams.get("continue") || finalUrl;
-      } catch (e) {
-        logger.info("Consent URL parse error ignored.");
-      }
+    let finalUrl = trimmed;
+    if (
+      isLikelyMapsShortLink(trimmed) ||
+      /share\.google/i.test(trimmed) ||
+      /[?&]cid=/i.test(trimmed)
+    ) {
+      const resolved = await fetchFollowRedirectsWithCookies(trimmed);
+      finalUrl = unwrapGoogleContinueUrl(resolved.url);
+    } else {
+      const res = await fetch(trimmed, {
+        redirect: "follow",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+      finalUrl = unwrapGoogleContinueUrl(res.url);
     }
     return extractPlaceIdFromMapsUrl(finalUrl);
   } catch (e) {
@@ -1142,32 +1381,37 @@ async function resolveUrlSearchQuery(searchQuery, area) {
     return appendAreaIfNeeded(`${hints.lat},${hints.lng}`, area);
   }
 
-  const res = await fetch(trimmed, {
-    redirect: "follow",
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-  });
+  let finalUrl = trimmed;
+  let html = "";
 
-  let finalUrl = res.url;
-  let html = await res.text();
-  let placeName = "";
-
-  if (finalUrl.includes("consent.google.com") && finalUrl.includes("continue=")) {
-    try {
-      const urlObj = new URL(finalUrl);
-      finalUrl = urlObj.searchParams.get("continue") || finalUrl;
-    } catch (e) {
-      logger.info("Consent URL parse error ignored.");
-    }
+  // share.google / goo.gl / ?cid= need cookie-aware redirect following.
+  // Full maps place URLs can use plain redirect follow.
+  if (
+    isLikelyMapsShortLink(trimmed) ||
+    /share\.google/i.test(trimmed) ||
+    /[?&]cid=/i.test(trimmed)
+  ) {
+    const resolved = await fetchFollowRedirectsWithCookies(trimmed);
+    finalUrl = unwrapGoogleContinueUrl(resolved.url);
+    html = resolved.text || "";
+  } else {
+    const res = await fetch(trimmed, {
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    finalUrl = unwrapGoogleContinueUrl(res.url);
+    html = await res.text();
   }
 
-  const urlMatch = finalUrl.match(/\/(?:place|search)\/([^\/?@]+)/);
-  if (urlMatch && urlMatch[1]) {
-    placeName = decodeURIComponent(urlMatch[1].replace(/\+/g, " ")).trim();
-  }
+  const resolvedHints = extractMapsUrlHints(finalUrl);
+  let placeName =
+    resolvedHints.placeName && !isGenericMapsTitle(resolvedHints.placeName)
+      ? resolvedHints.placeName
+      : "";
 
   if (!placeName && html) {
     const ogMatch =
@@ -1178,7 +1422,7 @@ async function resolveUrlSearchQuery(searchQuery, area) {
     } else {
       const titleMatch = html.match(/<title>(.*?)<\/title>/i);
       if (titleMatch && titleMatch[1]) {
-        placeName = titleMatch[1].split(" - ")[0].replace(/&amp;/g, "&").trim();
+        placeName = titleMatch[1].split(" - ")[0].split(" · ")[0].replace(/&amp;/g, "&").trim();
       }
     }
   }
@@ -1187,16 +1431,13 @@ async function resolveUrlSearchQuery(searchQuery, area) {
     return appendAreaIfNeeded(placeName, area);
   }
 
-  const coordMatch =
-    finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
-    finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-  if (coordMatch) {
-    return appendAreaIfNeeded(`${coordMatch[1]},${coordMatch[2]}`, area);
-  }
-
-  const htmlHints = extractMapsUrlHints(finalUrl);
-  if (htmlHints.lat != null && htmlHints.lng != null) {
-    return appendAreaIfNeeded(`${htmlHints.lat},${htmlHints.lng}`, area);
+  if (
+    resolvedHints.lat != null &&
+    resolvedHints.lng != null &&
+    !Number.isNaN(resolvedHints.lat) &&
+    !Number.isNaN(resolvedHints.lng)
+  ) {
+    return appendAreaIfNeeded(`${resolvedHints.lat},${resolvedHints.lng}`, area);
   }
 
   throw new Error("Extracted invalid name from URL/HTML.");
@@ -1543,7 +1784,13 @@ exports.recordGuestDiscoveredMention = onCall(async (request) => {
   return { ok: true, id: docId };
 });
 
-exports.getGooglePlaceDetails = onCall(async (request) => {
+exports.getGooglePlaceDetails = onCall(
+  {
+    region: "us-central1",
+    timeoutSeconds: 120,
+    memory: "1GiB",
+  },
+  async (request) => {
   const payload = request.data || {};
   let searchQuery = payload.searchQuery;
   const area = payload.area || "";
@@ -1568,8 +1815,9 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
 
   const rawQuery = String(searchQuery).trim();
   let matchTitle = urlHints?.placeName || fallbackName || rawQuery;
+  const mapsCid = extractCidFromMapsUrl(rawQuery);
 
-  const hintPlaceId = await resolveHintPlaceId(rawQuery, payload);
+  let hintPlaceId = await resolveHintPlaceId(rawQuery, payload);
 
   if (payload.hintsOnly === true) {
     const coordInQuery = String(searchQuery).match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
@@ -1625,6 +1873,11 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
   };
 
   try {
+    if ((!hintPlaceId || !/^ChIJ/i.test(hintPlaceId)) && mapsCid) {
+      const fromCid = await resolvePlaceIdFromCid(mapsCid, apiKey, usageSource);
+      if (fromCid) hintPlaceId = fromCid;
+    }
+
     if (hintPlaceId && /^ChIJ/i.test(hintPlaceId)) {
       const byId = await fetchPlaceDetailsById(hintPlaceId, apiKey, {
         skipPhoto,
@@ -1636,64 +1889,81 @@ exports.getGooglePlaceDetails = onCall(async (request) => {
       logger.warn(`Place Details lookup missed for ${hintPlaceId}; falling back to text search.`);
     }
 
-    try {
-      searchQuery = await resolveUrlSearchQuery(searchQuery, area);
-      matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
-    } catch (e) {
-      if (!hintPlaceId && !fallbackName && biasLat == null) {
-        logger.error("CRITICAL: Link resolution blocked:", e);
-        throw new HttpsError(
-          "invalid-argument",
-          "Could not read that Maps link. Paste the full place URL from your browser, or a maps.app.goo.gl link."
-        );
+    // CID share links often hit Google consent / JS shells — skip HTML scrape when we still
+    // have no place id and instead rely on API lookups + a clear host-facing error.
+    if (!(mapsCid && !(hintPlaceId && /^ChIJ/i.test(hintPlaceId)))) {
+      try {
+        searchQuery = await resolveUrlSearchQuery(searchQuery, area);
+        matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
+      } catch (e) {
+        if (!hintPlaceId && !fallbackName && biasLat == null) {
+          logger.error("CRITICAL: Link resolution blocked:", e);
+          throw new HttpsError(
+            "invalid-argument",
+            "Could not read that Maps link. Paste a full google.com/maps/place URL, maps.app.goo.gl, or share.google link."
+          );
+        }
+        logger.info("Maps link resolution fallback:", e.message || e);
+        if (fallbackName) {
+          searchQuery = appendAreaIfNeeded(fallbackName, area);
+          matchTitle = fallbackName;
+        } else if (biasLat != null && biasLng != null) {
+          searchQuery = appendAreaIfNeeded(`${biasLat},${biasLng}`, area);
+        }
       }
-      logger.info("Maps link resolution fallback:", e.message || e);
+    } else {
+      logger.info("Skipping HTML Maps scrape for CID link; using Places API resolution only", {
+        cid: mapsCid,
+      });
+    }
+
+    if (!(mapsCid && !(hintPlaceId && /^ChIJ/i.test(hintPlaceId)))) {
+      let place = await fetchPlaceFromGoogle(
+        searchQuery,
+        apiKey,
+        biasLat,
+        biasLng,
+        matchTitle,
+        searchOptions
+      );
+      if (place) {
+        return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
+      }
+
       if (fallbackName) {
-        searchQuery = appendAreaIfNeeded(fallbackName, area);
-        matchTitle = fallbackName;
-      } else if (biasLat != null && biasLng != null) {
-        searchQuery = appendAreaIfNeeded(`${biasLat},${biasLng}`, area);
+        const fallbackQuery = appendAreaIfNeeded(fallbackName, area);
+        place = await fetchPlaceFromGoogle(
+          fallbackQuery,
+          apiKey,
+          biasLat,
+          biasLng,
+          fallbackName,
+          searchOptions
+        );
+        if (place) {
+          return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
+        }
+      }
+
+      if (biasLat != null && biasLng != null) {
+        place = await fetchPlaceNearbyByCoords(
+          biasLat,
+          biasLng,
+          apiKey,
+          fallbackName || matchTitle,
+          searchOptions
+        );
+        if (place) {
+          return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
+        }
       }
     }
 
-    let place = await fetchPlaceFromGoogle(
-      searchQuery,
-      apiKey,
-      biasLat,
-      biasLng,
-      matchTitle,
-      searchOptions
-    );
-    if (place) {
-      return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
-    }
-
-    if (fallbackName) {
-      const fallbackQuery = appendAreaIfNeeded(fallbackName, area);
-      place = await fetchPlaceFromGoogle(
-        fallbackQuery,
-        apiKey,
-        biasLat,
-        biasLng,
-        fallbackName,
-        searchOptions
+    if (mapsCid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "This Maps link uses a short cid= share format that Google won’t expand via Places API (New). Open the link in your browser, wait until the place page loads, copy the address-bar URL (it should contain /maps/place/), paste that, then click Auto-fill again."
       );
-      if (place) {
-        return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
-      }
-    }
-
-    if (biasLat != null && biasLng != null) {
-      place = await fetchPlaceNearbyByCoords(
-        biasLat,
-        biasLng,
-        apiKey,
-        fallbackName || matchTitle,
-        searchOptions
-      );
-      if (place) {
-        return finishGetGooglePlaceDetailsResponse(place, apiKey, skipPhoto);
-      }
     }
 
     throw new HttpsError("not-found", "Place not found on Google.");
@@ -1909,6 +2179,9 @@ registerICalSync({ firestore, logger, firebaseExports: exports });
 
 const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
 registerGuestApplianceGuide({ firestore, firebaseExports: exports });
+
+const { registerHouseGuideImportAi } = require("./houseGuideImportAi");
+registerHouseGuideImportAi({ firebaseExports: exports });
 
 const { registerGuestAssistantEscalation } = require("./guestAssistantEscalation");
 registerGuestAssistantEscalation({ firestore, logger, firebaseExports: exports });

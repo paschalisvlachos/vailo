@@ -20,7 +20,7 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
   }, [onServices, activeCategory]);
 
   return (
-    <div className="mt-1 ml-4 pl-3 border-l border-white/10 space-y-0.5">
+    <div className="mt-0.5 mb-1 space-y-0.5">
       {ARRANGE_AND_BOOK_CATEGORIES.map((category) => {
         const isOpen = expanded === category.id;
         const categoryActive = onServices && activeCategory === category.id && !activeSubcategory;
@@ -28,11 +28,11 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
 
         return (
           <div key={category.id}>
-            <div className="flex items-center">
+            <div className="flex items-center pl-3">
               <button
                 type="button"
                 onClick={() => setExpanded((prev) => (prev === category.id ? '' : category.id))}
-                className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 shrink-0"
+                className="p-1.5 text-white/40 hover:text-white hover:bg-black/20 shrink-0"
                 aria-label={isOpen ? `Collapse ${category.label}` : `Expand ${category.label}`}
               >
                 {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -40,17 +40,17 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
               <Link
                 to={categoryPath}
                 onClick={onNavigate}
-                className={`flex-1 min-w-0 px-2 py-1.5 rounded-lg text-[13px] font-medium truncate ${
+                className={`flex-1 min-w-0 px-2 py-1.5 text-[12px] font-normal truncate capitalize ${
                   categoryActive
-                    ? 'bg-white/12 text-white'
-                    : 'text-white/55 hover:bg-white/6 hover:text-white/90'
+                    ? 'bg-black/20 text-white'
+                    : 'text-white/70 hover:bg-black/20 hover:text-white'
                 }`}
               >
                 {category.label}
               </Link>
             </div>
             {isOpen && (
-              <div className="ml-6 mb-1 space-y-0.5">
+              <div className="mb-1 space-y-0.5">
                 {category.subcategories.map((sub) => {
                   const subActive =
                     onServices &&
@@ -61,10 +61,10 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
                       key={sub.id}
                       to={adminPath(adminArrangeAndBookServicesPath(category.id, sub.id))}
                       onClick={onNavigate}
-                      className={`block px-2 py-1.5 rounded-lg text-xs truncate ${
+                      className={`block pl-[50px] pr-4 py-1.5 text-[12px] font-light truncate capitalize ${
                         subActive
-                          ? 'bg-white/12 text-white font-medium'
-                          : 'text-white/45 hover:bg-white/6 hover:text-white/80'
+                          ? 'bg-black/30 text-white'
+                          : 'text-white/70 hover:bg-black/30 hover:text-white'
                       }`}
                     >
                       {sub.label}

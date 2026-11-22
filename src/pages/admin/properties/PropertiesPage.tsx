@@ -808,7 +808,6 @@ function guestUrlFor(agency: AgencyShell | undefined, listing: ListingRow): stri
     buildGuestPortalPublicListingUrl(
       { urlSlug: agency.urlSlug },
       {
-        id: listing.id,
         propertyTypeName: listing.propertyTypeName,
         urlSlug: listing.urlSlug,
         typeSlug: listing.typeSlug,

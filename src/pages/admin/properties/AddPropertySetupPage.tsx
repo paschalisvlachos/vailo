@@ -51,7 +51,7 @@ import { AdminButton } from '../../../components/admin/AdminPageHeader';
 
 export default function AddPropertySetupPage() {
   const navigate = useNavigate();
-  const { showToast } = useToast();
+  const toast = useToast();
   const { profile, portfolioProperties, portfolioTypes } = useAdminSession();
   const isCapacityUser = profile?.role === 'agent' || profile?.role === 'owner';
   const [draft, setDraft] = useState<AddPropertyDraft>(() => {
@@ -196,9 +196,8 @@ export default function AddPropertySetupPage() {
           return next;
         });
       } catch (error) {
-        showToast(
-          error instanceof Error ? error.message : 'Could not load area local gems.',
-          'error'
+        toast.error(
+          error instanceof Error ? error.message : 'Could not load area local gems.'
         );
       } finally {
         setLoadingGems(false);
@@ -240,7 +239,7 @@ export default function AddPropertySetupPage() {
         setLoadingEssentials(false);
       }
     },
-    [showToast]
+    [toast]
   );
 
   useEffect(() => {
@@ -271,7 +270,7 @@ export default function AddPropertySetupPage() {
           .getElementById(wizardListingFieldDomId(firstKey))
           ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      showToast('Finish the required listing details before continuing.', 'error');
+      toast.error('Finish the required listing details before continuing.');
       return;
     }
 
@@ -313,7 +312,7 @@ export default function AddPropertySetupPage() {
     if (!topUpListing || creating) return;
     const emptySources = !hasWizardHouseGuideUserSources(listingDraft, onboardingFiles);
     if (emptySources) {
-      showToast('Add a link, notes, or a file — or click Finish.', 'error');
+      toast.error('Add a link, notes, or a file — or click Finish.');
       return;
     }
     const seedText = buildListingOnboardingSeedText(listingDraft);
@@ -325,7 +324,7 @@ export default function AddPropertySetupPage() {
       emptySources: false,
     });
     setTopUpListing(null);
-    showToast('House Guide AI Import is starting…', 'success');
+    toast.success('House Guide AI Import is starting…');
     window.setTimeout(() => {
       document.getElementById('add-property-house-guide-import')?.scrollIntoView({
         behavior: 'smooth',
@@ -340,7 +339,7 @@ export default function AddPropertySetupPage() {
     const errors = getWizardListingFieldErrors(listingDraft);
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      showToast('Listing details are incomplete — go back and finish required fields.', 'error');
+      toast.error('Listing details are incomplete — go back and finish required fields.');
       persist({ ...draft, listingDraft, setupStep: 'listing' });
       return;
     }
@@ -349,7 +348,7 @@ export default function AddPropertySetupPage() {
       const used = countListingsTowardCapacity(profile, portfolioProperties, portfolioTypes);
       const quotaError = creatorListingQuotaMessage(profile, used);
       if (quotaError) {
-        showToast(quotaError, 'error');
+        toast.error(quotaError);
         return;
       }
     }
@@ -410,11 +409,10 @@ export default function AddPropertySetupPage() {
       });
 
       clearAddPropertyDraft();
-      showToast(
+      toast.success(
         emptySources
           ? 'Listing created. Add House Guide sources or finish.'
-          : 'Listing created. House Guide AI Import is starting…',
-        'success'
+          : 'Listing created. House Guide AI Import is starting…'
       );
       window.setTimeout(() => {
         document.getElementById('add-property-house-guide-import')?.scrollIntoView({
@@ -424,9 +422,8 @@ export default function AddPropertySetupPage() {
       }, 120);
     } catch (error) {
       console.error('Add property create failed:', error);
-      showToast(
-        error instanceof Error ? error.message : 'Could not create the property. Try again.',
-        'error'
+      toast.error(
+        error instanceof Error ? error.message : 'Could not create the property. Try again.'
       );
     } finally {
       setCreating(false);

@@ -1,31 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useParams, Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import {
-  ArrowLeft,
-  Home,
-  Building,
-  CalendarCheck,
-  ClipboardCheck,
-  Calendar as CalendarIcon,
-  MapPin,
-  Leaf,
-  BookOpen,
-  Handshake,
-  Sparkles,
-  AlertTriangle,
-  ThumbsUp,
-  Users,
-  FlaskConical,
-  BarChart3,
-  Info,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
-import { AdminBadge } from '../../../components/admin/AdminPageHeader';
-import { useUnseenGuestIssuesCount } from '../../../hooks/useUnseenGuestIssuesCount';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import {
   getPropertyAccessMode,
@@ -33,125 +9,9 @@ import {
   type PropertyAccessMode,
 } from '../../../lib/adminAccess';
 import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
-import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { adminPath } from '../../../lib/adminRoutes';
-import { propertyListingQuerySuffix } from '../../../hooks/usePropertyListingQuery';
-
-type PropertyTab = {
-  name: string;
-  path: string;
-  icon: LucideIcon;
-  badgeKey: 'guestIssues' | null;
-  help: string;
-};
-
-const TABS: PropertyTab[] = [
-  {
-    name: 'Overview',
-    path: '',
-    icon: Home,
-    badgeKey: null,
-    help: 'Property identity, guest-experience switches, languages, and high-level status. Start here to see what is set up and jump to the next incomplete area.',
-  },
-  {
-    name: 'Property Listings',
-    path: 'types',
-    icon: Building,
-    badgeKey: null,
-    help: 'Each rentable unit under this property (name, address, Maps link, OTA URLs, photo, Wi‑Fi, iCal). Guests open the portal per listing.',
-  },
-  {
-    name: 'Reservations',
-    path: 'reservations',
-    icon: CalendarCheck,
-    badgeKey: null,
-    help: 'Bookings imported from your calendar feeds or added manually. Used for guest access windows, invites, and stay dates.',
-  },
-  {
-    name: 'Check-ins',
-    path: 'check-ins',
-    icon: ClipboardCheck,
-    badgeKey: null,
-    help: 'Online pre-arrival check-in responses from guests (IDs, arrival details, extras). Only relevant when Online check-in is turned on.',
-  },
-  {
-    name: 'Calendar',
-    path: 'calendar',
-    icon: CalendarIcon,
-    badgeKey: null,
-    help: 'Availability view of synced and manual reservations. Use this to spot overlaps and confirm iCal sync is working.',
-  },
-  {
-    name: 'Local Gems',
-    path: 'local-gems',
-    icon: MapPin,
-    badgeKey: null,
-    help: 'Curated places near this property for the guest portal (restaurants, beaches, activities). Can mix property picks with area catalog places.',
-  },
-  {
-    name: 'Green Score',
-    path: 'green-score',
-    icon: Leaf,
-    badgeKey: null,
-    help: 'Sustainability practices and eco messaging shown to guests. Track what you already do and what you can improve.',
-  },
-  {
-    name: 'House Guide',
-    path: 'house-guide',
-    icon: BookOpen,
-    badgeKey: null,
-    help: 'The stay handbook: check-in, Wi‑Fi, appliances, house rules, and more. Fill sections manually or with AI Import from notes and files.',
-  },
-  {
-    name: 'Features',
-    path: 'features',
-    icon: Handshake,
-    badgeKey: null,
-    help: 'Property amenities and highlights (pool, parking, workspace, etc.) that guests see as selling points and practical info.',
-  },
-  {
-    name: 'Guest Issues',
-    path: 'guest-issues',
-    icon: AlertTriangle,
-    badgeKey: 'guestIssues',
-    help: 'Problems guests reported from the portal (broken item, missing supply, noise). Review, resolve, and keep the stay running smoothly.',
-  },
-  {
-    name: 'Pick Feedback',
-    path: 'pick-feedback',
-    icon: ThumbsUp,
-    badgeKey: null,
-    help: 'Guest reactions to Local Gems and AI picks (likes/dislikes). Use it to improve recommendations over time.',
-  },
-  {
-    name: 'AI Gaps',
-    path: 'ai-gaps',
-    icon: Sparkles,
-    badgeKey: null,
-    help: 'Where the concierge AI lacks knowledge for this property. Fill gaps so guest answers stay accurate and on-brand.',
-  },
-  {
-    name: 'House Guests',
-    path: 'house-guests',
-    icon: Users,
-    badgeKey: null,
-    help: 'Guests linked to stays and invites for this property. Manage who has portal access around their booking.',
-  },
-  {
-    name: 'Visitor access',
-    path: 'testers',
-    icon: FlaskConical,
-    badgeKey: null,
-    help: 'Temporary visitor or tester codes so you (or partners) can open the guest portal without a real reservation.',
-  },
-  {
-    name: 'Analytics',
-    path: 'analytics',
-    icon: BarChart3,
-    badgeKey: null,
-    help: 'Usage signals for this property: portal activity, engagement, and trends that show what guests actually use.',
-  },
-];
+import { PROPERTY_ADMIN_SECTIONS } from '../../../lib/propertyAdminNav';
+import { repairAgencyPortfolioNameIfNeeded } from '../../../lib/createPropertyFromAddDraft';
 
 export type PropertyRecord = {
   id: string;
@@ -191,6 +51,16 @@ export type PropertyOutletContext = {
   lockedListingId: string | null;
 };
 
+const REMOVED_SEGMENTS = new Set([
+  '',
+  'pick-feedback',
+  'ai-gaps',
+  'testers',
+  'overview',
+  'reservations',
+  'calendar',
+]);
+
 export default function PropertyLayout() {
   const { id } = useParams();
   const location = useLocation();
@@ -199,49 +69,9 @@ export default function PropertyLayout() {
   const { profile } = useAdminSession();
   const [property, setProperty] = useState<PropertyRecord | null>(null);
   const [typeRows, setTypeRows] = useState<
-    { id: string; propertyId: string; ownerId?: string }[]
+    { id: string; propertyId: string; ownerId?: string; propertyTypeName?: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const [openHelpPath, setOpenHelpPath] = useState<string | null>(null);
-  const [helpAnchor, setHelpAnchor] = useState<{ top: number; left: number } | null>(null);
-  const helpCardRef = useRef<HTMLDivElement>(null);
-  const unseenGuestIssues = useUnseenGuestIssuesCount(id);
-
-  const openHelpTab = useMemo(
-    () => (openHelpPath == null ? null : TABS.find((t) => t.path === openHelpPath) || null),
-    [openHelpPath]
-  );
-
-  useEffect(() => {
-    if (!openHelpTab) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (helpCardRef.current?.contains(target)) return;
-      if ((target as HTMLElement)?.closest?.('[data-tab-help-trigger]')) return;
-      setOpenHelpPath(null);
-      setHelpAnchor(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpenHelpPath(null);
-        setHelpAnchor(null);
-      }
-    };
-    const onReposition = () => {
-      setOpenHelpPath(null);
-      setHelpAnchor(null);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', onReposition);
-    window.addEventListener('scroll', onReposition, true);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('resize', onReposition);
-      window.removeEventListener('scroll', onReposition, true);
-    };
-  }, [openHelpTab]);
 
   useEffect(() => {
     if (!id) return;
@@ -263,6 +93,26 @@ export default function PropertyLayout() {
     return () => unsub();
   }, [id]);
 
+  // Repair shells wrongly named after a listing (legacy Add Property bug).
+  useEffect(() => {
+    if (!id || !property?.propertyName) return;
+    if (!property.ownerId || property.ownerId !== profile?.id) return;
+    const agencyName = profile.company?.trim() || profile.fullName?.trim();
+    if (!agencyName) return;
+    void repairAgencyPortfolioNameIfNeeded({
+      propertyId: id,
+      currentName: property.propertyName,
+      agencyName,
+    });
+  }, [
+    id,
+    property?.propertyName,
+    property?.ownerId,
+    profile?.id,
+    profile?.company,
+    profile?.fullName,
+  ]);
+
   useEffect(() => {
     if (!id) return;
     const unsub = onSnapshot(collection(db, 'properties', id, 'propertyTypes'), (snap) => {
@@ -271,6 +121,7 @@ export default function PropertyLayout() {
           id: d.id,
           propertyId: id,
           ownerId: d.data().ownerId as string | undefined,
+          propertyTypeName: d.data().propertyTypeName as string | undefined,
         }))
       );
     });
@@ -292,24 +143,8 @@ export default function PropertyLayout() {
     return propertyAccess.typeIds[0] || null;
   }, [propertyAccess, searchParams]);
 
-  const visibleTabs = useMemo(
-    () =>
-      TABS.filter((tab) => {
-        if (tab.path === 'check-ins' && !isPreArrivalCheckInEnabled(property)) {
-          return false;
-        }
-        if (
-          (tab.path === 'reservations' || tab.path === 'calendar') &&
-          !isCalendarSyncEnabled(property)
-        ) {
-          return false;
-        }
-        return isTabAllowedForAccess(tab.path, propertyAccess);
-      }),
-    [propertyAccess, property]
-  );
-
-  const currentSegment = location.pathname.split(`${adminPath(`/properties/${id}`)}/`)[1]?.split('/')[0] ?? '';
+  const currentSegment =
+    location.pathname.split(`${adminPath(`/properties/${id}`)}/`)[1]?.split('/')[0] ?? '';
 
   useEffect(() => {
     if (!id || !propertyAccess || loading) return;
@@ -324,6 +159,23 @@ export default function PropertyLayout() {
       navigate(target, { replace: true });
     }
   }, [id, propertyAccess, currentSegment, lockedListingId, loading, navigate]);
+
+  const allowedSegments = useMemo(() => {
+    const paths = new Set<string>(['types']); // unified Property Listings entry
+    for (const tab of PROPERTY_ADMIN_SECTIONS) {
+      if (tab.path === 'check-ins' && !isPreArrivalCheckInEnabled(property)) continue;
+      if (propertyAccess && isTabAllowedForAccess(tab.path, propertyAccess)) {
+        paths.add(tab.path);
+      }
+    }
+    // Listing-only access: types + house-guide only
+    if (propertyAccess?.level === 'listing_only') {
+      return new Set(
+        [...paths].filter((p) => isTabAllowedForAccess(p, propertyAccess))
+      );
+    }
+    return paths;
+  }, [property, propertyAccess]);
 
   if (loading) {
     return (
@@ -340,6 +192,16 @@ export default function PropertyLayout() {
     );
   }
 
+  // Overview / removed tabs → Listings
+  if (REMOVED_SEGMENTS.has(currentSegment) || !allowedSegments.has(currentSegment)) {
+    const listingQ = lockedListingId
+      ? `?listing=${encodeURIComponent(lockedListingId)}`
+      : '';
+    return (
+      <Navigate to={adminPath(`/properties/${id}/types${listingQ}`)} replace />
+    );
+  }
+
   const outletContext: PropertyOutletContext = {
     property,
     propertyId: id!,
@@ -349,180 +211,8 @@ export default function PropertyLayout() {
 
   return (
     <div className="admin-page">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 sm:mb-8 pb-5 sm:pb-6 border-b border-gray-200/80">
-        <div className="flex items-start sm:items-center gap-3 min-w-0">
-          <Link
-            to={adminPath('/properties')}
-            className="p-2.5 rounded hover:bg-vailo-teal/5 text-gray-400 hover:text-vailo-teal transition-colors shrink-0 border border-transparent hover:border-vailo-teal/10"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <div className="min-w-0">
-            <h2 className="text-xl sm:text-2xl lg:text-[1.65rem] font-semibold text-vailo-dark truncate">
-              {property.propertyName}
-            </h2>
-            <p className="text-gray-500 text-sm mt-0.5">
-              {propertyAccess.level === 'listing_only'
-                ? 'Listing access — assigned unit only'
-                : 'Property management'}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {propertyAccess.level === 'listing_only' && (
-            <AdminBadge variant="gold">Listing only</AdminBadge>
-          )}
-          {property.listingKind && (
-            <AdminBadge variant={property.listingKind === 'hotel' ? 'gold' : 'teal'}>
-              {property.listingKind === 'hotel' ? 'Hotel' : 'Property'}
-            </AdminBadge>
-          )}
-          {property.internalRefCode && (
-            <AdminBadge variant="teal">{property.internalRefCode}</AdminBadge>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col xl:flex-row gap-5 xl:gap-8">
-        <nav className="xl:w-60 shrink-0">
-          <div className="xl:sticky xl:top-24">
-            <p className="hidden xl:block text-[10px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-2.5 px-1">
-              Sections
-            </p>
-            <div className="flex xl:flex-col gap-1.5 overflow-x-auto admin-scroll-x pb-1 xl:pb-0 -mx-1 px-1 xl:mx-0 xl:px-0 xl:bg-white xl:rounded xl:p-2 xl:shadow-[1px_1px_15px_rgba(0,0,0,0.1)]">
-              {visibleTabs.map((tab) => {
-                const listingSuffix = propertyListingQuerySuffix(
-                  lockedListingId || searchParams.get('listing')
-                );
-                const to =
-                  tab.path === ''
-                    ? listingSuffix || ''
-                    : `${tab.path}${listingSuffix}`;
-                const helpOpen = openHelpPath === tab.path;
-                return (
-                  <div
-                    key={tab.name}
-                    className="flex items-stretch gap-0.5 shrink-0 xl:w-full"
-                  >
-                    <NavLink
-                      to={to}
-                      end={tab.path === ''}
-                      onClick={() => {
-                        setOpenHelpPath(null);
-                        setHelpAnchor(null);
-                      }}
-                      className={({ isActive }) =>
-                        `flex items-center gap-2 xl:gap-2.5 pl-3.5 xl:pl-3 pr-2 py-2.5 text-xs xl:text-sm font-medium rounded-l whitespace-nowrap flex-1 min-w-0 transition-all ${
-                          isActive
-                            ? 'bg-vailo-teal text-white'
-                            : 'bg-white xl:bg-transparent text-gray-600 border border-[#eeeeee] xl:border-0 border-r-0 hover:bg-vailo-surface-elevated hover:text-vailo-teal'
-                        }`
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <tab.icon size={16} className="shrink-0 opacity-90" />
-                          <span className="flex-1 truncate text-left">{tab.name}</span>
-                          {tab.badgeKey === 'guestIssues' && unseenGuestIssues > 0 && (
-                            <span
-                              className={`min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
-                                isActive
-                                  ? 'bg-white/20 text-white'
-                                  : 'bg-vailo-gold text-vailo-dark'
-                              }`}
-                            >
-                              {unseenGuestIssues > 99 ? '99+' : unseenGuestIssues}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                    <button
-                      type="button"
-                      data-tab-help-trigger={tab.path || 'overview'}
-                      aria-label={`About ${tab.name}`}
-                      aria-expanded={helpOpen}
-                      title={`About ${tab.name}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (helpOpen) {
-                          setOpenHelpPath(null);
-                          setHelpAnchor(null);
-                          return;
-                        }
-                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                        const width = 288;
-                        const left = Math.min(
-                          Math.max(12, rect.right + 8),
-                          window.innerWidth - width - 12
-                        );
-                        const top = Math.min(
-                          Math.max(12, rect.top),
-                          window.innerHeight - 160
-                        );
-                        setHelpAnchor({ top, left });
-                        setOpenHelpPath(tab.path);
-                      }}
-                      className={`shrink-0 px-2.5 rounded-r border transition-colors ${
-                        helpOpen
-                          ? 'bg-vailo-teal text-white border-vailo-teal'
-                          : 'bg-white xl:bg-transparent border-[#eeeeee] text-gray-400 hover:text-vailo-teal hover:bg-vailo-surface-elevated'
-                      }`}
-                    >
-                      <Info size={14} strokeWidth={2.25} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </nav>
-
-        {openHelpTab && helpAnchor
-          ? createPortal(
-              <div
-                ref={helpCardRef}
-                role="dialog"
-                aria-label={`${openHelpTab.name} explained`}
-                style={{ top: helpAnchor.top, left: helpAnchor.left }}
-                className="admin-shell fixed z-[80] w-72 max-w-[calc(100vw-1.5rem)] rounded border border-vailo-teal/20 bg-white p-4 shadow-[1px_1px_15px_rgba(0,0,0,0.15)]"
-              >
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-vailo-teal">
-                    {openHelpTab.name}
-                  </p>
-                  <button
-                    type="button"
-                    aria-label="Close"
-                    onClick={() => {
-                      setOpenHelpPath(null);
-                      setHelpAnchor(null);
-                    }}
-                    className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-                <p className="text-sm text-slate-600 leading-relaxed">{openHelpTab.help}</p>
-              </div>,
-              document.body
-            )
-          : null}
-
-        <div className="flex-1 min-w-0 bg-white rounded shadow-[1px_1px_15px_rgba(0,0,0,0.1)] p-4 sm:p-6 lg:p-8 xl:p-10 min-h-[420px]">
-          {propertyAccess.level === 'listing_only' && lockedListingId && currentSegment === '' ? (
-            <Navigate
-              to={adminPath(`/properties/${id}/types?listing=${lockedListingId}`)}
-              replace
-            />
-          ) : !isCalendarSyncEnabled(property) &&
-            (currentSegment === 'calendar' || currentSegment === 'reservations') ? (
-            <Navigate to={adminPath(`/properties/${id}`)} replace />
-          ) : (
-            <Outlet context={outletContext} />
-          )}
-        </div>
+      <div className="min-w-0 bg-white rounded-lg border border-[#e1e1e1] shadow-[0_10px_10px_0_rgba(0,0,0,0.08)] p-4 sm:p-6 lg:p-8 xl:p-10 min-h-[420px]">
+        <Outlet context={outletContext} />
       </div>
     </div>
   );

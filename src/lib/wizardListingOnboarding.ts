@@ -1,3 +1,5 @@
+import { isMapsPlaceUrl } from './houseGuideImportAi';
+
 export type WizardListingDraft = {
   propertyTypeName: string;
   urlSlug: string;
@@ -56,9 +58,21 @@ export type WizardListingFieldKey =
   | 'country'
   | 'city'
   | 'area'
-  | 'googleMapsUrl';
+  | 'googleMapsUrl'
+  | 'coordinates';
 
 export type WizardListingFieldErrors = Partial<Record<WizardListingFieldKey, string>>;
+
+function hasValidCoordinates(draft: WizardListingDraft): boolean {
+  const latRaw = String(draft.latitude || '').trim();
+  const lngRaw = String(draft.longitude || '').trim();
+  if (!latRaw || !lngRaw) return false;
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
 
 export function getWizardListingFieldErrors(
   draft: WizardListingDraft
@@ -81,8 +95,9 @@ export function getWizardListingFieldErrors(
     errors.city =
       'City / Master Area is required — pick or create the municipality for local gems.';
   }
-  if (!draft.area.trim()) {
-    errors.area = 'Neighborhood / area is required (for example the village or district name).';
+  if (!hasValidCoordinates(draft)) {
+    errors.coordinates =
+      'Drop a location pin on the map (or use Maps Auto-fill) so we have coordinates.';
   }
   return errors;
 }
@@ -102,6 +117,7 @@ export function firstWizardListingErrorKey(
     'country',
     'city',
     'area',
+    'coordinates',
   ];
   return order.find((key) => Boolean(errors[key])) || null;
 }
@@ -136,6 +152,19 @@ export function referenceUrlRowsWithTrailingBlank(urls: string[] | undefined): s
   return [...filled, ''];
 }
 
+/** True when the host added notes, non-Maps links, or files for House Guide training. */
+export function hasWizardHouseGuideUserSources(
+  draft: WizardListingDraft,
+  files: File[] = []
+): boolean {
+  if (files.length > 0) return true;
+  if (draft.onboardingNotes.trim()) return true;
+  for (const url of normalizeWizardReferenceUrls(draft.referenceUrls)) {
+    if (!isMapsPlaceUrl(url)) return true;
+  }
+  return false;
+}
+
 export function buildListingOnboardingSeedText(draft: WizardListingDraft): string {
   const lines: string[] = [
     'Property listing setup (from Add Property wizard)',
@@ -144,16 +173,19 @@ export function buildListingOnboardingSeedText(draft: WizardListingDraft): strin
     `Street address: ${draft.addressLine.trim() || '—'}`,
     `Country: ${draft.country.trim() || '—'}`,
     `City / master area: ${draft.city.trim() || '—'}`,
-    `Neighborhood: ${draft.area.trim() || '—'}`,
+    `Area: ${draft.area.trim() || '—'}`,
     `Postal code: ${draft.postCode.trim() || '—'}`,
   ];
 
+  // Do not include Google Maps URLs — they can’t be scraped; address/name already come from Maps Auto-fill.
   const links: string[] = [];
-  if (draft.googleMapsUrl.trim()) links.push(`Google Maps: ${draft.googleMapsUrl.trim()}`);
   for (const url of normalizeWizardReferenceUrls(draft.referenceUrls)) {
+    if (isMapsPlaceUrl(url)) continue;
     links.push(url);
   }
-  if (draft.iCalUrl.trim()) links.push(`iCal feed: ${draft.iCalUrl.trim()}`);
+  if (draft.iCalUrl.trim() && !isMapsPlaceUrl(draft.iCalUrl.trim())) {
+    links.push(`iCal feed: ${draft.iCalUrl.trim()}`);
+  }
 
   if (links.length) {
     lines.push('', 'Reference links:', ...links.map((u) => `- ${u}`));

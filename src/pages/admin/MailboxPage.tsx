@@ -26,6 +26,7 @@ import {
   isMailboxSentMessage,
 } from '../../lib/adminInbox';
 import RichTextEditor from '../../components/admin/RichTextEditor';
+import { AdminButton } from '../../components/admin/AdminPageHeader';
 
 function mapDoc(id: string, data: DocumentData): AdminInboxMessage {
   return {
@@ -387,14 +388,10 @@ export default function MailboxPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => openCompose()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-vailo-teal text-white text-sm font-semibold hover:bg-vailo-dark transition-colors"
-          >
+          <AdminButton type="button" variant="accent" onClick={() => openCompose()}>
             <Plus size={16} />
             Compose
-          </button>
+          </AdminButton>
           <button
             type="button"
             onClick={runSync}

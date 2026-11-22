@@ -182,7 +182,7 @@ export const FEATURED_CONFIGS: FeaturedConfig[] = [
   {
     id: 'supplies',
     title: 'Extra Supplies',
-    description: 'Batteries, mosquito gear, useful map pins.',
+    description: 'Batteries, mosquito gear, remotes, and spare keys.',
     iconName: 'Box',
     sourceCategoryIds: ['supplies'],
   },
@@ -203,7 +203,7 @@ export const FEATURED_CONFIGS: FeaturedConfig[] = [
   {
     id: 'daily-needs',
     title: 'Daily Needs',
-    description: 'Nearby shops, pharmacy, ATM, and everyday essentials.',
+    description: 'Nearby shops, bakery, ATM, and useful local information.',
     iconName: 'ShoppingBag',
     sourceCategoryIds: ['dailyNeeds'],
   },

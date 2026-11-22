@@ -26,6 +26,7 @@ import {
   ChevronDown,
   X,
   ExternalLink,
+  MapPin,
 } from 'lucide-react';
 import {
   HOUSE_GUIDE_CATEGORIES,
@@ -38,6 +39,7 @@ import { getGuideTextValue } from '../../lib/houseGuideLocales';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import type { GuestLocaleKey } from '../../lib/guestLocale';
 import { openExternalUrl } from '../../lib/geocoding';
+import MirroredPhotoImg from '../shared/MirroredPhotoImg';
 
 const ICONS: Record<string, ReactNode> = {
   Key: <Key size={18} />,
@@ -152,32 +154,68 @@ function FieldBlock({
         <ul className="space-y-2">
           {rows.map((row, i) => {
             const r = row as Record<string, unknown>;
-            const title = String(r.title || r.category || '').trim();
+            const category = String(r.category || '').trim();
+            const title = String(r.title || '').trim() || category;
             const link = String(r.mapsLink || '').trim();
             const phone = String(r.phone || '').trim();
-            if (!title && !link && !phone) return null;
+            const address = String(r.address || '').trim();
+            const photoUrl = String(r.photoUrl || '').trim();
+            const googlePlaceId = String(r.googlePlaceId || '').trim();
+            if (!title && !link && !phone && !address && !photoUrl) return null;
             return (
               <li
                 key={i}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#F8FAFA] border border-gray-100 px-3.5 py-2.5"
+                className="flex gap-3 rounded-xl bg-[#F8FAFA] border border-gray-100 px-3.5 py-2.5"
               >
-                <div className="min-w-0">
-                  {title && <p className="text-sm font-semibold text-gray-900">{title}</p>}
-                  {phone && (
-                    <a href={`tel:${phone.replace(/\s/g, '')}`} className="text-sm text-[#0B4F5C] font-medium">
-                      {phone}
-                    </a>
+                <div className="h-14 w-14 rounded-lg overflow-hidden bg-white border border-gray-100 shrink-0">
+                  {photoUrl ? (
+                    <MirroredPhotoImg
+                      src={photoUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      mirrorContext={{ googlePlaceId: googlePlaceId || undefined }}
+                      fallback={
+                        <div className="h-full w-full flex items-center justify-center text-gray-300">
+                          <MapPin size={18} />
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-gray-300">
+                      <MapPin size={18} />
+                    </div>
                   )}
                 </div>
-                {link && (
+                <div className="min-w-0 flex-1">
+                  {category && title !== category ? (
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                      {category}
+                    </p>
+                  ) : null}
+                  {title ? (
+                    <p className="text-sm font-semibold text-gray-900">{title}</p>
+                  ) : null}
+                  {address ? (
+                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{address}</p>
+                  ) : null}
+                  {phone ? (
+                    <a
+                      href={`tel:${phone.replace(/\s/g, '')}`}
+                      className="text-sm text-[#0B4F5C] font-medium mt-0.5 inline-block"
+                    >
+                      {phone}
+                    </a>
+                  ) : null}
+                </div>
+                {link ? (
                   <button
                     type="button"
                     onClick={() => openExternalUrl(link)}
-                    className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[#C5A059] shrink-0"
+                    className="inline-flex items-center gap-1 self-center text-xs font-bold uppercase tracking-wide text-[#C5A059] shrink-0"
                   >
                     Map <ExternalLink size={12} />
                   </button>
-                )}
+                ) : null}
               </li>
             );
           })}

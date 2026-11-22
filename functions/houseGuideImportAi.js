@@ -147,16 +147,16 @@ async function fetchUrlSource(entry) {
     };
   }
 
-  // Google Maps / share pages are JS apps — server fetch returns almost no usable text.
+  // Google Maps / share pages are never useful to fetch — skip silently (client should not send them).
   if (isMapsPlaceUrl(url)) {
     return {
       id,
       url,
       label,
       status: "skipped",
-      note:
-        "Google Maps pages can’t be scraped (they’re app shells). Address/name already come from Maps Auto-fill — no need to fetch this link.",
+      note: "",
       textPreview: "",
+      omitFromSources: true,
     };
   }
 
@@ -363,13 +363,18 @@ function registerHouseGuideImportAi({ firebaseExports }) {
 
       const fetchedSources = [];
       for (const entry of fetchUrlsRaw) {
+        // Never attempt Google Maps / share pages — address comes from Maps Auto-fill.
+        if (isMapsPlaceUrl(String(entry?.url || ""))) continue;
         // Sequential to be gentle on remote sites / rate limits.
         // eslint-disable-next-line no-await-in-loop
         fetchedSources.push(await fetchUrlSource(entry));
       }
 
-      if (fetchedSources.length) {
-        parts = appendFetchedSourcesToParts(parts, fetchedSources);
+      // Drop intentional Maps skips so clients never show them as "skipped".
+      const reportableSources = fetchedSources.filter((s) => !s.omitFromSources);
+
+      if (reportableSources.length) {
+        parts = appendFetchedSourcesToParts(parts, reportableSources);
       }
 
       const apiKey = resolveGeminiApiKey();
@@ -377,7 +382,7 @@ function registerHouseGuideImportAi({ firebaseExports }) {
 
       try {
         const generated = await generateHouseGuideImportJsonWithRetry(apiKey, model, parts);
-        return { text: generated.text, model: generated.model, fetchedSources };
+        return { text: generated.text, model: generated.model, fetchedSources: reportableSources };
       } catch (err) {
         if (err instanceof HttpsError) throw err;
         const status = err?.response?.status;

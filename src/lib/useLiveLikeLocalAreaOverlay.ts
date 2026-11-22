@@ -10,7 +10,7 @@ import {
   buildGuestCategoryHierarchy,
   type CategoryOption,
 } from './categoryHierarchy';
-import { mergeCuratedFeatures, mergeCuratedGems } from './mergeCuratedContent';
+import { mergeCuratedGems } from './mergeCuratedContent';
 import {
   filterGuestEligibleTrails,
   type LocalTrailRecord,
@@ -93,13 +93,12 @@ async function loadAreaCategories(params: LoadParams) {
 }
 
 async function loadAreaRows(params: LoadParams) {
-  const { areaCtx, propertyGems, propertyFeatures } = params;
+  const { areaCtx, propertyGems } = params;
   const areaBase = ['countries', areaCtx.country, 'areas', areaCtx.areaId] as const;
 
-  const [discoveredSnap, gemsSnap, featuresSnap, trailsSnap] = await Promise.all([
+  const [discoveredSnap, gemsSnap, trailsSnap] = await Promise.all([
     getDocs(collection(db, ...areaBase, 'discoveredPlaces')),
     getDocs(collection(db, ...areaBase, 'localGems')),
-    getDocs(collection(db, ...areaBase, 'areaFeatures')),
     getDocs(collection(db, ...areaBase, 'localTrails')),
   ]);
 
@@ -107,13 +106,13 @@ async function loadAreaRows(params: LoadParams) {
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((p: any) => p.status !== 'hidden');
   const areaGems = gemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  const areaFeatures = featuresSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const localTrails = trailsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
 
   return {
     discoveredPlaces,
     mergedGems: mergeCuratedGems(propertyGems, areaGems),
-    mergedFeatures: mergeCuratedFeatures(propertyFeatures, areaFeatures),
+    // Partner offers stay on guest home only — never Live Like a Local.
+    mergedFeatures: [],
     verifiedDiscoveredPlaces: discoveredPlaces.filter(isGuestVerifiedDiscoveredPlace),
     guestEligibleTrails: filterGuestEligibleTrails(localTrails),
   };
@@ -166,7 +165,6 @@ export function useLiveLikeLocalAreaOverlay(params: {
     listingSnapshot,
     searchAreaCtx,
     propertyGems,
-    propertyFeatures,
     locale,
     contentSettings,
   } = params;
@@ -191,13 +189,13 @@ export function useLiveLikeLocalAreaOverlay(params: {
       isSearchAreaActive: true,
       categoriesLoading: true,
       mergedGems: mergeCuratedGems(propertyGems, []),
-      mergedFeatures: mergeCuratedFeatures(propertyFeatures, []),
+      mergedFeatures: [],
     });
 
     const loadParams: LoadParams = {
       areaCtx: searchAreaCtx,
       propertyGems,
-      propertyFeatures,
+      propertyFeatures: [],
       locale,
       contentSettings,
     };
@@ -225,7 +223,7 @@ export function useLiveLikeLocalAreaOverlay(params: {
             isSearchAreaActive: true,
             categoriesLoading: false,
             mergedGems: mergeCuratedGems(propertyGems, []),
-            mergedFeatures: mergeCuratedFeatures(propertyFeatures, []),
+            mergedFeatures: [],
           });
         }
       }
@@ -240,7 +238,6 @@ export function useLiveLikeLocalAreaOverlay(params: {
 
     let discoveredPlaces: any[] = [];
     let areaGems: any[] = [];
-    let areaFeatures: any[] = [];
     let localTrails: LocalTrailRecord[] = [];
 
     const publishRows = () => {
@@ -249,7 +246,7 @@ export function useLiveLikeLocalAreaOverlay(params: {
         ...current,
         discoveredPlaces,
         mergedGems: mergeCuratedGems(propertyGems, areaGems),
-        mergedFeatures: mergeCuratedFeatures(propertyFeatures, areaFeatures),
+        mergedFeatures: [],
         verifiedDiscoveredPlaces: discoveredPlaces.filter(isGuestVerifiedDiscoveredPlace),
         guestEligibleTrails: filterGuestEligibleTrails(localTrails),
       }));
@@ -266,10 +263,6 @@ export function useLiveLikeLocalAreaOverlay(params: {
         areaGems = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         publishRows();
       }),
-      onSnapshot(collection(db, ...areaBase, 'areaFeatures'), (snap) => {
-        areaFeatures = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        publishRows();
-      }),
       onSnapshot(collection(db, ...areaBase, 'localTrails'), (snap) => {
         localTrails = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as LocalTrailRecord[];
         publishRows();
@@ -284,7 +277,6 @@ export function useLiveLikeLocalAreaOverlay(params: {
     searchAreaKey,
     searchAreaCtx,
     propertyGems,
-    propertyFeatures,
     locale,
     contentSettings.primaryLocale,
     contentSettings.reviewedLocales,
@@ -304,7 +296,8 @@ export function useLiveLikeLocalAreaOverlay(params: {
         categoryCatalogDocs: listingSnapshot.categoryCatalogDocs,
         discoveredPlaces: listingSnapshot.discoveredPlaces,
         mergedGems: listingSnapshot.mergedGems,
-        mergedFeatures: listingSnapshot.mergedFeatures,
+        // Partner offers stay on guest home only — never Live Like a Local.
+        mergedFeatures: [],
         verifiedDiscoveredPlaces: listingSnapshot.verifiedDiscoveredPlaces,
         guestEligibleTrails: listingSnapshot.guestEligibleTrails,
       };

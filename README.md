@@ -33,7 +33,6 @@ src/
 │   │   ├── Overview.tsx       # General info & Relational Owner data
 │   │   ├── PropertyTypes.tsx  # Multi-unit configurations (WiFi, GPS, iCal)
 │   │   ├── LocalGems.tsx      # Curated guidebook with smart distance math
-│   │   ├── GreenScore.tsx     # 100-point sustainability calculator
 │   │   ├── Calendar.tsx       # Visual booking grid (iCal + Manual)
 │   │   └── Reservations.tsx   # Master booking list & conflict engine
 │   ├── AddOwner.tsx           # Form to create new CRM contacts
@@ -65,7 +64,6 @@ src/
     * **Smart Import:** Extracts GPS coordinates directly from Google Maps URLs.
     * **Cost-Free Math:** Utilizes the Haversine formula to automatically calculate driving distance (km) and time between the specific unit and the Gem without using paid Google APIs.
     * **Firebase Storage:** Built-in image uploading for custom photos.
-* **Green Score Matrix:** A real-time, interactive 100-point calculator that dynamically scores a unit's eco-friendly features (Energy Class, Solar, Recycling, etc.) to highlight sustainability.
 * **Calendar & Reservations Engine:**
     * **Proxy-Waterfall iCal Sync:** Bypasses OTA (Airbnb/Booking) bot firewalls using a cascading array of open-source CORS proxies to extract live `.ics` data with zero backend costs.
     * **Double-Booking Prevention:** A mathematical engine safely intercepts manual reservation entries, cross-referencing dates (`New Check-In < Existing Check-Out && New Check-Out > Existing Check-In`) to strictly prevent overlapping bookings in the same unit.
@@ -93,7 +91,6 @@ The application utilizes a highly relational, nested Document-Database architect
         * **Fields:** `propertyTypeName`, `latitude`, `longitude`, `wifiName`, `wifiPassword`, `iCalUrl`, `syncedBookings` (Array of objects containing `start`, `end`, `provider`, `isInvited`, `id`), `ownerId`.
         * **Sub-Collections (Scoped per Unit):**
             * 📁 **`localGems`**: Stores `name`, `category`, `distanceKm`, `rating`, `photoUrl`, `isLegitPick`, `isDailyTrip`.
-            * 📁 **`greenScore`**: A single document (`data`) storing `totalScore` (0-100), `energyClass`, and 9 specific boolean feature toggles.
 
 ---
 

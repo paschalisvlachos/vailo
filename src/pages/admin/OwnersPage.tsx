@@ -8,6 +8,7 @@ import { adminPath } from '../../lib/adminRoutes';
 import { formatOwnerRoleLabel, ownerRoleBadgeClass } from '../../lib/adminAccess';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { ownersVisibleInCrm } from '../../lib/agentOwners';
+import { formatMaxListingsLabel } from '../../lib/ownerListingQuota';
 import {
   agreementKindLabel,
   formatPartnerAgreementDate,
@@ -32,6 +33,7 @@ interface Owner extends PartnerAgreementRecord {
   role: string;
   status: string;
   agentId?: string;
+  maxListings?: number;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -288,7 +290,7 @@ export default function OwnersPage() {
         }
         icon={<Users size={26} />}
         action={
-          <AdminButtonLink to={adminPath('/add-owner')} className="w-full sm:w-auto">
+          <AdminButtonLink to={adminPath('/add-owner')} variant="accent" className="w-full sm:w-auto">
             <Plus size={18} /> {isAgent ? 'Add owner' : 'Add user'}
           </AdminButtonLink>
         }
@@ -304,7 +306,7 @@ export default function OwnersPage() {
               : 'Add agents, owners, or excursion providers to assign across your portfolio.'
           }
           action={
-            <AdminButtonLink to={adminPath('/add-owner')}>
+            <AdminButtonLink to={adminPath('/add-owner')} variant="accent">
               <Plus size={18} /> {isAgent ? 'Add owner' : 'Add user'}
             </AdminButtonLink>
           }
@@ -333,7 +335,11 @@ export default function OwnersPage() {
                         </>
                       )}
                       <span>
-                        <strong className="text-vailo-gold-muted">{allocatedTypeCounts[owner.id] || 0}</strong>{' '}
+                        <strong className="text-vailo-gold-muted">{allocatedTypeCounts[owner.id] || 0}</strong>
+                        {(owner.role === 'owner' || owner.role === 'agent') &&
+                        formatMaxListingsLabel(owner.maxListings)
+                          ? ` / ${formatMaxListingsLabel(owner.maxListings)}`
+                          : ''}{' '}
                         listings allocated
                       </span>
                     </div>
@@ -406,10 +412,20 @@ export default function OwnersPage() {
                         </td>
                       )}
                       <td className="text-center">
-                        <CountBadge
-                          count={allocatedTypeCounts[owner.id] || 0}
-                          title="Property listings where this user is the allocated owner"
-                        />
+                        {(owner.role === 'owner' || owner.role === 'agent') &&
+                        formatMaxListingsLabel(owner.maxListings) ? (
+                          <span
+                            title="Allocated / max property listings this user may manage"
+                            className="inline-flex min-w-[2rem] justify-center bg-vailo-surface-elevated text-vailo-dark py-1 px-2.5 rounded-full text-sm font-semibold tabular-nums"
+                          >
+                            {allocatedTypeCounts[owner.id] || 0}/{formatMaxListingsLabel(owner.maxListings)}
+                          </span>
+                        ) : (
+                          <CountBadge
+                            count={allocatedTypeCounts[owner.id] || 0}
+                            title="Property listings where this user is the allocated owner"
+                          />
+                        )}
                       </td>
                       {isPlatformAdmin && (
                         <td className="whitespace-nowrap">

@@ -45,6 +45,15 @@ type AdminSessionContextValue = {
   isPlatformAdmin: boolean;
   isScopedUser: boolean;
   isAgent: boolean;
+  /** Properties loaded for scope building (all docs the session listens to). */
+  portfolioProperties: { id: string; propertyName?: string; ownerId?: string }[];
+  /** Listings loaded for scope building. */
+  portfolioTypes: {
+    id: string;
+    propertyId: string;
+    propertyTypeName?: string;
+    ownerId?: string;
+  }[];
 };
 
 function formatFirestoreError(error: unknown): string {
@@ -68,6 +77,13 @@ function formatFirestoreError(error: unknown): string {
 const AdminSessionContext = createContext<AdminSessionContextValue | null>(null);
 
 function parseOwnerProfile(id: string, data: Record<string, unknown>): OwnerProfile {
+  const maxRaw = data.maxListings;
+  const maxListings =
+    typeof maxRaw === 'number' && Number.isFinite(maxRaw)
+      ? Math.floor(maxRaw)
+      : typeof maxRaw === 'string' && maxRaw.trim() !== '' && Number.isFinite(Number(maxRaw))
+        ? Math.floor(Number(maxRaw))
+        : undefined;
   return {
     id,
     fullName: typeof data.fullName === 'string' ? data.fullName : '',
@@ -76,6 +92,7 @@ function parseOwnerProfile(id: string, data: Record<string, unknown>): OwnerProf
     status: typeof data.status === 'string' ? data.status : 'active',
     company: typeof data.company === 'string' ? data.company : undefined,
     agentId: typeof data.agentId === 'string' ? data.agentId : undefined,
+    maxListings,
   };
 }
 
@@ -347,8 +364,20 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       isPlatformAdmin: isPlatformAdmin(profile),
       isScopedUser: isScopedUser(profile),
       isAgent: isAgent(profile),
+      portfolioProperties: properties,
+      portfolioTypes: types,
     }),
-    [authUser, profile, profileError, loading, scopes, activeScope, setActiveScope]
+    [
+      authUser,
+      profile,
+      profileError,
+      loading,
+      scopes,
+      activeScope,
+      setActiveScope,
+      properties,
+      types,
+    ]
   );
 
   return (

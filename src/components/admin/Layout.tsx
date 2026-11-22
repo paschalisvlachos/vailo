@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
   Building2,
@@ -22,21 +23,26 @@ import {
   Star,
   Bell,
   ChevronDown,
+  Info,
 } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useNewDiscoveredPlacesCount } from '../../hooks/useNewDiscoveredPlacesCount';
 import { useAdminInboxUnreadCount } from '../../hooks/useAdminInboxUnreadCount';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import { scopeFromRoute, scopeKey, isExcursionProvider, isAgent, isOwner, formatOwnerRoleLabel } from '../../lib/adminAccess';
-import AdminScopeBar from './AdminScopeBar';
 import ArrangeAndBookSidebarNav from './ArrangeAndBookSidebarNav';
 import VailoMark from '../guest/VailoMark';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
+import {
+  PROPERTY_ADMIN_SECTIONS,
+  propertyIdFromAdminPath,
+} from '../../lib/propertyAdminNav';
+import { propertyListingQuerySuffix } from '../../hooks/usePropertyListingQuery';
 
 const SIDEBAR_COLLAPSED_KEY = 'vailo_admin_sidebar_collapsed';
-const SIDEBAR_WIDTH = '14.375rem'; // 230px — matches Webmin
+const SIDEBAR_WIDTH = '15.5rem';
 
 function readSidebarCollapsed(): boolean {
   try {
@@ -46,54 +52,134 @@ function readSidebarCollapsed(): boolean {
   }
 }
 
-type NavItem = {
+type NavItemDef = {
   icon: typeof LayoutDashboard;
   label: string;
   to: string;
+  help: string;
   badgeOnArea?: boolean;
   badgeOnMailbox?: boolean;
 };
 
-const NAV_SECTIONS: { id: string; label: string; items: NavItem[] }[] = [
+const NAV_SECTIONS: { id: string; label: string; items: NavItemDef[] }[] = [
   {
     id: 'general',
     label: 'General',
     items: [
-      { icon: LayoutDashboard, label: 'Dashboard', to: adminPath() },
-      { icon: Building2, label: 'Properties', to: adminPath('/properties') },
-      { icon: Users, label: 'Owners CRM', to: adminPath('/owners') },
-      { icon: Globe, label: 'Area Functionality', to: adminPath('/area'), badgeOnArea: true },
-      { icon: CreditCard, label: 'Billing & Usage', to: adminPath('/billing') },
-      { icon: Receipt, label: 'Expenses', to: adminPath('/expenses') },
-      { icon: FileText, label: 'Legal Documents', to: adminPath('/legal') },
-      { icon: Mail, label: 'Mailbox', to: adminPath('/mailbox'), badgeOnMailbox: true },
-      { icon: Settings, label: 'Settings', to: adminPath('/settings') },
+      {
+        icon: Building2,
+        label: 'Property Listings',
+        to: adminPath('/properties'),
+        help: 'Create and manage property listings, house guides, calendars, and guest portals.',
+      },
+      {
+        icon: LayoutDashboard,
+        label: 'Dashboard',
+        to: adminPath('/dashboard'),
+        help: 'Platform overview with KPIs, usage, and activity across properties and services.',
+      },
+      {
+        icon: Users,
+        label: 'Owners CRM',
+        to: adminPath('/owners'),
+        help: 'Add and manage property owners you allocate to listings on your properties. You can give them access to their property only if you wish.',
+      },
+      {
+        icon: Globe,
+        label: 'Area Functionality',
+        to: adminPath('/area'),
+        help: 'Curate shared area content—local gems, discoveries, and trails—used across nearby properties.',
+        badgeOnArea: true,
+      },
+      {
+        icon: CreditCard,
+        label: 'Billing & Usage',
+        to: adminPath('/billing'),
+        help: 'Review plans, usage meters, and billing-related activity for the platform.',
+      },
+      {
+        icon: Receipt,
+        label: 'Expenses',
+        to: adminPath('/expenses'),
+        help: 'Track operational expenses and keep a simple record of hospitality costs.',
+      },
+      {
+        icon: FileText,
+        label: 'Legal Documents',
+        to: adminPath('/legal'),
+        help: 'Manage legal templates and documents shown to owners, partners, or guests.',
+      },
+      {
+        icon: Mail,
+        label: 'Mailbox',
+        to: adminPath('/mailbox'),
+        help: 'Read and reply to inbound admin messages and notifications.',
+        badgeOnMailbox: true,
+      },
+      {
+        icon: Settings,
+        label: 'Settings',
+        to: adminPath('/settings'),
+        help: 'Configure platform preferences, languages, and other admin defaults.',
+      },
     ],
   },
   {
     id: 'excursions',
     label: 'Arrange and Book',
     items: [
-      { icon: Star, label: 'Featured', to: adminPath('/excursions/featured') },
-      { icon: Compass, label: 'Providers', to: adminPath('/excursions/providers') },
+      {
+        icon: Star,
+        label: 'Featured',
+        to: adminPath('/excursions/featured'),
+        help: 'Choose which Arrange & Book experiences are highlighted on the guest portal.',
+      },
+      {
+        icon: Compass,
+        label: 'Providers',
+        to: adminPath('/excursions/providers'),
+        help: 'Manage excursion and local-service providers, their profiles, and offerings.',
+      },
     ],
   },
   {
     id: 'knowledge',
     label: 'Knowledge',
-    items: [{ icon: BookOpen, label: 'Knowledge base', to: adminPath('/knowledge') }],
+    items: [
+      {
+        icon: BookOpen,
+        label: 'Knowledge base',
+        to: adminPath('/knowledge'),
+        help: 'Internal documentation about how Vailo features work for your team.',
+      },
+    ],
   },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const newDiscoveredCount = useNewDiscoveredPlacesCount();
-  const { isScopedUser, profile, scopes, activeScope, setActiveScope, isPlatformAdmin, authUser } = useAdminSession();
+  const {
+    isScopedUser,
+    profile,
+    scopes,
+    activeScope,
+    setActiveScope,
+    isPlatformAdmin,
+    authUser,
+    portfolioProperties,
+  } = useAdminSession();
   const mailboxUnreadCount = useAdminInboxUnreadCount(isPlatformAdmin);
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const [openHelpKey, setOpenHelpKey] = useState<string | null>(null);
+  const [helpAnchor, setHelpAnchor] = useState<{ top: number; left: number } | null>(null);
+  const helpCardRef = useRef<HTMLDivElement>(null);
+
+  const homePath = isPlatformAdmin ? adminPath('/properties') : adminPath();
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -136,39 +222,166 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             id: 'excursion-portal',
             label: 'Excursion portal',
             items: [
-              { icon: Compass, label: 'My business', to: profilePath },
-              { icon: MapPin, label: 'Excursions', to: excursionsPath },
-              { icon: ClipboardList, label: 'Bookings', to: bookingsPath },
-            ],
+              {
+                icon: Compass,
+                label: 'My business',
+                to: profilePath,
+                help: 'Edit your provider profile, contact details, and business information.',
+              },
+              {
+                icon: MapPin,
+                label: 'Excursions',
+                to: excursionsPath,
+                help: 'Create and manage the experiences guests can book from your business.',
+              },
+              {
+                icon: ClipboardList,
+                label: 'Bookings',
+                to: bookingsPath,
+                help: 'Review guest booking requests and manage upcoming reservations.',
+              },
+            ] satisfies NavItemDef[],
           },
         ];
       })()
-    : isAgent(profile)
-    ? [
-        {
-          id: 'portfolio',
-          label: 'Your portfolio',
-          items: [{ icon: Building2, label: 'Properties', to: adminPath('/properties') }],
-        },
-        {
-          id: 'owners',
-          label: 'Your owners',
-          items: [{ icon: Users, label: 'Owners', to: adminPath('/owners') }],
-        },
-      ]
-    : isOwner(profile)
-    ? [
-        {
-          id: 'portfolio',
-          label: 'Your portfolio',
-          items: [{ icon: Building2, label: 'Properties', to: adminPath('/properties') }],
-        },
-      ]
-    : NAV_SECTIONS;
+    : isAgent(profile) || isOwner(profile)
+    ? (() => {
+        const routePropertyId = propertyIdFromAdminPath(location.pathname);
+        const managedShells = portfolioProperties.filter((p) => p.ownerId === profile?.id);
+        const agencyPropertyId =
+          routePropertyId ||
+          managedShells[0]?.id ||
+          portfolioProperties[0]?.id ||
+          null;
+        const listingSuffix = propertyListingQuerySuffix(
+          new URLSearchParams(location.search).get('listing')
+        );
+        const portfolioItems: NavItemDef[] = [
+          {
+            icon: Building2,
+            label: 'Property Listings',
+            to: adminPath('/properties'),
+            help: isAgent(profile)
+              ? 'Your property listings — open a listing to manage guide, gems, and more.'
+              : 'Your property listings and guest-facing setup.',
+          },
+        ];
+        if (agencyPropertyId) {
+          for (const section of PROPERTY_ADMIN_SECTIONS) {
+            portfolioItems.push({
+              icon: section.icon,
+              label: section.name,
+              to: adminPath(
+                `/properties/${agencyPropertyId}/${section.path}${listingSuffix}`
+              ),
+              help: section.help,
+            });
+          }
+        }
+        const sections: { id: string; label: string; items: NavItemDef[] }[] = [
+          {
+            id: 'dashboard',
+            label: 'Dashboard',
+            items: [
+              {
+                icon: LayoutDashboard,
+                label: 'Overview',
+                to: adminPath('/dashboard'),
+                help: 'What’s new and your agency portfolio at a glance.',
+              },
+            ],
+          },
+          {
+            id: 'portfolio',
+            label: 'Your portfolio',
+            items: portfolioItems,
+          },
+        ];
+        if (isAgent(profile)) {
+          sections.push({
+            id: 'owners',
+            label: 'Your owners',
+            items: [
+              {
+                icon: Users,
+                label: 'Owners',
+                to: adminPath('/owners'),
+                help: 'View and manage the owners linked to your agent portfolio.',
+              },
+            ],
+          });
+        }
+        sections.push({
+          id: 'details',
+          label: 'Your Details',
+          items: [
+            {
+              icon: Settings,
+              label: 'Settings',
+              to: adminPath('/account/settings'),
+              help: 'Agency overview, guest experience, and account settings.',
+            },
+          ],
+        });
+        return sections;
+      })()
+    : (() => {
+        const routePropertyId = propertyIdFromAdminPath(location.pathname);
+        const agencyPropertyId =
+          routePropertyId || portfolioProperties[0]?.id || null;
+        if (!agencyPropertyId) return NAV_SECTIONS;
+        const listingSuffix = propertyListingQuerySuffix(
+          new URLSearchParams(location.search).get('listing')
+        );
+        const propertyItems: NavItemDef[] = [
+          {
+            icon: Building2,
+            label: 'Property Listings',
+            to: adminPath('/properties'),
+            help: 'All property listings and guest portals.',
+          },
+          ...PROPERTY_ADMIN_SECTIONS.map((section) => ({
+            icon: section.icon,
+            label: section.name,
+            to: adminPath(
+              `/properties/${agencyPropertyId}/${section.path}${listingSuffix}`
+            ),
+            help: section.help,
+          })),
+        ];
+        // Keep Property Listings under Your portfolio (not duplicated in General).
+        const generalWithoutListings = NAV_SECTIONS.map((section) =>
+          section.id === 'general'
+            ? {
+                ...section,
+                items: section.items.filter((item) => item.to !== adminPath('/properties')),
+              }
+            : section
+        );
+        return [
+          ...generalWithoutListings,
+          {
+            id: 'this-property',
+            label: 'Your portfolio',
+            items: propertyItems,
+          },
+        ];
+      })();
+
+  const openHelpItem = useMemo(() => {
+    if (!openHelpKey) return null;
+    for (const section of navSections) {
+      const found = section.items.find((item) => item.to === openHelpKey);
+      if (found) return found;
+    }
+    return null;
+  }, [openHelpKey, navSections]);
 
   useEffect(() => {
     setMobileOpen(false);
     setUserMenuOpen(false);
+    setOpenHelpKey(null);
+    setHelpAnchor(null);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -189,12 +402,53 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    if (!openHelpItem) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (helpCardRef.current?.contains(target)) return;
+      if ((target as HTMLElement)?.closest?.('[data-nav-help-trigger]')) return;
+      setOpenHelpKey(null);
+      setHelpAnchor(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenHelpKey(null);
+        setHelpAnchor(null);
+      }
+    };
+    const onReposition = () => {
+      setOpenHelpKey(null);
+      setHelpAnchor(null);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [openHelpItem]);
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      navigate(adminPath('/properties'), { replace: true });
     } catch (error) {
       console.error('Error logging out:', error);
     }
+  };
+
+  const openNavHelp = (item: NavItemDef, trigger: HTMLElement) => {
+    const rect = trigger.getBoundingClientRect();
+    const width = 280;
+    const left = Math.min(Math.max(12, rect.right + 8), window.innerWidth - width - 12);
+    const top = Math.min(Math.max(12, rect.top), window.innerHeight - 140);
+    setHelpAnchor({ top, left });
+    setOpenHelpKey(item.to);
   };
 
   const panelLabel = authUser && !profile
@@ -219,6 +473,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 icon={<item.icon size={14} strokeWidth={1.75} />}
                 label={item.label}
                 to={item.to}
+                help={item.help}
+                helpOpen={openHelpKey === item.to}
+                onHelpClick={(trigger) => {
+                  if (openHelpKey === item.to) {
+                    setOpenHelpKey(null);
+                    setHelpAnchor(null);
+                    return;
+                  }
+                  openNavHelp(item, trigger);
+                }}
                 badge={
                   'badgeOnMailbox' in item && item.badgeOnMailbox
                     ? mailboxUnreadCount
@@ -239,7 +503,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   );
 
   const sidebarFooter = (
-    <div className="border-t border-white/10 py-2">
+    <div className="border-t border-[#e1e1e1] py-2">
       {authUser && profile && (
         <Link
           to={adminPath('/account/password')}
@@ -259,26 +523,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="admin-shell min-h-screen flex flex-col bg-vailo-surface">
-      {/* Top header — Webmin style */}
-      <header className="admin-topbar sticky top-0 z-40 h-[58px] flex items-stretch shrink-0">
+      <header className="admin-topbar sticky top-0 z-40 h-14 flex items-stretch shrink-0">
         <div
-          className={`hidden lg:flex items-center shrink-0 border-r border-[#eeeeee] px-4 transition-[width] duration-300 ${
+          className={`hidden lg:flex items-center shrink-0 border-r border-[#e1e1e1] px-4 transition-[width] duration-300 ${
             sidebarCollapsed ? 'w-[72px] justify-center' : ''
           }`}
           style={sidebarCollapsed ? undefined : { width: SIDEBAR_WIDTH }}
         >
-          <Link to={adminPath()} className="flex items-center gap-2.5 min-w-0">
+          <Link to={homePath} className="flex items-center gap-2.5 min-w-0">
             {sidebarCollapsed ? (
-              <div className="h-8 w-8 rounded bg-vailo-teal/15 flex items-center justify-center p-1.5">
+              <div className="h-8 w-8 rounded-md bg-[#2ec4b6]/15 flex items-center justify-center p-1.5">
                 <VailoMark className="h-full w-full object-contain" alt="Vailo" />
               </div>
             ) : (
               <>
-                <div className="h-8 w-8 rounded bg-vailo-teal/15 flex items-center justify-center p-1.5 shrink-0">
+                <div className="h-8 w-8 rounded-md bg-[#2ec4b6]/15 flex items-center justify-center p-1.5 shrink-0">
                   <VailoMark className="h-full w-full object-contain" alt="Vailo" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-vailo-dark leading-tight truncate">Vailo</p>
+                  <p className="text-[15px] font-bold text-vailo-dark leading-tight truncate">Vailo</p>
                   <p className="text-[10px] text-gray-400 font-medium truncate">{panelLabel}</p>
                 </div>
               </>
@@ -291,7 +554,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="lg:hidden p-2 rounded text-[#6c757d] hover:text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+              className="lg:hidden p-2 rounded-md text-gray-500 hover:text-vailo-dark hover:bg-black/[0.03] transition-colors"
               aria-label="Open menu"
             >
               <Menu size={20} />
@@ -299,7 +562,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={toggleSidebar}
-              className="hidden lg:flex p-2 rounded text-[#6c757d] hover:text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+              className="hidden lg:flex p-2 rounded-md text-gray-500 hover:text-vailo-dark hover:bg-black/[0.03] transition-colors"
               aria-label={sidebarCollapsed ? 'Show admin menu' : 'Hide admin menu'}
               aria-expanded={!sidebarCollapsed}
               title={sidebarCollapsed ? 'Show menu' : 'Hide menu'}
@@ -315,7 +578,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             {isPlatformAdmin && (
               <Link
                 to={adminPath('/mailbox')}
-                className="relative p-2 rounded text-[#6c757d] hover:text-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+                className="relative p-2 rounded-md text-gray-500 hover:text-vailo-dark hover:bg-black/[0.03] transition-colors"
                 title="Mailbox"
                 aria-label="Mailbox"
               >
@@ -330,15 +593,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setUserMenuOpen((open) => !open)}
-                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded hover:bg-black/[0.03] transition-colors"
+                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-md hover:bg-black/[0.03] transition-colors"
                 aria-expanded={userMenuOpen}
                 aria-haspopup="menu"
               >
-                <span className="h-9 w-9 rounded-full bg-vailo-teal text-white text-sm font-semibold flex items-center justify-center uppercase shrink-0">
+                <span className="h-8 w-8 rounded-full bg-[#2ec4b6] text-white text-sm font-bold flex items-center justify-center uppercase shrink-0">
                   {(authUser?.email?.[0] || 'V').toUpperCase()}
                 </span>
                 <span className="hidden sm:block text-left min-w-0 max-w-[11rem]">
-                  <span className="block text-[13px] font-medium text-vailo-dark truncate">
+                  <span className="block text-[13px] font-semibold text-vailo-dark truncate">
                     {profile?.fullName || authUser?.email || 'Admin'}
                   </span>
                   <span className="block text-[11px] text-gray-400 truncate">
@@ -351,11 +614,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {userMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 mt-1 w-56 bg-white py-2 z-50 border-0"
-                  style={{ boxShadow: '1px 1px 15px rgba(0,0,0,0.1)' }}
+                  className="absolute right-0 mt-1.5 w-56 bg-white py-2 z-50 rounded-lg border border-[#e1e1e1] shadow-[0_10px_10px_0_rgba(0,0,0,0.08)]"
                 >
-                  <div className="px-4 py-2 border-b border-[#eeeeee]">
-                    <p className="text-sm font-semibold text-vailo-dark truncate">
+                  <div className="px-4 py-2 border-b border-[#e1e1e1]">
+                    <p className="text-sm font-bold text-vailo-dark truncate">
                       {profile?.fullName || 'Account'}
                     </p>
                     <p className="text-xs text-gray-400 truncate">{authUser?.email}</p>
@@ -364,29 +626,39 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <Link
                       to={adminPath('/account/password')}
                       role="menuitem"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-vailo-surface-elevated hover:text-vailo-dark"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-[#f5f6f8] hover:text-vailo-dark"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       <KeyRound size={15} className="text-vailo-teal" />
                       Change password
                     </Link>
                   )}
-                  {isPlatformAdmin && (
+                  {isPlatformAdmin ? (
                     <Link
                       to={adminPath('/settings')}
                       role="menuitem"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-vailo-surface-elevated hover:text-vailo-dark"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-[#f5f6f8] hover:text-vailo-dark"
                       onClick={() => setUserMenuOpen(false)}
                     >
-                      <Settings size={15} className="text-[#17a2b8]" />
+                      <Settings size={15} className="text-[#2ec4b6]" />
                       Settings
                     </Link>
-                  )}
+                  ) : profile ? (
+                    <Link
+                      to={adminPath('/account/settings')}
+                      role="menuitem"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-[#f5f6f8] hover:text-vailo-dark"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <Settings size={15} className="text-[#2ec4b6]" />
+                      Settings
+                    </Link>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-vailo-surface-elevated hover:text-vailo-dark text-left"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-[#f5f6f8] hover:text-vailo-dark text-left"
                   >
                     <LogOut size={15} className="text-red-500" />
                     Logout
@@ -399,13 +671,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className="flex flex-1 min-h-0">
-        {/* Desktop sidebar */}
         <aside
           className={`hidden lg:flex admin-sidebar-panel flex-col shrink-0 fixed bottom-0 z-30 transition-all duration-300 ease-out ${
             sidebarCollapsed ? 'w-0 overflow-hidden opacity-0 pointer-events-none' : 'opacity-100'
           }`}
           style={{
-            top: 58,
+            top: 56,
             width: sidebarCollapsed ? 0 : SIDEBAR_WIDTH,
           }}
         >
@@ -413,36 +684,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {sidebarFooter}
         </aside>
 
-        {/* Mobile overlay */}
         {mobileOpen && (
           <button
             type="button"
             aria-label="Close menu"
-            className="fixed inset-0 z-50 bg-black/50 lg:hidden"
+            className="fixed inset-0 z-50 bg-black/40 lg:hidden"
             onClick={() => setMobileOpen(false)}
           />
         )}
 
-        {/* Mobile sidebar */}
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-[min(100vw-3rem,14.375rem)] admin-sidebar-panel flex flex-col transform transition-transform duration-300 ease-out lg:hidden ${
+          className={`fixed inset-y-0 left-0 z-50 w-[min(100vw-3rem,15.5rem)] admin-sidebar-panel flex flex-col transform transition-transform duration-300 ease-out lg:hidden ${
             mobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
-          <div className="flex items-center justify-between px-4 h-[58px] border-b border-white/10 shrink-0">
-            <Link to={adminPath()} className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
-              <div className="h-8 w-8 rounded bg-white/10 flex items-center justify-center p-1.5">
+          <div className="flex items-center justify-between px-4 h-14 border-b border-[#e1e1e1] shrink-0">
+            <Link to={homePath} className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
+              <div className="h-8 w-8 rounded-md bg-[#2ec4b6]/15 flex items-center justify-center p-1.5">
                 <VailoMark className="h-full w-full object-contain" alt="Vailo" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-white leading-tight">Vailo</p>
-                <p className="text-[10px] text-white/45">{panelLabel}</p>
+                <p className="text-sm font-bold text-vailo-dark leading-tight">Vailo</p>
+                <p className="text-[10px] text-gray-400">{panelLabel}</p>
               </div>
             </Link>
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
-              className="p-2 rounded text-white/55 hover:text-white hover:bg-white/10"
+              className="p-2 rounded-md text-gray-500 hover:text-vailo-dark hover:bg-black/[0.03]"
               aria-label="Close menu"
             >
               <X size={18} />
@@ -454,17 +723,47 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <div
           className={`flex-1 flex flex-col min-w-0 admin-content-panel transition-[margin] duration-300 ease-out ${
-            sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-[14.375rem]'
+            sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-[15.5rem]'
           }`}
         >
           <main className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="p-4 sm:p-6 lg:p-[30px] w-full">
-              <AdminScopeBar />
+            <div className="p-4 sm:p-6 lg:px-8 lg:py-7 w-full">
               {children}
             </div>
           </main>
         </div>
       </div>
+
+      {openHelpItem && helpAnchor
+        ? createPortal(
+            <div
+              ref={helpCardRef}
+              role="dialog"
+              aria-label={`${openHelpItem.label} explained`}
+              style={{ top: helpAnchor.top, left: helpAnchor.left }}
+              className="admin-shell fixed z-[80] w-[280px] max-w-[calc(100vw-1.5rem)] rounded-lg border border-[#e1e1e1] bg-white p-4 shadow-[0_10px_10px_0_rgba(0,0,0,0.08)]"
+            >
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-vailo-teal">
+                  {openHelpItem.label}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => {
+                    setOpenHelpKey(null);
+                    setHelpAnchor(null);
+                  }}
+                  className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="text-sm text-slate-600 leading-relaxed">{openHelpItem.help}</p>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -473,38 +772,73 @@ function NavItem({
   icon,
   label,
   to,
+  help,
+  helpOpen,
+  onHelpClick,
   badge = 0,
   onNavigate,
 }: {
   icon: React.ReactNode;
   label: string;
   to: string;
+  help: string;
+  helpOpen: boolean;
+  onHelpClick: (trigger: HTMLElement) => void;
   badge?: number;
   onNavigate?: () => void;
 }) {
   const location = useLocation();
   const pathname = location.pathname;
-  const isProviderProfileLink = /\/excursion-portal\/[^/]+$/.test(to);
+  const search = location.search;
+  const hrefPath = to.split('?')[0] || to;
+  const hrefSearch = to.includes('?') ? `?${to.split('?')[1]}` : '';
+  const isProviderProfileLink = /\/excursion-portal\/[^/]+$/.test(hrefPath);
+  const isPropertiesIndex = hrefPath === adminPath('/properties');
+  const isPropertyListingsLink = /\/admin\/properties\/[^/]+\/types$/.test(hrefPath);
   const active =
-    to === ADMIN_BASE
-      ? pathname === ADMIN_BASE
-      : pathname === to ||
-        (pathname.startsWith(`${to}/`) &&
-          !(isProviderProfileLink && pathname.includes('/excursions')));
+    to === ADMIN_BASE || to === adminPath('/dashboard') || isPropertiesIndex
+      ? pathname === hrefPath
+      : isPropertyListingsLink
+        ? pathname === hrefPath || pathname.startsWith(`${hrefPath}`)
+        : (pathname === hrefPath &&
+            (!hrefSearch || search === hrefSearch || search.startsWith(hrefSearch))) ||
+          (pathname.startsWith(`${hrefPath}/`) &&
+            !(isProviderProfileLink && pathname.includes('/excursions')));
 
   return (
-    <Link
-      to={to}
-      onClick={onNavigate}
-      className={`admin-nav-link ${active ? 'is-active' : ''}`}
-    >
-      <span className="admin-nav-icon text-inherit shrink-0 w-5 text-left">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
-      {badge > 0 && (
-        <span className="ml-2 min-w-[18px] h-[18px] px-1.5 flex items-center justify-center rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold">
-          {badge > 99 ? '99+' : badge}
-        </span>
-      )}
-    </Link>
+    <div className="flex items-stretch gap-0.5 px-2">
+      <Link
+        to={to}
+        onClick={onNavigate}
+        className={`admin-nav-link flex-1 min-w-0 !mx-0 ${active ? 'is-active' : ''}`}
+      >
+        <span className="admin-nav-icon text-inherit shrink-0 w-5 text-left">{icon}</span>
+        <span className="flex-1 truncate">{label}</span>
+        {badge > 0 && (
+          <span className="ml-1 min-w-[18px] h-[18px] px-1.5 flex items-center justify-center rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold">
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+      </Link>
+      <button
+        type="button"
+        data-nav-help-trigger={to}
+        aria-label={`About ${label}`}
+        aria-expanded={helpOpen}
+        title={help}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onHelpClick(e.currentTarget);
+        }}
+        className={`shrink-0 px-1.5 my-0.5 rounded-md transition-colors ${
+          helpOpen
+            ? 'bg-[#2ec4b6]/20 text-vailo-teal'
+            : 'text-gray-400 hover:text-vailo-dark hover:bg-black/[0.03]'
+        }`}
+      >
+        <Info size={13} strokeWidth={2.25} />
+      </button>
+    </div>
   );
 }

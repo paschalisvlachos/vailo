@@ -20,7 +20,7 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
   }, [onServices, activeCategory]);
 
   return (
-    <div className="mt-0.5 mb-1 space-y-0.5">
+    <div className="mt-0.5 mb-1 space-y-0.5 px-2">
       {ARRANGE_AND_BOOK_CATEGORIES.map((category) => {
         const isOpen = expanded === category.id;
         const categoryActive = onServices && activeCategory === category.id && !activeSubcategory;
@@ -28,11 +28,11 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
 
         return (
           <div key={category.id}>
-            <div className="flex items-center pl-3">
+            <div className="flex items-center">
               <button
                 type="button"
                 onClick={() => setExpanded((prev) => (prev === category.id ? '' : category.id))}
-                className="p-1.5 text-white/40 hover:text-white hover:bg-black/20 shrink-0"
+                className="p-1.5 text-gray-400 hover:text-vailo-dark hover:bg-black/[0.03] rounded-md shrink-0"
                 aria-label={isOpen ? `Collapse ${category.label}` : `Expand ${category.label}`}
               >
                 {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -40,10 +40,10 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
               <Link
                 to={categoryPath}
                 onClick={onNavigate}
-                className={`flex-1 min-w-0 px-2 py-1.5 text-[12px] font-normal truncate capitalize ${
+                className={`flex-1 min-w-0 px-2 py-1.5 text-[12px] font-medium truncate rounded-md ${
                   categoryActive
-                    ? 'bg-black/20 text-white'
-                    : 'text-white/70 hover:bg-black/20 hover:text-white'
+                    ? 'bg-[#2ec4b6]/20 text-vailo-teal'
+                    : 'text-gray-500 hover:bg-black/[0.03] hover:text-vailo-dark'
                 }`}
               >
                 {category.label}
@@ -61,10 +61,10 @@ export default function ArrangeAndBookSidebarNav({ onNavigate }: { onNavigate?: 
                       key={sub.id}
                       to={adminPath(adminArrangeAndBookServicesPath(category.id, sub.id))}
                       onClick={onNavigate}
-                      className={`block pl-[50px] pr-4 py-1.5 text-[12px] font-light truncate capitalize ${
+                      className={`block pl-10 pr-3 py-1.5 text-[12px] truncate rounded-md ${
                         subActive
-                          ? 'bg-black/30 text-white'
-                          : 'text-white/70 hover:bg-black/30 hover:text-white'
+                          ? 'bg-[#2ec4b6]/20 text-vailo-teal font-medium'
+                          : 'text-gray-500 hover:bg-black/[0.03] hover:text-vailo-dark'
                       }`}
                     >
                       {sub.label}

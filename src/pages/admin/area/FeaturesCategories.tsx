@@ -14,10 +14,10 @@ export default function FeaturesCategories() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 flex items-center">
           <Layers className="mr-3 text-vailo-teal shrink-0" size={28} />
-          Features Categories
+          Partner Categories
         </h2>
         <p className="text-sm text-gray-500 mt-2">
-          Managing categories for{' '}
+          Managing partner categories for{' '}
           <span className="font-semibold text-vailo-teal">
             {decodedArea}, {decodedCountry}
           </span>
@@ -29,7 +29,7 @@ export default function FeaturesCategories() {
         areaId={areaId}
         areaName={decodedArea}
         collectionName="featuresCategories"
-        title="Feature category names"
+        title="Partner category names"
         onRename={renameFeaturesCategory}
       />
     </div>

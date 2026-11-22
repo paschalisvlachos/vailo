@@ -637,19 +637,104 @@ function cidToFeatureId(cid) {
 }
 
 /**
- * Resolve a Maps CID (?cid=…) to a ChIJ place id.
- * Prefers legacy Place Details (cid=) when enabled; otherwise tries Places API (New) text search.
+ * Resolve maps.google.com/?cid=… via Google's /maps/preview/place payload.
+ * CID share links do not HTTP-redirect to /maps/place/, but the preview endpoint
+ * returns the ChIJ place id + name + coordinates in the first few KB.
  */
-async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
+async function resolveCidViaMapsPreview(cid) {
+  const cidValue = String(cid || "").trim();
+  if (!/^\d{5,}$/.test(cidValue)) return null;
+
+  try {
+    const page = await fetchFollowRedirectsWithCookies(
+      `https://www.google.com/maps?cid=${cidValue}&hl=en&gl=us`
+    );
+    const html = String(page?.text || "");
+    let previewPath =
+      (html.match(/href=["'](\/maps\/preview\/place\?[^"']+)["']/i) || [])[1] ||
+      (html.match(/(\/maps\/preview\/place\?[^"'\\\s]+)/i) || [])[1] ||
+      "";
+    previewPath = previewPath.replace(/&amp;/g, "&").trim();
+
+    if (!previewPath) {
+      const ftid =
+        (html.match(/0x[0-9a-f]+:0x[0-9a-f]+/i) || [])[0] || cidToFeatureId(cidValue);
+      if (!ftid) return null;
+      const center = html.match(/!2d(-?\d+\.\d+)!3d(-?\d+\.\d+)/);
+      const lng = center?.[1] || "0";
+      const lat = center?.[2] || "0";
+      previewPath =
+        `/maps/preview/place?hl=en&gl=us&pb=!1m14!1s${encodeURIComponent(ftid)}` +
+        `!3m12!1m3!1d5000!2d${lng}!3d${lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1`;
+    }
+
+    const previewUrl = previewPath.startsWith("http")
+      ? previewPath
+      : `https://www.google.com${previewPath}`;
+    const preview = await fetchFollowRedirectsWithCookies(previewUrl);
+    const body = String(preview?.text || "");
+    if (!body) return null;
+
+    const placeId =
+      bareGooglePlaceId(
+        (body.match(/placeid(?:=|\\u003d|%3D)(ChIJ[\w-]+)/i) || [])[1]
+      ) ||
+      bareGooglePlaceId((body.match(/"(ChIJ[\w-]{20,})"/) || [])[1]) ||
+      null;
+
+    const nameFromFtid = (body.match(/"0x[0-9a-f]+:0x[0-9a-f]+","([^"]{2,120})"/i) ||
+      [])[1];
+    const nameFromTitle = (body.match(/"([\p{L}\d][^"]{1,80})",(null,)?\["(?:Restaurant|Cafe|Bar|Hotel|Museum|Beach|Store)/iu) ||
+      [])[1];
+    const placeName = String(nameFromFtid || nameFromTitle || "")
+      .replace(/\\u[\dA-Fa-f]{4}/g, (m) => String.fromCharCode(parseInt(m.slice(2), 16)))
+      .trim();
+
+    const coords = body.match(/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/);
+    const lat = coords ? parseFloat(coords[1]) : null;
+    const lng = coords ? parseFloat(coords[2]) : null;
+
+    if (!placeId && !placeName && !(lat != null && lng != null)) return null;
+
+    logger.info("CID resolved via Maps preview", {
+      cid: cidValue,
+      placeId: placeId || null,
+      placeName: placeName || null,
+      hasCoords: lat != null && lng != null,
+    });
+
+    return {
+      placeId: placeId && /^ChIJ/i.test(placeId) ? placeId : null,
+      placeName,
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+    };
+  } catch (e) {
+    logger.warn("CID Maps preview resolve failed:", e.message || e);
+    return null;
+  }
+}
+
+/**
+ * Resolve a Maps CID (?cid=…) to place hints (ChIJ id / name / coords).
+ * Prefers Maps preview scrape, then legacy Place Details, text search, then headless browser.
+ */
+async function resolvePlaceHintsFromCid(cid, apiKey, usageSource) {
   const cidValue = String(cid || "").trim();
   if (!/^\d{5,}$/.test(cidValue) || !apiKey) return null;
 
-  // 1) Legacy Place Details still accepts cid when Places API (legacy) is enabled.
+  // 1) Maps preview — works without Places API (legacy) and without Chromium.
+  const fromPreview = await resolveCidViaMapsPreview(cidValue);
+  if (fromPreview?.placeId || fromPreview?.placeName) {
+    return fromPreview;
+  }
+
+  // 2) Legacy Place Details still accepts cid when Places API (legacy) is enabled.
   try {
     const response = await axios.get("https://maps.googleapis.com/maps/api/place/details/json", {
       params: {
         cid: cidValue,
-        fields: "place_id,name,url",
+        fields: "place_id,name,geometry,url",
         key: apiKey,
       },
       timeout: 20000,
@@ -662,7 +747,15 @@ async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
     }
     const status = String(response.data?.status || "");
     const placeId = bareGooglePlaceId(response.data?.result?.place_id);
-    if (status === "OK" && placeId) return placeId;
+    if (status === "OK" && placeId) {
+      const loc = response.data?.result?.geometry?.location;
+      return {
+        placeId,
+        placeName: String(response.data?.result?.name || "").trim(),
+        lat: typeof loc?.lat === "number" ? loc.lat : null,
+        lng: typeof loc?.lng === "number" ? loc.lng : null,
+      };
+    }
     logger.warn("CID legacy Place Details miss", {
       cid: cidValue,
       status,
@@ -672,7 +765,7 @@ async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
     logger.warn("CID legacy Place Details failed:", e.response?.data || e.message || e);
   }
 
-  // 2) Places API (New) text search — server keys can sometimes resolve the share URL / ftid.
+  // 3) Places API (New) text search — server keys can sometimes resolve the share URL / ftid.
   const featureId = cidToFeatureId(cidValue);
   const queries = [
     `https://www.google.com/maps?cid=${cidValue}`,
@@ -692,7 +785,12 @@ async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
       const placeId = bareGooglePlaceId(place?.googlePlaceId);
       if (placeId && /^ChIJ/i.test(placeId)) {
         logger.info("CID resolved via Places text search", { cid: cidValue, placeId, textQuery });
-        return placeId;
+        return {
+          placeId,
+          placeName: String(place?.name || "").trim(),
+          lat: typeof place?.latitude === "number" ? place.latitude : null,
+          lng: typeof place?.longitude === "number" ? place.longitude : null,
+        };
       }
     } catch (e) {
       logger.warn("CID text search attempt failed", {
@@ -703,7 +801,7 @@ async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
     }
   }
 
-  // 3) Headless Chromium expands cid → /maps/place/… then Places text search by name.
+  // 4) Headless Chromium expands cid → /maps/place/… then Places text search by name.
   try {
     const { resolveMapsCidInBrowser } = require("./resolveMapsCidBrowser");
     const hints = await resolveMapsCidInBrowser(cidValue);
@@ -723,14 +821,25 @@ async function resolvePlaceIdFromCid(cid, apiKey, usageSource) {
           placeId,
           placeName: hints.placeName,
         });
-        return placeId;
+        return {
+          placeId,
+          placeName: hints.placeName,
+          lat: hints.lat ?? null,
+          lng: hints.lng ?? null,
+        };
       }
+      return {
+        placeId: null,
+        placeName: hints.placeName,
+        lat: hints.lat ?? null,
+        lng: hints.lng ?? null,
+      };
     }
   } catch (e) {
     logger.warn("CID browser expand failed:", e.message || e);
   }
 
-  return null;
+  return fromPreview;
 }
 
 function extractPlaceIdFromPlacesPhotoUrl(url) {
@@ -739,38 +848,61 @@ function extractPlaceIdFromPlacesPhotoUrl(url) {
   return match?.[1] || null;
 }
 
-async function resolvePlaceIdFromMapsUrlFetch(url) {
+/**
+ * Expand maps.app.goo.gl / share.google / cid short links to a full /maps/place URL.
+ * Returns { url, placeId, placeName, lat, lng }.
+ */
+async function expandMapsShortLink(url) {
   const trimmed = String(url || "").trim();
-  if (!trimmed.startsWith("http")) return null;
+  const empty = { url: trimmed, placeId: null, placeName: "", lat: null, lng: null };
+  if (!trimmed.startsWith("http")) return empty;
 
-  const direct = extractPlaceIdFromMapsUrl(trimmed);
-  if (direct) return direct;
+  const directHints = extractMapsUrlHints(trimmed);
+  const directPlaceId = extractPlaceIdFromMapsUrl(trimmed);
+  if (
+    directPlaceId ||
+    (directHints.placeName && !isGenericMapsTitle(directHints.placeName)) ||
+    (directHints.lat != null && directHints.lng != null)
+  ) {
+    return {
+      url: trimmed,
+      placeId: directPlaceId,
+      placeName: directHints.placeName || "",
+      lat: directHints.lat,
+      lng: directHints.lng,
+    };
+  }
 
-  try {
-    let finalUrl = trimmed;
-    if (
+  if (
+    !(
       isLikelyMapsShortLink(trimmed) ||
       /share\.google/i.test(trimmed) ||
       /[?&]cid=/i.test(trimmed)
-    ) {
-      const resolved = await fetchFollowRedirectsWithCookies(trimmed);
-      finalUrl = unwrapGoogleContinueUrl(resolved.url);
-    } else {
-      const res = await fetch(trimmed, {
-        redirect: "follow",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      });
-      finalUrl = unwrapGoogleContinueUrl(res.url);
-    }
-    return extractPlaceIdFromMapsUrl(finalUrl);
-  } catch (e) {
-    logger.warn("resolvePlaceIdFromMapsUrlFetch failed:", e.message || e);
-    return null;
+    )
+  ) {
+    return empty;
   }
+
+  try {
+    const resolved = await fetchFollowRedirectsWithCookies(trimmed);
+    const finalUrl = unwrapGoogleContinueUrl(resolved.url);
+    const hints = extractMapsUrlHints(finalUrl);
+    return {
+      url: finalUrl || trimmed,
+      placeId: extractPlaceIdFromMapsUrl(finalUrl),
+      placeName: hints.placeName || "",
+      lat: hints.lat,
+      lng: hints.lng,
+    };
+  } catch (e) {
+    logger.warn("expandMapsShortLink failed:", e.message || e);
+    return empty;
+  }
+}
+
+async function resolvePlaceIdFromMapsUrlFetch(url) {
+  const expanded = await expandMapsShortLink(url);
+  return expanded.placeId || null;
 }
 
 function resolveGooglePlaceIdFromPlace(place, googleMapsUrl) {
@@ -1013,6 +1145,48 @@ function buildMapsSearchUrl(latitude, longitude, label) {
   return buildPlaceMapUrls(null, latitude, longitude, label).googleMapsUrl;
 }
 
+/**
+ * Turn "Regional Unit of Chania" / "Chania Regional Unit" / "Municipality of Platanias"
+ * / "Νομός Χανίων" into the city name we want for City / Master Area.
+ */
+function normalizeMunicipalityName(name) {
+  const n = String(name || "").trim();
+  if (!n) return "";
+  const prefixed = n.match(
+    /^(?:regional\s+unit\s+of|municipality\s+of|municipal\s+unit\s+of|prefecture\s+of|province\s+of|district\s+of)\s+(.+)$/i
+  );
+  if (prefixed?.[1]) return prefixed[1].trim();
+  const suffixed = n.match(
+    /^(.+?)\s+(?:regional\s+unit|municipality|municipal\s+unit|prefecture|province)$/i
+  );
+  if (suffixed?.[1]) return suffixed[1].trim();
+  const greek = n.match(/^(?:νομός|δήμος|περιφερειακή\s+ενότητα)\s+(.+)$/i);
+  if (greek?.[1]) return greek[1].trim();
+  return n;
+}
+
+function looksLikeBroadAdmin(name) {
+  return /\b(county|parish|shire|oblast|province|prefecture|regional\s+unit|region|departamento|district|kreis|νομός|περιφερ|municipality|municipal\s+unit)\b/i.test(
+    String(name || "")
+  );
+}
+
+/** Prefer compact city names; unwrap "Regional Unit of X" → "X", skip "Travis County". */
+function usableCityAdmin(raw) {
+  const original = String(raw || "").trim();
+  if (!original) return "";
+  const normalized = normalizeMunicipalityName(original);
+  if (!looksLikeBroadAdmin(original)) return normalized;
+  if (
+    normalized &&
+    normalized.toLowerCase() !== original.toLowerCase() &&
+    !looksLikeBroadAdmin(normalized)
+  ) {
+    return normalized;
+  }
+  return "";
+}
+
 function parseAddressComponents(components) {
   if (!Array.isArray(components)) {
     return { addressLine: "", area: "", city: "", postCode: "", country: "" };
@@ -1026,14 +1200,62 @@ function parseAddressComponents(components) {
     return "";
   };
 
+  const sameName = (a, b) =>
+    Boolean(a) &&
+    Boolean(b) &&
+    a.trim().toLowerCase() === b.trim().toLowerCase();
+
   const streetNumber = get("street_number");
   const route = get("route");
   const addressLine = [streetNumber, route].filter(Boolean).join(" ");
 
+  // Neighborhood / district — never use these for City / Master Area.
+  let area = get(
+    "neighborhood",
+    "sublocality",
+    "sublocality_level_1",
+    "sublocality_level_2",
+    "sublocality_level_3"
+  );
+  const locality = get("locality");
+  const postalTown = get("postal_town");
+  const admin3Raw = get("administrative_area_level_3");
+  const admin2Raw = get("administrative_area_level_2");
+  // Prefer regional unit (admin2 → Chania) over municipality (admin3 → Apokoronas).
+  const regionalCity = usableCityAdmin(admin2Raw);
+  const municipalityCity = usableCityAdmin(admin3Raw);
+  const municipalityAdmin = regionalCity || municipalityCity;
+
+  // Common in GR/EU: Google puts the village in `locality` and the city
+  // in administrative_area_level_2 (often "Regional Unit of Chania").
+  let city = "";
+  if (postalTown && !sameName(postalTown, area) && !sameName(postalTown, locality)) {
+    city = postalTown;
+  } else if (locality && municipalityAdmin && !sameName(municipalityAdmin, locality)) {
+    city = municipalityAdmin;
+    if (!area) area = locality;
+  } else if (locality && !sameName(locality, area)) {
+    city = locality;
+  } else {
+    city = municipalityAdmin || locality || "";
+  }
+
+  // Final guard: City must not keep a village/neighborhood label when a real city exists.
+  if ((area || locality) && sameName(city, area || locality)) {
+    const better = [postalTown, regionalCity, municipalityCity].find(
+      (candidate) => candidate && !sameName(candidate, area || locality)
+    );
+    if (better) city = better;
+  }
+
+  if (!area && locality && city && !sameName(locality, city)) {
+    area = locality;
+  }
+
   return {
     addressLine,
-    area: get("neighborhood", "sublocality", "sublocality_level_1"),
-    city: get("locality", "postal_town", "administrative_area_level_2"),
+    area,
+    city,
     postCode: get("postal_code"),
     country: get("country"),
   };
@@ -1057,6 +1279,52 @@ function placeRecordFromApiPlace(place, apiKey, skipPhoto, searchQueryFallback) 
   const googlePlaceId = resolveGooglePlaceIdFromPlace(place, googleMapsUrl);
   const parsedAddress = parseAddressComponents(place.addressComponents);
   const formattedAddress = place.formattedAddress || "";
+  // Prefer real street/route. For rural places Google often only has
+  // "Neo Chorio 730 03, Greece" — keep village + postcode (drop country), don't blank it.
+  let addressLine = parsedAddress.addressLine;
+  if (!addressLine && formattedAddress) {
+    const stripForStreet = [
+      parsedAddress.area,
+      parsedAddress.city,
+      parsedAddress.postCode,
+      parsedAddress.country,
+      placeName,
+    ].filter(Boolean);
+    let candidate = formattedAddress;
+    for (const part of stripForStreet) {
+      candidate = candidate.replace(
+        new RegExp(`(,\\s*)?${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "ig"),
+        ""
+      );
+    }
+    candidate = candidate.replace(/^[\s,]+|[\s,]+$/g, "").trim();
+    if (candidate && /[A-Za-zΑ-Ωα-ω]/.test(candidate) && candidate !== parsedAddress.postCode) {
+      addressLine = candidate;
+    } else {
+      let rural = formattedAddress;
+      if (parsedAddress.country) {
+        rural = rural.replace(
+          new RegExp(
+            `(,\\s*)?${parsedAddress.country.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`,
+            "i"
+          ),
+          ""
+        );
+      }
+      if (placeName) {
+        rural = rural.replace(
+          new RegExp(`(,\\s*)?${placeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "ig"),
+          ""
+        );
+      }
+      rural = rural.replace(/^[\s,]+|[\s,]+$/g, "").trim();
+      if (rural) {
+        addressLine = rural;
+      } else {
+        addressLine = [parsedAddress.area, parsedAddress.postCode].filter(Boolean).join(" ");
+      }
+    }
+  }
 
   return {
     googlePlaceId,
@@ -1072,7 +1340,7 @@ function placeRecordFromApiPlace(place, apiKey, skipPhoto, searchQueryFallback) 
     googleMapsUrl,
     navigateUrl: mapUrls.navigateUrl,
     formattedAddress,
-    addressLine: parsedAddress.addressLine || formattedAddress,
+    addressLine,
     area: parsedAddress.area,
     city: parsedAddress.city,
     postCode: parsedAddress.postCode,
@@ -1795,29 +2063,83 @@ exports.getGooglePlaceDetails = onCall(
   let searchQuery = payload.searchQuery;
   const area = payload.area || "";
   const fallbackName = String(payload.fallbackName || "").trim();
-  const urlHints = String(searchQuery || "")
-    .trim()
-    .startsWith("http")
-    ? extractMapsUrlHints(String(searchQuery).trim())
-    : null;
-  const biasLat =
-    asCoord(payload.biasLat) ??
-    asCoord(payload.fallbackLat) ??
-    (urlHints?.lat != null ? urlHints.lat : null);
-  const biasLng =
-    asCoord(payload.biasLng) ??
-    asCoord(payload.fallbackLng) ??
-    (urlHints?.lng != null ? urlHints.lng : null);
 
   if (!searchQuery) {
     throw new HttpsError("invalid-argument", "The search query is missing.");
   }
 
   const rawQuery = String(searchQuery).trim();
-  let matchTitle = urlHints?.placeName || fallbackName || rawQuery;
-  const mapsCid = extractCidFromMapsUrl(rawQuery);
+  let urlHints = rawQuery.startsWith("http") ? extractMapsUrlHints(rawQuery) : null;
 
-  let hintPlaceId = await resolveHintPlaceId(rawQuery, payload);
+  // maps.app.goo.gl / share / ?cid= links need expand before Places search.
+  let expandedMapsUrl = rawQuery;
+  if (
+    rawQuery.startsWith("http") &&
+    (isLikelyMapsShortLink(rawQuery) || extractCidFromMapsUrl(rawQuery))
+  ) {
+    try {
+      const expanded = await expandMapsShortLink(rawQuery);
+      if (expanded.url && expanded.url !== rawQuery) {
+        expandedMapsUrl = expanded.url;
+        const expandedHints = extractMapsUrlHints(expanded.url);
+        urlHints = {
+          placeName: expandedHints.placeName || expanded.placeName || urlHints?.placeName || "",
+          lat:
+            expandedHints.lat != null
+              ? expandedHints.lat
+              : expanded.lat != null
+                ? expanded.lat
+                : urlHints?.lat ?? null,
+          lng:
+            expandedHints.lng != null
+              ? expandedHints.lng
+              : expanded.lng != null
+                ? expanded.lng
+                : urlHints?.lng ?? null,
+        };
+        logger.info("Expanded Maps short link", {
+          from: rawQuery,
+          to: expanded.url,
+          placeName: urlHints.placeName || null,
+          hasCoords: urlHints.lat != null && urlHints.lng != null,
+        });
+      } else if (expanded.placeName || (expanded.lat != null && expanded.lng != null)) {
+        urlHints = {
+          placeName: expanded.placeName || urlHints?.placeName || "",
+          lat: expanded.lat != null ? expanded.lat : urlHints?.lat ?? null,
+          lng: expanded.lng != null ? expanded.lng : urlHints?.lng ?? null,
+        };
+      }
+    } catch (e) {
+      logger.warn("Maps short-link expand failed; continuing with raw URL:", e.message || e);
+    }
+  }
+
+  let biasLat =
+    asCoord(payload.biasLat) ??
+    asCoord(payload.fallbackLat) ??
+    (urlHints?.lat != null ? urlHints.lat : null);
+  let biasLng =
+    asCoord(payload.biasLng) ??
+    asCoord(payload.fallbackLng) ??
+    (urlHints?.lng != null ? urlHints.lng : null);
+
+  let matchTitle =
+    (urlHints?.placeName && !isGenericMapsTitle(urlHints.placeName)
+      ? urlHints.placeName
+      : "") ||
+    fallbackName ||
+    (rawQuery.startsWith("http") ? "" : rawQuery);
+  const mapsCid = extractCidFromMapsUrl(rawQuery) || extractCidFromMapsUrl(expandedMapsUrl);
+
+  let hintPlaceId = await resolveHintPlaceId(expandedMapsUrl, payload);
+  // Hex feature ids (0x…:0x…) are not valid Places API (New) resource ids.
+  if (hintPlaceId && !/^ChIJ/i.test(hintPlaceId)) {
+    logger.info("Ignoring non-ChIJ place id from Maps URL; will use name/coords search", {
+      hintPlaceId,
+    });
+    hintPlaceId = null;
+  }
 
   if (payload.hintsOnly === true) {
     const coordInQuery = String(searchQuery).match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
@@ -1874,8 +2196,15 @@ exports.getGooglePlaceDetails = onCall(
 
   try {
     if ((!hintPlaceId || !/^ChIJ/i.test(hintPlaceId)) && mapsCid) {
-      const fromCid = await resolvePlaceIdFromCid(mapsCid, apiKey, usageSource);
-      if (fromCid) hintPlaceId = fromCid;
+      const fromCid = await resolvePlaceHintsFromCid(mapsCid, apiKey, usageSource);
+      if (fromCid?.placeId && /^ChIJ/i.test(fromCid.placeId)) {
+        hintPlaceId = fromCid.placeId;
+      }
+      if (fromCid?.placeName && !isGenericMapsTitle(fromCid.placeName)) {
+        matchTitle = matchTitle || fromCid.placeName;
+      }
+      if (biasLat == null && fromCid?.lat != null) biasLat = fromCid.lat;
+      if (biasLng == null && fromCid?.lng != null) biasLng = fromCid.lng;
     }
 
     if (hintPlaceId && /^ChIJ/i.test(hintPlaceId)) {
@@ -1889,35 +2218,64 @@ exports.getGooglePlaceDetails = onCall(
       logger.warn(`Place Details lookup missed for ${hintPlaceId}; falling back to text search.`);
     }
 
-    // CID share links often hit Google consent / JS shells — skip HTML scrape when we still
-    // have no place id and instead rely on API lookups + a clear host-facing error.
-    if (!(mapsCid && !(hintPlaceId && /^ChIJ/i.test(hintPlaceId)))) {
-      try {
-        searchQuery = await resolveUrlSearchQuery(searchQuery, area);
-        matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
-      } catch (e) {
-        if (!hintPlaceId && !fallbackName && biasLat == null) {
-          logger.error("CRITICAL: Link resolution blocked:", e);
-          throw new HttpsError(
-            "invalid-argument",
-            "Could not read that Maps link. Paste a full google.com/maps/place URL, maps.app.goo.gl, or share.google link."
+    // If short-link expand already gave a place name, search with that (+ optional area).
+    if (matchTitle && !/^https?:\/\//i.test(matchTitle) && !/^-?\d+\.\d+\s*,\s*-?\d+\.\d+$/.test(matchTitle)) {
+      searchQuery = appendAreaIfNeeded(matchTitle, area);
+    }
+
+    // CID share links often hit Google consent / JS shells — skip HTML scrape only when we
+    // still have no place id AND no name/coords from CID preview resolution.
+    const cidUnresolved =
+      Boolean(mapsCid) &&
+      !(hintPlaceId && /^ChIJ/i.test(hintPlaceId)) &&
+      !matchTitle &&
+      !(biasLat != null && biasLng != null);
+    if (!cidUnresolved) {
+      // Only scrape/resolve URL when we still lack a usable place title.
+      const needsUrlResolve =
+        !matchTitle ||
+        /^https?:\/\//i.test(String(searchQuery || "")) ||
+        String(searchQuery || "").trim() === rawQuery;
+      if (needsUrlResolve) {
+        try {
+          searchQuery = await resolveUrlSearchQuery(
+            expandedMapsUrl.startsWith("http") ? expandedMapsUrl : rawQuery,
+            area
           );
-        }
-        logger.info("Maps link resolution fallback:", e.message || e);
-        if (fallbackName) {
-          searchQuery = appendAreaIfNeeded(fallbackName, area);
-          matchTitle = fallbackName;
-        } else if (biasLat != null && biasLng != null) {
-          searchQuery = appendAreaIfNeeded(`${biasLat},${biasLng}`, area);
+          matchTitle = matchTitleFromResolvedQuery(searchQuery, area) || matchTitle;
+        } catch (e) {
+          if (!hintPlaceId && !fallbackName && !matchTitle && biasLat == null) {
+            logger.error("CRITICAL: Link resolution blocked:", e);
+            throw new HttpsError(
+              "invalid-argument",
+              "Could not read that Maps link. Paste a full google.com/maps/place URL, maps.app.goo.gl, or share.google link."
+            );
+          }
+          logger.info("Maps link resolution fallback:", e.message || e);
+          if (fallbackName) {
+            searchQuery = appendAreaIfNeeded(fallbackName, area);
+            matchTitle = fallbackName;
+          } else if (matchTitle) {
+            searchQuery = appendAreaIfNeeded(matchTitle, area);
+          } else if (biasLat != null && biasLng != null) {
+            searchQuery = appendAreaIfNeeded(`${biasLat},${biasLng}`, area);
+          }
         }
       }
     } else {
-      logger.info("Skipping HTML Maps scrape for CID link; using Places API resolution only", {
+      logger.info("Skipping HTML Maps scrape for unresolved CID link", {
         cid: mapsCid,
       });
     }
 
-    if (!(mapsCid && !(hintPlaceId && /^ChIJ/i.test(hintPlaceId)))) {
+    if (!cidUnresolved || matchTitle || (biasLat != null && biasLng != null)) {
+      if (
+        (!searchQuery || /^https?:\/\//i.test(String(searchQuery)) || String(searchQuery).includes("cid=")) &&
+        matchTitle
+      ) {
+        searchQuery = appendAreaIfNeeded(matchTitle, area);
+      }
+
       let place = await fetchPlaceFromGoogle(
         searchQuery,
         apiKey,
@@ -1962,7 +2320,7 @@ exports.getGooglePlaceDetails = onCall(
     if (mapsCid) {
       throw new HttpsError(
         "invalid-argument",
-        "This Maps link uses a short cid= share format that Google won’t expand via Places API (New). Open the link in your browser, wait until the place page loads, copy the address-bar URL (it should contain /maps/place/), paste that, then click Auto-fill again."
+        "This Maps link uses a short cid= share format we could not resolve. Open the link in your browser, wait until the place page loads, copy the address-bar URL (it should contain /maps/place/), paste that, then click Magic Fill again."
       );
     }
 
@@ -1973,6 +2331,410 @@ exports.getGooglePlaceDetails = onCall(
     throw new HttpsError("internal", "Failed to fetch Google Place data.");
   }
 });
+
+/**
+ * Search Places nearby for one includedType; return operational places.
+ */
+async function searchNearbyPlacesByType({
+  lat,
+  lng,
+  includedType,
+  radiusMeters,
+  apiKey,
+  fieldMask,
+  usageSource,
+  rankPreference,
+  maxFetch,
+}) {
+  const body = {
+    locationRestriction: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: Math.min(Math.max(Number(radiusMeters) || 5000, 100), 50000),
+      },
+    },
+    includedTypes: [includedType],
+    maxResultCount: Math.min(Math.max(Number(maxFetch) || 10, 1), 20),
+    rankPreference:
+      String(rankPreference || "DISTANCE").toUpperCase() === "POPULARITY"
+        ? "POPULARITY"
+        : "DISTANCE",
+  };
+
+  const response = await axios.post(
+    "https://places.googleapis.com/v1/places:searchNearby",
+    body,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": fieldMask,
+      },
+      timeout: 25000,
+    }
+  );
+
+  if (usageSource) {
+    await recordPlacesApiCall(firestore, {
+      endpoint: "nearby_search",
+      source: usageSource,
+    });
+  }
+
+  return (response.data?.places || []).filter(isPlaceOperational);
+}
+
+/** Text Search near a pin — critical for airports/ports/pharmacies Google nearby misses. */
+async function searchTextPlacesNear({
+  lat,
+  lng,
+  textQuery,
+  radiusMeters,
+  apiKey,
+  fieldMask,
+  usageSource,
+  maxFetch,
+}) {
+  const q = String(textQuery || "").trim();
+  if (!q) return [];
+
+  const body = {
+    textQuery: q,
+    pageSize: Math.min(Math.max(Number(maxFetch) || 10, 1), 20),
+    locationBias: {
+      circle: {
+        center: { latitude: lat, longitude: lng },
+        radius: Math.min(Math.max(Number(radiusMeters) || 20000, 100), 50000),
+      },
+    },
+  };
+
+  const response = await axios.post(
+    "https://places.googleapis.com/v1/places:searchText",
+    body,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": fieldMask,
+      },
+      timeout: 25000,
+    }
+  );
+
+  if (usageSource) {
+    await recordPlacesApiCall(firestore, {
+      endpoint: "text_search",
+      source: usageSource,
+    });
+  }
+
+  return (response.data?.places || []).filter(isPlaceOperational);
+}
+
+function placeNameLower(place) {
+  return String(place?.displayName?.text || "").toLowerCase();
+}
+
+function filterEssentialCandidates(places, slot, lat, lng) {
+  const slotId = String(slot?.id || "");
+  const requireIncludes = Array.isArray(slot.requireNameIncludes)
+    ? slot.requireNameIncludes.map((s) => String(s || "").toLowerCase()).filter(Boolean)
+    : [];
+  const excludeIncludes = Array.isArray(slot.excludeNameIncludes)
+    ? slot.excludeNameIncludes.map((s) => String(s || "").toLowerCase()).filter(Boolean)
+    : [];
+  const minRatings = Number(slot.minUserRatings) || 0;
+  const radiusMeters = Math.min(Math.max(Number(slot.radiusMeters) || 50000, 100), 50000);
+  const isTransportHub = slotId === "airport" || slotId === "port";
+
+  let out = places.filter((p) => {
+    const name = placeNameLower(p);
+    const reviews = typeof p.userRatingCount === "number" ? p.userRatingCount : 0;
+    const pLat = p.location?.latitude;
+    const pLng = p.location?.longitude;
+    if (typeof pLat === "number" && typeof pLng === "number") {
+      if (haversineMeters(lat, lng, pLat, pLng) > radiusMeters * 1.15) return false;
+    }
+    if (excludeIncludes.some((ex) => name.includes(ex))) return false;
+    if (requireIncludes.length && !requireIncludes.some((inc) => name.includes(inc))) {
+      return false;
+    }
+
+    // Airports: passenger/international only — never helipads or navy fields.
+    if (slotId === "airport") {
+      if (/helipad|heliport|ελικοδρ|navy|ναύσταθ|military|airfield|airstrip/.test(name)) {
+        return false;
+      }
+      const looksPassenger =
+        /international|διεθν|airport|αεροδρ|αερολιμ/.test(name) &&
+        !/helipad|heliport|ελικοδρ/.test(name);
+      if (!looksPassenger) return false;
+      // Soft pass for clearly named international airports even if rating count is missing.
+      if (minRatings > 0 && reviews < minRatings && !/international|διεθν/.test(name)) {
+        return false;
+      }
+      if (minRatings > 0 && reviews < minRatings && reviews > 0 && reviews < 50) {
+        return false;
+      }
+    }
+
+    // Ports: main ferry ports (Souda, etc.) — not marinas / beaches.
+    if (slotId === "port") {
+      if (/marina|μαρίνα|yacht|beach|πλαζ/.test(name)) return false;
+      const looksFerryPort =
+        /souda|σούδα|ferry|λιμάν|λιμαν|harbour|harbor|port of/.test(name) ||
+        (/\bport\b/.test(name) && reviews >= minRatings);
+      if (!looksFerryPort) return false;
+      if (minRatings > 0 && reviews < minRatings && !/souda|σούδα/.test(name)) {
+        return false;
+      }
+    }
+
+    if (!isTransportHub && minRatings > 0 && reviews < minRatings) {
+      if (!(requireIncludes.length && reviews >= Math.min(10, minRatings))) return false;
+    }
+    return true;
+  });
+
+  // Transport hubs: pick the biggest (by reviews) first, then order those by distance for UX.
+  if (isTransportHub) {
+    out.sort((a, b) => {
+      const ra = typeof a.userRatingCount === "number" ? a.userRatingCount : 0;
+      const rb = typeof b.userRatingCount === "number" ? b.userRatingCount : 0;
+      if (rb !== ra) return rb - ra;
+      const aLat = a.location?.latitude;
+      const aLng = a.location?.longitude;
+      const bLat = b.location?.latitude;
+      const bLng = b.location?.longitude;
+      const da =
+        typeof aLat === "number" && typeof aLng === "number"
+          ? haversineMeters(lat, lng, aLat, aLng)
+          : Number.POSITIVE_INFINITY;
+      const db =
+        typeof bLat === "number" && typeof bLng === "number"
+          ? haversineMeters(lat, lng, bLat, bLng)
+          : Number.POSITIVE_INFINITY;
+      return da - db;
+    });
+    return out;
+  }
+
+  out.sort((a, b) => {
+    const aLat = a.location?.latitude;
+    const aLng = a.location?.longitude;
+    const bLat = b.location?.latitude;
+    const bLng = b.location?.longitude;
+    const da =
+      typeof aLat === "number" && typeof aLng === "number"
+        ? haversineMeters(lat, lng, aLat, aLng)
+        : Number.POSITIVE_INFINITY;
+    const db =
+      typeof bLat === "number" && typeof bLng === "number"
+        ? haversineMeters(lat, lng, bLat, bLng)
+        : Number.POSITIVE_INFINITY;
+    return da - db;
+  });
+
+  return out;
+}
+
+/**
+ * Find nearby places for each essential slot (multiple per category, closest→farthest).
+ * Used by Add Property step 2.
+ */
+exports.findNearestEssentialPlaces = onCall(
+  {
+    region: "us-central1",
+    timeoutSeconds: 180,
+    memory: "1GiB",
+  },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Sign in required.");
+    }
+
+    const payload = request.data || {};
+    const lat = asCoord(payload.latitude);
+    const lng = asCoord(payload.longitude);
+    if (lat == null || lng == null) {
+      throw new HttpsError("invalid-argument", "Property latitude and longitude are required.");
+    }
+
+    const slots = Array.isArray(payload.slots) ? payload.slots : [];
+    if (!slots.length) {
+      throw new HttpsError("invalid-argument", "At least one essential slot is required.");
+    }
+    if (slots.length > 30) {
+      throw new HttpsError("invalid-argument", "Too many essential slots in one request.");
+    }
+
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      logger.error("Missing GOOGLE_MAPS_API_KEY environment variable.");
+      throw new HttpsError("internal", "Server configuration error.");
+    }
+
+    const usageSource = normalizeUsageCaller(
+      payload.usageCaller || "property_setup_essentials"
+    );
+    const skipPhoto = payload.skipPhoto === true;
+    const fieldMaskBase = skipPhoto
+      ? PLACES_FIELD_MASK.replace("places.photos,", "")
+      : PLACES_FIELD_MASK;
+    const fieldMask = fieldMaskBase.includes("userRatingCount")
+      ? fieldMaskBase
+      : `${fieldMaskBase},places.userRatingCount`;
+
+    const results = [];
+
+    for (const slot of slots) {
+      const slotId = String(slot?.id || "").trim();
+      const label = String(slot?.label || slotId).trim();
+      const section = String(slot?.section || "").trim();
+      const includedTypes = Array.isArray(slot?.includedTypes)
+        ? slot.includedTypes.map((t) => String(t || "").trim()).filter(Boolean)
+        : [];
+      const textQueries = [
+        ...(Array.isArray(slot?.textQueries)
+          ? slot.textQueries.map((t) => String(t || "").trim()).filter(Boolean)
+          : []),
+        ...(String(slot?.textQuery || "").trim()
+          ? [String(slot.textQuery).trim()]
+          : []),
+      ];
+      const radiusMeters = Number(slot?.radiusMeters) || 5000;
+      const maxResults = Math.min(Math.max(Number(slot?.maxResults) || 1, 1), 10);
+      const rankPreference = String(slot?.rankPreference || "DISTANCE").toUpperCase();
+
+      if (!slotId || (!includedTypes.length && !textQueries.length)) {
+        results.push({ slotId, label, section, found: false, places: [], place: null });
+        continue;
+      }
+
+      const merged = [];
+      const seenIds = new Set();
+      const pushBatch = (batch) => {
+        for (const raw of batch || []) {
+          const id =
+            bareGooglePlaceId(raw.id || raw.name) ||
+            `${raw.displayName?.text}-${raw.location?.latitude}`;
+          if (seenIds.has(id)) continue;
+          seenIds.add(id);
+          merged.push(raw);
+        }
+      };
+
+      for (const includedType of includedTypes) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          pushBatch(
+            await searchNearbyPlacesByType({
+              lat,
+              lng,
+              includedType,
+              radiusMeters,
+              apiKey,
+              fieldMask,
+              usageSource,
+              rankPreference,
+              maxFetch: Math.max(maxResults, 12),
+            })
+          );
+        } catch (e) {
+          logger.warn("Essential nearby search failed", {
+            slotId,
+            includedType,
+            message: e?.response?.data || e?.message || e,
+          });
+        }
+      }
+
+      for (const tq of textQueries) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          pushBatch(
+            await searchTextPlacesNear({
+              lat,
+              lng,
+              textQuery: tq,
+              radiusMeters,
+              apiKey,
+              fieldMask,
+              usageSource,
+              maxFetch: Math.max(maxResults, 10),
+            })
+          );
+        } catch (e) {
+          logger.warn("Essential text search failed", {
+            slotId,
+            textQuery: tq,
+            message: e?.response?.data || e?.message || e,
+          });
+        }
+      }
+
+      const filtered = filterEssentialCandidates(merged, slot, lat, lng);
+      const top = filtered.slice(0, maxResults);
+      const placesOut = [];
+
+      for (const raw of top) {
+        const place = placeRecordFromApiPlace(raw, apiKey, skipPhoto, "");
+        if (!place?.name) continue;
+
+        let photoUrl = place.photoUrl || null;
+        if (photoUrl && !skipPhoto) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            photoUrl = await ensureStoredPlacePhoto(
+              photoUrl,
+              placePhotoStoragePath({ googlePlaceId: place.googlePlaceId }),
+              apiKey
+            );
+          } catch (e) {
+            logger.warn("Essential place photo mirror failed:", e.message || e);
+            photoUrl = place.photoUrl || null;
+          }
+        }
+
+        const distanceMeters =
+          typeof place.latitude === "number" && typeof place.longitude === "number"
+            ? Math.round(haversineMeters(lat, lng, place.latitude, place.longitude))
+            : null;
+
+        placesOut.push({
+          name: place.name || "",
+          address: place.formattedAddress || place.addressLine || "",
+          phoneNumber: place.phoneNumber || "",
+          latitude: place.latitude,
+          longitude: place.longitude,
+          googlePlaceId: place.googlePlaceId || "",
+          googleMapsUrl: place.googleMapsUrl || "",
+          photoUrl,
+          rating: place.rating,
+          userRatingCount:
+            typeof raw.userRatingCount === "number" ? raw.userRatingCount : null,
+          distanceMeters,
+          primaryType: place.category || "",
+        });
+      }
+
+      placesOut.sort((a, b) => (a.distanceMeters ?? 1e12) - (b.distanceMeters ?? 1e12));
+
+      results.push({
+        slotId,
+        label,
+        section,
+        found: placesOut.length > 0,
+        places: placesOut,
+        // Back-compat for older clients
+        place: placesOut[0] || null,
+      });
+    }
+
+    return { latitude: lat, longitude: lng, results };
+  }
+);
 
 const MAGIC_FILL_UNIT_COST = MAGIC_FILL_LEGACY_UNIT;
 
@@ -2182,6 +2944,12 @@ registerGuestApplianceGuide({ firestore, firebaseExports: exports });
 
 const { registerHouseGuideImportAi } = require("./houseGuideImportAi");
 registerHouseGuideImportAi({ firebaseExports: exports });
+
+const { registerLocalGemMagicAi } = require("./localGemMagicAi");
+registerLocalGemMagicAi({ firebaseExports: exports });
+
+const { registerPartnerImportAi } = require("./partnerImportAi");
+registerPartnerImportAi({ firebaseExports: exports });
 
 const { registerGuestAssistantEscalation } = require("./guestAssistantEscalation");
 registerGuestAssistantEscalation({ firestore, logger, firebaseExports: exports });

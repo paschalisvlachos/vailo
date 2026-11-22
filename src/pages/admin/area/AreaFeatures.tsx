@@ -1,13 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAreaRouteParams } from '../../../hooks/useAreaRouteParams';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getGenerativeModel } from "firebase/ai";
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage, ai } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
 import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
-import { Plus, Image as ImageIcon, Pencil, Trash2, Loader2, MapPin, Wand2, Briefcase, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles } from 'lucide-react';
+import { Plus, Image as ImageIcon, Pencil, Trash2, Loader2, MapPin, Wand2, Briefcase, Link as LinkIcon, Phone, Mail, MessageCircle, Languages, Sparkles, Layers } from 'lucide-react';
+import { AdminButton } from '../../../components/admin/AdminPageHeader';
+import PartnerWebImportPanel from '../../../components/admin/PartnerWebImportPanel';
+import type { PartnerImportDraft } from '../../../lib/partnerImportAi';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useAreaContentLocaleSettings } from '../../../hooks/useAreaContentLocaleSettings';
@@ -16,8 +19,13 @@ import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
-import { categoryPrimaryName, resolveCategoryLabel, normalizeCategorySelectionList, categorySelectionIncludes } from '../../../lib/categoryLocale';
-import { normalizeLocaleCode } from '../../../lib/propertyContentLocales';
+import {
+  categoryPrimaryName,
+  resolveCategoryLabel,
+  normalizeCategorySelectionList,
+  categorySelectionIncludes,
+  normalizeCategoryMatchKey,
+} from '../../../lib/categoryLocale';
 
 export default function AreaFeatures() {
   const toast = useToast();
@@ -26,13 +34,11 @@ export default function AreaFeatures() {
   // Databases
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
-  const [localGemsCategories, setLocalGemsCategories] = useState<
-    { id: string; data: Record<string, unknown> }[]
-  >([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [addEntryMethod, setAddEntryMethod] = useState<'choose' | 'bulk' | 'page' | 'maps' | null>(null);
   const [editingFeatureId, setEditingFeatureId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMagicFilling, setIsMagicFilling] = useState(false);
@@ -46,19 +52,16 @@ export default function AreaFeatures() {
   const initialFormState = {
     name: '',
     categories: [] as string[],
-    agreement: '0', // Default to 0
     description: '',
     googleMapsUrl: '',
-    latitude: '',
-    longitude: '',
     phoneNumber: '',
     whatsapp: '',
     email: '',
     website: '',
     photoUrl: '',
-    isMainPage: false,
+    isMainPage: true,
     isLocal: false,
-    experienceTypes: [] as string[]
+    experienceTypes: [] as string[],
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -84,13 +87,6 @@ export default function AreaFeatures() {
     resolveCategoryLabel(cat as Record<string, unknown>, localeEditor.contentLocale, localeSettings.primaryLocale) ||
     featureCategoryPrimaryName(cat);
 
-  const localGemCategoryPrimaryName = (cat: { id: string; data: Record<string, unknown> }) =>
-    categoryPrimaryName(cat.data, localeSettings.primaryLocale);
-
-  const localGemCategoryLabel = (cat: { id: string; data: Record<string, unknown> }) =>
-    resolveCategoryLabel(cat.data, localeEditor.contentLocale, localeSettings.primaryLocale) ||
-    localGemCategoryPrimaryName(cat);
-
   const featureCategoryPillOptions = useMemo(
     () =>
       featuresCategories.map((cat) => ({
@@ -100,23 +96,9 @@ export default function AreaFeatures() {
     [featuresCategories, localeEditor.contentLocale, localeSettings.primaryLocale]
   );
 
-  const localGemCategoryPillOptions = useMemo(
-    () =>
-      localGemsCategories.map((cat) => ({
-        value: localGemCategoryPrimaryName(cat),
-        label: localGemCategoryLabel(cat),
-      })),
-    [localGemsCategories, localeEditor.contentLocale, localeSettings.primaryLocale]
-  );
-
   const featureCategoryDocs = useMemo(
     () => featuresCategories as Record<string, unknown>[],
     [featuresCategories]
-  );
-
-  const localGemCategoryDocs = useMemo(
-    () => localGemsCategories.map((c) => c.data),
-    [localGemsCategories]
   );
 
   const normalizedFeatureCategories = useMemo(
@@ -129,16 +111,6 @@ export default function AreaFeatures() {
     [formData.categories, featureCategoryDocs, localeSettings.primaryLocale]
   );
 
-  const normalizedExperienceTypes = useMemo(
-    () =>
-      normalizeCategorySelectionList(
-        formData.experienceTypes,
-        localGemCategoryDocs,
-        localeSettings.primaryLocale
-      ),
-    [formData.experienceTypes, localGemCategoryDocs, localeSettings.primaryLocale]
-  );
-
   // Keep pill selections keyed to primary names once category catalogs load.
   useEffect(() => {
     if (!isFormOpen) return;
@@ -147,39 +119,30 @@ export default function AreaFeatures() {
       const setA = new Set(a.map((s) => s.toLowerCase()));
       return b.every((s) => setA.has(s.toLowerCase()));
     };
-    const categoriesChanged = !sameSelection(normalizedFeatureCategories, formData.categories);
-    const gemsChanged = !sameSelection(normalizedExperienceTypes, formData.experienceTypes);
-    if (!categoriesChanged && !gemsChanged) return;
+    if (sameSelection(normalizedFeatureCategories, formData.categories)) return;
     setFormData((prev) => ({
       ...prev,
       categories: normalizedFeatureCategories,
-      experienceTypes: normalizedExperienceTypes,
     }));
-  }, [
-    isFormOpen,
-    normalizedFeatureCategories,
-    normalizedExperienceTypes,
-    formData.categories,
-    formData.experienceTypes,
-  ]);
+  }, [isFormOpen, normalizedFeatureCategories, formData.categories]);
 
   const openFeatureEdit = (feat: Record<string, unknown> & { id: string }) => {
     setEditingSourceDoc(feat);
+    const { latitude: _lat, longitude: _lng, ...featRest } = feat;
     setFormData({
       ...initialFormState,
-      ...feat,
+      ...featRest,
       categories: normalizeCategorySelectionList(
         feat.categories as string[] | undefined,
         featureCategoryDocs,
         localeSettings.primaryLocale
       ),
-      experienceTypes: normalizeCategorySelectionList(
-        feat.experienceTypes as string[] | undefined,
-        localGemCategoryDocs,
-        localeSettings.primaryLocale
-      ),
+      isMainPage: true,
+      isLocal: false,
+      experienceTypes: [],
     } as typeof initialFormState);
     setEditingFeatureId(feat.id);
+    setAddEntryMethod(null);
     setImagePreview(typeof feat.photoUrl === 'string' ? feat.photoUrl : null);
     setIsFormOpen(true);
   };
@@ -198,26 +161,7 @@ export default function AreaFeatures() {
     return () => unsubscribe();
   }, [decodedCountry, areaId, localeSettings.primaryLocale]);
 
-  // 2. Fetch Local Gems Categories
-  useEffect(() => {
-    if (!decodedCountry || !areaId) return;
-    const gemsCatRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'localGemsCategories');
-    const unsubscribe = onSnapshot(gemsCatRef, (snapshot) => {
-      const fetched = snapshot.docs.map((d) => ({
-        id: d.id,
-        data: d.data() as Record<string, unknown>,
-      }));
-      fetched.sort((a, b) =>
-        categoryPrimaryName(a.data, localeSettings.primaryLocale).localeCompare(
-          categoryPrimaryName(b.data, localeSettings.primaryLocale)
-        )
-      );
-      setLocalGemsCategories(fetched);
-    });
-    return () => unsubscribe();
-  }, [decodedCountry, areaId, localeSettings.primaryLocale]);
-
-  // 3. Fetch Master Features
+  // 2. Fetch Master Partners
   useEffect(() => {
     if (!decodedCountry || !areaId) return;
     const featsRef = collection(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures');
@@ -250,14 +194,10 @@ export default function AreaFeatures() {
     }
   };
 
-  const handlePillToggle = (
-    arrayName: 'categories' | 'experienceTypes',
-    value: string,
-    catalogDocs: Record<string, unknown>[]
-  ) => {
+  const handlePillToggle = (value: string, catalogDocs: Record<string, unknown>[]) => {
     setFormData((prev) => {
       const current = normalizeCategorySelectionList(
-        prev[arrayName],
+        prev.categories,
         catalogDocs,
         localeSettings.primaryLocale
       );
@@ -266,11 +206,90 @@ export default function AreaFeatures() {
       const next = has
         ? current.filter((c) => c.toLowerCase() !== lower)
         : [...current, value];
-      return { ...prev, [arrayName]: next };
+      return { ...prev, categories: next };
     });
   };
 
-  // --- AI MAGIC FILL ---
+  const matchPartnerCategories = (names: string[] | undefined) => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of names || []) {
+      const key = normalizeCategoryMatchKey(raw);
+      if (!key) continue;
+      const hit = featuresCategories.find((c) => {
+        const primary = featureCategoryPrimaryName(c);
+        const primaryKey = normalizeCategoryMatchKey(primary);
+        return primaryKey === key || primaryKey.includes(key) || key.includes(primaryKey);
+      });
+      if (!hit) continue;
+      const primary = featureCategoryPrimaryName(hit);
+      if (!primary || seen.has(primary.toLowerCase())) continue;
+      seen.add(primary.toLowerCase());
+      out.push(primary);
+    }
+    return out;
+  };
+
+  const applyPartnerDraft = (draft: PartnerImportDraft) => {
+    const matchedCategories = matchPartnerCategories(draft.categories);
+    const nextPhoto = draft.photoUrl || '';
+    setFormData((prev) => ({
+      ...prev,
+      name: draft.name || prev.name,
+      description: draft.description || prev.description,
+      phoneNumber: draft.phoneNumber || prev.phoneNumber,
+      whatsapp: draft.whatsapp || prev.whatsapp,
+      email: draft.email || prev.email,
+      website: draft.website || draft.sourceUrl || prev.website,
+      photoUrl: nextPhoto || prev.photoUrl,
+      categories: matchedCategories,
+    }));
+    localeEditor.applyPrimaryFields({
+      name: draft.name || localeEditor.getPrimaryValue('name') || formData.name,
+      description: draft.description || localeEditor.getPrimaryValue('description') || formData.description,
+    });
+    if (nextPhoto) {
+      setImagePreview(nextPhoto);
+      setImageFile(null);
+    }
+  };
+
+  const savePartnerDraftsBulk = async (drafts: PartnerImportDraft[]) => {
+    for (const draft of drafts) {
+      let photoUrl = draft.photoUrl || '';
+      if (photoUrl) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          photoUrl = await ensurePersistablePhotoUrl(photoUrl, {
+            country: decodedCountry,
+            areaId,
+          });
+        } catch {
+          photoUrl = '';
+        }
+      }
+      const matchedCategories = matchPartnerCategories(draft.categories);
+      const featureData = {
+        ...initialFormState,
+        name: draft.name,
+        description: draft.description,
+        phoneNumber: draft.phoneNumber || '',
+        whatsapp: draft.whatsapp || '',
+        email: draft.email || '',
+        website: draft.website || draft.sourceUrl || '',
+        categories: matchedCategories,
+        photoUrl,
+        isMainPage: true,
+        isLocal: false,
+        experienceTypes: [] as string[],
+        updatedAt: new Date().toISOString(),
+      };
+      // eslint-disable-next-line no-await-in-loop
+      await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures'), featureData);
+    }
+    closeAndResetForm();
+  };
+
   // --- AI MAGIC FILL ---
   const handleMagicFill = async () => {
     const url = formData.googleMapsUrl;
@@ -314,45 +333,48 @@ export default function AreaFeatures() {
         }
       }
 
-      // 🔥 THE FIX: AI-POWERED CATEGORY MAPPING 🔥
-      let matchedCategory = "";
+      let matchedCategories: string[] = [];
       let finalDescription = googleData.description;
 
       try {
         const categoryNames = featuresCategories.map((c) => featureCategoryPrimaryName(c)).join(', ');
         const gType = googleData.category?.replace(/_/g, ' ') || "local business";
 
-        // We ask Gemini to return BOTH the description and the category match in a strict JSON format
         const prompt = `Act as a luxury travel concierge for ${decodedArea}. We are adding "${googleData.name || placeNameFallback}" (Google classifies it as: ${gType}).
-        1. Pick the single most accurate category from our exact database list: [${categoryNames}]. If none fit well, return an empty string "".
-        2. Write a short, engaging 2-sentence description explaining why guests should use or visit this.
-        Return ONLY a valid JSON object in this exact format with no markdown wrappers:
-        {"category": "Exact Category Name", "description": "Your 2 sentence description"}`;
+Read the place name and Google type carefully.
+1. From our exact allowed list [${categoryNames}], select EVERY category that clearly fits. Multiple are OK. If ambiguous or none fit, return [].
+2. Write a short, engaging 2-sentence description explaining why guests should use or visit this.
+Return ONLY valid JSON with no markdown:
+{"categories":["Exact Category Name"],"description":"Your 2 sentence description"}`;
 
         const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
         const aiResult = await model.generateContent(prompt);
         
-        // Strip out markdown code blocks if Gemini adds them
         const rawText = aiResult.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(rawText);
 
-        // Ensure the AI didn't hallucinate a category that doesn't exist
-        if (parsed.category && featuresCategories.some((c) => featureCategoryPrimaryName(c) === parsed.category)) {
-          matchedCategory = parsed.category;
-        }
+        const rawCats = Array.isArray(parsed.categories)
+          ? parsed.categories
+          : parsed.category
+            ? [parsed.category]
+            : [];
+        matchedCategories = rawCats
+          .map((c: unknown) => String(c || '').trim())
+          .filter((name: string) =>
+            featuresCategories.some((c) => featureCategoryPrimaryName(c) === name)
+          );
         
         if (parsed.description && !googleData.description) {
           finalDescription = parsed.description;
         }
       } catch (e) {
         console.log("AI JSON mapping failed, falling back to basic matching.", e);
-        // Absolute fallback if the AI fails
         const gTypeLower = googleData.category?.toLowerCase().replace(/_/g, ' ') || "";
         const possibleMatch = featuresCategories.find((c) => {
           const n = featureCategoryPrimaryName(c).toLowerCase();
           return gTypeLower.includes(n) || n.includes(gTypeLower);
         });
-        if (possibleMatch) matchedCategory = featureCategoryPrimaryName(possibleMatch);
+        if (possibleMatch) matchedCategories = [featureCategoryPrimaryName(possibleMatch)];
       }
 
       const primaryName = googleData.name || placeNameFallback;
@@ -360,12 +382,8 @@ export default function AreaFeatures() {
       setFormData(prev => ({
         ...prev,
         name: primaryName,
-        categories: matchedCategory && !prev.categories.includes(matchedCategory) 
-                      ? [...prev.categories, matchedCategory] 
-                      : prev.categories,
+        categories: matchedCategories,
         description: primaryDescription,
-        latitude: googleData.latitude?.toString() || prev.latitude,
-        longitude: googleData.longitude?.toString() || prev.longitude,
         phoneNumber: googleData.phoneNumber || prev.phoneNumber,
         website: googleData.websiteUri || prev.website,
         photoUrl: googleData.photoUrl || ''
@@ -413,6 +431,7 @@ export default function AreaFeatures() {
 
   const closeAndResetForm = () => {
     setIsFormOpen(false);
+    setAddEntryMethod(null);
     setEditingFeatureId(null);
     setEditingSourceDoc(null);
     localeEditor.resetMaps();
@@ -451,15 +470,6 @@ export default function AreaFeatures() {
   // --- SUBMIT ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (normalizedFeatureCategories.length === 0) {
-      toast.warning("Please select at least one Category.");
-      return;
-    }
-    if (formData.isLocal && normalizedExperienceTypes.length === 0) {
-      toast.warning("Please select at least one Local Gems category for the Local tag.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       let finalPhotoUrl = formData.photoUrl;
@@ -479,14 +489,20 @@ export default function AreaFeatures() {
       const featureData = {
         ...formData,
         categories: normalizedFeatureCategories,
-        experienceTypes: normalizedExperienceTypes,
+        isMainPage: true,
+        isLocal: false,
+        experienceTypes: [],
         ...localeEditor.buildPayload(),
         photoUrl: finalPhotoUrl,
         updatedAt: new Date().toISOString(),
       };
 
       if (editingFeatureId) {
-        await updateDoc(doc(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures', editingFeatureId), featureData);
+        await updateDoc(doc(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures', editingFeatureId), {
+          ...featureData,
+          latitude: deleteField(),
+          longitude: deleteField(),
+        });
       } else {
         await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures'), featureData);
       }
@@ -506,12 +522,6 @@ export default function AreaFeatures() {
     }
   };
 
-  const isPrimaryLocaleTab =
-    normalizeLocaleCode(localeEditor.contentLocale) === normalizeLocaleCode(localeSettings.primaryLocale);
-
-  const agreementDisplay =
-    (formData.agreement ?? '').trim() === '' ? '0%' : `${formData.agreement}%`;
-
   return (
     <div className="admin-page">
       
@@ -521,16 +531,30 @@ export default function AreaFeatures() {
         <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center">
               <Briefcase className="mr-3 text-vailo-teal shrink-0" size={28} />
-              Master Features
+              Master Partners
             </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              Global features & services for <span className="font-bold text-vailo-teal-hover">{decodedArea}, {decodedCountry}</span>
+            <p className="text-sm text-gray-500 mt-2 max-w-3xl">
+              Add the business cooperations and promotions you have as an agency — partners guests can book through you, where you may earn a commission on each sale. Example: you cooperate with a boat rental and receive 15% commission on every booking.
             </p>
         </div>
         {!isFormOpen && (
-          <button onClick={() => { setEditingSourceDoc(null); localeEditor.resetMaps(); setFormData(initialFormState); setImagePreview(null); setImageFile(null); setEditingFeatureId(null); setIsFormOpen(true); }} className="flex items-center px-4 py-2 bg-vailo-teal text-white text-sm font-bold rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-            <Plus size={18} className="mr-2" /> Add Feature
-          </button>
+          <AdminButton
+            type="button"
+            variant="accent"
+            onClick={() => {
+              setEditingSourceDoc(null);
+              localeEditor.resetMaps();
+              setFormData(initialFormState);
+              setImagePreview(null);
+              setImageFile(null);
+              setEditingFeatureId(null);
+              setAddEntryMethod('choose');
+              setIsFormOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            Add Partner
+          </AdminButton>
         )}
       </div>
 
@@ -539,106 +563,168 @@ export default function AreaFeatures() {
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="px-6 py-4 bg-vailo-teal/5 border-b border-indigo-100 flex items-center justify-between">
             <h3 className="text-lg font-bold text-vailo-dark">
-              {editingFeatureId ? 'Edit Master Feature' : 'Add New Master Feature'}
+              {editingFeatureId ? 'Edit Master Partner' : 'Add Master Partner'}
             </h3>
             <button type="button" onClick={closeAndResetForm} className="text-vailo-teal hover:text-vailo-teal-hover font-medium text-sm">Cancel</button>
           </div>
 
           <div className="p-6">
-            <div className="rounded-xl border border-vailo-teal/15 bg-vailo-teal/5 p-4 space-y-3 mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
-                  <Languages size={16} /> Content language
+            {!editingFeatureId && addEntryMethod === 'choose' && (
+              <div className="mb-2">
+                <p className="text-sm font-bold text-gray-900 mb-1">How do you want to add partners?</p>
+                <p className="text-sm text-gray-500 mb-5">
+                  Bulk-import from a services listing page, import one service page, or use Google Maps.
                 </p>
-                {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <button
                     type="button"
-                    onClick={handleAutoTranslateLocale}
-                    disabled={isLocaleTranslating}
-                    className="flex items-center justify-center h-[38px] px-4 bg-white border border-vailo-teal/30 rounded-lg text-sm font-medium text-vailo-teal hover:bg-white/80 disabled:opacity-50"
+                    onClick={() => setAddEntryMethod('bulk')}
+                    className="text-left p-5 rounded-xl border border-vailo-teal/20 bg-white hover:border-vailo-teal hover:bg-vailo-teal/5 transition-colors"
                   >
-                    {isLocaleTranslating ? (
-                      <Loader2 size={16} className="mr-2 animate-spin" />
-                    ) : (
-                      <Sparkles size={16} className="mr-2" />
-                    )}
-                    Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+                    <Layers className="text-vailo-teal mb-3" size={22} />
+                    <p className="font-bold text-gray-900">Bulk from services page</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Paste a listing page like /our-services/ — we find each service and import them.
+                    </p>
                   </button>
-                )}
-              </div>
-              <ContentLocaleTabs
-                enabledLocales={localeSettings.enabledLocales}
-                primaryLocale={localeSettings.primaryLocale}
-                activeLocale={localeEditor.contentLocale}
-                onChange={localeEditor.setContentLocale}
-                languageOptions={languageOptions}
-              />
-            </div>
-
-            {/* 1. MAGIC FILL */}
-            <div className="flex flex-col md:flex-row gap-4 mb-8 bg-vailo-teal/5/50 p-4 rounded-xl border border-vailo-teal/10 items-center">
-              <div className="flex-1 w-full">
-                <label className="block text-xs font-bold text-vailo-dark uppercase tracking-wider mb-1">Google Maps Link</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-3 text-vailo-teal/50" size={18} />
-                  <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="Paste FULL or Short Google Maps URL here..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-vailo-teal/15 rounded-lg admin-input outline-none text-sm" />
+                  <button
+                    type="button"
+                    onClick={() => setAddEntryMethod('page')}
+                    className="text-left p-5 rounded-xl border border-vailo-teal/20 bg-white hover:border-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+                  >
+                    <LinkIcon className="text-vailo-teal mb-3" size={22} />
+                    <p className="font-bold text-gray-900">Single service page</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Paste one detail page URL and fill this partner from it.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddEntryMethod('maps')}
+                    className="text-left p-5 rounded-xl border border-vailo-teal/20 bg-white hover:border-vailo-teal hover:bg-vailo-teal/5 transition-colors"
+                  >
+                    <MapPin className="text-vailo-teal mb-3" size={22} />
+                    <p className="font-bold text-gray-900">Google Maps (AI fill)</p>
+                    <p className="text-xs text-gray-500 mt-1">Paste a Maps place link and let AI fill the details.</p>
+                  </button>
                 </div>
               </div>
-              <button type="button" onClick={handleMagicFill} disabled={isMagicFilling || !formData.googleMapsUrl} className="w-full md:w-auto mt-4 md:mt-0 px-6 py-2.5 bg-vailo-teal hover:bg-vailo-teal-hover text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap">
-                {isMagicFilling ? <Loader2 size={18} className="animate-spin mr-2" /> : <Wand2 size={18} className="mr-2" />}
-                AI Magic Fill
-              </button>
-            </div>
+            )}
+
+            {!editingFeatureId && addEntryMethod === 'bulk' && (
+              <PartnerWebImportPanel
+                variant="bulk"
+                areaName={decodedArea}
+                country={decodedCountry}
+                categories={featuresCategories.map((c) => featureCategoryPrimaryName(c))}
+                onChangeMethod={() => setAddEntryMethod('choose')}
+                onBulkDrafts={savePartnerDraftsBulk}
+              />
+            )}
+
+            {(editingFeatureId || (addEntryMethod && addEntryMethod !== 'choose' && addEntryMethod !== 'bulk')) && (
+              <>
+            {localeSettings.enabledLocales.length > 1 ? (
+              <div className="rounded-xl border border-vailo-teal/15 bg-vailo-teal/5 p-4 space-y-3 mb-8">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
+                    <Languages size={16} /> Content language
+                  </p>
+                  {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+                    <button
+                      type="button"
+                      onClick={handleAutoTranslateLocale}
+                      disabled={isLocaleTranslating}
+                      className="flex items-center justify-center h-[38px] px-4 bg-white border border-vailo-teal/30 rounded-lg text-sm font-medium text-vailo-teal hover:bg-white/80 disabled:opacity-50"
+                    >
+                      {isLocaleTranslating ? (
+                        <Loader2 size={16} className="mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles size={16} className="mr-2" />
+                      )}
+                      Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+                    </button>
+                  )}
+                </div>
+                <ContentLocaleTabs
+                  enabledLocales={localeSettings.enabledLocales}
+                  primaryLocale={localeSettings.primaryLocale}
+                  activeLocale={localeEditor.contentLocale}
+                  onChange={localeEditor.setContentLocale}
+                  languageOptions={languageOptions}
+                />
+              </div>
+            ) : null}
+
+            {!editingFeatureId && addEntryMethod === 'page' && (
+              <PartnerWebImportPanel
+                variant="page"
+                areaName={decodedArea}
+                country={decodedCountry}
+                categories={featuresCategories.map((c) => featureCategoryPrimaryName(c))}
+                onChangeMethod={() => setAddEntryMethod('choose')}
+                onSingleDraft={applyPartnerDraft}
+              />
+            )}
+
+            {!editingFeatureId && addEntryMethod === 'maps' && (
+              <div className="flex flex-col md:flex-row gap-4 mb-8 bg-vailo-teal/5 p-4 rounded-xl border border-vailo-teal/15 items-end">
+                <div className="flex-1 w-full">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-vailo-dark uppercase tracking-wider">Google Maps Link</label>
+                    <button type="button" onClick={() => setAddEntryMethod('choose')} className="text-xs font-medium text-vailo-teal hover:underline">Change method</button>
+                  </div>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-3 text-vailo-teal/50" size={18} />
+                    <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="Paste FULL or Short Google Maps URL here..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-vailo-teal/15 rounded-lg admin-input outline-none text-sm" />
+                  </div>
+                </div>
+                <button type="button" onClick={handleMagicFill} disabled={isMagicFilling || !formData.googleMapsUrl} className="w-full md:w-auto h-[46px] px-6 bg-vailo-teal hover:bg-vailo-teal-hover text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap">
+                  {isMagicFilling ? <Loader2 size={18} className="animate-spin mr-2" /> : <Wand2 size={18} className="mr-2" />}
+                  AI Magic Fill
+                </button>
+              </div>
+            )}
+
+            {editingFeatureId && (
+              <div className="flex flex-col md:flex-row gap-4 mb-8 bg-vailo-teal/5 p-4 rounded-xl border border-vailo-teal/15 items-end">
+                <div className="flex-1 w-full">
+                  <label className="block text-xs font-bold text-vailo-dark uppercase tracking-wider mb-1">Google Maps Link</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-3 text-vailo-teal/50" size={18} />
+                    <input type="url" name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="Paste FULL or Short Google Maps URL here..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-vailo-teal/15 rounded-lg admin-input outline-none text-sm" />
+                  </div>
+                </div>
+                <button type="button" onClick={handleMagicFill} disabled={isMagicFilling || !formData.googleMapsUrl} className="w-full md:w-auto h-[46px] px-6 bg-vailo-teal hover:bg-vailo-teal-hover text-white text-sm font-bold rounded-lg disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center whitespace-nowrap">
+                  {isMagicFilling ? <Loader2 size={18} className="animate-spin mr-2" /> : <Wand2 size={18} className="mr-2" />}
+                  AI Magic Fill
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-8">
               
               {/* 2. CORE INFO */}
               <div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Feature Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={localeEditor.getValue('name')}
-                      onChange={(e) => {
-                        localeEditor.setValue('name', e.target.value);
-                        if (localeEditor.contentLocale === localeSettings.primaryLocale) {
-                          setFormData((prev) => ({ ...prev, name: e.target.value }));
-                        }
-                      }}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Agreement *</label>
-                    {isPrimaryLocaleTab ? (
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="0.1"
-                          name="agreement"
-                          required
-                          value={formData.agreement}
-                          onChange={handleChange}
-                          placeholder="0"
-                          className="w-full pl-4 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
-                        />
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-500 font-bold">
-                          %
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 font-medium">
-                        {agreementDisplay}
-                      </div>
-                    )}
-                  </div>
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Partner name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={localeEditor.getValue('name')}
+                    onChange={(e) => {
+                      localeEditor.setValue('name', e.target.value);
+                      if (localeEditor.contentLocale === localeSettings.primaryLocale) {
+                        setFormData((prev) => ({ ...prev, name: e.target.value }));
+                      }
+                    }}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal outline-none"
+                  />
                 </div>
 
                 <div className="mb-6">
                   <PillSelector
-                    label="Feature Categories *"
+                    label="Categories *"
                     options={featureCategoryPillOptions}
                     isSelected={(value) =>
                       categorySelectionIncludes(
@@ -648,7 +734,7 @@ export default function AreaFeatures() {
                         localeSettings.primaryLocale
                       )
                     }
-                    onToggle={(v) => handlePillToggle('categories', v, featureCategoryDocs)}
+                    onToggle={(v) => handlePillToggle(v, featureCategoryDocs)}
                     colorClass="indigo"
                   />
                 </div>
@@ -711,19 +797,7 @@ export default function AreaFeatures() {
                 </div>
               </div>
 
-              {/* 5. LOCATION */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Latitude</label>
-                  <input type="text" name="latitude" value={formData.latitude} onChange={handleChange} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Longitude</label>
-                  <input type="text" name="longitude" value={formData.longitude} onChange={handleChange} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg outline-none" />
-                </div>
-              </div>
-
-              {/* 6. COVER PHOTO (Master + Upload) */}
+              {/* 5. COVER PHOTO (Master + Upload) */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Cover Photo</label>
                 <div className="flex flex-col md:flex-row items-start gap-6 bg-vailo-teal/5/50 p-6 rounded-xl border border-indigo-100">
@@ -758,62 +832,6 @@ export default function AreaFeatures() {
                 </div>
               </div>
 
-              {/* 7. DISPLAY & TARGETING */}
-              <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Display & Targeting</h3>
-                
-                <div className="space-y-4 mb-6">
-                  <label className="flex items-start bg-white p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-blue-300 transition-colors">
-                    <div className="flex items-center h-5">
-                      <input type="checkbox" name="isMainPage" checked={formData.isMainPage} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded cursor-pointer" />
-                    </div>
-                    <div className="ml-3">
-                      <span className="block text-sm font-bold text-gray-900">Show on Main Page</span>
-                      <span className="block text-xs text-gray-500 mt-0.5">Highlight this feature prominently on the guest portal.</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start bg-white p-4 rounded-xl border border-gray-200 cursor-pointer hover:border-vailo-gold/30 transition-colors">
-                    <div className="flex items-center h-5">
-                      <input type="checkbox" name="isLocal" checked={formData.isLocal} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded cursor-pointer" />
-                    </div>
-                    <div className="ml-3">
-                      <span className="block text-sm font-bold text-gray-900">Live Like a Local</span>
-                      <span className="block text-xs text-gray-500 mt-0.5">Tag this as a highly curated local experience to unlock advanced targeting options.</span>
-                    </div>
-                  </label>
-                </div>
-
-                {/* EXPERIENCE TARGETING (Local Gems categories) */}
-                {formData.isLocal && (
-                  <div className="bg-vailo-teal/5 p-5 rounded-xl border border-purple-100 animate-in fade-in slide-in-from-top-2">
-                    <h3 className="text-sm font-bold text-vailo-dark uppercase tracking-wider mb-2 flex items-center">
-                      <Wand2 size={16} className="mr-2" /> Experience Targeting
-                    </h3>
-                    <p className="text-sm text-vailo-teal-hover mb-4">Tag which local gem categories this experience fits. Multiple selections allowed.</p>
-                    
-                    {localGemsCategories.length === 0 ? (
-                      <p className="text-sm text-vailo-teal italic">No Local Gems categories found. Add them under Area Functionality → Local Gems Categories.</p>
-                    ) : (
-                      <PillSelector
-                        label="Local Gems Category *"
-                        options={localGemCategoryPillOptions}
-                        isSelected={(value) =>
-                          categorySelectionIncludes(
-                            normalizedExperienceTypes,
-                            value,
-                            localGemCategoryDocs,
-                            localeSettings.primaryLocale
-                          )
-                        }
-                        onToggle={(v) => handlePillToggle('experienceTypes', v, localGemCategoryDocs)}
-                        colorClass="purple"
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-
               {/* SUBMIT BUTTON */}
               <div className="flex justify-end pt-4 border-t border-gray-100">
                 <button type="button" onClick={closeAndResetForm} className="px-6 py-3 mr-4 text-sm font-bold text-gray-700 hover:bg-gray-200 rounded-xl transition-colors">
@@ -821,11 +839,13 @@ export default function AreaFeatures() {
                 </button>
                 <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-8 py-3 text-sm font-bold text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-xl disabled:opacity-50 transition-colors shadow-md hover:shadow-lg">
                   {(isSubmitting || isUploadingImage) && <Loader2 size={18} className="mr-2 animate-spin" />}
-                  {isUploadingImage ? 'Uploading Photo...' : isSubmitting ? 'Saving...' : 'Save Master Feature'}
+                  {isUploadingImage ? 'Uploading Photo...' : isSubmitting ? 'Saving...' : 'Save Partner'}
                 </button>
               </div>
 
             </form>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -836,8 +856,8 @@ export default function AreaFeatures() {
       ) : features.length === 0 && !isFormOpen ? (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center">
           <Briefcase size={40} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-bold text-gray-900 mb-2">No Features Added</h3>
-          <p className="text-gray-500">Create the first master feature for {decodedArea}.</p>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">No Partners Yet</h3>
+          <p className="text-gray-500">Create the first master partner for {decodedArea}.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -870,19 +890,13 @@ export default function AreaFeatures() {
                     </span>
                   ))}
                 </div>
-                {feat.agreement && feat.agreement !== "0" && (
-                  <div className="absolute top-3 right-3 bg-vailo-teal text-white px-2.5 py-1 rounded-full text-xs font-bold shadow-sm">
-                    {feat.agreement}%
-                  </div>
-                )}
               </div>
               <div className="p-5 flex-1 flex flex-col">
                 <h3 className="font-bold text-lg text-gray-900 mb-1">{feat.name}</h3>
                 <p className="text-sm text-gray-500 mb-4 line-clamp-2 flex-1">{feat.description}</p>
                 
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {feat.isMainPage && <span className="text-[10px] font-bold bg-vailo-teal/10 text-vailo-dark px-2 py-1 rounded-md">Main Page</span>}
-                  {feat.isLocal && <span className="text-[10px] font-bold bg-vailo-gold/15 text-vailo-teal-hover px-2 py-1 rounded-md">Local Experience</span>}
+                  {feat.website && <span className="text-[10px] font-bold bg-vailo-teal/10 text-vailo-dark px-2 py-1 rounded-md">Website</span>}
                 </div>
 
                 <div className="mt-auto flex justify-end gap-2 pt-4 border-t border-gray-100">

@@ -656,7 +656,7 @@ export default function ExcursionProviderFormPage() {
                   {portalUsers.length === 0 ? (
                     <AdminAlert variant="gold" className="mb-4">
                       No excursion provider users in Owners CRM yet.{' '}
-                      <AdminButtonLink to={adminPath('/add-owner')} className="inline-flex mt-2">
+                      <AdminButtonLink to={adminPath('/add-owner')} variant="accent" className="inline-flex mt-2">
                         Add excursion provider user
                       </AdminButtonLink>
                     </AdminAlert>

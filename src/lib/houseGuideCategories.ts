@@ -257,9 +257,9 @@ export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
   },
   {
     id: 'supplies',
-    title: '17. Extra Supplies & Useful Items',
+    title: '17. Extra Supplies',
     iconName: 'Box',
-    description: 'Batteries, mosquito gear, and local shops.',
+    description: 'Batteries, mosquito gear, remotes, spare keys, and other in-house supplies.',
     fields: [
       { id: 'extraBatteries', label: 'Extra Batteries', type: 'textarea' },
       { id: 'mosquitoEquipment', label: 'Mosquito Equipment', type: 'textarea' },
@@ -267,12 +267,6 @@ export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
       { id: 'remoteControls', label: 'Remote Controls', type: 'textarea' },
       { id: 'spareKeys', label: 'Spare Keys', type: 'textarea' },
       { id: 'generalItems', label: 'General Useful Items', type: 'textarea' },
-      {
-        id: 'usefulLocations',
-        label: 'Useful Local Map Pins',
-        type: 'array_maps',
-        options: HOUSE_GUIDE_USEFUL_MAP_OPTIONS,
-      },
     ],
   },
   {
@@ -297,18 +291,19 @@ export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
     id: 'dailyNeeds',
     title: '20. Daily Needs',
     iconName: 'ShoppingBag',
-    description: 'Everyday essentials nearby — shops, pharmacy, ATM, and general tips.',
+    description: 'Everyday essentials nearby — shops, bakery, ATM, and general tips.',
     fields: [
       {
         id: 'dailyNeedsInfo',
         label: 'Daily Needs — General Information',
         type: 'textarea',
-        placeholder: 'Where to buy groceries, pharmacy hours, delivery tips…',
+        placeholder: 'Where to buy groceries, bakery hours, delivery tips…',
       },
       {
-        id: 'dailyNeedsPlaces',
-        label: 'Places (title & map link)',
+        id: 'usefulLocations',
+        label: 'Useful local Information',
         type: 'array_maps',
+        options: HOUSE_GUIDE_USEFUL_MAP_OPTIONS,
       },
     ],
   },
@@ -326,7 +321,7 @@ export const HOUSE_GUIDE_CATEGORIES: HouseGuideCategoryDef[] = [
       },
       {
         id: 'transportationPlaces',
-        label: 'Places (title & map link)',
+        label: 'Places',
         type: 'array_maps',
         options: HOUSE_GUIDE_TRANSPORTATION_OPTIONS,
       },

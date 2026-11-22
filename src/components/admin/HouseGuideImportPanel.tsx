@@ -19,6 +19,7 @@ import {
   analyzeHouseGuideImport,
   applyHouseGuideImport,
   categoryFieldOptions,
+  isMapsPlaceUrl,
   prepareImportSource,
   type HouseGuideFieldAssignment,
   type HouseGuideImportQuestion,
@@ -30,7 +31,8 @@ import type { HouseGuideFormData } from '../../lib/houseGuideLocales';
 function isRecoverableFailedSource(source: HouseGuideImportSource): boolean {
   if (source.kind !== 'url' || !source.url) return false;
   if (source.fetchStatus === 'ok') return false;
-  // Maps is skipped on purpose — recovery paste is still optional but useful for some hosts.
+  // Maps links are never fetched / never shown — no recovery paste for them.
+  if (isMapsPlaceUrl(source.url)) return false;
   return source.fetchStatus === 'failed' || source.fetchStatus === 'skipped';
 }
 
@@ -59,11 +61,21 @@ type Props = {
   fromWizard?: boolean;
   /** Start AI analysis automatically once seed text is ready. */
   autoAnalyze?: boolean;
-  /** Wizard finish destinations — import runs first based on confidence toggles. */
+  /**
+   * Wizard had no host notes/links/files — skip AI and offer Add more / Finish.
+   */
+  emptySources?: boolean;
+  /**
+   * Wizard finish destinations.
+   * When `fromWizard` is true: auto-applies high confidence only, hides recovery/confidence UI,
+   * and shows Finish → onFinishProperties (plus Add more when nothing was found).
+   */
   footerActions?: {
     onContinueListing: () => void;
     onFinishHouseGuide: () => void;
     onFinishProperties: () => void;
+    /** Return to House Guide inputs to add notes/links/files and re-run import. */
+    onAddMoreSources?: () => void;
   };
 };
 
@@ -94,9 +106,6 @@ function labelForImportUrl(url: string): string {
     if (host.includes('airbnb')) return 'Parsing from Airbnb…';
     if (host.includes('booking.com')) return 'Parsing from Booking.com…';
     if (host.includes('vrbo') || host.includes('homeaway')) return 'Parsing from VRBO…';
-    if (host.includes('google') || host.includes('maps.app.goo.gl') || host === 'share.google') {
-      return 'Parsing from Google Maps…';
-    }
     return `Parsing from website (${host})…`;
   } catch {
     return 'Parsing from website…';
@@ -116,7 +125,7 @@ function buildAnalyzeProgressSteps(text: string, files: File[]): AnalyzeProgress
   const seen = new Set<string>();
   for (const raw of urlMatches) {
     const url = raw.replace(/[.,;]+$/, '');
-    if (!url || seen.has(url)) continue;
+    if (!url || seen.has(url) || isMapsPlaceUrl(url)) continue;
     seen.add(url);
     steps.push({ id: `url-${seen.size}`, label: labelForImportUrl(url) });
   }
@@ -129,6 +138,14 @@ function buildAnalyzeProgressSteps(text: string, files: File[]): AnalyzeProgress
   steps.push({ id: 'finish', label: 'Almost done — finishing AI review…' });
   return steps;
 }
+
+type WizardUrlStatus = {
+  id: string;
+  label: string;
+  url: string;
+  status: 'ok' | 'failed';
+  note?: string;
+};
 
 const ACCEPTED_TYPES =
   '.txt,.md,.csv,.pdf,image/*,text/plain,application/pdf';
@@ -194,6 +211,7 @@ export default function HouseGuideImportPanel({
   initialFiles = [],
   fromWizard = false,
   autoAnalyze = false,
+  emptySources = false,
   footerActions,
 }: Props) {
   const toast = useToast();
@@ -206,7 +224,7 @@ export default function HouseGuideImportPanel({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [result, setResult] = useState<HouseGuideImportResult | null>(null);
-  const [showWizardBanner, setShowWizardBanner] = useState(fromWizard);
+  const [showWizardBanner, setShowWizardBanner] = useState(fromWizard && !autoAnalyze);
   const [progressSteps, setProgressSteps] = useState<AnalyzeProgressStep[]>([]);
   const [progressIndex, setProgressIndex] = useState(0);
   const [showPlacementReview, setShowPlacementReview] = useState(false);
@@ -214,6 +232,8 @@ export default function HouseGuideImportPanel({
   const [recoveryDrafts, setRecoveryDrafts] = useState<Record<string, string>>({});
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [importFinished, setImportFinished] = useState(false);
+  const [wizardUrlStatuses, setWizardUrlStatuses] = useState<WizardUrlStatus[]>([]);
+  const [wizardFoundNothing, setWizardFoundNothing] = useState(emptySources);
   const [autoImport, setAutoImport] = useState<AutoImportToggles>(DEFAULT_AUTO_IMPORT);
   const [progressMode, setProgressMode] = useState<'analyze' | 'reanalyze'>('analyze');
   const [footerBusy, setFooterBusy] = useState(false);
@@ -261,7 +281,6 @@ export default function HouseGuideImportPanel({
 
   useEffect(() => {
     if (!fromWizard) return;
-    setShowWizardBanner(true);
     window.setTimeout(() => {
       panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 200);
@@ -365,6 +384,37 @@ export default function HouseGuideImportPanel({
         contentLocale,
       });
 
+      if (fromWizard) {
+        const highAssignments = analyzed.assignments.filter((a) => a.confidence === 'high');
+        if (highAssignments.length > 0) {
+          const next = applyHouseGuideImport(
+            formData,
+            highAssignments.map((a) => ({ ...a, enabled: true })),
+            [],
+            contentLocale,
+            primaryLocale
+          );
+          await onApply(next);
+        }
+        const urlStatuses: WizardUrlStatus[] = analyzed.sources
+          .filter((s) => s.kind === 'url' && s.url)
+          .map((s) => ({
+            id: s.id,
+            label: s.label,
+            url: s.url!,
+            status: s.fetchStatus === 'ok' ? 'ok' : 'failed',
+            note: s.fetchNote,
+          }));
+        const anyUrlOk = urlStatuses.some((u) => u.status === 'ok');
+        setWizardUrlStatuses(urlStatuses);
+        setWizardFoundNothing(highAssignments.length === 0 && !anyUrlOk);
+        setResult(null);
+        setShowPlacementReview(false);
+        setRecoveryDrafts({});
+        setImportFinished(true);
+        return true;
+      }
+
       if (analyzed.assignments.length === 0 && analyzed.questions.length === 0) {
         toast.warning(
           'AI could not map any content to house guide fields. Try more detail or pick fields manually.'
@@ -378,6 +428,19 @@ export default function HouseGuideImportPanel({
       return true;
     } catch (err) {
       console.error('house guide import:', err);
+      if (fromWizard) {
+        // Still allow Finish / Add more — Nearby pins were already seeded on create.
+        setResult(null);
+        setWizardUrlStatuses([]);
+        setWizardFoundNothing(true);
+        setImportFinished(true);
+        toast.warning(
+          err instanceof Error
+            ? err.message
+            : 'AI import had an issue. Nearby essentials are saved — you can edit House Guide anytime.'
+        );
+        return false;
+      }
       if (opts?.keepResultOnError && previousResult) {
         setResult(previousResult);
       }
@@ -405,9 +468,20 @@ export default function HouseGuideImportPanel({
   useEffect(() => {
     if (!(autoAnalyze || fromWizard)) return;
     if (autoAnalyzeStarted.current) return;
+    if (emptySources) {
+      autoAnalyzeStarted.current = true;
+      setWizardFoundNothing(true);
+      setImportFinished(true);
+      return;
+    }
     const seed = importText.trim() || initialImportText.trim();
     const files = selectedFiles.length ? selectedFiles : initialFiles;
-    if (!seed && files.length === 0) return;
+    if (!seed && files.length === 0) {
+      autoAnalyzeStarted.current = true;
+      setWizardFoundNothing(true);
+      setImportFinished(true);
+      return;
+    }
     autoAnalyzeStarted.current = true;
     if (!importText.trim() && seed) setImportText(seed);
     if (!selectedFiles.length && files.length) setSelectedFiles(files);
@@ -417,6 +491,7 @@ export default function HouseGuideImportPanel({
   }, [
     autoAnalyze,
     fromWizard,
+    emptySources,
     importText,
     initialImportText,
     selectedFiles,
@@ -665,6 +740,158 @@ export default function HouseGuideImportPanel({
     setShowPlacementReview(true);
   };
 
+  // Wizard post-create: quiet progress → URL ok/fail → Finish → Properties (no review page).
+  if (fromWizard) {
+    return (
+      <div
+        ref={panelRef}
+        id="house-guide-ai-import"
+        className="mt-4 bg-white rounded-3xl border border-vailo-teal/15 shadow-sm overflow-hidden"
+      >
+        {isAnalyzing ? (
+          <div className="p-6 sm:p-8">
+            <div className="flex items-start gap-3">
+              <span className="h-10 w-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+                <Loader2 size={20} className="animate-spin" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-teal-950">Collecting your sources…</p>
+                <p className="text-sm text-teal-900/80 mt-1 leading-relaxed">
+                  Fetching links and sorting notes into House Guide — this can take up to a minute.
+                </p>
+                {progressSteps.length > 0 ? (
+                  <ul className="mt-4 space-y-2.5">
+                    {progressSteps.map((step, index) => {
+                      const done = index < progressIndex;
+                      const active = index === progressIndex;
+                      return (
+                        <li
+                          key={step.id}
+                          className={`flex items-center gap-2.5 text-sm ${
+                            active
+                              ? 'text-teal-900 font-semibold'
+                              : done
+                                ? 'text-teal-700'
+                                : 'text-slate-400'
+                          }`}
+                        >
+                          {done ? (
+                            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                          ) : active ? (
+                            <Loader2 size={16} className="text-teal-600 animate-spin shrink-0" />
+                          ) : (
+                            <Globe size={16} className="text-slate-300 shrink-0" />
+                          )}
+                          <span>{step.label}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {importFinished && !isAnalyzing ? (
+          <div className="p-6 sm:p-8">
+            <div className="max-w-lg mx-auto text-center">
+              {wizardFoundNothing ? (
+                <>
+                  <AlertCircle size={36} className="text-amber-500 mx-auto mb-3" />
+                  <p className="text-lg font-bold text-slate-900">Nothing to train on yet</p>
+                  <p className="text-sm text-slate-600 mt-2">
+                    No links, notes, or files were found for House Guide. Nearby essentials are
+                    already saved. Add more details now, or finish and top up later.
+                  </p>
+                  <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    {footerActions?.onAddMoreSources ? (
+                      <button
+                        type="button"
+                        disabled={disabled || footerBusy}
+                        onClick={() => footerActions.onAddMoreSources?.()}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-teal-700 text-teal-800 hover:bg-teal-50 text-sm font-bold disabled:opacity-50"
+                      >
+                        Add more
+                      </button>
+                    ) : null}
+                    {footerActions ? (
+                      <button
+                        type="button"
+                        disabled={disabled || footerBusy}
+                        onClick={() => footerActions.onFinishProperties()}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-sm font-bold disabled:opacity-50"
+                      >
+                        Finish
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={36} className="text-teal-600 mx-auto mb-3" />
+                  <p className="text-lg font-bold text-slate-900">House Guide is completed</p>
+                  {wizardUrlStatuses.length > 0 ? (
+                    <ul className="mt-5 text-left space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                      {wizardUrlStatuses.map((row) => (
+                        <li key={row.id} className="flex items-start gap-2 text-sm">
+                          {row.status === 'ok' ? (
+                            <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800">{row.label}</p>
+                            <p className="text-xs text-slate-500 truncate">{row.url}</p>
+                            <p
+                              className={`text-xs mt-0.5 ${
+                                row.status === 'ok' ? 'text-emerald-700' : 'text-amber-700'
+                              }`}
+                            >
+                              {row.status === 'ok'
+                                ? 'Succeeded'
+                                : row.note?.trim() || 'Failed to fetch'}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-600 mt-2">
+                      Your notes and files were saved. You can refine House Guide anytime.
+                    </p>
+                  )}
+                  <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    {footerActions?.onAddMoreSources ? (
+                      <button
+                        type="button"
+                        disabled={disabled || footerBusy}
+                        onClick={() => footerActions.onAddMoreSources?.()}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-bold disabled:opacity-50"
+                      >
+                        Add more
+                      </button>
+                    ) : null}
+                    {footerActions ? (
+                      <button
+                        type="button"
+                        disabled={disabled || footerBusy}
+                        onClick={() => footerActions.onFinishProperties()}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-sm font-bold disabled:opacity-50"
+                      >
+                        Finish
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={panelRef}
@@ -698,9 +925,10 @@ export default function HouseGuideImportPanel({
           AI Import Assistant
         </h2>
         <p className="text-sm text-gray-500 mt-1 max-w-3xl">
-          {hideSourceInputs
-            ? `AI is sorting your wizard sources into House Guide categories in ${contentLocale.toUpperCase()}. This often takes 30–90 seconds — please keep this page open.`
-            : `Paste notes or upload files (PDF, text, photos). AI will sort content into house guide categories and write it in the active language tab (${contentLocale.toUpperCase()}) — source text in other languages is translated automatically. You review and confirm before anything is placed.`}
+          Paste notes or upload files (PDF, text, photos). AI will sort content into house guide
+          categories and write it in the active language tab ({contentLocale.toUpperCase()}) — source
+          text in other languages is translated automatically. You review and confirm before anything
+          is placed.
         </p>
       </div>
 
@@ -825,7 +1053,7 @@ export default function HouseGuideImportPanel({
         </div>
       ) : null}
 
-      {!hideSourceInputs || result ? (
+      {!hideSourceInputs || (result && !fromWizard) ? (
         <div className="px-6 pb-6 flex flex-wrap gap-3">
           {!hideSourceInputs ? (
             <button
@@ -842,7 +1070,7 @@ export default function HouseGuideImportPanel({
               {isAnalyzing ? 'Analysing…' : result ? 'Re-analyse with AI' : 'Analyse with AI'}
             </button>
           ) : null}
-          {result ? (
+          {result && !fromWizard ? (
             <button
               type="button"
               onClick={resetReview}
@@ -1446,7 +1674,7 @@ export default function HouseGuideImportPanel({
         </div>
       )}
 
-      {!result && importFinished && footerActions && !confidenceLocked ? (
+      {!fromWizard && !result && importFinished && footerActions && !confidenceLocked ? (
         <div className="px-6 pb-6">
           <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-amber-50/40 p-5">
             <p className="text-sm font-bold text-slate-900">What’s next?</p>

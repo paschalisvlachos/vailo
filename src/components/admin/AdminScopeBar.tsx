@@ -13,11 +13,13 @@ export default function AdminScopeBar() {
   }
 
   if (scopes.length <= 1) {
+    // Agents manage one agency portfolio — don't repeat listing/shell names here.
+    const roleLabel = profile?.role ? formatOwnerRoleLabel(profile.role) : '';
     return (
       <div className="mb-6 flex flex-wrap items-center gap-2 rounded border border-vailo-teal/20 bg-vailo-teal/5 px-4 py-3">
         <p className="text-sm text-vailo-dark">
           <span className="font-semibold">{profile?.fullName}</span>
-          <span className="text-gray-500"> · {activeScope.label}</span>
+          {roleLabel ? <span className="text-gray-500"> · {roleLabel}</span> : null}
         </p>
       </div>
     );

@@ -31,6 +31,10 @@ import {
 import { useToast } from '../../../context/ToastContext';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import {
+  countListingsTowardCapacity,
+  creatorListingQuotaMessage,
+} from '../../../lib/ownerListingQuota';
+import {
   Building2,
   Home,
   Settings2,
@@ -434,8 +438,9 @@ export default function PropertyFormPage() {
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const toast = useToast();
-  const { isPlatformAdmin } = useAdminSession();
+  const { isPlatformAdmin, profile, portfolioProperties, portfolioTypes } = useAdminSession();
   const canEditIdentityCodes = isPlatformAdmin;
+  const isCapacityUser = profile?.role === 'agent' || profile?.role === 'owner';
 
   const [formData, setFormData] = useState<PropertyFormData>(EMPTY_FORM);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
@@ -608,6 +613,15 @@ export default function PropertyFormPage() {
     }
     setListingFieldErrors({});
 
+    if (!isEdit && isCapacityUser && profile) {
+      const used = countListingsTowardCapacity(profile, portfolioProperties, portfolioTypes);
+      const quotaError = creatorListingQuotaMessage(profile, used);
+      if (quotaError) {
+        toast.error(quotaError);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -698,6 +712,8 @@ export default function PropertyFormPage() {
           reservationSplitEnabled: formData.calendarSyncEnabled
             ? formData.reservationSplitEnabled
             : false,
+          // Agents/owners creating from their capacity are assigned as property manager.
+          ...(isCapacityUser && profile?.id ? { ownerId: profile.id } : {}),
           createdAt: new Date().toISOString(),
         });
 
@@ -755,7 +771,8 @@ export default function PropertyFormPage() {
             internalRefCode:
               listingDraft.internalRefCode.trim() ||
               `TYP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-            ownerId: '',
+            // End-owners self-allocate; agents leave listing owner empty for later allocation.
+            ownerId: profile?.role === 'owner' && profile.id ? profile.id : '',
             onboardingNotes: listingDraft.onboardingNotes.trim(),
             createdAt: new Date().toISOString(),
           }

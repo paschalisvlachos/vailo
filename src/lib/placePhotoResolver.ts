@@ -3,8 +3,8 @@ import { cloudFunctions } from './firebase';
 import { normalizePlaceName } from './placeNameUtils';
 import { getCachedMirrorResult, setCachedMirrorResult } from './photoMirrorCache';
 
-/** True when the URL is a metered Google Place Photo endpoint. */
-export function isGooglePlacesPhotoUrl(url: unknown): boolean {
+/** Places API media endpoints that never load in a browser <img> without server mirroring. */
+export function isPlacesApiMediaPhotoUrl(url: unknown): boolean {
   if (typeof url !== 'string' || !url.trim()) return false;
   try {
     const parsed = new URL(url.trim());
@@ -19,10 +19,6 @@ export function isGooglePlacesPhotoUrl(url: unknown): boolean {
       return true;
     }
 
-    if (host.endsWith('.googleusercontent.com') && path.includes('/place-photos/')) {
-      return true;
-    }
-
     if (host === 'maps.googleapis.com' && path.startsWith('/maps/api/place/photo')) {
       return true;
     }
@@ -31,6 +27,34 @@ export function isGooglePlacesPhotoUrl(url: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Google CDN place photos (grass-cs imports, place-photos redirects, etc.).
+ * Often 403 in <img> when the browser sends a Referer — use referrerPolicy=no-referrer
+ * and/or mirror to Firebase Storage.
+ */
+export function isGoogleCdnPlacePhotoUrl(url: unknown): boolean {
+  if (typeof url !== 'string' || !url.trim()) return false;
+  try {
+    const parsed = new URL(url.trim());
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    if (!host.endsWith('.googleusercontent.com')) return false;
+    return (
+      path.includes('/place-photos/') ||
+      path.includes('/grass-cs/') ||
+      path.includes('/a-/') ||
+      path.includes('/places/')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** True when the URL is a metered / fragile Google Place Photo endpoint that should be mirrored. */
+export function isGooglePlacesPhotoUrl(url: unknown): boolean {
+  return isPlacesApiMediaPhotoUrl(url) || isGoogleCdnPlacePhotoUrl(url);
 }
 
 export type MirrorPlacePhotoParams = {

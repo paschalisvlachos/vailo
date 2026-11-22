@@ -1,9 +1,10 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { signOut, type User } from 'firebase/auth';
 import { LogOut } from 'lucide-react';
 import Layout from './Layout';
 import Login from './Login';
 import { auth } from '../../lib/firebase';
+import { adminPath } from '../../lib/adminRoutes';
 import { AdminSessionProvider, useAdminSession } from '../../context/AdminSessionContext';
 import { AdminButton } from './AdminPageHeader';
 
@@ -20,6 +21,7 @@ function AdminSessionGate({ children }: { children: React.ReactNode }) {
 }
 
 function AdminAccountGate({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
   const { authUser, profile, profileError } = useAdminSession();
 
   if (authUser && !profile) {
@@ -44,7 +46,11 @@ function AdminAccountGate({ children }: { children: React.ReactNode }) {
           <AdminButton
             type="button"
             variant="secondary"
-            onClick={() => void signOut(auth)}
+            onClick={() => {
+              void signOut(auth).then(() => {
+                navigate(adminPath('/properties'), { replace: true });
+              });
+            }}
             className="inline-flex items-center gap-2"
           >
             <LogOut size={16} />

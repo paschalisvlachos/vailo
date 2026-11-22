@@ -16,10 +16,10 @@ import { AdminCard } from './AdminPageHeader';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { adminPath } from '../../lib/adminRoutes';
 
-const TEAL = '#84ba3f';
-const GOLD = '#ffc107';
-const TEAL_LIGHT = '#9acc55';
-const PIE_COLORS = [TEAL, GOLD, TEAL_LIGHT, '#323232'];
+const TEAL = '#0b4f5c';
+const GOLD = '#c5a059';
+const TEAL_LIGHT = '#2ec4b6';
+const PIE_COLORS = [TEAL, GOLD, TEAL_LIGHT, '#17293c'];
 
 function formatUsd(amount: number) {
   return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
@@ -39,10 +39,10 @@ function KpiCard({
   to?: string;
 }) {
   const inner = (
-    <AdminCard className={`p-4 sm:p-5 h-full ${to ? 'hover:shadow-[0_8px_24px_-8px_rgba(40,42,57,0.22)] transition-all group' : ''}`}>
+    <AdminCard className={`p-4 sm:p-5 h-full ${to ? 'hover:border-[#17293c]/20 transition-all group' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{label}</p>
+          <p className="text-[11px] font-bold text-gray-500 tracking-wide">{label}</p>
           <p className="text-2xl sm:text-3xl font-bold text-vailo-dark mt-1 tabular-nums">{value}</p>
           {sub && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{sub}</p>}
         </div>

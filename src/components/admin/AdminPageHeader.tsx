@@ -12,14 +12,14 @@ type AdminPageHeaderProps = {
 
 export default function AdminPageHeader({ title, description, icon, action }: AdminPageHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8">
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-7">
       <div className="min-w-0">
-        <h2 className="text-xl sm:text-2xl lg:text-[1.65rem] font-semibold text-vailo-dark flex items-center gap-2.5 capitalize">
-          {icon && <span className="text-vailo-teal shrink-0">{icon}</span>}
+        <h2 className="text-xl sm:text-[1.25rem] font-bold text-vailo-dark leading-6 flex items-center gap-2.5">
+          {icon && <span className="text-[#2ec4b6] shrink-0">{icon}</span>}
           <span className="truncate">{title}</span>
         </h2>
         {description && (
-          <p className="text-gray-500 mt-1.5 text-sm sm:text-base max-w-3xl leading-relaxed">{description}</p>
+          <p className="text-gray-500 mt-1.5 text-sm max-w-3xl leading-relaxed">{description}</p>
         )}
       </div>
       {action && <div className="shrink-0 w-full sm:w-auto">{action}</div>}
@@ -52,15 +52,15 @@ export function AdminBackHeader({
   };
 
   return (
-    <div className="mb-6 sm:mb-8">
+    <div className="mb-6 sm:mb-7">
       <a href={backTo} onClick={handleBack} className="admin-back-link">
         <ArrowLeft size={16} />
         {backLabel}
       </a>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-xl sm:text-2xl font-semibold text-vailo-dark capitalize">{title}</h2>
-          {description && <p className="text-gray-500 mt-1 text-sm sm:text-base">{description}</p>}
+          <h2 className="text-xl sm:text-[1.25rem] font-bold text-vailo-dark leading-6">{title}</h2>
+          {description && <p className="text-gray-500 mt-1 text-sm">{description}</p>}
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {badge}
@@ -77,21 +77,24 @@ export function AdminButton({
   variant = 'primary',
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'gold' | 'danger' | 'ghost';
+  variant?: 'primary' | 'accent' | 'secondary' | 'gold' | 'danger' | 'ghost';
 }) {
   const variants = {
     primary:
-      'bg-vailo-teal hover:bg-vailo-dark text-white border-2 border-vailo-teal hover:border-vailo-dark uppercase tracking-wide',
+      'bg-[#08141e] hover:bg-vailo-dark text-slate-50 border border-[#08141e]',
+    /** Pale blue — page header CTAs (Add, Run Setup Wizard, etc.). */
+    accent:
+      'bg-[#2ec4b6] hover:bg-[#26a99d] text-white border border-[#2ec4b6]',
     secondary:
-      'bg-white hover:bg-vailo-surface-elevated text-vailo-teal border-2 border-[#eeeeee] hover:border-vailo-teal',
-    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark border-2 border-vailo-gold uppercase tracking-wide',
-    danger: 'bg-red-50 hover:bg-red-100 text-red-700 border-2 border-red-200',
-    ghost: 'bg-transparent hover:bg-vailo-teal/10 text-vailo-teal border-2 border-transparent',
+      'bg-[#e8e8e9] hover:bg-[#dedee0] text-vailo-dark border border-transparent',
+    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark border border-vailo-gold',
+    danger: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200',
+    ghost: 'bg-transparent hover:bg-black/[0.03] text-vailo-dark border border-transparent',
   };
 
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded text-sm font-medium transition-colors disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-colors disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
@@ -108,20 +111,22 @@ export function AdminButtonLink({
   to: string;
   children: ReactNode;
   className?: string;
-  variant?: 'primary' | 'gold' | 'secondary';
+  variant?: 'primary' | 'accent' | 'gold' | 'secondary';
 }) {
   const variants = {
     primary:
-      'bg-vailo-teal hover:bg-vailo-dark text-white border-2 border-vailo-teal hover:border-vailo-dark uppercase tracking-wide',
-    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark border-2 border-vailo-gold uppercase tracking-wide',
+      'bg-[#08141e] hover:bg-vailo-dark text-slate-50 border border-[#08141e]',
+    accent:
+      'bg-[#2ec4b6] hover:bg-[#26a99d] text-white border border-[#2ec4b6]',
+    gold: 'bg-vailo-gold hover:bg-vailo-gold-hover text-vailo-dark border border-vailo-gold',
     secondary:
-      'bg-white hover:bg-vailo-surface-elevated text-vailo-teal border-2 border-[#eeeeee] hover:border-vailo-teal',
+      'bg-[#e8e8e9] hover:bg-[#dedee0] text-vailo-dark border border-transparent',
   };
 
   return (
     <Link
       to={to}
-      className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded text-sm font-medium transition-colors ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-bold transition-colors ${variants[variant]} ${className}`}
     >
       {children}
     </Link>
@@ -139,7 +144,7 @@ export function AdminCard({
 }) {
   return (
     <div
-      className={`bg-white rounded border-0 shadow-[1px_1px_15px_rgba(0,0,0,0.1)] ${padding ? 'p-4 sm:p-6' : ''} ${className}`}
+      className={`bg-white rounded-lg border border-[#e1e1e1] shadow-[0_10px_10px_0_rgba(0,0,0,0.08)] ${padding ? 'p-4 sm:p-6' : ''} ${className}`}
     >
       {children}
     </div>
@@ -159,10 +164,10 @@ export function AdminEmptyState({
 }) {
   return (
     <AdminCard className="p-8 sm:p-12 text-center flex flex-col items-center justify-center min-h-[320px]">
-      <div className="h-14 w-14 sm:h-16 sm:w-16 bg-vailo-teal/10 rounded flex items-center justify-center text-vailo-teal mb-4">
+      <div className="h-14 w-14 sm:h-16 sm:w-16 bg-[#2ec4b6]/20 rounded-lg flex items-center justify-center text-vailo-teal mb-4">
         {icon}
       </div>
-      <h3 className="text-lg sm:text-xl font-semibold text-vailo-dark mb-2">{title}</h3>
+      <h3 className="text-lg sm:text-xl font-bold text-vailo-dark mb-2">{title}</h3>
       <p className="text-gray-500 max-w-md mb-6 text-sm sm:text-base leading-relaxed">{description}</p>
       {action}
     </AdminCard>
@@ -196,10 +201,10 @@ export function AdminAlert({
   };
 
   return (
-    <div className={`rounded border p-4 sm:p-5 flex items-start gap-3 ${styles[variant]} ${className}`}>
+    <div className={`rounded-lg border p-4 sm:p-5 flex items-start gap-3 ${styles[variant]} ${className}`}>
       {icon && <span className={`shrink-0 mt-0.5 ${iconColors[variant]}`}>{icon}</span>}
       <div className="min-w-0 text-sm leading-relaxed">
-        {title && <p className="font-semibold mb-1">{title}</p>}
+        {title && <p className="font-bold mb-1">{title}</p>}
         {children}
       </div>
     </div>
@@ -219,7 +224,7 @@ export function AdminBadge({
     neutral: 'bg-gray-100 text-gray-600 border-gray-200',
   };
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold border tracking-wide ${styles[variant]}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold border ${styles[variant]}`}>
       {children}
     </span>
   );

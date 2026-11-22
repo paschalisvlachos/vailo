@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useOutletContext } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { ClipboardCheck, Eye, Filter, Loader2, Trash2 } from 'lucide-react';
+import { ClipboardCheck, Eye, Loader2, Trash2, Users } from 'lucide-react';
 import PreArrivalSubmissionModal from '../../../components/admin/PreArrivalSubmissionModal';
+import AdminPageHeader, {
+  AdminAlert,
+  AdminBadge,
+  AdminButton,
+  AdminCard,
+  AdminEmptyState,
+  AdminLabel,
+  AdminSelect,
+} from '../../../components/admin/AdminPageHeader';
 import { useToast } from '../../../context/ToastContext';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { db } from '../../../lib/firebase';
@@ -98,6 +107,8 @@ export default function CheckIns() {
     return { complete, pending: rows.length - complete, total: rows.length };
   }, [rows]);
 
+  const filtersActive = filterTypeId !== 'all' || statusFilter !== 'all';
+
   if (!isPreArrivalCheckInEnabled(property)) {
     return <Navigate to={calendarSyncEnabled ? '../reservations' : '..'} replace />;
   }
@@ -140,189 +151,299 @@ export default function CheckIns() {
     }
   };
 
+  const resetFilters = () => {
+    setFilterTypeId('all');
+    setStatusFilter('all');
+  };
+
   return (
     <div>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <ClipboardCheck size={22} className="text-vailo-teal" />
-            Check-ins
-          </h2>
-          <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-            {calendarSyncEnabled
-              ? 'Online check-ins for all reservations on this property. Guests tap Check in in the guest portal, enter their stay dates, then complete check-in details here.'
-              : 'Online check-ins for this property. Guests tap Check in in the guest portal, enter their stay dates, then complete check-in details here.'}
-          </p>
-          <p className="text-xs text-gray-400 mt-2">
-            {stats.complete} checked in · {stats.pending} pending · {stats.total} total bookings
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase text-gray-500">
-            <Filter size={14} />
-            Filter
-          </div>
-          <select
-            value={filterTypeId}
-            onChange={(e) => setFilterTypeId(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
-          >
-            <option value="all">All listings</option>
-            {propertyTypes.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.propertyTypeName || t.id}
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
-          >
-            <option value="all">All statuses</option>
-            <option value="complete">Checked in</option>
-            <option value="pending">Not checked in</option>
-          </select>
-        </div>
+      <AdminPageHeader
+        title="Check-ins"
+        description={
+          calendarSyncEnabled
+            ? 'Online check-ins for reservations on this property. Guests tap Check in in the portal, enter stay dates, then complete their details.'
+            : 'Online check-ins for this property. Guests tap Check in in the portal, enter stay dates, then complete their details.'
+        }
+        icon={<ClipboardCheck size={24} />}
+      />
+
+      {stats.pending > 0 ? (
+        <AdminAlert
+          variant="gold"
+          icon={<Users size={18} />}
+          title={`${stats.pending} pending check-in${stats.pending === 1 ? '' : 's'}`}
+        >
+          Guests still need to complete check-in before arrival.
+        </AdminAlert>
+      ) : null}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-5">
+        {[
+          { label: 'Checked in', value: stats.complete },
+          { label: 'Pending', value: stats.pending },
+          { label: 'Total', value: stats.total },
+        ].map((item) => (
+          <AdminCard key={item.label} className="p-4 sm:p-5">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">
+              {item.label}
+            </p>
+            <p className="text-2xl font-bold text-vailo-dark tabular-nums">{item.value}</p>
+          </AdminCard>
+        ))}
       </div>
 
-      {filteredRows.length === 0 ? (
-        <div className="text-center py-16 rounded-xl border border-dashed border-gray-200 bg-gray-50">
-          <ClipboardCheck size={36} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-900 font-medium">No check-ins to show</p>
-          <p className="text-sm text-gray-500 mt-1">
-            {calendarSyncEnabled
-              ? 'Reservations from iCal or manual entry will appear here once synced.'
-              : 'Guests complete online check-in from the Check in button in the guest portal. Stays they enter will appear here.'}
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Stay dates
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Listing
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Guest
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Check-in status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Arrival / guests
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Contact
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredRows.map((row) => {
-                  const submission = row.preArrivalSubmission;
-                  const contactPhone =
-                    submission?.contactPhone?.trim() ||
-                    row.guestPhone?.trim() ||
-                    row.guestWhatsapp?.trim() ||
-                    '—';
-                  const contactEmail =
-                    submission?.contactEmail?.trim() || row.guestEmail?.trim() || '—';
-
-                  return (
-                    <tr key={`${row.typeId}-${row.id}`} className="hover:bg-gray-50/80">
-                      <td className="px-4 py-3.5 text-sm font-medium text-gray-900 whitespace-nowrap tabular-nums">
-                        {formatBookingDateRange(row.start, row.end) || '—'}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">
-                        {row.typeName}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-900 whitespace-nowrap">
-                        {guestDisplayName(row)}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm whitespace-nowrap">
-                        {row.preArrivalComplete ? (
-                          <span className="inline-flex flex-col">
-                            <span className="inline-flex items-center gap-1.5 font-semibold text-[#0B4F5C]">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                              Checked in
-                            </span>
-                            {row.preArrivalSubmittedAt && (
-                              <span className="text-xs text-gray-500 mt-0.5">
-                                {new Date(row.preArrivalSubmittedAt).toLocaleString()}
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-amber-700 font-medium">
-                            <span className="w-2 h-2 rounded-full bg-amber-400" />
-                            Pending
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">
-                        {submission ? (
-                          <span>
-                            {formatPreArrivalTimeDisplay(submission.expectedArrivalTime)}
-                            {submission.guestCount != null
-                              ? ` · ${submission.guestCount} guest${submission.guestCount === 1 ? '' : 's'}`
-                              : ''}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-sm text-gray-600">
-                        <div>{contactPhone}</div>
-                        {contactEmail !== '—' && (
-                          <div className="text-xs text-gray-500 truncate max-w-[180px]">
-                            {contactEmail}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                        {row.preArrivalComplete && submission ? (
-                          <div className="inline-flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setViewBooking(row)}
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-vailo-teal hover:text-vailo-teal-hover"
-                            >
-                              <Eye size={15} />
-                              View
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleRemoveCheckIn(row)}
-                              disabled={removingKey === `${row.typeId}-${row.id}`}
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {removingKey === `${row.typeId}-${row.id}` ? (
-                                <Loader2 size={15} className="animate-spin" />
-                              ) : (
-                                <Trash2 size={15} />
-                              )}
-                              Remove
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <AdminCard className="p-4 mb-5">
+        <div className="flex flex-col lg:flex-row lg:items-end gap-3 lg:gap-4">
+          <div className="flex-1 min-w-0">
+            <AdminLabel htmlFor="checkins-listing">Listing</AdminLabel>
+            <AdminSelect
+              id="checkins-listing"
+              value={filterTypeId}
+              onChange={(e) => setFilterTypeId(e.target.value)}
+            >
+              <option value="all">All listings</option>
+              {propertyTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.propertyTypeName || t.id}
+                </option>
+              ))}
+            </AdminSelect>
           </div>
+          <div className="flex-1 min-w-0">
+            <AdminLabel htmlFor="checkins-status">Status</AdminLabel>
+            <AdminSelect
+              id="checkins-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            >
+              <option value="all">All statuses</option>
+              <option value="complete">Checked in</option>
+              <option value="pending">Not checked in</option>
+            </AdminSelect>
+          </div>
+          {filtersActive ? (
+            <AdminButton type="button" variant="secondary" onClick={resetFilters} className="shrink-0">
+              Reset filters
+            </AdminButton>
+          ) : null}
         </div>
+      </AdminCard>
+
+      {rows.length === 0 ? (
+        <AdminEmptyState
+          icon={<ClipboardCheck size={28} />}
+          title="No check-ins yet"
+          description={
+            calendarSyncEnabled
+              ? 'Reservations from iCal or manual entry appear here once synced. Guests complete check-in from the guest portal.'
+              : 'Guests complete online check-in from the Check in button in the guest portal. Stays they enter will appear here.'
+          }
+        />
+      ) : filteredRows.length === 0 ? (
+        <AdminEmptyState
+          icon={<ClipboardCheck size={28} />}
+          title="No matches"
+          description="Try a different listing or status filter."
+          action={
+            <AdminButton type="button" variant="secondary" onClick={resetFilters}>
+              Reset filters
+            </AdminButton>
+          }
+        />
+      ) : (
+        <>
+          <div className="lg:hidden space-y-3">
+            {filteredRows.map((row) => {
+              const submission = row.preArrivalSubmission;
+              const contactPhone =
+                submission?.contactPhone?.trim() ||
+                row.guestPhone?.trim() ||
+                row.guestWhatsapp?.trim() ||
+                '';
+              const contactEmail =
+                submission?.contactEmail?.trim() || row.guestEmail?.trim() || '';
+              const rowKey = `${row.typeId}-${row.id}`;
+
+              return (
+                <AdminCard key={rowKey} className="p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-vailo-dark truncate">
+                        {guestDisplayName(row)}
+                      </p>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        {formatBookingDateRange(row.start, row.end) || '—'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">{row.typeName}</p>
+                    </div>
+                    {row.preArrivalComplete ? (
+                      <AdminBadge variant="teal">Checked in</AdminBadge>
+                    ) : (
+                      <AdminBadge variant="gold">Pending</AdminBadge>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600 space-y-1 mb-4">
+                    <p>
+                      {submission
+                        ? `${formatPreArrivalTimeDisplay(submission.expectedArrivalTime)}${
+                            submission.guestCount != null
+                              ? ` · ${submission.guestCount} guest${
+                                  submission.guestCount === 1 ? '' : 's'
+                                }`
+                              : ''
+                          }`
+                        : 'Arrival details not submitted'}
+                    </p>
+                    {(contactPhone || contactEmail) && (
+                      <p className="text-xs text-gray-500 truncate">
+                        {[contactPhone, contactEmail].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    {row.preArrivalComplete && row.preArrivalSubmittedAt ? (
+                      <p className="text-xs text-gray-400">
+                        Submitted {new Date(row.preArrivalSubmittedAt).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </div>
+                  {row.preArrivalComplete && submission ? (
+                    <div className="flex flex-wrap gap-2">
+                      <AdminButton
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setViewBooking(row)}
+                      >
+                        <Eye size={15} />
+                        View
+                      </AdminButton>
+                      <AdminButton
+                        type="button"
+                        variant="danger"
+                        onClick={() => void handleRemoveCheckIn(row)}
+                        disabled={removingKey === rowKey}
+                      >
+                        {removingKey === rowKey ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={15} />
+                        )}
+                        Remove
+                      </AdminButton>
+                    </div>
+                  ) : null}
+                </AdminCard>
+              );
+            })}
+          </div>
+
+          <AdminCard className="hidden lg:block overflow-hidden">
+            <div className="admin-table-wrap border-0">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Stay dates</th>
+                    <th>Listing</th>
+                    <th>Guest</th>
+                    <th>Status</th>
+                    <th>Arrival / guests</th>
+                    <th>Contact</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row) => {
+                    const submission = row.preArrivalSubmission;
+                    const contactPhone =
+                      submission?.contactPhone?.trim() ||
+                      row.guestPhone?.trim() ||
+                      row.guestWhatsapp?.trim() ||
+                      '—';
+                    const contactEmail =
+                      submission?.contactEmail?.trim() || row.guestEmail?.trim() || '—';
+                    const rowKey = `${row.typeId}-${row.id}`;
+
+                    return (
+                      <tr key={rowKey}>
+                        <td className="whitespace-nowrap font-medium text-vailo-dark tabular-nums">
+                          {formatBookingDateRange(row.start, row.end) || '—'}
+                        </td>
+                        <td className="whitespace-nowrap text-gray-700">{row.typeName}</td>
+                        <td className="whitespace-nowrap text-vailo-dark">
+                          {guestDisplayName(row)}
+                        </td>
+                        <td className="whitespace-nowrap">
+                          {row.preArrivalComplete ? (
+                            <div className="inline-flex flex-col gap-1">
+                              <AdminBadge variant="teal">Checked in</AdminBadge>
+                              {row.preArrivalSubmittedAt ? (
+                                <span className="text-xs text-gray-400">
+                                  {new Date(row.preArrivalSubmittedAt).toLocaleString()}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <AdminBadge variant="gold">Pending</AdminBadge>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap text-gray-700">
+                          {submission ? (
+                            <span>
+                              {formatPreArrivalTimeDisplay(submission.expectedArrivalTime)}
+                              {submission.guestCount != null
+                                ? ` · ${submission.guestCount} guest${
+                                    submission.guestCount === 1 ? '' : 's'
+                                  }`
+                                : ''}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="text-gray-600">
+                          <div>{contactPhone}</div>
+                          {contactEmail !== '—' ? (
+                            <div className="text-xs text-gray-400 truncate max-w-[180px]">
+                              {contactEmail}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="text-right whitespace-nowrap">
+                          {row.preArrivalComplete && submission ? (
+                            <div className="inline-flex items-center justify-end gap-2">
+                              <AdminButton
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setViewBooking(row)}
+                              >
+                                <Eye size={15} />
+                                View
+                              </AdminButton>
+                              <AdminButton
+                                type="button"
+                                variant="danger"
+                                onClick={() => void handleRemoveCheckIn(row)}
+                                disabled={removingKey === rowKey}
+                              >
+                                {removingKey === rowKey ? (
+                                  <Loader2 size={15} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={15} />
+                                )}
+                                Remove
+                              </AdminButton>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </AdminCard>
+        </>
       )}
 
       {viewBooking && viewBooking.preArrivalSubmission && (

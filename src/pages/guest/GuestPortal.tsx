@@ -351,6 +351,10 @@ function GuestPortalPage({
   const adminPreviewFromQuery = searchParams.get('adminPreview') === '1';
   const isMobileFramePreview =
     adminPreviewFromQuery && searchParams.get('previewFrame') === 'mobile';
+  // Admin phone popup embeds the portal in a narrow iframe — never apply the
+  // decorative desktop phone shell there (real guest phones are unaffected).
+  const isEmbeddedAdminPreview =
+    adminPreviewFromQuery && typeof window !== 'undefined' && window.self !== window.top;
 
   const [property, setProperty] = useState<any>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
@@ -959,15 +963,8 @@ function GuestPortalPage({
 
   const gemFilterKey = gemFilters.join('\u0001');
 
-  /** Property features flagged for the guest portal (admin: "Show on Main Page"). */
-  const portalFeatures = useMemo(
-    () =>
-      features.filter(
-        (f: { isMainPage?: boolean; showOnMain?: boolean }) =>
-          f.isMainPage === true || f.showOnMain === true
-      ),
-    [features]
-  );
+  /** Partner offers always appear on the guest portal home (Local Services). */
+  const portalFeatures = useMemo(() => features, [features]);
 
   const checkoutDateLabel = useMemo(() => {
     const end = preArrivalBooking?.end;
@@ -1033,7 +1030,9 @@ function GuestPortalPage({
       </style>
 
       <div className={`guest-mobile w-full transition-all duration-700 ease-in-out bg-[#F7F7F5] overflow-x-clip flex flex-col relative ${
-        isMobileFramePreview
+        isEmbeddedAdminPreview
+          ? 'max-w-none min-h-screen'
+          : isMobileFramePreview
           ? // min-h-screen kept at all breakpoints so absolute tabs + bottom nav stay in-frame
             // when Book/Stay/Explore are shown (those shells are out-of-flow).
             'min-h-screen md:max-w-[400px] md:mt-10 md:mb-10 md:rounded-[40px] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)] md:border-[8px] md:border-gray-900 md:min-h-[800px] md:overflow-hidden'
@@ -1138,7 +1137,9 @@ function GuestPortalPage({
             )}
 
             {showHomeLocalGems && gems.length > 0 && (
-              <div className={`mx-auto px-5 mt-6 space-y-6 pb-28 relative z-10 ${!isMobileFramePreview ? 'max-w-4xl' : 'max-w-md'}`}>
+              <div className={`mx-auto px-5 mt-6 space-y-6 pb-28 relative z-10 ${
+                isEmbeddedAdminPreview || isMobileFramePreview ? 'max-w-md' : 'max-w-4xl'
+              }`}>
                 <div className="flex flex-wrap gap-1.5 pb-4">
                   {allGemFilterOptions.map((filter) => {
                     const isActive =

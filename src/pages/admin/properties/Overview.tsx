@@ -131,19 +131,38 @@ function OverviewCategory({
   );
 }
 
-export default function Overview() {
-  const { property, propertyId } = useOutletContext<{
-    property: PropertyRecord;
-    propertyId: string;
-  }>();
+type OverviewProps = {
+  /** When set (e.g. Settings), skip outlet context. */
+  property?: PropertyRecord;
+  propertyId?: string;
+  /** Full agency settings page — owners can edit their portfolio overview. */
+  settingsMode?: boolean;
+};
+
+export default function Overview({
+  property: propertyProp,
+  propertyId: propertyIdProp,
+  settingsMode = false,
+}: OverviewProps = {}) {
+  const outlet = useOutletContext<
+    { property: PropertyRecord; propertyId: string } | undefined
+  >();
+  const property = propertyProp ?? outlet?.property;
+  const propertyId = propertyIdProp ?? outlet?.propertyId ?? '';
   const toast = useToast();
-  const { isPlatformAdmin } = useAdminSession();
+  const { isPlatformAdmin, profile } = useAdminSession();
   const { languages: platformLanguages, loading: platformLangsLoading } = usePlatformLanguages();
   const showLanguagesCategory = !platformLangsLoading && platformLanguages.length > 1;
+  const canEdit =
+    isPlatformAdmin ||
+    (settingsMode && Boolean(profile?.id && property?.ownerId === profile.id));
+  const canEditGuestExperience = isPlatformAdmin || canEdit;
 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [formData, setFormData] = useState<FormData>(() => buildFormFromProperty(property));
+  const [formData, setFormData] = useState<FormData>(() =>
+    buildFormFromProperty(property || { id: '' })
+  );
   const [ownersList, setOwnersList] = useState<OwnerOption[]>([]);
   const [assignedOwner, setAssignedOwner] = useState<OwnerOption | null>(null);
   const [loadingOwner, setLoadingOwner] = useState(true);
@@ -155,6 +174,7 @@ export default function Overview() {
   const prevOwnerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!property) return;
     if (!isEditing) setFormData(buildFormFromProperty(property));
   }, [property, isEditing]);
 
@@ -192,7 +212,7 @@ export default function Overview() {
   }, [propertyTypes]);
 
   useEffect(() => {
-    const ownerId = isEditing ? formData.ownerId : property.ownerId;
+    const ownerId = isEditing ? formData.ownerId : property?.ownerId;
     if (!ownerId) {
       setAssignedOwner(null);
       setLoadingOwner(false);
@@ -206,7 +226,7 @@ export default function Overview() {
       })
       .catch(console.error)
       .finally(() => setLoadingOwner(false));
-  }, [property.ownerId, formData.ownerId, isEditing]);
+  }, [property?.ownerId, formData.ownerId, isEditing]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -226,6 +246,12 @@ export default function Overview() {
       setFormData((prev) => ({ ...prev, email: '', phone: '' }));
     }
   }, [formData.ownerId, isEditing, ownersList]);
+
+  if (!property || !propertyId) {
+    return (
+      <div className="py-16 text-center text-gray-500 text-sm">Loading overview…</div>
+    );
+  }
 
   const handleCopyOpenPortalInvitation = async () => {
     if (propertyTypes.length === 0) {
@@ -307,7 +333,7 @@ export default function Overview() {
       const propertyPatch: Record<string, unknown> = {
         propertyName: formData.propertyName.trim(),
         listingKind: 'property',
-        ownerId: formData.ownerId,
+        ownerId: isPlatformAdmin ? formData.ownerId : property.ownerId || formData.ownerId,
         updatedAt: new Date().toISOString(),
       };
       if (isPlatformAdmin) {
@@ -344,6 +370,8 @@ export default function Overview() {
         );
         propertyPatch.internalRefCode = uniqueRef.value;
         propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
+      }
+      if (canEditGuestExperience) {
         propertyPatch.calendarSyncEnabled = formData.calendarSyncEnabled;
         propertyPatch.reservationSplitEnabled = formData.calendarSyncEnabled
           ? formData.reservationSplitEnabled
@@ -351,14 +379,17 @@ export default function Overview() {
         propertyPatch.preArrivalCheckInEnabled = formData.preArrivalCheckInEnabled;
       }
       await updateDoc(doc(db, 'properties', propertyId), propertyPatch);
-      if (formData.ownerId) {
-        await updateDoc(doc(db, 'owners', formData.ownerId), {
+      const contactOwnerId = isPlatformAdmin
+        ? formData.ownerId
+        : property.ownerId || formData.ownerId;
+      if (contactOwnerId) {
+        await updateDoc(doc(db, 'owners', contactOwnerId), {
           email: formData.email.trim(),
           phone: formData.phone.trim(),
           updatedAt: new Date().toISOString(),
         });
         setAssignedOwner((prev) =>
-          prev && prev.id === formData.ownerId
+          prev && prev.id === contactOwnerId
             ? { ...prev, email: formData.email.trim(), phone: formData.phone.trim() }
             : prev
         );
@@ -374,19 +405,19 @@ export default function Overview() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded bg-white p-4 sm:p-5 shadow-[1px_1px_15px_rgba(0,0,0,0.1)]">
+      <div className="rounded-lg border border-[#e1e1e1] bg-white p-4 sm:p-5 shadow-[0_10px_10px_0_rgba(0,0,0,0.08)]">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-vailo-teal mb-1">
-              Overview
+              {settingsMode ? 'Settings' : 'Overview'}
             </p>
             <h2 className="text-lg sm:text-xl font-semibold text-vailo-dark">
-              {property.propertyName || 'Property'}
+              {property.propertyName || 'Agency portfolio'}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
               {isEditing
                 ? 'Edit the categories below, then save.'
-                : 'Identity, people, languages, and guest experience settings.'}
+                : 'Agency identity, people, languages, and guest experience settings. Listings are managed under Property Listings.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -424,9 +455,9 @@ export default function Overview() {
               </AdminButton>
             </div>
             {!isEditing ? (
-              isPlatformAdmin ? (
+              canEdit ? (
                 <AdminButton type="button" variant="secondary" onClick={handleStartEdit}>
-                  <Pencil size={16} /> Edit overview
+                  <Pencil size={16} /> {settingsMode ? 'Edit settings' : 'Edit overview'}
                 </AdminButton>
               ) : (
                 <p className="text-sm text-gray-500">
@@ -472,24 +503,24 @@ export default function Overview() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <OverviewCategory
           category="Category · Identity"
-          title="General details"
-          description="Name, type, reference code, and URL slug. Location is set on each property listing."
+          title="Agency details"
+          description="Agency / portfolio name, reference code, and URL slug. Each rentable home is a property listing."
           icon={<Building2 size={18} />}
         >
           {isEditing ? (
             <div className="space-y-4">
               <div>
-                <AdminLabel htmlFor="propertyName">Property name *</AdminLabel>
+                <AdminLabel htmlFor="propertyName">Agency / portfolio name *</AdminLabel>
                 <AdminInput
                   id="propertyName"
                   name="propertyName"
                   required
                   value={formData.propertyName}
                   onChange={handleChange}
-                  placeholder="e.g. Villa Paschalis"
+                  placeholder="e.g. Pas Vla Stays"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  The name guests and your team will see in the portal and admin.
+                  Umbrella name for this agency across all listings — not a single rental’s title.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -498,13 +529,13 @@ export default function Overview() {
                   <AdminInput
                     id="listingKind"
                     name="listingKind"
-                    value="Property"
+                    value="Agency"
                     readOnly
                     disabled
                     className="bg-gray-50 text-gray-700"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    This is a standard rental property in your portfolio.
+                    Portfolio shell for your agency. Add homes under Property Listings.
                   </p>
                 </div>
                 <div>
@@ -599,7 +630,7 @@ export default function Overview() {
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Type</p>
-                <AdminBadge variant="teal">Property</AdminBadge>
+                <AdminBadge variant="teal">Agency</AdminBadge>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Reference code</p>
@@ -628,29 +659,43 @@ export default function Overview() {
 
         <OverviewCategory
           category="Category · People"
-          title="Property allocation"
-          description="Admin-only: assign this property to an agent or owner. Users already see their allocated properties after login."
+          title="Agency allocation"
+          description="Admin-only: assign this agency portfolio to an agent or owner. Listing details and end-owners are managed under Property Listings."
           icon={<User size={18} />}
         >
           {isEditing ? (
             <div className="space-y-4">
-              <div>
-                <AdminLabel htmlFor="ownerId">Assigned agent / owner</AdminLabel>
-                <AdminSelect id="ownerId" name="ownerId" value={formData.ownerId} onChange={handleChange}>
-                  <option value="">Unassigned</option>
-                  {ownersList.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      [{user.role === 'agent' ? 'Agent' : 'Owner'}] {user.fullName}
-                      {user.company ? ` (${user.company})` : ''}
-                    </option>
-                  ))}
-                </AdminSelect>
-                <p className="text-xs text-gray-500 mt-1">
-                  Manually link this property to a user. Agencies with several properties are
-                  allocated after login — they do not set this themselves.
-                </p>
-              </div>
-              {formData.ownerId && (
+              {isPlatformAdmin ? (
+                <div>
+                  <AdminLabel htmlFor="ownerId">Assigned agent / owner</AdminLabel>
+                  <AdminSelect
+                    id="ownerId"
+                    name="ownerId"
+                    value={formData.ownerId}
+                    onChange={handleChange}
+                  >
+                    <option value="">Unassigned</option>
+                    {ownersList.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        [{user.role === 'agent' ? 'Agent' : 'Owner'}] {user.fullName}
+                        {user.company ? ` (${user.company})` : ''}
+                      </option>
+                    ))}
+                  </AdminSelect>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Manually link this property to a user. Agencies with several properties are
+                    allocated after login — they do not set this themselves.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Assigned agent / owner</p>
+                  <p className="font-medium text-vailo-dark">
+                    {assignedOwner?.fullName || profile?.fullName || 'You'}
+                  </p>
+                </div>
+              )}
+              {(isPlatformAdmin ? formData.ownerId : true) && (
                 <>
                   <div>
                     <AdminLabel htmlFor="email">Email</AdminLabel>
@@ -693,7 +738,14 @@ export default function Overview() {
                 </div>
                 <div>
                   <p className="font-bold text-vailo-dark">{assignedOwner.fullName}</p>
-                  {assignedOwner.role && <AdminBadge variant="gold">{assignedOwner.role}</AdminBadge>}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    {assignedOwner.role ? (
+                      <AdminBadge variant="gold">{assignedOwner.role}</AdminBadge>
+                    ) : null}
+                    {assignedOwner.company ? (
+                      <AdminBadge variant="teal">{assignedOwner.company}</AdminBadge>
+                    ) : null}
+                  </div>
                 </div>
               </div>
               <p className="flex items-center gap-2 text-sm text-gray-600">
@@ -706,7 +758,7 @@ export default function Overview() {
               </p>
             </div>
           ) : (
-            <p className="text-sm text-gray-400 italic">No owner assigned to this property.</p>
+            <p className="text-sm text-gray-400 italic">No agent assigned to this agency portfolio.</p>
           )}
         </OverviewCategory>
       </div>
@@ -777,7 +829,7 @@ export default function Overview() {
               to tap Check in after opening the portal. Check-ins appear on the Check-ins tab. When
               disabled, guests only receive the standard guest portal link.
             </p>
-            {isEditing && isPlatformAdmin ? (
+            {isEditing && canEditGuestExperience ? (
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -815,7 +867,7 @@ export default function Overview() {
               When calendar sync is on, admins can import iCal bookings and use the Reservations and
               Calendar sections. Split is only available after sync is enabled.
             </p>
-            {isEditing && isPlatformAdmin ? (
+            {isEditing && canEditGuestExperience ? (
               <div className="space-y-4">
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
@@ -868,7 +920,7 @@ export default function Overview() {
                     <AdminBadge variant="neutral">Splitting disabled</AdminBadge>
                   )}
                 </div>
-                {isEditing && !isPlatformAdmin ? (
+                {isEditing && !canEditGuestExperience ? (
                   <p className="text-xs text-gray-500">
                     This setting is managed by your Vailo administrator.
                   </p>

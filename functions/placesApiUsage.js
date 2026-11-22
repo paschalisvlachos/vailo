@@ -26,6 +26,7 @@ const SOURCE_LABELS = {
   property_local_gems: "Property — Local Gems",
   property_features: "Property — Features",
   property_types: "Property — Listing types",
+  property_setup_essentials: "Property — Setup essentials nearby",
   admin_magic_fill: "Admin — Magic Fill (unspecified)",
   photo_mirror: "Photo mirror (Storage cache miss)",
 };

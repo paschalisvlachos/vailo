@@ -193,16 +193,39 @@ function normalizeArrayItems(
       };
       if (item.device || item.brand || item.model) out.push(item);
     } else if (fieldType === 'array_maps') {
-      const item = { title: str(r.title), mapsLink: str(r.mapsLink) };
-      if (item.title || item.mapsLink) out.push(item);
+      const item: Record<string, string> = {
+        title: str(r.title),
+        mapsLink: str(r.mapsLink),
+      };
+      const phone = str(r.phone ?? r.phoneNumber);
+      const address = str(r.address);
+      const photoUrl = str(r.photoUrl);
+      const googlePlaceId = str(r.googlePlaceId);
+      const slotId = str(r.slotId);
+      if (phone) item.phone = phone;
+      if (address) item.address = address;
+      if (photoUrl) item.photoUrl = photoUrl;
+      if (googlePlaceId) item.googlePlaceId = googlePlaceId;
+      if (slotId) item.slotId = slotId;
+      if (item.title || item.mapsLink || item.phone || item.address || item.photoUrl) {
+        out.push(item);
+      }
     } else if (fieldType === 'array_emergencies') {
-      const item = {
+      const item: Record<string, string> = {
         category: str(r.category),
         title: str(r.title),
         phone: str(r.phone),
         mapsLink: str(r.mapsLink),
       };
-      if (item.title || item.phone) out.push(item);
+      const address = str(r.address);
+      const photoUrl = str(r.photoUrl);
+      const googlePlaceId = str(r.googlePlaceId);
+      const slotId = str(r.slotId);
+      if (address) item.address = address;
+      if (photoUrl) item.photoUrl = photoUrl;
+      if (googlePlaceId) item.googlePlaceId = googlePlaceId;
+      if (slotId) item.slotId = slotId;
+      if (item.title || item.phone || item.mapsLink || item.photoUrl) out.push(item);
     } else if (fieldType === 'array_faqs') {
       const item = { question: str(r.question), answer: str(r.answer) };
       if (item.question || item.answer) out.push(item);
@@ -397,14 +420,26 @@ function normalizeQuestions(
   return { questions: out, skipped };
 }
 
+/** Google Maps / share links are never fetched — skip entirely (address comes from Maps Auto-fill). */
+export function isMapsPlaceUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return (
+      host.includes('google.') ||
+      host === 'maps.app.goo.gl' ||
+      host === 'share.google' ||
+      host.includes('goo.gl')
+    );
+  } catch {
+    return false;
+  }
+}
+
 function guessUrlLabel(url: string): string {
   try {
     const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
     if (host.includes('airbnb')) return 'Airbnb listing page';
     if (host.includes('booking.com')) return 'Booking.com listing page';
-    if (host.includes('google') || host.includes('maps.app.goo.gl') || host === 'share.google') {
-      return 'Google Maps / share page';
-    }
     if (host.includes('vrbo') || host.includes('homeaway')) return 'VRBO listing page';
     return host;
   } catch {
@@ -449,7 +484,8 @@ function extractUrlsFromText(text: string): { url: string; label: string }[] {
     const url = String(match[2] || '')
       .trim()
       .replace(/[.,;]+$/, '');
-    if (!url || seen.has(url)) continue;
+    if (!url || seen.has(url) || isMapsPlaceUrl(url)) continue;
+    if (/^(google maps|maps)$/i.test(label)) continue;
     seen.add(url);
     found.push({ url, label: `${label} page` });
   }
@@ -458,7 +494,7 @@ function extractUrlsFromText(text: string): { url: string; label: string }[] {
     const url = String(match[0] || '')
       .trim()
       .replace(/[.,;]+$/, '');
-    if (!url || seen.has(url)) continue;
+    if (!url || seen.has(url) || isMapsPlaceUrl(url)) continue;
     seen.add(url);
     found.push({ url, label: guessUrlLabel(url) });
   }
@@ -544,9 +580,10 @@ RULES:
 - Only use categoryId / fieldId pairs from the catalog above.
 - For textarea fields: put prose instructions in "content".
 - For array_devices: return items with room, device, brand, model.
-- For array_maps: return items with title and mapsLink (mapsLink may be empty).
-- For array_emergencies: category must be one of: ${HOUSE_GUIDE_EMERGENCY_OPTIONS.join(', ')}.
-- For array_maps in waste/supplies: prefer titles from ${HOUSE_GUIDE_WASTE_OPTIONS.join(', ')} or ${HOUSE_GUIDE_USEFUL_MAP_OPTIONS.join(', ')} when they fit.
+- For array_maps: return items with title and mapsLink (mapsLink may be empty). Optional: phone, address, photoUrl, googlePlaceId.
+- For array_emergencies: category must be one of: ${HOUSE_GUIDE_EMERGENCY_OPTIONS.join(', ')}. Optional: address, photoUrl, googlePlaceId.
+- For array_maps in waste: prefer titles from ${HOUSE_GUIDE_WASTE_OPTIONS.join(', ')} when they fit.
+- For array_maps in dailyNeeds (usefulLocations): prefer titles from ${HOUSE_GUIDE_USEFUL_MAP_OPTIONS.join(', ')} when they fit.
 - For array_maps in transportation: prefer titles from ${HOUSE_GUIDE_TRANSPORTATION_OPTIONS.join(', ')} when they fit.
 - For array_faqs: return question / answer pairs.
 - Prefer the most specific catalog field. Use categoryId "general" / fieldId "generalInfo" only as a catch-all for leftover notes that truly do not belong anywhere else (host preferences, neighborhood quirks, miscellaneous policies). Never put check-in, check-out, Wi-Fi, appliances, house rules, or safety instructions in generalInfo when a dedicated field exists.

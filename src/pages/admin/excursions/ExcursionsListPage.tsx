@@ -247,7 +247,7 @@ export default function ExcursionsListPage() {
             <AdminButtonLink to={detailsPath} variant="secondary">
               <Info size={18} /> Provider details
             </AdminButtonLink>
-            <AdminButtonLink to={addPath}>
+            <AdminButtonLink to={addPath} variant="accent">
               <Plus size={18} /> Add listing
             </AdminButtonLink>
           </div>
@@ -260,7 +260,7 @@ export default function ExcursionsListPage() {
           title="No listings yet"
           description="Add the first bookable service for this provider. Tag it as Excursions, Sailing, Airport transfer, or any other Arrange and Book category."
           action={
-            <AdminButtonLink to={addPath}>
+            <AdminButtonLink to={addPath} variant="accent">
               <Plus size={18} /> Add listing
             </AdminButtonLink>
           }

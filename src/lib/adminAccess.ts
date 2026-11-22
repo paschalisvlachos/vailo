@@ -15,6 +15,8 @@ export type OwnerProfile = {
   company?: string;
   /** Set when an agent creates this owner in CRM. */
   agentId?: string;
+  /** Listing capacity from CRM (−1 = unlimited). */
+  maxListings?: number;
 };
 
 export function normalizeOwnerRole(role: unknown): OwnerRole {
@@ -159,12 +161,12 @@ export function buildAdminScopes(
   if (isAgent(profile)) {
     for (const propertyId of managedPropertyIds) {
       const property = properties.find((p) => p.id === propertyId);
-      const name = property?.propertyName?.trim() || 'Property';
+      const name = property?.propertyName?.trim() || 'Agency portfolio';
       scopes.push({
         kind: 'property',
         propertyId,
         propertyName: name,
-        label: `${name} (all listings)`,
+        label: name,
       });
     }
     return scopes;
@@ -176,12 +178,12 @@ export function buildAdminScopes(
 
   for (const propertyId of managedPropertyIds) {
     const property = properties.find((p) => p.id === propertyId);
-    const name = property?.propertyName?.trim() || 'Property';
+    const name = property?.propertyName?.trim() || 'Portfolio';
     scopes.push({
       kind: 'property',
       propertyId,
       propertyName: name,
-      label: `${name} (all listings)`,
+      label: name,
     });
   }
 
@@ -267,7 +269,9 @@ export function pathForScope(scope: AdminScope): string {
   if (scope.kind === 'excursion_provider') {
     return adminPath(`/excursion-portal/${scope.providerId}`);
   }
-  if (scope.kind === 'property') return adminPath(`/properties/${scope.propertyId}`);
+  if (scope.kind === 'property') {
+    return adminPath(`/properties/${scope.propertyId}/types`);
+  }
   return adminPath(`/properties/${scope.propertyId}/types?listing=${scope.typeId}`);
 }
 

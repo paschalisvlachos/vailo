@@ -110,7 +110,7 @@ export default function ExpensesPage() {
         description="Track subscriptions, vendors, and recurring platform costs"
         icon={<Receipt size={26} />}
         action={
-          <AdminButtonLink to={adminPath('/expenses/add')} className="w-full sm:w-auto">
+          <AdminButtonLink to={adminPath('/expenses/add')} variant="accent" className="w-full sm:w-auto">
             <Plus size={18} /> Add expense
           </AdminButtonLink>
         }
@@ -132,7 +132,7 @@ export default function ExpensesPage() {
           title="No expenses yet"
           description="Add SaaS subscriptions, hosting, and other recurring costs to track renewals."
           action={
-            <AdminButtonLink to={adminPath('/expenses/add')}>
+            <AdminButtonLink to={adminPath('/expenses/add')} variant="accent">
               <Plus size={18} /> Add expense
             </AdminButtonLink>
           }

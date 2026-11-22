@@ -44,9 +44,9 @@ const MODULES: Array<{
   { id: 'local-gems-categories', title: 'Local Gems Categories', icon: Grid, desc: 'Category structure for local recommendations', group: 'gems' },
   { id: 'local-gems', title: 'Local Gems', icon: MapIcon, desc: 'Add restaurants, beaches, and experiences', group: 'gems' },
   { id: 'local-trails', title: 'Local Trails', icon: Footprints, desc: 'AllTrails hiking trails for Live like a local', group: 'gems' },
-  { id: 'features-categories', title: 'Features Categories', icon: Layers, desc: 'Category structure for local features', group: 'features' },
-  { id: 'features', title: 'Master Features', icon: Briefcase, desc: 'Car rentals, chefs, transfers, and more', group: 'features' },
-  { id: 'features-photos', title: 'Features Photos', icon: ImageIcon, desc: 'Default stock photos for features', group: 'features' },
+  { id: 'features-categories', title: 'Partner Categories', icon: Layers, desc: 'Category structure for partners', group: 'features' },
+  { id: 'features', title: 'Master Partners', icon: Briefcase, desc: 'Area-wide cooperations: boat rentals, transfers, and more', group: 'features' },
+  { id: 'features-photos', title: 'Partner Photos', icon: ImageIcon, desc: 'Default stock photos for partners', group: 'features' },
   { id: 'discovered-places', title: 'Discovered Places', icon: Radar, desc: 'Review curated and imported places before promoting to Local Gems', group: 'other' },
   { id: 'overlap-preview', title: 'Overlap preview', icon: Link2, desc: 'Preview home vs nearby guest content for a property pin', group: 'other' },
 ];
@@ -223,7 +223,7 @@ export default function AreaSelector() {
                 onKeyDown={(e) => e.key === 'Enter' && handleAddArea()}
                 className="flex-1"
               />
-              <AdminButton onClick={handleAddArea} disabled={isAddingArea || !newAreaName.trim()} className="shrink-0">
+              <AdminButton variant="accent" onClick={handleAddArea} disabled={isAddingArea || !newAreaName.trim()} className="shrink-0">
                 {isAddingArea ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                 Add
               </AdminButton>

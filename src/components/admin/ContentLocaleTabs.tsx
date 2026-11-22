@@ -20,7 +20,10 @@ export default function ContentLocaleTabs({
   className = '',
 }: Props) {
   const primary = normalizeLocaleCode(primaryLocale);
-  const codes = enabledLocales.map(normalizeLocaleCode).filter(Boolean);
+  const codes = [...new Set(enabledLocales.map(normalizeLocaleCode).filter(Boolean))];
+
+  // No language switcher needed when only the primary locale is enabled.
+  if (codes.length <= 1) return null;
 
   const labelFor = (code: string) => {
     const hit = languageOptions.find((o) => normalizeLocaleCode(o.code) === code);

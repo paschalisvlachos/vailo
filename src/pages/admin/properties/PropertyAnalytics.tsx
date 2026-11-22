@@ -27,6 +27,15 @@ import {
   CalendarRange,
   type LucideIcon,
 } from 'lucide-react';
+import AdminPageHeader, {
+  AdminBadge,
+  AdminButton,
+  AdminCard,
+  AdminEmptyState,
+  AdminInput,
+  AdminLabel,
+  AdminSelect,
+} from '../../../components/admin/AdminPageHeader';
 import { db } from '../../../lib/firebase';
 import { collectHouseGuests } from '../../../lib/houseGuests';
 import {
@@ -226,45 +235,25 @@ function Kpi({
   value,
   hint,
   icon: Icon,
-  tone,
 }: {
   label: string;
   value: number;
   hint?: string;
   icon: LucideIcon;
-  tone: 'teal' | 'gold' | 'violet' | 'emerald' | 'sky' | 'amber';
 }) {
-  const tones = {
-    teal: 'from-teal-50 to-white border-teal-100 text-teal-800',
-    gold: 'from-amber-50 to-white border-amber-100 text-amber-900',
-    violet: 'from-violet-50 to-white border-violet-100 text-violet-900',
-    emerald: 'from-emerald-50 to-white border-emerald-100 text-emerald-900',
-    sky: 'from-sky-50 to-white border-sky-100 text-sky-900',
-    amber: 'from-orange-50 to-white border-orange-100 text-orange-900',
-  };
-  const iconTone = {
-    teal: 'bg-teal-100 text-teal-700',
-    gold: 'bg-amber-100 text-amber-700',
-    violet: 'bg-violet-100 text-violet-700',
-    emerald: 'bg-emerald-100 text-emerald-700',
-    sky: 'bg-sky-100 text-sky-700',
-    amber: 'bg-orange-100 text-orange-700',
-  };
   return (
-    <div
-      className={`rounded-2xl border bg-gradient-to-br p-4 shadow-sm ${tones[tone]}`}
-    >
+    <AdminCard className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">{label}</p>
-          <p className="text-3xl font-bold tabular-nums text-slate-900 mt-1">{value}</p>
-          {hint ? <p className="text-xs mt-1 opacity-70 leading-snug">{hint}</p> : null}
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">{label}</p>
+          <p className="text-2xl font-bold text-vailo-dark tabular-nums">{value}</p>
+          {hint ? <p className="text-xs text-gray-500 mt-1 leading-snug">{hint}</p> : null}
         </div>
-        <span className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${iconTone[tone]}`}>
-          <Icon size={18} />
+        <span className="h-9 w-9 rounded-md bg-vailo-teal/10 text-vailo-teal flex items-center justify-center shrink-0">
+          <Icon size={16} />
         </span>
       </div>
-    </div>
+    </AdminCard>
   );
 }
 
@@ -279,35 +268,26 @@ function RankList({
   icon: Icon,
   rows,
   empty,
-  tone = 'teal',
   compactLabels = false,
 }: {
   title: string;
   icon: LucideIcon;
   rows: { label: string; value: number }[];
   empty: string;
-  tone?: 'teal' | 'violet' | 'emerald' | 'amber' | 'sky';
   /** Smaller multi-line labels (used for long excursion titles). */
   compactLabels?: boolean;
 }) {
-  const bar = {
-    teal: 'bg-vailo-teal',
-    violet: 'bg-violet-500',
-    emerald: 'bg-emerald-500',
-    amber: 'bg-amber-500',
-    sky: 'bg-sky-500',
-  }[tone];
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm h-full">
+    <AdminCard className="p-4 sm:p-5 h-full">
       <div className="flex items-center gap-2 mb-4">
-        <span className="h-8 w-8 rounded-lg bg-slate-50 text-slate-600 flex items-center justify-center">
+        <span className="h-8 w-8 rounded-md bg-vailo-teal/10 text-vailo-teal flex items-center justify-center">
           <Icon size={16} />
         </span>
-        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <h3 className="text-sm font-bold text-vailo-dark">{title}</h3>
       </div>
       {rows.length === 0 ? (
-        <p className="text-sm text-slate-500">{empty}</p>
+        <p className="text-sm text-gray-500">{empty}</p>
       ) : (
         <ul className="space-y-3">
           {rows.map((row, index) => {
@@ -319,7 +299,7 @@ function RankList({
                 <div className="flex items-start justify-between gap-3 mb-1.5">
                   <div className="min-w-0">
                     <p
-                      className={`font-medium text-slate-800 leading-snug line-clamp-2 ${
+                      className={`font-medium text-vailo-dark leading-snug line-clamp-2 ${
                         compactLabels ? 'text-xs' : 'text-sm'
                       }`}
                       title={row.label}
@@ -327,18 +307,18 @@ function RankList({
                       {display.title}
                     </p>
                     {display.detail ? (
-                      <p className="text-[10px] text-slate-500 mt-0.5 truncate" title={display.detail}>
+                      <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={display.detail}>
                         {display.detail}
                       </p>
                     ) : null}
                   </div>
-                  <span className="tabular-nums text-slate-500 shrink-0 font-semibold text-xs">
+                  <span className="tabular-nums text-gray-500 shrink-0 font-semibold text-xs">
                     {row.value}×
                   </span>
                 </div>
-                <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${bar}`}
+                    className="h-full rounded-full bg-vailo-teal"
                     style={{ width: `${Math.max(10, (row.value / max) * 100)}%` }}
                   />
                 </div>
@@ -347,7 +327,7 @@ function RankList({
           })}
         </ul>
       )}
-    </div>
+    </AdminCard>
   );
 }
 
@@ -355,19 +335,17 @@ function MetricChip({
   icon: Icon,
   label,
   value,
-  tone,
 }: {
   icon: LucideIcon;
   label: string;
   value: ReactNode;
-  tone: string;
 }) {
   return (
-    <div className={`rounded-2xl border p-3 ${tone}`}>
-      <p className="text-[11px] font-bold uppercase tracking-wide opacity-70 flex items-center gap-1">
+    <div className="rounded-lg border border-[#e1e1e1] bg-white p-3">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
         <Icon size={12} /> {label}
       </p>
-      <p className="text-xl font-bold tabular-nums text-slate-900 mt-1">{value}</p>
+      <p className="text-xl font-bold tabular-nums text-vailo-dark mt-1">{value}</p>
     </div>
   );
 }
@@ -774,25 +752,47 @@ export default function PropertyAnalytics() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-3xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-amber-50/40 p-5 sm:p-6">
-        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-teal-700 mb-1">
-          Guest portal intelligence
-        </p>
-        <h2 className="text-2xl font-bold text-slate-900 font-luxury flex items-center gap-2">
-          <BarChart3 size={24} className="text-vailo-teal" />
-          Analytics
-        </h2>
-        <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
-          See how booked guests and anonymous visitors use the portal — assistant chats, Live like a
-          local, house guide sections, gems, and excursions.
-        </p>
-        <div className="mt-4 max-w-3xl space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <select
+    <div>
+      <AdminPageHeader
+        title="Analytics"
+        description="See how booked guests and anonymous visitors use the portal — assistant chats, Live like a local, house guide sections, gems, and excursions."
+        icon={<BarChart3 size={24} />}
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-5">
+        <Kpi
+          label="Active sessions"
+          value={totals.guestsWithActivity}
+          hint={`${totals.bookedGuests} booked · ${totals.anonymous} anonymous`}
+          icon={Users}
+        />
+        <Kpi label="Portal visits" value={totals.sessions} icon={Eye} />
+        <Kpi label="Live like a local" value={totals.liveLikeLocal} icon={Sparkles} />
+        <Kpi
+          label="Assistant turns"
+          value={totals.assistantTurns + totals.aiTurns}
+          hint={`${totals.assistantTurns} concierge · ${totals.aiTurns} AI expert`}
+          icon={MessageCircle}
+        />
+        <Kpi label="Local gems seen" value={totals.gems} icon={MapPin} />
+        <Kpi label="Excursions opened" value={totals.excursionsOpens} icon={Compass} />
+        <Kpi label="Excursions booked" value={totals.excursionBookings} icon={Heart} />
+        <Kpi
+          label="Tracked guests"
+          value={sortedRows.length}
+          hint="Including stays with no portal use yet"
+          icon={Activity}
+        />
+      </div>
+
+      <AdminCard className="p-4 mb-5">
+        <div className="flex flex-col lg:flex-row lg:items-end gap-3 lg:gap-4">
+          <div className="flex-1 min-w-0">
+            <AdminLabel htmlFor="analytics-listing">Listing</AdminLabel>
+            <AdminSelect
+              id="analytics-listing"
               value={filterTypeId}
               onChange={(e) => setFilterTypeId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-teal-100 rounded-xl text-sm font-semibold bg-white shadow-sm"
             >
               <option value="all">All listings</option>
               {propertyTypes.map((t) => (
@@ -800,100 +800,61 @@ export default function PropertyAnalytics() {
                   {t.propertyTypeName}
                 </option>
               ))}
-            </select>
-            <select
+            </AdminSelect>
+          </div>
+          <div className="flex-1 min-w-0">
+            <AdminLabel htmlFor="analytics-sort">Sort</AdminLabel>
+            <AdminSelect
+              id="analytics-sort"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as AnalyticsSort)}
-              className="w-full px-3 py-2.5 border border-teal-100 rounded-xl text-sm font-semibold bg-white shadow-sm"
             >
               <option value="last_used_desc">Last used</option>
               <option value="activity_desc">Most active</option>
               <option value="stay_desc">Stay date</option>
-            </select>
-            <label className="flex items-center gap-2 rounded-xl border border-teal-100 bg-white px-3 py-2.5 shadow-sm min-w-0">
-              <CalendarRange size={16} className="text-teal-700 shrink-0" />
-              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 shrink-0">
-                From
-              </span>
-              <input
+            </AdminSelect>
+          </div>
+          <div className="flex-1 min-w-0">
+            <AdminLabel htmlFor="analytics-from">From</AdminLabel>
+            <div className="relative">
+              <CalendarRange
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              />
+              <AdminInput
+                id="analytics-from"
                 type="date"
                 value={dateFrom}
                 max={dateTo || undefined}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 bg-white"
+                className="pl-9"
               />
-            </label>
-            <label className="flex items-center gap-2 rounded-xl border border-teal-100 bg-white px-3 py-2.5 shadow-sm min-w-0">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 shrink-0">
-                To
-              </span>
-              <input
-                type="date"
-                value={dateTo}
-                min={dateFrom || undefined}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full min-w-0 px-2 py-1 border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 bg-white"
-              />
-            </label>
+            </div>
           </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={resetFilters}
-              disabled={filtersAreDefault}
-              className={`text-sm font-semibold underline-offset-2 ${
-                filtersAreDefault
-                  ? 'text-slate-300 cursor-default no-underline'
-                  : 'text-teal-800 hover:text-teal-950 hover:underline'
-              }`}
-            >
-              Reset
-            </button>
+          <div className="flex-1 min-w-0">
+            <AdminLabel htmlFor="analytics-to">To</AdminLabel>
+            <AdminInput
+              id="analytics-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
           </div>
+          {!filtersAreDefault ? (
+            <AdminButton type="button" variant="secondary" onClick={resetFilters} className="shrink-0">
+              Reset filters
+            </AdminButton>
+          ) : null}
         </div>
-      </div>
+      </AdminCard>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-        <Kpi
-          label="Active sessions"
-          value={totals.guestsWithActivity}
-          hint={`${totals.bookedGuests} booked · ${totals.anonymous} anonymous`}
-          icon={Users}
-          tone="teal"
-        />
-        <Kpi label="Portal visits" value={totals.sessions} icon={Eye} tone="sky" />
-        <Kpi label="Live like a local" value={totals.liveLikeLocal} icon={Sparkles} tone="violet" />
-        <Kpi
-          label="Assistant turns"
-          value={totals.assistantTurns + totals.aiTurns}
-          hint={`${totals.assistantTurns} concierge · ${totals.aiTurns} AI expert`}
-          icon={MessageCircle}
-          tone="emerald"
-        />
-        <Kpi label="Local gems seen" value={totals.gems} icon={MapPin} tone="gold" />
-        <Kpi label="Excursions opened" value={totals.excursionsOpens} icon={Compass} tone="amber" />
-        <Kpi
-          label="Excursions booked"
-          value={totals.excursionBookings}
-          icon={Heart}
-          tone="gold"
-        />
-        <Kpi
-          label="Tracked guests"
-          value={sortedRows.length}
-          hint="Including stays with no portal use yet"
-          icon={Activity}
-          tone="teal"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-5">
         <RankList
           title="Most opened guide sections"
           icon={BookOpen}
           rows={aggregateGuide}
           empty="No house guide opens recorded yet."
-          tone="sky"
           compactLabels
         />
         <RankList
@@ -901,7 +862,6 @@ export default function PropertyAnalytics() {
           icon={MapPin}
           rows={aggregateGems}
           empty="No gem impressions yet."
-          tone="emerald"
           compactLabels
         />
         <RankList
@@ -909,31 +869,34 @@ export default function PropertyAnalytics() {
           icon={Compass}
           rows={aggregateExcursions}
           empty="No excursion list views yet."
-          tone="amber"
           compactLabels
         />
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-16 text-center text-sm text-slate-500">
-          Loading analytics…
-        </div>
+        <AdminCard className="p-10 text-center text-sm text-gray-500">Loading analytics…</AdminCard>
       ) : sortedRows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-16 text-center">
-          <p className="text-slate-800 font-semibold">
-            {dateFrom || dateTo ? 'No guests in this date range' : 'No guest activity to show yet'}
-          </p>
-          <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
-            {dateFrom || dateTo
+        <AdminEmptyState
+          icon={<BarChart3 size={28} />}
+          title={dateFrom || dateTo ? 'No guests in this date range' : 'No guest activity to show yet'}
+          description={
+            dateFrom || dateTo
               ? 'Try widening the From / To dates, or clear the range to see everyone.'
-              : 'Activity appears when guests open the portal during a stay or browse a public listing page.'}
-          </p>
-        </div>
+              : 'Activity appears when guests open the portal during a stay or browse a public listing page.'
+          }
+          action={
+            !filtersAreDefault ? (
+              <AdminButton type="button" variant="secondary" onClick={resetFilters}>
+                Reset filters
+              </AdminButton>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-bold text-slate-900">Guest activity</h3>
-            <p className="text-xs text-slate-500">
+            <h3 className="text-sm font-bold text-vailo-dark">Guest activity</h3>
+            <p className="text-xs text-gray-500">
               Showing {visibleRows.length} of {sortedRows.length}
               {dateFrom || dateTo ? ' in range' : ''}
             </p>
@@ -944,36 +907,12 @@ export default function PropertyAnalytics() {
               const topGem = topEntries(row.gemImpressions, 1)[0];
               const topTrip = topEntries(row.excursionImpressions, 1)[0];
               const metrics = [
-                {
-                  label: 'Visits',
-                  value: row.portalSessions,
-                  tone: 'bg-teal-50 text-teal-900 border-teal-100',
-                },
-                {
-                  label: 'Live local',
-                  value: row.liveLikeLocalOpens,
-                  tone: 'bg-violet-50 text-violet-900 border-violet-100',
-                },
-                {
-                  label: 'Chat',
-                  value: row.assistantTurns + row.aiExpertTurns,
-                  tone: 'bg-emerald-50 text-emerald-900 border-emerald-100',
-                },
-                {
-                  label: 'Gems',
-                  value: row.uniqueGemsSeen,
-                  tone: 'bg-amber-50 text-amber-900 border-amber-100',
-                },
-                {
-                  label: 'Trips',
-                  value: row.excursionsOpens,
-                  tone: 'bg-orange-50 text-orange-900 border-orange-100',
-                },
-                {
-                  label: 'Booked',
-                  value: row.excursionBookingsComplete,
-                  tone: 'bg-rose-50 text-rose-900 border-rose-100',
-                },
+                { label: 'Visits', value: row.portalSessions },
+                { label: 'Live local', value: row.liveLikeLocalOpens },
+                { label: 'Chat', value: row.assistantTurns + row.aiExpertTurns },
+                { label: 'Gems', value: row.uniqueGemsSeen },
+                { label: 'Trips', value: row.excursionsOpens },
+                { label: 'Booked', value: row.excursionBookingsComplete },
               ];
               return (
                 <button
@@ -983,131 +922,133 @@ export default function PropertyAnalytics() {
                     if (row.hasActivity) void openDetail(row);
                   }}
                   disabled={!row.hasActivity}
-                  className={`text-left rounded-2xl border p-4 sm:p-5 transition-all ${
-                    row.hasActivity
-                      ? 'bg-white border-slate-100 shadow-sm hover:border-vailo-teal/40 hover:shadow-md cursor-pointer'
-                      : 'bg-slate-50/80 border-slate-100 opacity-80 cursor-default'
+                  className={`text-left transition-colors ${
+                    row.hasActivity ? 'cursor-pointer' : 'cursor-default opacity-80'
                   }`}
                 >
-                  <div className="flex flex-col gap-4">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                          {row.subjectKind === 'anonymous' ? (
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
-                              Anonymous
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-teal-800 bg-teal-50 border border-teal-100 rounded-full px-2 py-0.5">
-                              Booked guest
-                            </span>
-                          )}
-                          {!row.hasActivity ? (
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">
-                              No portal use
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-lg font-bold text-slate-900 leading-tight">
-                          {row.guestName}
-                        </p>
-                        <p className="text-sm text-slate-600 mt-1">
-                          <span className="font-medium text-slate-700">{row.unitName}</span>
-                          <span className="text-slate-300 mx-1.5">·</span>
-                          {row.subjectKind === 'anonymous'
-                            ? 'Public browsing'
-                            : formatBookingDateRange(row.stayStart, row.stayEnd)}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                          <span className="inline-flex items-center gap-1">
-                            <Clock size={12} /> Last {formatAnalyticsDateTime(row.lastSeenAt)}
-                          </span>
-                          {deviceDisplayLabel(row) ? (
+                  <AdminCard
+                    className={`p-4 sm:p-5 ${
+                      row.hasActivity ? 'hover:border-vailo-teal/40' : 'bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            {row.subjectKind === 'anonymous' ? (
+                              <AdminBadge variant="gold">Anonymous</AdminBadge>
+                            ) : (
+                              <AdminBadge variant="teal">Booked guest</AdminBadge>
+                            )}
+                            {!row.hasActivity ? (
+                              <AdminBadge variant="neutral">No portal use</AdminBadge>
+                            ) : null}
+                          </div>
+                          <p className="text-lg font-bold text-vailo-dark leading-tight">
+                            {row.guestName}
+                          </p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            <span className="font-medium text-vailo-dark">{row.unitName}</span>
+                            <span className="text-gray-300 mx-1.5">·</span>
+                            {row.subjectKind === 'anonymous'
+                              ? 'Public browsing'
+                              : formatBookingDateRange(row.stayStart, row.stayEnd)}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                             <span className="inline-flex items-center gap-1">
-                              <Smartphone size={12} /> {deviceDisplayLabel(row)}
+                              <Clock size={12} /> Last {formatAnalyticsDateTime(row.lastSeenAt)}
                             </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      {row.hasActivity ? (
-                        <span className="inline-flex items-center gap-1 self-start rounded-full bg-teal-50 text-teal-800 border border-teal-100 px-3 py-1.5 text-xs font-bold shrink-0">
-                          Details <ChevronRight size={14} />
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {row.hasActivity ? (
-                      <>
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                          {metrics.map((cell) => (
-                            <div
-                              key={cell.label}
-                              className={`rounded-xl border px-2.5 py-2.5 text-center ${cell.tone}`}
-                            >
-                              <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">
-                                {cell.label}
-                              </p>
-                              <p className="text-lg font-bold tabular-nums mt-0.5">{cell.value}</p>
-                            </div>
-                          ))}
-                        </div>
-                        {(topGuide || topGem || topTrip) && (
-                          <div className="flex flex-wrap gap-2 text-xs">
-                            {topGuide ? (
-                              <span
-                                className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 text-sky-900 border border-sky-100 px-2.5 py-1 max-w-full"
-                                title={guideSectionLabel(topGuide[0])}
-                              >
-                                <BookOpen size={12} className="shrink-0" />
-                                <span className="truncate">
-                                  Top guide:{' '}
-                                  {splitExcursionDisplayLabel(guideSectionLabel(topGuide[0])).title}
-                                </span>
-                              </span>
-                            ) : null}
-                            {topGem ? (
-                              <span
-                                className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 text-amber-900 border border-amber-100 px-2.5 py-1 max-w-full"
-                                title={resolveGemLabel(topGem[0])}
-                              >
-                                <Sparkles size={12} className="shrink-0" />
-                                <span className="truncate">
-                                  Top gem: {resolveGemLabel(topGem[0])}
-                                </span>
-                              </span>
-                            ) : null}
-                            {topTrip ? (
-                              <span
-                                className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 text-orange-900 border border-orange-100 px-2.5 py-1 max-w-full"
-                                title={resolveExcursionLabel(topTrip[0])}
-                              >
-                                <Compass size={12} className="shrink-0" />
-                                <span className="truncate">
-                                  Top trip: {splitExcursionDisplayLabel(resolveExcursionLabel(topTrip[0])).title}
-                                </span>
+                            {deviceDisplayLabel(row) ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Smartphone size={12} /> {deviceDisplayLabel(row)}
                               </span>
                             ) : null}
                           </div>
-                        )}
-                      </>
-                    ) : null}
-                  </div>
+                        </div>
+                        {row.hasActivity ? (
+                          <span className="inline-flex items-center gap-1 self-start text-vailo-teal text-xs font-bold shrink-0">
+                            Details <ChevronRight size={14} />
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {row.hasActivity ? (
+                        <>
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                            {metrics.map((cell) => (
+                              <div
+                                key={cell.label}
+                                className="rounded-lg border border-[#e1e1e1] bg-white px-2.5 py-2.5 text-center"
+                              >
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                                  {cell.label}
+                                </p>
+                                <p className="text-lg font-bold tabular-nums text-vailo-dark mt-0.5">
+                                  {cell.value}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                          {(topGuide || topGem || topTrip) && (
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              {topGuide ? (
+                                <span
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-vailo-teal/10 text-vailo-dark border border-vailo-teal/20 px-2.5 py-1 max-w-full"
+                                  title={guideSectionLabel(topGuide[0])}
+                                >
+                                  <BookOpen size={12} className="shrink-0 text-vailo-teal" />
+                                  <span className="truncate">
+                                    Top guide:{' '}
+                                    {splitExcursionDisplayLabel(guideSectionLabel(topGuide[0])).title}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {topGem ? (
+                                <span
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-vailo-teal/10 text-vailo-dark border border-vailo-teal/20 px-2.5 py-1 max-w-full"
+                                  title={resolveGemLabel(topGem[0])}
+                                >
+                                  <Sparkles size={12} className="shrink-0 text-vailo-teal" />
+                                  <span className="truncate">
+                                    Top gem: {resolveGemLabel(topGem[0])}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {topTrip ? (
+                                <span
+                                  className="inline-flex items-center gap-1.5 rounded-md bg-vailo-teal/10 text-vailo-dark border border-vailo-teal/20 px-2.5 py-1 max-w-full"
+                                  title={resolveExcursionLabel(topTrip[0])}
+                                >
+                                  <Compass size={12} className="shrink-0 text-vailo-teal" />
+                                  <span className="truncate">
+                                    Top trip:{' '}
+                                    {splitExcursionDisplayLabel(resolveExcursionLabel(topTrip[0])).title}
+                                  </span>
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  </AdminCard>
                 </button>
               );
             })}
           </div>
           {hasMoreRows ? (
             <div ref={setLoadMoreNode} className="pt-1">
-              <button
+              <AdminButton
                 type="button"
+                variant="secondary"
                 onClick={loadMoreGuests}
-                className="w-full rounded-2xl border border-dashed border-teal-200 bg-teal-50/60 py-3 text-sm font-semibold text-teal-800 hover:bg-teal-50 transition-colors"
+                className="w-full"
               >
                 Load {Math.min(GUEST_PAGE_SIZE, sortedRows.length - visibleCount)} more
-              </button>
+              </AdminButton>
             </div>
           ) : sortedRows.length > GUEST_PAGE_SIZE ? (
-            <p className="text-center text-xs text-slate-400 py-2">
+            <p className="text-center text-xs text-gray-400 py-2">
               All {sortedRows.length} guests loaded
             </p>
           ) : null}
@@ -1116,106 +1057,81 @@ export default function PropertyAnalytics() {
 
       {selected ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           role="dialog"
           aria-modal="true"
           onClick={() => setSelected(null)}
         >
           <div
-            className="bg-white rounded-3xl w-full max-w-3xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col border border-slate-100"
+            className="bg-white rounded-lg w-full max-w-3xl max-h-[92vh] overflow-hidden shadow-[0_10px_10px_0_rgba(0,0,0,0.08)] flex flex-col border border-[#e1e1e1]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative overflow-hidden border-b border-slate-100">
-              <div className="absolute inset-0 bg-gradient-to-br from-teal-50 via-white to-amber-50/50" />
-              <div className="relative flex items-start justify-between p-5 sm:p-6 gap-4">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-teal-700 mb-1">
-                    {selected.subjectKind === 'anonymous' ? 'Anonymous visitor' : 'Booked guest'}
-                  </p>
-                  <h3 className="text-xl font-bold text-slate-900 truncate">{selected.guestName}</h3>
-                  <p className="text-sm text-slate-600 mt-1">
-                    {selected.unitName}
-                    {selected.subjectKind === 'booking'
-                      ? ` · ${formatBookingDateRange(selected.stayStart, selected.stayEnd)}`
-                      : ' · Public browsing'}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
-                    {selected.firstSeenAt ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Clock size={12} /> First {formatAnalyticsDateTime(selected.firstSeenAt)}
-                      </span>
-                    ) : null}
-                    {selected.lastSeenAt ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Clock size={12} /> Last {formatAnalyticsDateTime(selected.lastSeenAt)}
-                      </span>
-                    ) : null}
-                    {deviceDisplayLabel(selected) ? (
-                      <span className="inline-flex items-center gap-1">
-                        <MonitorSmartphone size={12} /> {deviceDisplayLabel(selected)}
-                      </span>
-                    ) : null}
-                  </div>
+            <div className="flex items-start justify-between p-5 sm:p-6 gap-4 border-b border-[#e1e1e1]">
+              <div className="min-w-0">
+                <div className="mb-2">
+                  {selected.subjectKind === 'anonymous' ? (
+                    <AdminBadge variant="gold">Anonymous visitor</AdminBadge>
+                  ) : (
+                    <AdminBadge variant="teal">Booked guest</AdminBadge>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="p-2 rounded-xl text-slate-400 hover:bg-white/80 hover:text-slate-700"
-                >
-                  <X size={20} />
-                </button>
+                <h3 className="text-xl font-bold text-vailo-dark truncate">{selected.guestName}</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {selected.unitName}
+                  {selected.subjectKind === 'booking'
+                    ? ` · ${formatBookingDateRange(selected.stayStart, selected.stayEnd)}`
+                    : ' · Public browsing'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
+                  {selected.firstSeenAt ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={12} /> First {formatAnalyticsDateTime(selected.firstSeenAt)}
+                    </span>
+                  ) : null}
+                  {selected.lastSeenAt ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={12} /> Last {formatAnalyticsDateTime(selected.lastSeenAt)}
+                    </span>
+                  ) : null}
+                  {deviceDisplayLabel(selected) ? (
+                    <span className="inline-flex items-center gap-1">
+                      <MonitorSmartphone size={12} /> {deviceDisplayLabel(selected)}
+                    </span>
+                  ) : null}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setSelected(null)}
+                className="p-2 rounded-md text-gray-400 hover:bg-black/[0.03] hover:text-vailo-dark"
+              >
+                <X size={20} />
+              </button>
             </div>
 
             <div className="p-5 sm:p-6 overflow-y-auto space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                <MetricChip
-                  icon={Eye}
-                  label="Visits"
-                  value={selected.portalSessions}
-                  tone="bg-teal-50 border-teal-100"
-                />
-                <MetricChip
-                  icon={Sparkles}
-                  label="Live local"
-                  value={selected.liveLikeLocalOpens}
-                  tone="bg-violet-50 border-violet-100"
-                />
-                <MetricChip
-                  icon={MessageCircle}
-                  label="Assistant"
-                  value={selected.assistantTurns}
-                  tone="bg-emerald-50 border-emerald-100"
-                />
-                <MetricChip
-                  icon={Sparkles}
-                  label="AI expert"
-                  value={selected.aiExpertTurns}
-                  tone="bg-sky-50 border-sky-100"
-                />
+                <MetricChip icon={Eye} label="Visits" value={selected.portalSessions} />
+                <MetricChip icon={Sparkles} label="Live local" value={selected.liveLikeLocalOpens} />
+                <MetricChip icon={MessageCircle} label="Assistant" value={selected.assistantTurns} />
+                <MetricChip icon={Sparkles} label="AI expert" value={selected.aiExpertTurns} />
                 <MetricChip
                   icon={Compass}
                   label="Excursions"
                   value={
                     <>
                       {selected.excursionsOpens}
-                      <span className="block text-[10px] font-medium text-slate-500 normal-case tracking-normal">
+                      <span className="block text-[10px] font-medium text-gray-500 normal-case tracking-normal">
                         {selected.excursionDetailOpens} views · {selected.excursionBookingStarts}{' '}
                         starts
                       </span>
                     </>
                   }
-                  tone="bg-amber-50 border-amber-100"
                 />
-                <MetricChip
-                  icon={Heart}
-                  label="Booked"
-                  value={selected.excursionBookingsComplete}
-                  tone="bg-rose-50 border-rose-100"
-                />
+                <MetricChip icon={Heart} label="Booked" value={selected.excursionBookingsComplete} />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 <RankList
                   title="Guide sections"
                   icon={BookOpen}
@@ -1224,7 +1140,6 @@ export default function PropertyAnalytics() {
                     value,
                   }))}
                   empty="No guide sections opened."
-                  tone="sky"
                   compactLabels
                 />
                 <RankList
@@ -1235,7 +1150,6 @@ export default function PropertyAnalytics() {
                     value,
                   }))}
                   empty="No gems viewed."
-                  tone="emerald"
                   compactLabels
                 />
                 <RankList
@@ -1246,7 +1160,6 @@ export default function PropertyAnalytics() {
                     value,
                   }))}
                   empty="No saved picks."
-                  tone="violet"
                   compactLabels
                 />
                 <RankList
@@ -1257,17 +1170,16 @@ export default function PropertyAnalytics() {
                     value,
                   }))}
                   empty="No excursion impressions."
-                  tone="amber"
                   compactLabels
                 />
               </div>
 
               <div>
-                <p className="text-sm font-bold text-slate-900 mb-3">Activity timeline</p>
+                <p className="text-sm font-bold text-vailo-dark mb-3">Activity timeline</p>
                 {eventsLoading ? (
-                  <p className="text-sm text-slate-500">Loading events…</p>
+                  <p className="text-sm text-gray-500">Loading events…</p>
                 ) : events.length === 0 ? (
-                  <p className="text-sm text-slate-500 italic">No events recorded yet.</p>
+                  <p className="text-sm text-gray-500 italic">No events recorded yet.</p>
                 ) : (
                   <ul className="space-y-2.5">
                     {events.map((ev) => {
@@ -1276,16 +1188,16 @@ export default function PropertyAnalytics() {
                       return (
                         <li
                           key={ev.id}
-                          className={`rounded-2xl border border-slate-100 bg-white p-3.5 ring-1 ${tone.ring}`}
+                          className="rounded-lg border border-[#e1e1e1] bg-white p-3.5"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <span
-                                className={`inline-flex text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${tone.bg} ${tone.text}`}
+                                className={`inline-flex text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md ${tone.bg} ${tone.text}`}
                               >
                                 {eventTypeLabel(ev.type)}
                               </span>
-                              <div className="mt-2 space-y-1 text-sm text-slate-700">
+                              <div className="mt-2 space-y-1 text-sm text-gray-700">
                                 {ev.payload?.wizardStep ? (
                                   <p>
                                     Wizard step:{' '}
@@ -1301,7 +1213,7 @@ export default function PropertyAnalytics() {
                                   </p>
                                 ) : null}
                                 {ev.payload?.picksSummary ? (
-                                  <p className="text-slate-500 text-xs">
+                                  <p className="text-gray-500 text-xs">
                                     Picks: {ev.payload.picksSummary}
                                   </p>
                                 ) : null}
@@ -1342,7 +1254,7 @@ export default function PropertyAnalytics() {
                                   </p>
                                 ) : null}
                                 {ev.payload?.bookingDate ? (
-                                  <p className="text-slate-500 text-xs">
+                                  <p className="text-gray-500 text-xs">
                                     Date: {ev.payload.bookingDate}
                                     {ev.payload.bookingStatus
                                       ? ` · ${ev.payload.bookingStatus}`
@@ -1354,19 +1266,19 @@ export default function PropertyAnalytics() {
                                 ) : null}
                                 {(ev.type === 'ai_expert_plan' || plan) &&
                                 ev.payload?.planStopCount != null ? (
-                                  <p className="text-slate-500 text-xs">
+                                  <p className="text-gray-500 text-xs">
                                     Plan with {ev.payload.planStopCount} stops
                                   </p>
                                 ) : null}
                               </div>
 
                               {plan ? (
-                                <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
-                                  <p className="text-xs font-bold uppercase tracking-wide text-violet-800 mb-1">
+                                <div className="mt-3 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5 p-3">
+                                  <p className="text-xs font-bold uppercase tracking-wide text-vailo-teal mb-1">
                                     {plan.title || 'Day plan'}
                                   </p>
                                   {plan.summary ? (
-                                    <p className="text-sm text-violet-950/80 mb-2 leading-relaxed">
+                                    <p className="text-sm text-vailo-dark/80 mb-2 leading-relaxed">
                                       {plan.summary}
                                     </p>
                                   ) : null}
@@ -1375,23 +1287,23 @@ export default function PropertyAnalytics() {
                                       {plan.stops.map((stop, idx) => (
                                         <li
                                           key={`${stop.name}-${idx}`}
-                                          className="flex gap-2 text-sm text-slate-800"
+                                          className="flex gap-2 text-sm text-vailo-dark"
                                         >
-                                          <span className="h-6 w-6 rounded-full bg-white border border-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center shrink-0">
+                                          <span className="h-6 w-6 rounded-full bg-white border border-vailo-teal/20 text-vailo-teal text-xs font-bold flex items-center justify-center shrink-0">
                                             {idx + 1}
                                           </span>
                                           <span className="min-w-0">
                                             <span className="font-semibold">{stop.name}</span>
                                             {stop.time ? (
-                                              <span className="text-slate-500"> · {stop.time}</span>
+                                              <span className="text-gray-500"> · {stop.time}</span>
                                             ) : null}
                                             {stop.category ? (
-                                              <span className="block text-xs text-slate-500">
+                                              <span className="block text-xs text-gray-500">
                                                 {stop.category}
                                               </span>
                                             ) : null}
                                             {stop.description ? (
-                                              <span className="block text-xs text-slate-600 mt-0.5">
+                                              <span className="block text-xs text-gray-600 mt-0.5">
                                                 {stop.description}
                                               </span>
                                             ) : null}
@@ -1403,7 +1315,7 @@ export default function PropertyAnalytics() {
                                 </div>
                               ) : null}
                             </div>
-                            <span className="text-[11px] text-slate-400 whitespace-nowrap shrink-0">
+                            <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">
                               {new Date(ev.at).toLocaleString()}
                             </span>
                           </div>

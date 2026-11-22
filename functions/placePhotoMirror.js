@@ -4,7 +4,7 @@ const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 const { recordPlacesApiCall } = require("./placesApiUsage");
 
-/** True when loading this URL in a browser bills Google Place Photos. */
+/** True when loading this URL in a browser bills Google Place Photos or is a fragile Google CDN photo. */
 function isGooglePlacesPhotoUrl(url) {
   if (typeof url !== "string" || !url.trim()) return false;
   try {
@@ -20,9 +20,16 @@ function isGooglePlacesPhotoUrl(url) {
       return true;
     }
 
-    // Browser redirect target for Places media URLs — still metered per load.
-    if (host.endsWith(".googleusercontent.com") && path.includes("/place-photos/")) {
-      return true;
+    // Places media redirects + bulk-import grass-cs CDN URLs (403 with Referer in browsers).
+    if (host.endsWith(".googleusercontent.com")) {
+      if (
+        path.includes("/place-photos/") ||
+        path.includes("/grass-cs/") ||
+        path.includes("/a-/") ||
+        path.includes("/places/")
+      ) {
+        return true;
+      }
     }
 
     // Legacy Place Photo endpoint.
@@ -189,10 +196,23 @@ async function ensureStoredPlacePhoto(googlePhotoUrl, storagePathArg, apiKeyArg)
       return null;
     }
 
-    await recordPlacesApiCall(admin.firestore(), {
-      endpoint: "place_photo",
-      source: "photo_mirror",
-    });
+    // Only Places API media / legacy Place Photo endpoints are billed.
+    const host = (() => {
+      try {
+        return new URL(trimmed).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    })();
+    if (
+      host === "places.googleapis.com" ||
+      host === "maps.googleapis.com"
+    ) {
+      await recordPlacesApiCall(admin.firestore(), {
+        endpoint: "place_photo",
+        source: "photo_mirror",
+      });
+    }
 
     const contentType =
       typeof response.headers["content-type"] === "string" &&

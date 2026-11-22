@@ -29,7 +29,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { AdminCard, AdminEmptyState, AdminInput } from '../../../components/admin/AdminPageHeader';
+import { AdminButton, AdminCard, AdminEmptyState, AdminInput } from '../../../components/admin/AdminPageHeader';
 import { adminPath } from '../../../lib/adminRoutes';
 import AreaHubBackLink from '../../../components/admin/AreaHubBackLink';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
@@ -594,35 +594,37 @@ export default function AreaLocalGems() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 sm:p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-sm font-bold text-orange-900 flex items-center gap-2">
-            <Languages size={16} /> Content language
-          </p>
-          {localeEditor.contentLocale !== localeSettings.primaryLocale && (
-            <button
-              type="button"
-              onClick={handleAutoTranslateLocale}
-              disabled={isLocaleTranslating}
-              className="flex items-center px-3 py-2 bg-white border border-orange-300 rounded-lg text-xs sm:text-sm font-medium text-orange-800 disabled:opacity-50"
-            >
-              {isLocaleTranslating ? (
-                <Loader2 size={16} className="animate-spin mr-2" />
-              ) : (
-                <Sparkles size={16} className="mr-2" />
-              )}
-              Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
-            </button>
-          )}
+      {localeSettings.enabledLocales.length > 1 ? (
+        <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3 sm:p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm font-bold text-orange-900 flex items-center gap-2">
+              <Languages size={16} /> Content language
+            </p>
+            {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+              <button
+                type="button"
+                onClick={handleAutoTranslateLocale}
+                disabled={isLocaleTranslating}
+                className="flex items-center px-3 py-2 bg-white border border-orange-300 rounded-lg text-xs sm:text-sm font-medium text-orange-800 disabled:opacity-50"
+              >
+                {isLocaleTranslating ? (
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                ) : (
+                  <Sparkles size={16} className="mr-2" />
+                )}
+                Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+              </button>
+            )}
+          </div>
+          <ContentLocaleTabs
+            enabledLocales={localeSettings.enabledLocales}
+            primaryLocale={localeSettings.primaryLocale}
+            activeLocale={localeEditor.contentLocale}
+            onChange={localeEditor.setContentLocale}
+            languageOptions={languageOptions}
+          />
         </div>
-        <ContentLocaleTabs
-          enabledLocales={localeSettings.enabledLocales}
-          primaryLocale={localeSettings.primaryLocale}
-          activeLocale={localeEditor.contentLocale}
-          onChange={localeEditor.setContentLocale}
-          languageOptions={languageOptions}
-        />
-      </div>
+      ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
@@ -826,13 +828,14 @@ export default function AreaLocalGems() {
             )}
             {isSyncingPropertyGems ? 'Syncing…' : 'Sync property gems'}
           </button>
-          <button
+          <AdminButton
             type="button"
+            variant="accent"
             onClick={openAddForm}
-            className="flex items-center justify-center px-4 py-2.5 bg-orange-600 text-white text-sm font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-sm w-full sm:w-auto"
+            className="w-full sm:w-auto"
           >
-            <Plus size={18} className="mr-2" /> Add Gem
-          </button>
+            <Plus size={18} /> Add Gem
+          </AdminButton>
         </div>
       </div>
 

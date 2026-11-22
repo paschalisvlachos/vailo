@@ -18,7 +18,6 @@ export type ClonePropertyListingResult = {
   gemsCopied: number;
   featuresCopied: number;
   houseGuideCopied: boolean;
-  greenScoreCopied: boolean;
 };
 
 function collectExistingSlugs(
@@ -88,7 +87,6 @@ export async function fetchListingSubcollections(
   gems: Record<string, unknown>[];
   features: Record<string, unknown>[];
   houseGuide: Record<string, unknown> | null;
-  greenScore: Record<string, unknown> | null;
 }> {
   const gemsSnap = await getDocs(
     collection(db, 'properties', propertyId, 'propertyTypes', typeId, 'localGems')
@@ -103,15 +101,11 @@ export async function fetchListingSubcollections(
   const guideSnap = await getDoc(
     doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'houseGuide', 'data')
   );
-  const greenSnap = await getDoc(
-    doc(db, 'properties', propertyId, 'propertyTypes', typeId, 'greenScore', 'data')
-  );
 
   return {
     gems,
     features,
     houseGuide: guideSnap.exists() ? (guideSnap.data() as Record<string, unknown>) : null,
-    greenScore: greenSnap.exists() ? (greenSnap.data() as Record<string, unknown>) : null,
   };
 }
 
@@ -122,7 +116,6 @@ export async function createListingFromCapturedContent(params: {
   gems: Record<string, unknown>[];
   features: Record<string, unknown>[];
   houseGuide: Record<string, unknown> | null;
-  greenScore: Record<string, unknown> | null;
   propertyName?: string;
 }): Promise<ClonePropertyListingResult> {
   const payload = buildClonedListingPayload(params.sourceListingData, params.existingTypes);
@@ -169,22 +162,12 @@ export async function createListingFromCapturedContent(params: {
     houseGuideCopied = true;
   }
 
-  let greenScoreCopied = false;
-  if (params.greenScore) {
-    await setDoc(
-      doc(db, 'properties', params.propertyId, 'propertyTypes', newRef.id, 'greenScore', 'data'),
-      params.greenScore
-    );
-    greenScoreCopied = true;
-  }
-
   return {
     newTypeId: newRef.id,
     listingData: payload,
     gemsCopied,
     featuresCopied,
     houseGuideCopied,
-    greenScoreCopied,
   };
 }
 
@@ -195,7 +178,7 @@ export async function clonePropertyListing(params: {
   existingTypes: Array<{ id: string; urlSlug?: string; typeSlug?: string }>;
   propertyName?: string;
 }): Promise<ClonePropertyListingResult> {
-  const { gems, features, houseGuide, greenScore } = await fetchListingSubcollections(
+  const { gems, features, houseGuide } = await fetchListingSubcollections(
     params.propertyId,
     params.sourceTypeId
   );
@@ -207,7 +190,6 @@ export async function clonePropertyListing(params: {
     gems,
     features,
     houseGuide,
-    greenScore,
     propertyName: params.propertyName,
   });
 }

@@ -66,3 +66,12 @@ export async function resolvePropertyTypeAreaContext(
   }
   return pending;
 }
+
+/** Drop cached lookups after an area is created/renamed so guests resolve immediately. */
+export function clearPropertyTypeAreaContextCache(country?: string, cityRaw?: string): void {
+  if (!country || !cityRaw) {
+    areaContextCache.clear();
+    return;
+  }
+  areaContextCache.delete(areaContextCacheKey(country.trim(), cityRaw.trim()));
+}

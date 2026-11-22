@@ -392,25 +392,29 @@ export default function AreaCategoryNamesPanel({
         </p>
       </div>
 
-      <ContentLocaleTabs
-        enabledLocales={localeSettings.enabledLocales}
-        primaryLocale={primary}
-        activeLocale={activeLocale}
-        onChange={localeEditor.setContentLocale}
-        languageOptions={languageOptions}
-      />
+      {localeSettings.enabledLocales.length > 1 ? (
+        <>
+          <ContentLocaleTabs
+            enabledLocales={localeSettings.enabledLocales}
+            primaryLocale={primary}
+            activeLocale={activeLocale}
+            onChange={localeEditor.setContentLocale}
+            languageOptions={languageOptions}
+          />
 
-      {!isPrimaryTab && (
-        <button
-          type="button"
-          onClick={handleAutoTranslate}
-          disabled={isLocaleTranslating || !englishName}
-          className="flex items-center text-sm font-medium text-vailo-teal hover:underline disabled:opacity-50"
-        >
-          {isLocaleTranslating ? <Loader2 size={14} className="animate-spin mr-1" /> : <Sparkles size={14} className="mr-1" />}
-          Auto-translate name from EN
-        </button>
-      )}
+          {!isPrimaryTab && (
+            <button
+              type="button"
+              onClick={handleAutoTranslate}
+              disabled={isLocaleTranslating || !englishName}
+              className="flex items-center text-sm font-medium text-vailo-teal hover:underline disabled:opacity-50"
+            >
+              {isLocaleTranslating ? <Loader2 size={14} className="animate-spin mr-1" /> : <Sparkles size={14} className="mr-1" />}
+              Auto-translate name from EN
+            </button>
+          )}
+        </>
+      ) : null}
 
       {!editingId && (
         <form onSubmit={handleAdd} className="space-y-3">

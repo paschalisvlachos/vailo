@@ -1,27 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import {
-  ArrowLeft,
-  Home,
-  Building,
-  CalendarCheck,
-  ClipboardCheck,
-  Calendar as CalendarIcon,
-  MapPin,
-  Leaf,
-  BookOpen,
-  Handshake,
-  Sparkles,
-  AlertTriangle,
-  ThumbsUp,
-  Users,
-  FlaskConical,
-  BarChart3,
-} from 'lucide-react';
-import { AdminBadge } from '../../../components/admin/AdminPageHeader';
-import { useUnseenGuestIssuesCount } from '../../../hooks/useUnseenGuestIssuesCount';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import {
   getPropertyAccessMode,
@@ -29,27 +9,9 @@ import {
   type PropertyAccessMode,
 } from '../../../lib/adminAccess';
 import { isPreArrivalCheckInEnabled } from '../../../lib/preArrivalSettings';
-import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { adminPath } from '../../../lib/adminRoutes';
-import { propertyListingQuerySuffix } from '../../../hooks/usePropertyListingQuery';
-
-const TABS = [
-  { name: 'Overview', path: '', icon: Home, badgeKey: null },
-  { name: 'Property Listings', path: 'types', icon: Building, badgeKey: null },
-  { name: 'Reservations', path: 'reservations', icon: CalendarCheck, badgeKey: null },
-  { name: 'Check-ins', path: 'check-ins', icon: ClipboardCheck, badgeKey: null },
-  { name: 'Calendar', path: 'calendar', icon: CalendarIcon, badgeKey: null },
-  { name: 'Local Gems', path: 'local-gems', icon: MapPin, badgeKey: null },
-  { name: 'Green Score', path: 'green-score', icon: Leaf, badgeKey: null },
-  { name: 'House Guide', path: 'house-guide', icon: BookOpen, badgeKey: null },
-  { name: 'Features', path: 'features', icon: Handshake, badgeKey: null },
-  { name: 'Guest Issues', path: 'guest-issues', icon: AlertTriangle, badgeKey: 'guestIssues' as const },
-  { name: 'Pick Feedback', path: 'pick-feedback', icon: ThumbsUp, badgeKey: null },
-  { name: 'AI Gaps', path: 'ai-gaps', icon: Sparkles, badgeKey: null },
-  { name: 'House Guests', path: 'house-guests', icon: Users, badgeKey: null },
-  { name: 'Visitor access', path: 'testers', icon: FlaskConical, badgeKey: null },
-  { name: 'Analytics', path: 'analytics', icon: BarChart3, badgeKey: null },
-];
+import { PROPERTY_ADMIN_SECTIONS } from '../../../lib/propertyAdminNav';
+import { repairAgencyPortfolioNameIfNeeded } from '../../../lib/createPropertyFromAddDraft';
 
 export type PropertyRecord = {
   id: string;
@@ -89,6 +51,16 @@ export type PropertyOutletContext = {
   lockedListingId: string | null;
 };
 
+const REMOVED_SEGMENTS = new Set([
+  '',
+  'pick-feedback',
+  'ai-gaps',
+  'testers',
+  'overview',
+  'reservations',
+  'calendar',
+]);
+
 export default function PropertyLayout() {
   const { id } = useParams();
   const location = useLocation();
@@ -97,10 +69,9 @@ export default function PropertyLayout() {
   const { profile } = useAdminSession();
   const [property, setProperty] = useState<PropertyRecord | null>(null);
   const [typeRows, setTypeRows] = useState<
-    { id: string; propertyId: string; ownerId?: string }[]
+    { id: string; propertyId: string; ownerId?: string; propertyTypeName?: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const unseenGuestIssues = useUnseenGuestIssuesCount(id);
 
   useEffect(() => {
     if (!id) return;
@@ -122,6 +93,26 @@ export default function PropertyLayout() {
     return () => unsub();
   }, [id]);
 
+  // Repair shells wrongly named after a listing (legacy Add Property bug).
+  useEffect(() => {
+    if (!id || !property?.propertyName) return;
+    if (!property.ownerId || property.ownerId !== profile?.id) return;
+    const agencyName = profile.company?.trim() || profile.fullName?.trim();
+    if (!agencyName) return;
+    void repairAgencyPortfolioNameIfNeeded({
+      propertyId: id,
+      currentName: property.propertyName,
+      agencyName,
+    });
+  }, [
+    id,
+    property?.propertyName,
+    property?.ownerId,
+    profile?.id,
+    profile?.company,
+    profile?.fullName,
+  ]);
+
   useEffect(() => {
     if (!id) return;
     const unsub = onSnapshot(collection(db, 'properties', id, 'propertyTypes'), (snap) => {
@@ -130,6 +121,7 @@ export default function PropertyLayout() {
           id: d.id,
           propertyId: id,
           ownerId: d.data().ownerId as string | undefined,
+          propertyTypeName: d.data().propertyTypeName as string | undefined,
         }))
       );
     });
@@ -151,24 +143,8 @@ export default function PropertyLayout() {
     return propertyAccess.typeIds[0] || null;
   }, [propertyAccess, searchParams]);
 
-  const visibleTabs = useMemo(
-    () =>
-      TABS.filter((tab) => {
-        if (tab.path === 'check-ins' && !isPreArrivalCheckInEnabled(property)) {
-          return false;
-        }
-        if (
-          (tab.path === 'reservations' || tab.path === 'calendar') &&
-          !isCalendarSyncEnabled(property)
-        ) {
-          return false;
-        }
-        return isTabAllowedForAccess(tab.path, propertyAccess);
-      }),
-    [propertyAccess, property]
-  );
-
-  const currentSegment = location.pathname.split(`${adminPath(`/properties/${id}`)}/`)[1]?.split('/')[0] ?? '';
+  const currentSegment =
+    location.pathname.split(`${adminPath(`/properties/${id}`)}/`)[1]?.split('/')[0] ?? '';
 
   useEffect(() => {
     if (!id || !propertyAccess || loading) return;
@@ -183,6 +159,23 @@ export default function PropertyLayout() {
       navigate(target, { replace: true });
     }
   }, [id, propertyAccess, currentSegment, lockedListingId, loading, navigate]);
+
+  const allowedSegments = useMemo(() => {
+    const paths = new Set<string>(['types']); // unified Property Listings entry
+    for (const tab of PROPERTY_ADMIN_SECTIONS) {
+      if (tab.path === 'check-ins' && !isPreArrivalCheckInEnabled(property)) continue;
+      if (propertyAccess && isTabAllowedForAccess(tab.path, propertyAccess)) {
+        paths.add(tab.path);
+      }
+    }
+    // Listing-only access: types + house-guide only
+    if (propertyAccess?.level === 'listing_only') {
+      return new Set(
+        [...paths].filter((p) => isTabAllowedForAccess(p, propertyAccess))
+      );
+    }
+    return paths;
+  }, [property, propertyAccess]);
 
   if (loading) {
     return (
@@ -199,6 +192,16 @@ export default function PropertyLayout() {
     );
   }
 
+  // Overview / removed tabs → Listings
+  if (REMOVED_SEGMENTS.has(currentSegment) || !allowedSegments.has(currentSegment)) {
+    const listingQ = lockedListingId
+      ? `?listing=${encodeURIComponent(lockedListingId)}`
+      : '';
+    return (
+      <Navigate to={adminPath(`/properties/${id}/types${listingQ}`)} replace />
+    );
+  }
+
   const outletContext: PropertyOutletContext = {
     property,
     propertyId: id!,
@@ -208,95 +211,8 @@ export default function PropertyLayout() {
 
   return (
     <div className="admin-page">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 sm:mb-8 pb-5 sm:pb-6 border-b border-gray-200/80">
-        <div className="flex items-start sm:items-center gap-3 min-w-0">
-          <Link
-            to={adminPath('/properties')}
-            className="p-2.5 rounded-xl hover:bg-vailo-teal/5 text-gray-400 hover:text-vailo-teal transition-colors shrink-0 border border-transparent hover:border-vailo-teal/10"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <div className="min-w-0">
-            <h2 className="text-xl sm:text-2xl lg:text-[1.65rem] font-bold text-vailo-dark font-luxury truncate">
-              {property.propertyName}
-            </h2>
-            <p className="text-gray-500 text-sm mt-0.5">
-              {propertyAccess.level === 'listing_only'
-                ? 'Listing access — assigned unit only'
-                : 'Property management'}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {propertyAccess.level === 'listing_only' && (
-            <AdminBadge variant="gold">Listing only</AdminBadge>
-          )}
-          {property.listingKind && (
-            <AdminBadge variant={property.listingKind === 'hotel' ? 'gold' : 'teal'}>
-              {property.listingKind === 'hotel' ? 'Hotel' : 'Property'}
-            </AdminBadge>
-          )}
-          {property.internalRefCode && (
-            <AdminBadge variant="teal">{property.internalRefCode}</AdminBadge>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col xl:flex-row gap-5 xl:gap-8">
-        <nav className="xl:w-60 shrink-0">
-          <div className="xl:sticky xl:top-24">
-            <p className="hidden xl:block text-[10px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-2.5 px-1">
-              Sections
-            </p>
-            <div className="flex xl:flex-col gap-1.5 overflow-x-auto admin-scroll-x pb-1 xl:pb-0 -mx-1 px-1 xl:mx-0 xl:px-0 xl:bg-white xl:border xl:border-gray-100 xl:rounded-2xl xl:p-2 xl:shadow-[0_2px_16px_-6px_rgba(11,79,92,0.1)]">
-              {visibleTabs.map((tab) => {
-                const listingSuffix = propertyListingQuerySuffix(
-                  lockedListingId || searchParams.get('listing')
-                );
-                const to =
-                  tab.path === ''
-                    ? listingSuffix || ''
-                    : `${tab.path}${listingSuffix}`;
-                return (
-                  <NavLink
-                    key={tab.name}
-                    to={to}
-                    end={tab.path === ''}
-                    className={({ isActive }) =>
-                      `flex items-center gap-2 xl:gap-2.5 px-3.5 xl:px-3 py-2.5 text-xs xl:text-sm font-medium rounded-xl whitespace-nowrap shrink-0 transition-all ${
-                        isActive
-                          ? 'bg-vailo-teal text-white shadow-sm shadow-vailo-teal/20'
-                          : 'bg-white xl:bg-transparent text-gray-600 border border-gray-100 xl:border-0 hover:bg-vailo-surface-elevated hover:text-vailo-teal'
-                      }`
-                    }
-                  >
-                    <tab.icon size={16} className="shrink-0 opacity-90" />
-                    <span className="flex-1 truncate">{tab.name}</span>
-                    {tab.badgeKey === 'guestIssues' && unseenGuestIssues > 0 && (
-                      <span className="min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-vailo-gold text-vailo-dark text-[10px] font-bold tabular-nums">
-                        {unseenGuestIssues > 99 ? '99+' : unseenGuestIssues}
-                      </span>
-                    )}
-                  </NavLink>
-                );
-              })}
-            </div>
-          </div>
-        </nav>
-
-        <div className="flex-1 min-w-0 bg-white border border-gray-100 rounded-2xl shadow-[0_2px_16px_-6px_rgba(11,79,92,0.1)] p-4 sm:p-6 lg:p-8 xl:p-10 min-h-[420px]">
-          {propertyAccess.level === 'listing_only' && lockedListingId && currentSegment === '' ? (
-            <Navigate
-              to={adminPath(`/properties/${id}/types?listing=${lockedListingId}`)}
-              replace
-            />
-          ) : !isCalendarSyncEnabled(property) &&
-            (currentSegment === 'calendar' || currentSegment === 'reservations') ? (
-            <Navigate to={adminPath(`/properties/${id}`)} replace />
-          ) : (
-            <Outlet context={outletContext} />
-          )}
-        </div>
+      <div className="min-w-0 bg-white rounded-lg border border-[#e1e1e1] shadow-[0_10px_10px_0_rgba(0,0,0,0.08)] p-4 sm:p-6 lg:p-8 xl:p-10 min-h-[420px]">
+        <Outlet context={outletContext} />
       </div>
     </div>
   );

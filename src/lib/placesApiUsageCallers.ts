@@ -6,6 +6,7 @@ export const PLACES_USAGE_CALLER = {
   propertyLocalGems: 'property_local_gems',
   propertyFeatures: 'property_features',
   propertyTypes: 'property_types',
+  propertySetupEssentials: 'property_setup_essentials',
   guestAiConcierge: 'guest_ai_concierge',
 } as const;
 

@@ -36,36 +36,182 @@
 }
 
 @layer components {
+  /*
+   * Admin theme — minimal product UI (spacing / forms).
+   * Scoped so guest portal / marketing keep Vailo brand colours.
+   */
+  .admin-shell,
+  .admin-auth {
+    --color-vailo-dark: #17293c;
+    --color-vailo-teal: #0b4f5c;
+    --color-vailo-teal-hover: #083a43;
+    --color-vailo-teal-light: #0f6a7a;
+    --color-vailo-teal-muted: #0b4f5c1a;
+    --color-vailo-gold: #c5a059;
+    --color-vailo-gold-hover: #b8924f;
+    --color-vailo-gold-muted: #8a6d2e;
+    --color-vailo-surface: #f5f6f8;
+    --color-vailo-surface-elevated: #fafbfc;
+    --font-luxury: "Figtree", Tahoma, sans-serif;
+    --admin-sidebar: #ffffff;
+    --admin-ink: #17293c;
+    --admin-border: #e8e8e9;
+    --admin-border-strong: #e1e1e1;
+    --admin-muted: #666666;
+    --admin-content: #303133;
+    --admin-accent-soft: color-mix(in srgb, #2ec4b6 22%, transparent);
+    --admin-accent: #2ec4b6;
+    --admin-shadow: 0 10px 10px 0 rgba(0, 0, 0, 0.08);
+    --admin-radius: 0.375rem;
+    --admin-radius-lg: 0.5rem;
+    font-family: "Figtree", Tahoma, sans-serif;
+    color: var(--admin-muted);
+    background-color: var(--color-vailo-surface);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .admin-shell .font-luxury,
+  .admin-auth .font-luxury,
+  .admin-shell h1,
+  .admin-shell h2,
+  .admin-shell h3,
+  .admin-shell h4,
+  .admin-auth h1,
+  .admin-auth h2,
+  .admin-auth h3 {
+    font-family: "Figtree", Tahoma, sans-serif;
+    color: var(--admin-ink);
+    letter-spacing: -0.01em;
+  }
+
+  .admin-shell .rounded-2xl,
+  .admin-auth .rounded-2xl {
+    border-radius: var(--admin-radius-lg);
+  }
+  .admin-shell .rounded-xl,
+  .admin-auth .rounded-xl {
+    border-radius: var(--admin-radius-lg);
+  }
+  .admin-shell .rounded-lg,
+  .admin-auth .rounded-lg {
+    border-radius: var(--admin-radius);
+  }
+
   .admin-page {
     @apply w-full pb-8 sm:pb-10;
   }
 
   .admin-label {
-    @apply block text-sm font-semibold text-vailo-dark/80 mb-1.5;
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--admin-ink);
+    margin-bottom: 4px;
   }
 
   .admin-input {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-white outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15;
+    width: 100%;
+    height: 2.25rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    font-size: 0.875rem;
+    line-height: 1rem;
+    color: var(--admin-ink);
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .admin-input::placeholder {
+    color: #9ca3af;
+  }
+  .admin-input:focus {
+    border-color: var(--admin-ink);
+    box-shadow: none;
   }
 
   .admin-input-muted {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15 focus:bg-white;
+    width: 100%;
+    height: 2.25rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    font-size: 0.875rem;
+    line-height: 1rem;
+    color: var(--admin-ink);
+    background: var(--color-vailo-surface-elevated);
+    outline: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .admin-input-muted::placeholder {
+    color: #9ca3af;
+  }
+  .admin-input-muted:focus {
+    border-color: var(--admin-ink);
+    background: #fff;
   }
 
   .admin-select {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-vailo-surface-elevated outline-none transition-all focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15 focus:bg-white disabled:opacity-50;
+    width: 100%;
+    height: 2.25rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    font-size: 0.875rem;
+    line-height: 1rem;
+    color: var(--admin-ink);
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .admin-select:focus {
+    border-color: var(--admin-ink);
+    background: #fff;
+  }
+  .admin-select:disabled {
+    opacity: 0.5;
   }
 
   .admin-textarea {
-    @apply w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-vailo-dark bg-white outline-none transition-all resize-y min-h-[100px] placeholder:text-gray-400 focus:border-vailo-teal/50 focus:ring-2 focus:ring-vailo-teal/15;
+    width: 100%;
+    min-height: 7.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--admin-ink);
+    background: #fff;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s ease;
+  }
+  .admin-textarea::placeholder {
+    color: #9ca3af;
+  }
+  .admin-textarea:focus {
+    border-color: var(--admin-ink);
   }
 
   .admin-section-title {
-    @apply text-base sm:text-lg font-bold text-vailo-dark flex items-center gap-2 border-b border-gray-100 pb-4 mb-5;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--admin-ink);
+    border-bottom: 1px solid var(--admin-border-strong);
+    padding-bottom: 1rem;
+    margin-bottom: 1.25rem;
   }
 
   .admin-table-wrap {
-    @apply overflow-x-auto rounded-xl border border-gray-100;
+    @apply overflow-x-auto;
+    border: 1px solid var(--admin-border-strong);
+    border-radius: var(--admin-radius-lg);
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
   }
@@ -73,7 +219,7 @@
     height: 4px;
   }
   .admin-table-wrap::-webkit-scrollbar-thumb {
-    background: rgb(11 79 92 / 0.25);
+    background: color-mix(in srgb, var(--admin-accent) 40%, transparent);
     border-radius: 9999px;
   }
 
@@ -82,54 +228,145 @@
   }
 
   .admin-table thead {
-    @apply bg-vailo-surface-elevated text-vailo-dark/70 uppercase text-[11px] tracking-wider font-semibold;
+    background: var(--color-vailo-surface-elevated);
+    color: color-mix(in srgb, var(--admin-ink) 70%, transparent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .admin-table th {
-    @apply px-4 py-3.5 whitespace-nowrap;
+    @apply px-4 py-3 whitespace-nowrap;
   }
 
   .admin-table td {
-    @apply px-4 py-3.5 border-t border-gray-50 text-gray-700;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--admin-border);
+    color: #4b5563;
   }
 
   .admin-table tbody tr {
-    @apply hover:bg-vailo-teal/[0.03] transition-colors;
+    @apply transition-colors;
+  }
+  .admin-table tbody tr:hover {
+    background: color-mix(in srgb, var(--admin-accent) 6%, white);
   }
 
   .admin-icon-box {
-    @apply flex items-center justify-center h-11 w-11 rounded-xl text-vailo-teal shrink-0;
-    background-color: color-mix(in srgb, var(--color-vailo-teal) 8%, transparent);
+    @apply flex items-center justify-center h-10 w-10 shrink-0;
+    border-radius: var(--admin-radius);
+    color: var(--color-vailo-teal);
+    background-color: color-mix(in srgb, var(--color-vailo-teal) 10%, transparent);
   }
 
   .admin-icon-box-gold {
-    @apply flex items-center justify-center h-11 w-11 rounded-xl text-vailo-gold shrink-0;
-    background-color: color-mix(in srgb, var(--color-vailo-gold) 15%, transparent);
+    @apply flex items-center justify-center h-10 w-10 shrink-0;
+    border-radius: var(--admin-radius);
+    color: var(--color-vailo-gold);
+    background-color: color-mix(in srgb, var(--color-vailo-gold) 16%, transparent);
   }
 
   .admin-module-card {
-    @apply flex flex-col items-start p-5 sm:p-6 text-left rounded-2xl border border-gray-100 bg-white hover:border-vailo-teal/20 transition-all duration-200 h-full;
+    @apply flex flex-col items-start p-5 sm:p-6 text-left bg-white transition-all duration-200 h-full;
+    border: 1px solid var(--admin-border-strong);
+    border-radius: var(--admin-radius-lg);
+    box-shadow: var(--admin-shadow);
   }
   .admin-module-card:hover {
-    box-shadow: 0 8px 30px -12px rgba(11, 79, 92, 0.18);
+    border-color: color-mix(in srgb, var(--admin-ink) 18%, var(--admin-border-strong));
   }
   .admin-module-card-gems {
-    background-color: color-mix(in srgb, var(--color-vailo-gold) 10%, white);
+    background-color: color-mix(in srgb, var(--color-vailo-gold) 8%, white);
     border-color: color-mix(in srgb, var(--color-vailo-gold) 22%, transparent);
   }
   .admin-module-card-gems:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--color-vailo-gold) 42%, transparent);
   }
   .admin-module-card-features {
-    background-color: color-mix(in srgb, var(--color-vailo-teal) 8%, white);
-    border-color: color-mix(in srgb, var(--color-vailo-teal) 18%, transparent);
+    background-color: color-mix(in srgb, var(--admin-accent) 8%, white);
+    border-color: color-mix(in srgb, var(--admin-accent) 22%, transparent);
   }
   .admin-module-card-features:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--color-vailo-teal) 35%, transparent);
+    border-color: color-mix(in srgb, var(--admin-accent) 40%, transparent);
   }
 
   .admin-back-link {
-    @apply inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-vailo-teal transition-colors mb-4;
+    @apply inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors mb-4;
+  }
+  .admin-back-link:hover {
+    color: var(--admin-ink);
+  }
+
+  /* Minimal shell chrome */
+  .admin-topbar {
+    background: #ffffff;
+    border-bottom: 1px solid var(--admin-border-strong);
+    box-shadow: none;
+  }
+
+  .admin-sidebar-panel {
+    background: var(--admin-sidebar);
+    border-right: 1px solid var(--admin-border-strong);
+    border-top: 3px solid var(--admin-accent);
+    box-shadow: none;
+  }
+
+  .admin-nav-section-title {
+    padding: 1rem 1rem 0.5rem;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #9ca3af;
+  }
+
+  .admin-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--admin-radius);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--admin-muted);
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .admin-nav-link:hover,
+  .admin-nav-link:focus {
+    background: color-mix(in srgb, var(--admin-ink) 4%, white);
+    color: var(--admin-ink);
+  }
+  .admin-nav-link.is-active {
+    background: var(--admin-accent-soft);
+    color: var(--color-vailo-teal);
+    font-weight: 600;
+  }
+  .admin-nav-link.is-active .admin-nav-icon {
+    color: var(--admin-accent);
+  }
+
+  .admin-content-panel {
+    background: var(--color-vailo-surface);
+  }
+
+  .admin-shell .rich-text-editor h2,
+  .admin-shell .legal-document-content h2,
+  .admin-shell .rich-text-editor h3,
+  .admin-shell .legal-document-content h3 {
+    color: var(--color-vailo-dark);
+    font-family: "Figtree", Tahoma, sans-serif;
+  }
+
+  .admin-shell .rich-text-editor a,
+  .admin-shell .legal-document-content a {
+    color: var(--color-vailo-teal);
+  }
+
+  .admin-shell input[type='checkbox'],
+  .admin-shell input[type='radio'] {
+    accent-color: var(--color-vailo-teal);
   }
 
   /* Leaflet divIcon reset for Area Local Gems map pins */
@@ -149,7 +386,7 @@
     height: 4px;
   }
   .admin-scroll-x::-webkit-scrollbar-thumb {
-    background: rgb(11 79 92 / 0.25);
+    background: color-mix(in srgb, var(--color-vailo-teal) 35%, transparent);
     border-radius: 9999px;
   }
   .font-luxury {

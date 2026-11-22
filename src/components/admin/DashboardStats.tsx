@@ -18,8 +18,8 @@ import { adminPath } from '../../lib/adminRoutes';
 
 const TEAL = '#0b4f5c';
 const GOLD = '#c5a059';
-const TEAL_LIGHT = '#0a6574';
-const PIE_COLORS = [TEAL, GOLD, TEAL_LIGHT, '#8a6d2e'];
+const TEAL_LIGHT = '#2ec4b6';
+const PIE_COLORS = [TEAL, GOLD, TEAL_LIGHT, '#17293c'];
 
 function formatUsd(amount: number) {
   return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
@@ -39,10 +39,10 @@ function KpiCard({
   to?: string;
 }) {
   const inner = (
-    <AdminCard className={`p-4 sm:p-5 h-full ${to ? 'hover:shadow-[0_8px_30px_-12px_rgba(11,79,92,0.18)] hover:border-vailo-teal/15 transition-all group' : ''}`}>
+    <AdminCard className={`p-4 sm:p-5 h-full ${to ? 'hover:border-[#17293c]/20 transition-all group' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{label}</p>
+          <p className="text-[11px] font-bold text-gray-500 tracking-wide">{label}</p>
           <p className="text-2xl sm:text-3xl font-bold text-vailo-dark mt-1 tabular-nums">{value}</p>
           {sub && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{sub}</p>}
         </div>
@@ -76,7 +76,7 @@ function ChartCard({
 }) {
   return (
     <AdminCard className={`p-4 sm:p-6 ${className}`}>
-      <h3 className="text-sm font-bold text-vailo-dark font-luxury">{title}</h3>
+      <h3 className="text-sm font-semibold text-vailo-dark capitalize">{title}</h3>
       {description && <div className="text-xs text-gray-500 mt-1 mb-4">{description}</div>}
       {!description && <div className="mb-4" />}
       {children}
@@ -357,7 +357,7 @@ export default function DashboardStats() {
   return (
     <section className="space-y-8">
       <div>
-        <h3 className="text-base sm:text-lg font-bold text-vailo-dark font-luxury">Platform statistics</h3>
+        <h3 className="text-base sm:text-lg font-semibold text-vailo-dark capitalize">Platform statistics</h3>
         <p className="text-sm text-gray-500 mt-1">
           Live snapshot — portfolio, guest portal usage, excursions, and operations.
         </p>

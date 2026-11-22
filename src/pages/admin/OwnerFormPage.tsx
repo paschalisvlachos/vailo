@@ -7,6 +7,11 @@ import { useToast } from '../../context/ToastContext';
 import { adminPath } from '../../lib/adminRoutes';
 import { normalizeOwnerRole } from '../../lib/adminAccess';
 import { canAgentManageOwnerRecord } from '../../lib/agentOwners';
+import {
+  parseMaxListings,
+  roleRequiresMaxListings,
+  UNLIMITED_LISTINGS,
+} from '../../lib/ownerListingQuota';
 import { provisionOwnerAuth } from '../../lib/provisionOwnerAuth';
 import { useAdminSession } from '../../context/AdminSessionContext';
 import {
@@ -42,6 +47,8 @@ const EMPTY_FORM = {
   role: 'owner',
   status: 'active',
   password: '',
+  /** '' | 'unlimited' | positive integer as string */
+  maxListings: '',
 };
 
 type OwnerFormData = typeof EMPTY_FORM;
@@ -86,6 +93,7 @@ export default function OwnerFormPage() {
         }
         const email = data.email || '';
         setOriginalEmail(email);
+        const maxListings = parseMaxListings(data.maxListings);
         setFormData({
           fullName: data.fullName || '',
           email,
@@ -100,6 +108,12 @@ export default function OwnerFormPage() {
           role: normalizeOwnerRole(data.role),
           status: data.status || 'active',
           password: '',
+          maxListings:
+            maxListings == null
+              ? ''
+              : maxListings === UNLIMITED_LISTINGS
+                ? 'unlimited'
+                : String(maxListings),
         });
         setAgreementInviteSentAt(data.partnerAgreementInviteSentAt || null);
         setAgreementAcceptedAt(data.partnerAgreementAcceptedAt || null);
@@ -153,9 +167,10 @@ export default function OwnerFormPage() {
     setIsSubmitting(true);
 
     try {
-      const { password, ...formFields } = formData;
+      const { password, maxListings: maxListingsRaw, ...formFields } = formData;
       const normalizedEmail = formFields.email.trim().toLowerCase();
       const trimmedPassword = password.trim();
+      const role = agentMode ? 'owner' : normalizeOwnerRole(formFields.role);
       if (isEdit && !trimmedPassword && !authUid) {
         toast.warning(
           'This user has no Vailo Admin login yet. Enter a password below and save again.'
@@ -164,12 +179,44 @@ export default function OwnerFormPage() {
         return;
       }
 
+      const needsMaxListings = roleRequiresMaxListings(role);
+      const maxListings = parseMaxListings(maxListingsRaw);
+      if (needsMaxListings) {
+        if (maxListings == null) {
+          toast.warning('Choose unlimited or enter how many property listings this owner may manage.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (maxListings !== UNLIMITED_LISTINGS && maxListings < 1) {
+          toast.warning('Listing capacity must be at least 1, or choose Unlimited.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (
+          isEdit &&
+          maxListings !== UNLIMITED_LISTINGS &&
+          maxListings < allocatedTypeCount
+        ) {
+          toast.warning(
+            `This owner already has ${allocatedTypeCount} listings allocated. Set capacity to at least ${allocatedTypeCount}, or choose Unlimited.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const payload: Record<string, unknown> = {
         ...formFields,
-        role: agentMode ? 'owner' : normalizeOwnerRole(formFields.role),
+        role,
         email: normalizedEmail,
         updatedAt: new Date().toISOString(),
       };
+
+      if (needsMaxListings) {
+        payload.maxListings = maxListings;
+      } else {
+        payload.maxListings = deleteField();
+      }
 
       if (agentMode) {
         payload.agentId = sessionProfile!.id;
@@ -302,6 +349,73 @@ export default function OwnerFormPage() {
                       <p className="text-xs text-gray-500 mt-1">Property listings where this user is allocated owner</p>
                     </div>
                   </>
+                )}
+                {(agentMode || roleRequiresMaxListings(formData.role)) && (
+                  <div className="md:col-span-2 rounded-lg border border-[#e1e1e1] bg-[#fafbfc] p-4 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <AdminLabel htmlFor="listingCapacityMode">Listing capacity *</AdminLabel>
+                        <AdminSelect
+                          id="listingCapacityMode"
+                          value={
+                            formData.maxListings === 'unlimited'
+                              ? 'unlimited'
+                              : formData.maxListings === ''
+                                ? ''
+                                : 'limited'
+                          }
+                          onChange={(e) => {
+                            const mode = e.target.value;
+                            if (mode === 'unlimited') {
+                              setFormData({ ...formData, maxListings: 'unlimited' });
+                            } else if (mode === 'limited') {
+                              setFormData({
+                                ...formData,
+                                maxListings:
+                                  formData.maxListings && formData.maxListings !== 'unlimited'
+                                    ? formData.maxListings
+                                    : '1',
+                              });
+                            } else {
+                              setFormData({ ...formData, maxListings: '' });
+                            }
+                          }}
+                          required
+                        >
+                          <option value="" disabled>
+                            Select capacity…
+                          </option>
+                          <option value="unlimited">Unlimited</option>
+                          <option value="limited">Limited</option>
+                        </AdminSelect>
+                      </div>
+                      {formData.maxListings !== 'unlimited' && formData.maxListings !== '' && (
+                        <div>
+                          <AdminLabel htmlFor="maxListings">Max property listings *</AdminLabel>
+                          <AdminInput
+                            id="maxListings"
+                            name="maxListings"
+                            type="number"
+                            min={1}
+                            step={1}
+                            required
+                            value={formData.maxListings}
+                            onChange={handleChange}
+                            placeholder="e.g. 3"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {formData.maxListings === 'unlimited'
+                        ? 'This user can manage any number of property listings.'
+                        : 'How many property listings this user may manage'}
+                      {isEdit && allocatedTypeCount > 0
+                        ? ` (currently allocated: ${allocatedTypeCount})`
+                        : ''}
+                      {formData.maxListings !== 'unlimited' ? '.' : ''}
+                    </p>
+                  </div>
                 )}
               </div>
             </section>

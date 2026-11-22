@@ -122,6 +122,11 @@ export default function PropertyLanguagesCard({ propertyId, propertyData }: Prop
     );
   }
 
+  // Nothing to configure when the platform only offers one language.
+  if (languages.length <= 1) {
+    return null;
+  }
+
   return (
     <AdminCard className="p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-5 sm:pb-6 border-b border-gray-100">

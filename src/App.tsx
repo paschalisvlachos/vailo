@@ -8,13 +8,13 @@ import GuestPortalLoadingScreen from "./components/guest/GuestPortalLoadingScree
 import AdminAuthenticatedShell from "./components/admin/AdminAuthenticatedShell";
 import PropertiesPage from "./pages/admin/properties/PropertiesPage";
 import PropertyFormPage from "./pages/admin/properties/PropertyFormPage";
+import AddPropertySetupPage from "./pages/admin/properties/AddPropertySetupPage";
 import OwnersPage from "./pages/admin/OwnersPage";
 import OwnerFormPage from "./pages/admin/OwnerFormPage";
 import PropertyLayout from "./pages/admin/properties/PropertyLayout";
 import Overview from "./pages/admin/properties/Overview";
 import PropertyTypes from "./pages/admin/properties/PropertyTypes";
 import LocalGems from "./pages/admin/properties/LocalGems";
-import GreenScore from "./pages/admin/properties/GreenScore";
 import Calendar from "./pages/admin/properties/Calendar";
 import Reservations from "./pages/admin/properties/Reservations";
 import CheckIns from "./pages/admin/properties/CheckIns";
@@ -26,6 +26,7 @@ import ExpenseFormPage from "./pages/admin/ExpenseFormPage";
 import LegalDocuments from "./pages/admin/LegalDocuments";
 import Settings from "./pages/admin/Settings";
 import ChangePasswordPage from "./pages/admin/ChangePasswordPage";
+import AccountSettingsPage from "./pages/admin/AccountSettingsPage";
 import KnowledgeHub from "./pages/admin/knowledge/KnowledgeHub";
 import WebKnowledge from "./pages/admin/knowledge/WebKnowledge";
 import ClientKnowledge from "./pages/admin/knowledge/ClientKnowledge";
@@ -71,6 +72,7 @@ import {
   ExcursionPortalGuard,
   ExcursionProviderAccessGuard,
   ScopedAdminHome,
+  CanCreatePropertyGuard,
 } from "./components/admin/AdminAccessGuards";
 import { ADMIN_BASE, adminPath } from "./lib/adminRoutes";
 
@@ -165,7 +167,8 @@ export default function App() {
 
         {/* Admin app — one session shell for all routes (avoids reload on every navigation) */}
         <Route path={ADMIN_BASE} element={<AdminAuthenticatedShell user={user} />}>
-          <Route index element={<PlatformAdminOnly><DashboardPage /></PlatformAdminOnly>} />
+          <Route index element={<Navigate to={adminPath('/properties')} replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="mailbox" element={<PlatformAdminOnly><MailboxPage /></PlatformAdminOnly>} />
           <Route path="inbox" element={<Navigate to={adminPath('/mailbox')} replace />} />
           <Route
@@ -176,7 +179,7 @@ export default function App() {
               </ScopedAdminHome>
             }
           />
-          <Route path="add-property" element={<PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly>} />
+          <Route path="add-property" element={<CanCreatePropertyGuard><AddPropertySetupPage /></CanCreatePropertyGuard>} />
           <Route path="properties/:id/edit" element={<PlatformAdminOnly><PropertyFormPage /></PlatformAdminOnly>} />
           <Route
             path="properties/:id"
@@ -189,7 +192,6 @@ export default function App() {
             <Route index element={<Overview />} />
             <Route path="types" element={<PropertyTypes />} />
             <Route path="local-gems" element={<LocalGems />} />
-            <Route path="green-score" element={<GreenScore />} />
             <Route path="calendar" element={<Calendar />} />
             <Route path="reservations" element={<Reservations />} />
             <Route path="check-ins" element={<CheckIns />} />
@@ -212,6 +214,7 @@ export default function App() {
           <Route path="expenses/:id/edit" element={<PlatformAdminOnly><ExpenseFormPage /></PlatformAdminOnly>} />
           <Route path="legal" element={<PlatformAdminOnly><LegalDocuments /></PlatformAdminOnly>} />
           <Route path="settings" element={<PlatformAdminOnly><Settings /></PlatformAdminOnly>} />
+          <Route path="account/settings" element={<AccountSettingsPage />} />
           <Route path="account/password" element={<ChangePasswordPage />} />
           <Route path="knowledge" element={<PlatformAdminOnly><KnowledgeHub /></PlatformAdminOnly>} />
           <Route path="knowledge/web" element={<PlatformAdminOnly><WebKnowledge /></PlatformAdminOnly>} />

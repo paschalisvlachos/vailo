@@ -62,6 +62,67 @@ const COUNTRY_CODES: Record<string, string> = {
   portugal: 'pt',
   turkey: 'tr',
   croatia: 'hr',
+  germany: 'de',
+  austria: 'at',
+  switzerland: 'ch',
+  netherlands: 'nl',
+  belgium: 'be',
+  'united kingdom': 'gb',
+  'united states': 'us',
+  usa: 'us',
+  canada: 'ca',
+  mexico: 'mx',
+  brazil: 'br',
+  argentina: 'ar',
+  australia: 'au',
+  'new zealand': 'nz',
+  japan: 'jp',
+  'south korea': 'kr',
+  thailand: 'th',
+  indonesia: 'id',
+  vietnam: 'vn',
+  morocco: 'ma',
+  egypt: 'eg',
+  'united arab emirates': 'ae',
+  poland: 'pl',
+  czechia: 'cz',
+  'czech republic': 'cz',
+  hungary: 'hu',
+  romania: 'ro',
+  bulgaria: 'bg',
+  serbia: 'rs',
+  albania: 'al',
+  montenegro: 'me',
+  slovenia: 'si',
+  slovakia: 'sk',
+  ireland: 'ie',
+  sweden: 'se',
+  norway: 'no',
+  denmark: 'dk',
+  finland: 'fi',
+  iceland: 'is',
+  malta: 'mt',
+  'south africa': 'za',
+  india: 'in',
+  china: 'cn',
+  russia: 'ru',
+  ukraine: 'ua',
+  israel: 'il',
+  jordan: 'jo',
+  tunisia: 'tn',
+  colombia: 'co',
+  chile: 'cl',
+  peru: 'pe',
+  'costa rica': 'cr',
+  'dominican republic': 'do',
+  jamaica: 'jm',
+  philippines: 'ph',
+  malaysia: 'my',
+  singapore: 'sg',
+  'sri lanka': 'lk',
+  maldives: 'mv',
+  georgia: 'ge',
+  armenia: 'am',
 };
 
 export function countryToIsoCode(country: string): string | undefined {
@@ -1181,6 +1242,106 @@ async function mapConcurrent<T, R>(
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runWorker));
   return results;
+}
+
+export type MunicipalitySuggestion = {
+  name: string;
+  label: string;
+  lat?: number;
+  lng?: number;
+  source: 'geocode';
+};
+
+function municipalityNameFromHit(hit: NominatimHit): string {
+  const fromAddress =
+    hit.address?.city ||
+    hit.address?.town ||
+    hit.address?.village ||
+    hit.address?.municipality ||
+    hit.name;
+  return String(fromAddress || '').trim();
+}
+
+function countryMatchesHit(hit: NominatimHit, country: string): boolean {
+  const wanted = normalizePlaceToken(country);
+  if (!wanted) return true;
+  const hitCountry = normalizePlaceToken(hit.address?.country || '');
+  if (hitCountry && (hitCountry === wanted || hitCountry.includes(wanted) || wanted.includes(hitCountry))) {
+    return true;
+  }
+  const display = normalizePlaceToken(hit.display_name || '');
+  return display.includes(wanted);
+}
+
+/**
+ * Global municipality / city suggestions for a selected country (OpenStreetMap Nominatim).
+ * Clients type any place — no pre-seeded catalog required.
+ */
+export async function searchMunicipalitiesForCountry(
+  query: string,
+  country: string,
+  limit = 8
+): Promise<MunicipalitySuggestion[]> {
+  const q = query.trim();
+  const countryName = country.trim();
+  if (q.length < 2 || !countryName) return [];
+
+  const countrycodes = countryToIsoCode(countryName);
+  const seen = new Set<string>();
+  const out: MunicipalitySuggestion[] = [];
+
+  const ingest = (hits: NominatimHit[]) => {
+    for (const hit of hits) {
+      if (!countryMatchesHit(hit, countryName)) continue;
+      const kind = placeKindFromHit(hit);
+      if (!isSettlementKind(kind) && hit.class !== 'boundary') continue;
+      const name = municipalityNameFromHit(hit);
+      if (!name) continue;
+      const key = normalizePlaceToken(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const lat = Number(hit.lat);
+      const lng = Number(hit.lon);
+      out.push({
+        name,
+        label: shortLabel(hit.display_name || name, 3),
+        lat: Number.isFinite(lat) ? lat : undefined,
+        lng: Number.isFinite(lng) ? lng : undefined,
+        source: 'geocode',
+      });
+      if (out.length >= limit) return;
+    }
+  };
+
+  const [structured, freeText, cityFeature] = await Promise.all([
+    (async () => {
+      const params = new URLSearchParams({
+        format: 'json',
+        city: q,
+        country: countryName,
+        limit: String(limit),
+        addressdetails: '1',
+      });
+      if (countrycodes) params.set('countrycodes', countrycodes);
+      return nominatimFetch(`https://nominatim.openstreetmap.org/search?${params}`);
+    })(),
+    searchNominatim(`${q}, ${countryName}`, {
+      limit,
+      countrycodes,
+      featureType: 'settlement',
+    }),
+    searchNominatim(`${q}, ${countryName}`, {
+      limit,
+      countrycodes,
+      featureType: 'city',
+    }),
+  ]);
+
+  ingest(structured);
+  ingest(cityFeature);
+  ingest(freeText);
+
+  return out;
 }
 
 export async function enrichPlanWithMapLinks(

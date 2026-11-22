@@ -238,7 +238,7 @@ export default function ExcursionProvidersPage() {
         description="Add each business once. Tag categories on the listings they offer, not on the provider."
         icon={<Compass size={26} />}
         action={
-          <AdminButtonLink to={adminPath('/excursions/providers/add')} className="w-full sm:w-auto">
+          <AdminButtonLink to={adminPath('/excursions/providers/add')} variant="accent" className="w-full sm:w-auto">
             <Plus size={18} /> Add Provider
           </AdminButtonLink>
         }
@@ -327,7 +327,7 @@ export default function ExcursionProvidersPage() {
               : 'Add a business once, then tag every Arrange and Book service they offer.'
           }
           action={
-            <AdminButtonLink to={adminPath('/excursions/providers/add')}>
+            <AdminButtonLink to={adminPath('/excursions/providers/add')} variant="accent">
               <Plus size={18} /> Add Provider
             </AdminButtonLink>
           }

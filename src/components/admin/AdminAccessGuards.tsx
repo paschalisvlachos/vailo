@@ -8,6 +8,7 @@ import {
   pathForScope,
   type AdminScope,
 } from '../../lib/adminAccess';
+import { hasConfiguredListingCapacity } from '../../lib/ownerListingQuota';
 import { adminPath, ADMIN_BASE } from '../../lib/adminRoutes';
 
 export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
@@ -23,7 +24,7 @@ export function PlatformAdminOnly({ children }: { children: React.ReactNode }) {
   if (!profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.
@@ -53,7 +54,7 @@ export function ExcursionPortalGuard({ children }: { children: React.ReactNode }
   if (!profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.
@@ -107,7 +108,7 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
   if (authUser && !profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.
@@ -125,7 +126,15 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
     }
   }
 
-  if (isScopedUser && activeScope && activeScope.kind !== 'platform') {
+  // Keep agents/owners on the Properties portfolio (capacity + add listing).
+  // Only bounce other scoped roles from the admin index when they have a scope.
+  if (
+    isScopedUser &&
+    activeScope &&
+    activeScope.kind !== 'platform' &&
+    profile?.role !== 'agent' &&
+    profile?.role !== 'owner'
+  ) {
     const target = pathForScope(activeScope);
     if (location.pathname === ADMIN_BASE || location.pathname === adminPath('/properties')) {
       return <Navigate to={target} replace />;
@@ -134,9 +143,15 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
 
   if (isScopedUser && scopes.length === 0) {
     const isProvider = profile?.role === 'excursion_provider';
+    const canSelfServe =
+      (profile?.role === 'agent' || profile?.role === 'owner') &&
+      hasConfiguredListingCapacity(profile?.maxListings);
+    if (canSelfServe) {
+      return <>{children}</>;
+    }
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">No assignments</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">No assignments</h2>
         <p className="text-gray-500 text-sm">
           {isProvider
             ? 'Your account is not linked to an excursion business yet. Contact your Vailo administrator.'
@@ -147,6 +162,32 @@ export function ScopedAdminHome({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+/** Platform admin, or agent/owner with listing capacity who can create properties. */
+export function CanCreatePropertyGuard({ children }: { children: React.ReactNode }) {
+  const { profile, loading, isPlatformAdmin } = useAdminSession();
+
+  if (loading) {
+    return (
+      <div className="py-16 flex items-center justify-center text-gray-500 text-sm">
+        <Loader2 className="animate-spin mr-2 text-vailo-teal" />
+        Loading…
+      </div>
+    );
+  }
+
+  if (isPlatformAdmin) return <>{children}</>;
+
+  if (
+    profile &&
+    (profile.role === 'agent' || profile.role === 'owner') &&
+    hasConfiguredListingCapacity(profile.maxListings)
+  ) {
+    return <>{children}</>;
+  }
+
+  return <Navigate to={adminPath('/properties')} replace />;
 }
 
 /** Platform admin full CRM, or agent managing their own owner list. */
@@ -165,7 +206,7 @@ export function AgentOwnersGuard({ children }: { children: React.ReactNode }) {
   if (!profile) {
     return (
       <div className="admin-page py-16 text-center max-w-md mx-auto">
-        <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">Account not set up</h2>
+        <h2 className="text-xl font-semibold text-vailo-dark mb-2">Account not set up</h2>
         <p className="text-gray-500 text-sm">
           Your login is not linked to a Vailo profile. Ask your administrator to add your email in
           Owners CRM.

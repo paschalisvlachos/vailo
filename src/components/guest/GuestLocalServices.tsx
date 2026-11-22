@@ -41,7 +41,6 @@ export type GuestPortalFeature = {
   email?: string;
   website?: string;
   voucherCode?: string;
-  agreement?: string;
   isLocal?: boolean;
 };
 
@@ -216,12 +215,6 @@ function ServiceDetailSheet({
           {description && (
             <p className="text-sm text-gray-600 text-center leading-relaxed mb-5 px-1">
               {description}
-            </p>
-          )}
-
-          {feature.agreement && feature.agreement !== '0' && (
-            <p className="text-center text-sm font-semibold text-[#0B4F5C] mb-4">
-              {feature.agreement}% offer for guests of {propertyName}
             </p>
           )}
 

@@ -70,6 +70,7 @@ import {
   Scissors,
   ClipboardCheck,
 } from 'lucide-react';
+import { AdminButton } from '../../../components/admin/AdminPageHeader';
 
 type ReservationRow = SyncedBooking & { typeId: string; typeName: string };
 
@@ -865,9 +866,9 @@ export default function Reservations() {
             )}
             Copy open portal invitation
           </button>
-          <button onClick={() => setIsFormOpen(true)} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm text-sm font-medium">
-            <Plus size={18} className="mr-2" /> Add Manual Booking
-          </button>
+          <AdminButton type="button" variant="accent" onClick={() => setIsFormOpen(true)}>
+            <Plus size={18} /> Add Manual Booking
+          </AdminButton>
         </div>
       </div>
 

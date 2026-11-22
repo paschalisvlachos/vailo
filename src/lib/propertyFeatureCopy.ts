@@ -85,6 +85,9 @@ export async function pasteFeaturesToListing(params: {
 
     const payload = {
       ...stripFeatureForCopy(feature),
+      isMainPage: true,
+      isLocal: false,
+      experienceTypes: [],
       createdAt: now,
       updatedAt: now,
     };

@@ -553,7 +553,7 @@ export default function LegalDocuments() {
         description="Published pages for guests, partner agreements by category, and downloadable files."
         icon={<FileText size={26} />}
         action={
-          <AdminButton variant="secondary" onClick={addCategory}>
+          <AdminButton variant="accent" onClick={addCategory}>
             <FolderPlus size={16} />
             Add category
           </AdminButton>
@@ -850,7 +850,7 @@ export default function LegalDocuments() {
                   ? 'Add a document, set its title, and upload a file.'
                   : 'Switch language above or add a new document for this language.'}
               </p>
-              <AdminButton onClick={() => addDocumentRow(activeCategory.id)}>
+              <AdminButton variant="accent" onClick={() => addDocumentRow(activeCategory.id)}>
                 <Plus size={16} />
                 Add document
               </AdminButton>

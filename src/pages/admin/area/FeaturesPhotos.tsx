@@ -93,10 +93,10 @@ export default function FeaturesPhotos() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 flex items-center">
           <ImageIcon className="mr-3 text-pink-600 shrink-0" size={28} />
-          Features Photos
+          Partner Photos
         </h2>
         <p className="text-sm text-gray-500 mt-2">
-          Manage global stock photos for features in <span className="font-bold text-pink-700">{decodedArea}, {decodedCountry}</span>
+          Manage global stock photos for partners in <span className="font-bold text-pink-700">{decodedArea}, {decodedCountry}</span>
         </p>
       </div>
 
@@ -108,10 +108,10 @@ export default function FeaturesPhotos() {
       ) : categories.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center">
           <Tag size={40} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-bold text-gray-900 mb-2">No Features Categories Found</h3>
-          <p className="text-gray-500 mb-6">You must create at least one Features Category before adding photos.</p>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">No Partner Categories Found</h3>
+          <p className="text-gray-500 mb-6">You must create at least one Partner Category before adding photos.</p>
           <button onClick={() => navigate(adminPath(`/area/${encodeURIComponent(decodedCountry)}/${encodeURIComponent(areaId)}/features-categories`))} className="px-6 py-3 bg-pink-600 text-white font-medium rounded-lg hover:bg-pink-700 transition-colors">
-            Go to Features Categories
+            Go to Partner Categories
           </button>
         </div>
       ) : (

@@ -202,7 +202,7 @@ export default function ExcursionDiscountsListPage() {
             <AdminButtonLink to={excursionEditPath} variant="secondary">
               Edit excursion
             </AdminButtonLink>
-            <AdminButtonLink to={addPath}>
+            <AdminButtonLink to={addPath} variant="accent">
               <Plus size={18} /> Add discount
             </AdminButtonLink>
           </div>
@@ -215,7 +215,7 @@ export default function ExcursionDiscountsListPage() {
           title="No discounts yet"
           description="Create group-size discounts or promo codes for this excursion."
           action={
-            <AdminButtonLink to={addPath}>
+            <AdminButtonLink to={addPath} variant="accent">
               <Plus size={18} /> Add discount
             </AdminButtonLink>
           }

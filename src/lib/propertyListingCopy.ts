@@ -12,7 +12,6 @@ export type CopiedPropertyListing = {
   gems: Record<string, unknown>[];
   features: Record<string, unknown>[];
   houseGuide: Record<string, unknown> | null;
-  greenScore: Record<string, unknown> | null;
   sourcePropertyId: string;
   sourceTypeId: string;
   sourcePropertyName?: string;
@@ -49,7 +48,7 @@ export async function capturePropertyListingForCopy(params: {
   typeData: Record<string, unknown>;
   propertyName?: string;
 }): Promise<CopiedPropertyListing> {
-  const { gems, features, houseGuide, greenScore } = await fetchListingSubcollections(
+  const { gems, features, houseGuide } = await fetchListingSubcollections(
     params.propertyId,
     params.typeId
   );
@@ -59,7 +58,6 @@ export async function capturePropertyListingForCopy(params: {
     gems,
     features,
     houseGuide,
-    greenScore,
     sourcePropertyId: params.propertyId,
     sourceTypeId: params.typeId,
     sourcePropertyName: params.propertyName,
@@ -84,7 +82,6 @@ export async function pasteCopiedPropertyListing(params: {
     gems: params.clip.gems,
     features: params.clip.features,
     houseGuide: params.clip.houseGuide,
-    greenScore: params.clip.greenScore,
     propertyName: params.propertyName,
   });
 }
@@ -96,6 +93,5 @@ export function copiedListingSummary(clip: CopiedPropertyListing): string {
   if (clip.gems.length > 0) parts.push(`${clip.gems.length} gem${clip.gems.length === 1 ? '' : 's'}`);
   if (clip.features.length > 0) parts.push(`${clip.features.length} feature${clip.features.length === 1 ? '' : 's'}`);
   if (clip.houseGuide) parts.push('house guide');
-  if (clip.greenScore) parts.push('green score');
   return parts.join(' · ');
 }

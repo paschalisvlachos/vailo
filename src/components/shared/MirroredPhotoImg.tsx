@@ -1,5 +1,11 @@
 import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'react';
-import { isGooglePlacesPhotoUrl, mirrorPlacePhotoUrl, type MirrorPlacePhotoParams } from '../../lib/placePhotoResolver';
+import {
+  isGoogleCdnPlacePhotoUrl,
+  isGooglePlacesPhotoUrl,
+  isPlacesApiMediaPhotoUrl,
+  mirrorPlacePhotoUrl,
+  type MirrorPlacePhotoParams,
+} from '../../lib/placePhotoResolver';
 import { extractGooglePlaceIdFromPhotoUrl } from '../../lib/adminPhotoUrl';
 import { getCachedMirrorResult } from '../../lib/photoMirrorCache';
 
@@ -23,8 +29,9 @@ type Props = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
 };
 
 /**
- * Renders place photos reliably: Google Places media URLs are mirrored to Firebase Storage
- * before display, because they cannot be loaded in browser <img> tags.
+ * Renders place photos reliably:
+ * - Places API media URLs are mirrored to Firebase Storage before display (cannot load in <img>).
+ * - Google CDN / grass-cs URLs show immediately with referrerPolicy=no-referrer, and mirror in the background.
  */
 export default function MirroredPhotoImg({
   src,
@@ -36,7 +43,9 @@ export default function MirroredPhotoImg({
 }: Props) {
   const [displaySrc, setDisplaySrc] = useState(() => {
     const trimmed = String(src || '').trim();
-    if (!trimmed || isGooglePlacesPhotoUrl(trimmed)) return '';
+    if (!trimmed) return '';
+    // Places API media never works in <img>; wait for mirror.
+    if (isPlacesApiMediaPhotoUrl(trimmed)) return '';
     return trimmed;
   });
   const [showFallback, setShowFallback] = useState(false);
@@ -52,26 +61,34 @@ export default function MirroredPhotoImg({
       return;
     }
 
+    const cached = getCachedMirrorResult(trimmed);
+    if (cached !== undefined) {
+      if (cached) {
+        setDisplaySrc(cached);
+        return;
+      }
+      // Prior mirror failed — still try CDN URLs with no-referrer; API media has no recovery.
+      if (isPlacesApiMediaPhotoUrl(trimmed)) {
+        setDisplaySrc('');
+        setShowFallback(true);
+        return;
+      }
+      setDisplaySrc(trimmed);
+      return;
+    }
+
     if (!isGooglePlacesPhotoUrl(trimmed)) {
       setDisplaySrc(trimmed);
       return;
     }
 
-    const cached = getCachedMirrorResult(trimmed);
-    if (cached !== undefined) {
-      if (cached) {
-        setDisplaySrc(cached);
-      } else {
-        setDisplaySrc('');
-        setShowFallback(true);
-      }
-      return;
-    }
+    // CDN / grass-cs: show immediately (no-referrer), mirror in background.
+    // Places API media: blank until mirror finishes.
+    const canShowDirect = isGoogleCdnPlacePhotoUrl(trimmed);
+    setDisplaySrc(canShowDirect ? trimmed : '');
+    setIsMirroring(!canShowDirect);
 
     let cancelled = false;
-    setDisplaySrc('');
-    setIsMirroring(true);
-
     const googlePlaceId =
       mirrorContext?.googlePlaceId || extractGooglePlaceIdFromPhotoUrl(trimmed);
 
@@ -91,15 +108,14 @@ export default function MirroredPhotoImg({
         if (mirrored && !isGooglePlacesPhotoUrl(mirrored)) {
           setDisplaySrc(mirrored);
           onMirrored?.(mirrored);
-        } else {
+        } else if (!canShowDirect) {
           setShowFallback(true);
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setIsMirroring(false);
-          setShowFallback(true);
-        }
+        if (cancelled) return;
+        setIsMirroring(false);
+        if (!canShowDirect) setShowFallback(true);
       });
 
     return () => {
@@ -129,6 +145,7 @@ export default function MirroredPhotoImg({
       {...imgProps}
       src={displaySrc}
       alt={alt}
+      referrerPolicy="no-referrer"
       onError={() => setShowFallback(true)}
     />
   );

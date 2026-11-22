@@ -172,7 +172,7 @@ export default function ExcursionBookingsListPage() {
         }
         action={
           addPath ? (
-            <AdminButtonLink to={addPath}>
+            <AdminButtonLink to={addPath} variant="accent">
               <Plus size={18} /> New booking
             </AdminButtonLink>
           ) : undefined
@@ -196,7 +196,7 @@ export default function ExcursionBookingsListPage() {
           }
           action={
             addPath ? (
-              <AdminButtonLink to={addPath}>
+              <AdminButtonLink to={addPath} variant="accent">
                 <Plus size={18} /> New booking
               </AdminButtonLink>
             ) : undefined

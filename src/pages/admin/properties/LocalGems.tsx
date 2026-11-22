@@ -1,16 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, ai, cloudFunctions } from '../../../lib/firebase';
+import { db, storage, cloudFunctions } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
-import { getGenerativeModel } from "firebase/ai";
-import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, ExternalLink, Copy, ClipboardPaste, X } from 'lucide-react';
+import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, Copy, ClipboardPaste, X } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
-import { formatGuestSlug, getTypePublicSlug } from '../../../lib/guestPortalSlug';
-import { buildAdminGuestPortalPreviewUrl } from '../../../lib/guestAccess';
+import AdminPageHeader, {
+  AdminButton,
+  AdminCard,
+  AdminEmptyState,
+  AdminLabel,
+  AdminSelect,
+} from '../../../components/admin/AdminPageHeader';
 import ContentLocaleTabs from '../../../components/admin/ContentLocaleTabs';
 import { usePlatformLanguages } from '../../../hooks/usePlatformLanguages';
 import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
@@ -25,8 +29,10 @@ import {
   normalizeCategorySelectionList,
 } from '../../../lib/categoryLocale';
 import HierarchicalCategoryPillSelector from '../../../components/admin/HierarchicalCategoryPillSelector';
+import ListingLocationPinMap from '../../../components/admin/ListingLocationPinMap';
 import { isHikingTrailsCategory } from '../../../lib/localTrailsGuest';
 import { buildAdminCategoryHierarchy } from '../../../lib/categoryHierarchy';
+import { resolvePropertyTypeAreaContext } from '../../../lib/listingAreaContext';
 import { syncPropertyGemToArea } from '../../../lib/propertyGemAreaSync';
 import CopyGemsModal from '../../../components/admin/CopyGemsModal';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
@@ -37,6 +43,45 @@ import {
   writeCopiedGems,
   type CopiedPropertyGems,
 } from '../../../lib/propertyGemCopy';
+
+function normalizeCategoryNeedle(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Only accept strong matches — exact primary/label (case-insensitive). No fuzzy guesses. */
+function resolveExactCategoryMatches(
+  raws: string[],
+  options: { value: string; label: string }[]
+): string[] {
+  if (raws.length === 0 || options.length === 0) return [];
+
+  const byKey = new Map<string, string>();
+  for (const o of options) {
+    const valueKey = normalizeCategoryNeedle(o.value);
+    const labelKey = normalizeCategoryNeedle(o.label);
+    if (valueKey) byKey.set(valueKey, o.value);
+    if (labelKey) byKey.set(labelKey, o.value);
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of raws) {
+    const key = normalizeCategoryNeedle(raw);
+    if (!key) continue;
+    const value = byKey.get(key);
+    if (!value || seen.has(value.toLowerCase())) continue;
+    seen.add(value.toLowerCase());
+    out.push(value);
+  }
+  return out;
+}
 
 // --- FREE GLOBAL ROUTING HELPER (OSRM API) ---
 const fetchGlobalDrivingRoute = async (startLat: string, startLon: string, endLat: string, endLon: string) => {
@@ -141,11 +186,11 @@ export default function LocalGems() {
   const categoryPillOptions = useMemo(
     () =>
       buildAdminCategoryHierarchy(
-        localGemsCategoryDocs,
+        gemAssignableCategoryDocs,
         localeEditor.contentLocale,
         localeSettings.primaryLocale
       ).selectableOptions.map((opt) => ({ value: opt.primary, label: opt.label })),
-    [localGemsCategoryDocs, localeEditor.contentLocale, localeSettings.primaryLocale]
+    [gemAssignableCategoryDocs, localeEditor.contentLocale, localeSettings.primaryLocale]
   );
 
   const handleGemCategoriesChange = (next: string[]) => {
@@ -161,32 +206,49 @@ export default function LocalGems() {
     }));
   };
 
-  // 1. Fetch Area Context (from Parent or Types)
+  // 1. Fetch Area Context from the selected listing (real Area Functionality id)
   useEffect(() => {
     if (!propertyId) return;
+    let cancelled = false;
+
     const fetchAreaContext = async () => {
-      let country = property?.country || 'Greece';
-      let areaName = property?.city || property?.area || '';
+      const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
+      const country =
+        String(selectedType?.country || property?.country || 'Greece').trim() || 'Greece';
+      const areaName = String(
+        selectedType?.city || selectedType?.area || property?.city || property?.area || ''
+      ).trim();
 
       if (!areaName) {
-        const typesSnap = await getDocs(collection(db, 'properties', propertyId, 'propertyTypes'));
-        if (!typesSnap.empty) {
-          const firstType = typesSnap.docs[0].data();
-          areaName = firstType.city || firstType.area || '';
-          if (firstType.country) country = firstType.country;
-        }
+        if (!cancelled) setPropertyAreaContext(null);
+        return;
       }
 
-      if (areaName) {
+      const { ctx } = await resolvePropertyTypeAreaContext({ country, city: areaName });
+      if (cancelled) return;
+
+      if (ctx) {
         setPropertyAreaContext({
-          country: country,
-          areaName: areaName,
-          areaId: areaName.toLowerCase().replace(/\s+/g, '-')
+          country: ctx.country,
+          areaName: ctx.masterArea,
+          areaId: ctx.areaId,
         });
+        return;
       }
+
+      // Fallback slug if area docs are still warming up
+      setPropertyAreaContext({
+        country,
+        areaName,
+        areaId: areaName.toLowerCase().replace(/\s+/g, '-'),
+      });
     };
-    fetchAreaContext();
-  }, [property, propertyId]);
+
+    void fetchAreaContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [property, propertyId, propertyTypes, selectedTypeId]);
 
   // 2. Fetch Master Categories & Property Types
   useEffect(() => {
@@ -321,34 +383,54 @@ export default function LocalGems() {
     }
   };
 
-  // --- SUPERCHARGED AI MAGIC FILL ---
+  const resolveDrivingDistance = async (lat: string, lng: string) => {
+    const selectedTypeData = propertyTypes.find((pt) => pt.id === selectedTypeId);
+    const refLat = selectedTypeData?.latitude || property?.latitude;
+    const refLng = selectedTypeData?.longitude || property?.longitude;
+    if (!refLat || !refLng || !lat || !lng) return { distanceKm: '', distanceTime: '' };
+    const routeData = await fetchGlobalDrivingRoute(
+      String(refLat),
+      String(refLng),
+      String(lat),
+      String(lng)
+    );
+    return routeData
+      ? { distanceKm: routeData.distanceKm, distanceTime: routeData.distanceTime }
+      : { distanceKm: '', distanceTime: '' };
+  };
+
+  // --- AI MAGIC FILL (short links + AI category + AI description) ---
   const handleMagicFill = async () => {
-    const url = formData.googleMapsUrl;
+    const url = formData.googleMapsUrl.trim();
     if (!url) {
-      toast.warning("Please paste a Google Maps URL first.");
+      toast.warning('Please paste a Google Maps URL first.');
       return;
     }
     if (!propertyAreaContext) {
-      toast.warning("Area data missing. Ensure your property has a City/Area set.");
+      toast.warning('Area data missing. Ensure your property listing has a city / area set.');
+      return;
+    }
+    if (categoryPillOptions.length === 0) {
+      toast.warning(
+        'No area categories found. Add them under Area Functionality → Local Gems Categories first.'
+      );
       return;
     }
     setIsMagicFilling(true);
 
     try {
-      let searchQuery = "";
-      let placeNameFallback = ""; 
-      
-      const nameMatch = url.match(/\/place\/([^\/]+)\//);
-      if (nameMatch && nameMatch[1]) {
-        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
-        searchQuery = `${placeNameFallback} ${propertyAreaContext.areaName}`; 
-      } else {
-        searchQuery = url;
-      }
+      const placeNameMatch = url.match(/\/place\/([^/?@]+)/);
+      const placeNameFallback = placeNameMatch?.[1]
+        ? decodeURIComponent(placeNameMatch[1].replace(/\+/g, ' '))
+        : '';
 
-      const getGooglePlaceDetails = httpsCallable(cloudFunctions, 'getGooglePlaceDetails');
+      // Pass the raw URL (incl. maps.app.goo.gl) — Cloud Function expands short links.
+      const getGooglePlaceDetails = httpsCallable(cloudFunctions, 'getGooglePlaceDetails', {
+        timeout: 120000,
+      });
       const result = await getGooglePlaceDetails({
-        searchQuery,
+        searchQuery: url,
+        fallbackName: placeNameFallback,
         area: propertyAreaContext.areaName,
         usageCaller: PLACES_USAGE_CALLER.propertyLocalGems,
       });
@@ -367,106 +449,125 @@ export default function LocalGems() {
         }
       }
 
-      // 1. Calculate Driving Distance
-      let distanceKm = "";
-      let distanceTime = "";
-      if (googleData.latitude && googleData.longitude) {
-        const selectedTypeData = propertyTypes.find(pt => pt.id === selectedTypeId);
-        const refLat = selectedTypeData?.latitude || property?.latitude;
-        const refLng = selectedTypeData?.longitude || property?.longitude;
+      const latStr = googleData.latitude != null ? String(googleData.latitude) : '';
+      const lngStr = googleData.longitude != null ? String(googleData.longitude) : '';
+      const route = latStr && lngStr ? await resolveDrivingDistance(latStr, lngStr) : null;
 
-        if (refLat && refLng) {
-          const routeData = await fetchGlobalDrivingRoute(refLat, refLng, googleData.latitude.toString(), googleData.longitude.toString());
-          if (routeData) {
-            distanceKm = routeData.distanceKm;
-            distanceTime = routeData.distanceTime;
-          }
-        }
-      }
+      const placeLabel = String(googleData.name || placeNameFallback || 'this place').trim();
+      const gType = String(googleData.category || '')
+        .replace(/_/g, ' ')
+        .trim();
+      const googleDescription = String(googleData.description || '').trim();
+      const categoryNames = categoryPillOptions.map((o) => o.value).filter(Boolean);
 
-      // 2. AI Category Matching (JSON Prompt)
-      let matchedCategory = "";
-      let finalDescription = googleData.description;
+      let matchedCategories: string[] = [];
+      let finalDescription = googleDescription;
+      let aiError = '';
 
+      // Server-side Gemini (bypasses client Firebase AI App Check / Vertex 401)
       try {
-        const categoryNames = categoryPillOptions.map((o) => o.value).join(', ');
-        const gType = googleData.category?.replace(/_/g, ' ') || "local spot";
-
-        const prompt = `Act as a travel concierge for ${propertyAreaContext.areaName}. We are adding "${googleData.name || placeNameFallback}" (Google classification: ${gType}).
-        1. Pick the single most accurate category from our exact database list: [${categoryNames}]. If none fit perfectly, return an empty string "".
-        2. Write a short, engaging 2-sentence description explaining why guests should visit this gem.
-        Return ONLY a valid JSON object in this exact format:
-        {"category": "Exact Category Name", "description": "Your 2 sentence description"}`;
-
-        const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
-        const aiResult = await model.generateContent(prompt);
-        const rawText = aiResult.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(rawText);
-
-        if (
-          parsed.category &&
-          categoryPillOptions.some((o) => o.value === parsed.category)
-        ) {
-          matchedCategory = parsed.category;
-        }
-        if (parsed.description && !googleData.description) {
-          finalDescription = parsed.description;
+        const fillLocalGemMagicAi = httpsCallable(cloudFunctions, 'fillLocalGemMagicAi', {
+          timeout: 120000,
+        });
+        const aiResult = await fillLocalGemMagicAi({
+          placeName: placeLabel,
+          googleType: gType,
+          areaName: propertyAreaContext.areaName,
+          country: propertyAreaContext.country,
+          categories: categoryNames,
+          needDescription: !googleDescription,
+        });
+        const aiData = (aiResult.data || {}) as {
+          categories?: string[];
+          description?: string;
+        };
+        const rawCats = Array.isArray(aiData.categories)
+          ? aiData.categories.filter((c): c is string => typeof c === 'string' && Boolean(c.trim()))
+          : [];
+        matchedCategories = resolveExactCategoryMatches(rawCats, categoryPillOptions);
+        if (!googleDescription && String(aiData.description || '').trim()) {
+          finalDescription = String(aiData.description).trim();
         }
       } catch (e) {
-        console.log("AI JSON mapping failed, falling back to simple match.", e);
-        const gTypeLower = googleData.category?.toLowerCase().replace(/_/g, ' ') || "";
-        const possibleMatch = categoryPillOptions.find(
-          (o) =>
-            gTypeLower.includes(o.value.toLowerCase()) ||
-            o.value.toLowerCase().includes(gTypeLower)
-        );
-        if (possibleMatch) matchedCategory = possibleMatch.value;
+        console.error('Magic Fill AI callable failed:', e);
+        aiError = httpsCallableMessage(e, 'AI fill failed. Try again in a moment.');
       }
 
-      const nextCategories = matchedCategory
-        ? normalizeCategorySelectionList(
-            formData.categories.includes(matchedCategory)
-              ? formData.categories
-              : [...formData.categories, matchedCategory],
-            categoryCatalogDocs,
-            localeSettings.primaryLocale
-          )
-        : formData.categories;
+      // Prefer 0 categories over a weak/non-exact match
+      const nextCategories =
+        matchedCategories.length > 0
+          ? normalizeCategorySelectionList(
+              matchedCategories,
+              categoryCatalogDocs,
+              localeSettings.primaryLocale
+            )
+          : [];
 
-      const primaryName = googleData.name || placeNameFallback;
-      const primaryDescription = finalDescription || formData.description;
-      setFormData((prev) => ({
-        ...prev,
-        name: primaryName,
-        categories: nextCategories,
-        category: nextCategories[0] || '',
-        rating: googleData.rating ? googleData.rating.toString() : prev.rating,
-        description: primaryDescription,
-        latitude: googleData.latitude?.toString() || prev.latitude,
-        longitude: googleData.longitude?.toString() || prev.longitude,
-        distanceKm: distanceKm,
-        distanceTime: distanceTime,
-        googlePlaceId: googleData.googlePlaceId || '',
-        photoUrl: googleData.photoUrl || '',
-      }));
+      const primaryName = placeLabel === 'this place' ? '' : placeLabel;
+      const primaryDescription = finalDescription.trim();
+      const resolvedMapsUrl = String(googleData.googleMapsUrl || url).trim();
+      const resolvedName = primaryName || formData.name;
+      const resolvedDescription = primaryDescription || formData.description;
+
+      localeEditor.setContentLocale(localeSettings.primaryLocale);
       localeEditor.applyPrimaryFields({
-        name: primaryName,
-        description: primaryDescription,
+        name: resolvedName,
+        description: resolvedDescription,
       });
 
-      // 3. Save Google Photo to Memory
+      setFormData((prev) => ({
+        ...prev,
+        name: resolvedName || prev.name,
+        categories: nextCategories,
+        category: nextCategories[0] || '',
+        rating: googleData.rating != null ? String(googleData.rating) : prev.rating,
+        description: resolvedDescription || prev.description,
+        latitude: latStr || prev.latitude,
+        longitude: lngStr || prev.longitude,
+        distanceKm: route?.distanceKm || prev.distanceKm,
+        distanceTime: route?.distanceTime || prev.distanceTime,
+        googlePlaceId: googleData.googlePlaceId || prev.googlePlaceId,
+        googleMapsUrl: resolvedMapsUrl || prev.googleMapsUrl,
+        photoUrl: googleData.photoUrl || prev.photoUrl,
+      }));
+
       if (googleData.photoUrl) {
         setGooglePhoto(googleData.photoUrl);
         setImagePreview(null);
         setImageFile(null);
       }
 
+      if (aiError && nextCategories.length === 0 && !primaryDescription) {
+        toast.error(aiError);
+      } else if (nextCategories.length === 0 && !primaryDescription) {
+        toast.warning(
+          aiError
+            ? `Place loaded, but AI did not fill category/description (${aiError}).`
+            : 'Place loaded — pick categories and add a description manually.'
+        );
+      } else if (nextCategories.length === 0) {
+        toast.warning(
+          aiError
+            ? `Description filled. Categories skipped (${aiError}).`
+            : 'Description filled — no confident category match. Pick categories manually.'
+        );
+      } else if (!primaryDescription) {
+        toast.warning(
+          aiError
+            ? `Categories filled. Description failed (${aiError}).`
+            : 'Categories filled — add a description manually.'
+        );
+      } else {
+        toast.success(
+          `Place details filled (${nextCategories.length} categor${nextCategories.length === 1 ? 'y' : 'ies'}).`
+        );
+      }
     } catch (error) {
-      console.error("Magic Fill Error:", error);
+      console.error('Magic Fill Error:', error);
       toast.error(
         httpsCallableMessage(
           error,
-          'Could not load this place. Deploy Cloud Functions (getGooglePlaceDetails), use a full Google Maps place link, or try again.'
+          'Could not load this place. Try again, or paste a full Google Maps place link.'
         )
       );
     } finally {
@@ -640,241 +741,242 @@ export default function LocalGems() {
   // --- EDGE CASE: No Property Types Exist ---
   if (propertyTypes.length === 0) {
     return (
-      <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-        <Building size={32} className="mx-auto text-gray-400 mb-3" />
-        <h3 className="text-xl font-bold text-gray-900 mb-2">No Property Listings Configured</h3>
-        <p className="text-gray-500 max-w-sm mx-auto mb-6">
-          Local gems are assigned to specific units. Please go to the <b>Property Listings</b> tab and create a unit before adding local gems.
-        </p>
+      <div>
+        <AdminPageHeader
+          title="Local Gems"
+          description="Curated places guests can explore near this property."
+          icon={<Map size={24} />}
+        />
+        <AdminEmptyState
+          icon={<Building size={28} />}
+          title="No property listings yet"
+          description="Local gems are assigned to a listing. Create a property listing first, then come back to add gems."
+        />
       </div>
     );
   }
+
+  const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
 
   // --- UI RENDERING ---
   if (!isFormOpen) {
     return (
       <div>
-        <div className="bg-vailo-teal/5 border border-vailo-teal/10 rounded-xl p-4 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h4 className="text-sm font-bold text-vailo-dark">Select Unit Level</h4>
-            <p className="text-xs text-vailo-teal-hover">Gems are assigned specifically to the selected property listing.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select 
-              value={selectedTypeId} 
-              onChange={(e) => setSelectedTypeId(e.target.value)}
-              className="px-4 py-2 bg-white border border-vailo-teal/15 rounded-lg text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-vailo-teal/20 focus:border-vailo-teal shadow-sm min-w-[200px]"
-            >
-              {propertyTypes.map(type => (
-                <option key={type.id} value={type.id}>{type.propertyTypeName}</option>
-              ))}
-            </select>
-            {(() => {
-              const selectedType = propertyTypes.find((t) => t.id === selectedTypeId);
-              const propSlug = formatGuestSlug(property?.urlSlug);
-              const unitSlug = selectedType ? getTypePublicSlug(selectedType) : '';
-              if (!propSlug || !unitSlug || !selectedTypeId) return null;
-              return (
-                <button
-                  type="button"
-                  onClick={() =>
-                    window.open(
-                      buildAdminGuestPortalPreviewUrl(
-                        window.location.origin,
-                        propSlug,
-                        unitSlug,
-                        selectedTypeId
-                      ),
-                      '_blank'
-                    )
-                  }
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-vailo-teal border border-vailo-teal/20 rounded-lg bg-white hover:bg-vailo-teal/5 transition-colors"
-                  title="Open guest portal for this unit"
-                >
-                  <ExternalLink size={16} />
-                  Preview portal
-                </button>
-              );
-            })()}
-          </div>
-        </div>
+        <AdminPageHeader
+          title="Local Gems"
+          description={
+            propertyAreaContext
+              ? `Recommendations for guests near ${propertyAreaContext.areaName}.`
+              : 'Curated restaurants, beaches, and sights for your guests.'
+          }
+          icon={<Map size={24} />}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {copiedClip ? (
+                <AdminButton type="button" variant="secondary" onClick={() => setPasteModalOpen(true)}>
+                  <ClipboardPaste size={16} />
+                  Paste {copiedClip.gems.length} copied
+                </AdminButton>
+              ) : null}
+              <AdminButton type="button" variant="accent" onClick={openAddForm}>
+                <Plus size={16} />
+                Add gem
+              </AdminButton>
+            </div>
+          }
+        />
 
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Local Gems</h3>
-            <p className="text-sm text-gray-500">
-              Curated recommendations for your guests. 
-              {propertyAreaContext && <span className="ml-1 font-medium text-vailo-teal">(Area: {propertyAreaContext.areaName})</span>}
+        <AdminCard className="p-4 mb-5">
+          <div className="min-w-0">
+            <AdminLabel htmlFor="local-gems-listing">Listing</AdminLabel>
+            <AdminSelect
+              id="local-gems-listing"
+              value={selectedTypeId}
+              onChange={(e) => setSelectedTypeId(e.target.value)}
+            >
+              {propertyTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.propertyTypeName}
+                </option>
+              ))}
+            </AdminSelect>
+            <p className="text-xs text-gray-500 mt-1.5">
+              Gems are saved per listing — switch units to manage each one.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {copiedClip && (
-              <button
+        </AdminCard>
+
+        {copiedClip ? (
+          <AdminCard className="p-4 mb-4 border-vailo-teal/25 bg-vailo-teal/5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-vailo-dark">
+                {copiedClip.gems.length} gem{copiedClip.gems.length === 1 ? '' : 's'} ready to paste
+                {copiedClip.sourceListingName ? ` from ${copiedClip.sourceListingName}` : ''}
+              </span>
+              <AdminButton type="button" onClick={() => setPasteModalOpen(true)}>
+                <ClipboardPaste size={14} />
+                Paste to listings
+              </AdminButton>
+              <AdminButton type="button" variant="secondary" onClick={handleClearCopiedGems}>
+                <X size={14} />
+                Clear
+              </AdminButton>
+            </div>
+          </AdminCard>
+        ) : null}
+
+        {selectedGemIds.size > 0 ? (
+          <AdminCard className="p-4 mb-4 border-vailo-teal/25 bg-vailo-teal/5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-vailo-dark">
+                {selectedGemIds.size} selected
+              </span>
+              <AdminButton type="button" onClick={handleCopySelectedGems}>
+                <Copy size={14} />
+                Copy selected
+              </AdminButton>
+              <AdminButton
                 type="button"
-                onClick={() => setPasteModalOpen(true)}
-                className="flex items-center px-4 py-2 bg-white text-vailo-teal border border-vailo-teal/25 rounded-xl hover:bg-vailo-teal/5 transition-colors shadow-sm"
+                variant="secondary"
+                onClick={() => setSelectedGemIds(new Set())}
               >
-                <ClipboardPaste size={18} className="mr-2" />
-                Paste {copiedClip.gems.length} copied
-              </button>
-            )}
-            <button onClick={openAddForm} className="flex items-center px-4 py-2 bg-vailo-teal text-white rounded-xl hover:bg-vailo-teal-hover transition-colors shadow-sm">
-              <Plus size={18} className="mr-2" /> Add Custom Gem
-            </button>
-          </div>
-        </div>
-
-        {copiedClip && (
-          <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5">
-            <span className="text-xs font-semibold text-vailo-teal">
-              {copiedClip.gems.length} gem{copiedClip.gems.length === 1 ? '' : 's'} ready to paste
-              {copiedClip.sourceListingName ? ` from ${copiedClip.sourceListingName}` : ''}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPasteModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
-            >
-              <ClipboardPaste size={14} />
-              Paste to listings
-            </button>
-            <button
-              type="button"
-              onClick={handleClearCopiedGems}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
-              <X size={14} />
-              Clear
-            </button>
-          </div>
-        )}
-
-        {selectedGemIds.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 mb-4 px-3 py-2 rounded-lg border border-vailo-teal/20 bg-vailo-teal/5">
-            <span className="text-xs font-semibold text-vailo-teal">
-              {selectedGemIds.size} selected
-            </span>
-            <button
-              type="button"
-              onClick={handleCopySelectedGems}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-vailo-teal rounded-lg hover:bg-vailo-teal-hover"
-            >
-              <Copy size={14} />
-              Copy selected
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedGemIds(new Set())}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
-              Clear selection
-            </button>
-          </div>
-        )}
+                Clear selection
+              </AdminButton>
+            </div>
+          </AdminCard>
+        ) : null}
 
         {gems.length === 0 ? (
-          <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-            <Map size={32} className="mx-auto text-gray-400 mb-3" />
-            <p className="text-gray-900 font-medium">No local gems found for this unit</p>
-            <p className="text-gray-500 text-sm mt-1">Add restaurants, beaches, and sights to create a digital guidebook.</p>
-          </div>
+          <AdminEmptyState
+            icon={<Map size={28} />}
+            title="No local gems yet"
+            description="Add restaurants, beaches, and sights so guests get a curated guide for this listing."
+            action={
+              <AdminButton type="button" variant="accent" onClick={openAddForm}>
+                <Plus size={16} />
+                Add gem
+              </AdminButton>
+            }
+          />
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left w-10">
-                    <input
-                      type="checkbox"
-                      checked={allGemsSelected}
-                      onChange={toggleSelectAllGems}
-                      aria-label={allGemsSelected ? 'Deselect all gems' : 'Select all gems'}
-                      className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20"
-                    />
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gem</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Rating</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Distance</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {gems.map(gem => (
-                  <tr key={gem.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4">
+          <AdminCard className="overflow-hidden">
+            <div className="admin-table-wrap border-0">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th className="w-10">
                       <input
                         type="checkbox"
-                        checked={selectedGemIds.has(gem.id)}
-                        onChange={() => toggleGemSelection(gem.id)}
-                        aria-label={`Select ${gem.name}`}
+                        checked={allGemsSelected}
+                        onChange={toggleSelectAllGems}
+                        aria-label={allGemsSelected ? 'Deselect all gems' : 'Select all gems'}
                         className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20"
                       />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        {gem.photoUrl ? (
-                          <MirroredPhotoImg
-                            src={gem.photoUrl}
-                            alt={gem.name}
-                            className="h-10 w-10 rounded-lg object-cover mr-3 border border-gray-200"
-                            mirrorContext={{
-                              country: propertyAreaContext?.country,
-                              areaId: propertyAreaContext?.areaId,
-                              docId: gem.id,
-                              googlePlaceId: gem.googlePlaceId,
-                              propertyId,
-                              propertyTypeId: selectedTypeId,
-                              propertyGemId: gem.id,
-                            }}
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center mr-3 border border-gray-200">
-                            <ImageIcon size={16} className="text-gray-400" />
-                          </div>
-                        )}
-                        <div>
-                          <div className="font-medium text-gray-900 flex items-center">
-                            {resolveLocalizedString(
-                              gem,
-                              'name',
-                              localeSettings.primaryLocale,
-                              localeSettings.primaryLocale
-                            ) || gem.name}
-                          </div>
-                          <div className="flex mt-1">
-                            {gem.isLegitPick && <span className="mr-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-[10px] uppercase font-bold rounded-full">Legit Pick</span>}
-                            {gem.isDailyTrip && <span className="px-2 py-0.5 bg-vailo-teal/10 text-vailo-dark text-[10px] uppercase font-bold rounded-full">Daily Trip</span>}
+                    </th>
+                    <th>Gem</th>
+                    <th>Category</th>
+                    <th className="text-center">Rating</th>
+                    <th>Distance</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gems.map((gem) => (
+                    <tr key={gem.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedGemIds.has(gem.id)}
+                          onChange={() => toggleGemSelection(gem.id)}
+                          aria-label={`Select ${gem.name}`}
+                          className="h-4 w-4 rounded border-gray-300 text-vailo-teal focus:ring-vailo-teal/20"
+                        />
+                      </td>
+                      <td>
+                        <div className="flex items-center min-w-0">
+                          {gem.photoUrl ? (
+                            <MirroredPhotoImg
+                              src={gem.photoUrl}
+                              alt={gem.name}
+                              className="h-10 w-10 rounded-lg object-cover mr-3 border border-[#e1e1e1] shrink-0"
+                              mirrorContext={{
+                                country: propertyAreaContext?.country,
+                                areaId: propertyAreaContext?.areaId,
+                                docId: gem.id,
+                                googlePlaceId: gem.googlePlaceId,
+                                propertyId,
+                                propertyTypeId: selectedTypeId,
+                                propertyGemId: gem.id,
+                              }}
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded-lg bg-gray-50 flex items-center justify-center mr-3 border border-[#e1e1e1] shrink-0">
+                              <ImageIcon size={16} className="text-gray-400" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-medium text-vailo-dark truncate">
+                              {resolveLocalizedString(
+                                gem,
+                                'name',
+                                localeSettings.primaryLocale,
+                                localeSettings.primaryLocale
+                              ) || gem.name}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {gemCategoryPrimaries(gem, categoryCatalogDocs, localeSettings.primaryLocale).join(
-                        ' · '
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-center">
-                      <div className="flex items-center justify-center text-gray-900 font-medium">
-                        <Star size={14} className="text-yellow-400 fill-current mr-1" />
-                        {gem.rating}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {gem.distanceKm ? `${gem.distanceKm} km (${gem.distanceTime})` : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-right text-sm font-medium">
-                      <button onClick={() => handleEditClick(gem)} className="text-vailo-teal hover:text-vailo-dark mr-4"><Pencil size={18} /></button>
-                      <button onClick={() => handleDeleteClick(gem.id, gem.name)} className="text-red-600 hover:text-red-900"><Trash2 size={18} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </td>
+                      <td className="text-gray-600">
+                        {gemCategoryPrimaries(
+                          gem,
+                          categoryCatalogDocs,
+                          localeSettings.primaryLocale
+                        ).join(' · ') || '—'}
+                      </td>
+                      <td className="text-center">
+                        {gem.rating ? (
+                          <span className="inline-flex items-center justify-center font-medium text-vailo-dark">
+                            <Star size={14} className="text-vailo-gold fill-current mr-1" />
+                            {gem.rating}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="text-gray-600 whitespace-nowrap">
+                        {gem.distanceKm
+                          ? `${gem.distanceKm} km${gem.distanceTime ? ` · ${gem.distanceTime}` : ''}`
+                          : '—'}
+                      </td>
+                      <td className="text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <AdminButton
+                            type="button"
+                            variant="ghost"
+                            onClick={() => handleEditClick(gem)}
+                            aria-label={`Edit ${gem.name}`}
+                          >
+                            <Pencil size={16} />
+                          </AdminButton>
+                          <AdminButton
+                            type="button"
+                            variant="danger"
+                            onClick={() => void handleDeleteClick(gem.id, gem.name)}
+                            aria-label={`Delete ${gem.name}`}
+                          >
+                            <Trash2 size={16} />
+                          </AdminButton>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </AdminCard>
         )}
 
-        {pasteModalOpen && copiedClip && (
+        {pasteModalOpen && copiedClip ? (
           <CopyGemsModal
             clip={copiedClip}
             excludeSource={{
@@ -884,7 +986,7 @@ export default function LocalGems() {
             onClose={() => setPasteModalOpen(false)}
             onPasted={handlePasteComplete}
           />
-        )}
+        ) : null}
       </div>
     );
   }
@@ -892,62 +994,76 @@ export default function LocalGems() {
   return (
     <div className="w-full">
       <div className="flex items-center mb-6">
-        <button onClick={closeAndResetForm} className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        <button
+          type="button"
+          onClick={closeAndResetForm}
+          className="p-2 mr-3 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+          aria-label="Back to local gems"
+        >
           <ArrowLeft size={20} />
         </button>
-        <div>
-          <h3 className="text-xl font-bold text-gray-900">{editingGemId ? 'Edit Local Gem' : 'Add Custom Gem'}</h3>
-          <p className="text-gray-500 text-sm mt-1">Adding recommendation for <span className="font-semibold text-vailo-teal">{propertyTypes.find(t => t.id === selectedTypeId)?.propertyTypeName}</span></p>
+        <div className="min-w-0">
+          <h3 className="text-xl font-bold text-vailo-dark">
+            {editingGemId ? 'Edit local gem' : 'Add local gem'}
+          </h3>
+          <p className="text-gray-500 text-sm mt-1">
+            For{' '}
+            <span className="font-semibold text-vailo-teal">
+              {selectedType?.propertyTypeName || 'this listing'}
+            </span>
+          </p>
         </div>
       </div>
 
-      <form onSubmit={submitGem} className="border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        
-        {/* Smart Calculator Header */}
-        <div className="p-6 border-b border-gray-100 bg-vailo-teal/5/50 space-y-2">
-          <h4 className="text-sm font-bold text-vailo-dark flex items-center">
-            <Wand2 size={16} className="mr-2" /> Free Smart Import Tool
+      <form onSubmit={submitGem} className="space-y-5">
+        <AdminCard className="p-5 sm:p-6 space-y-2">
+          <h4 className="text-sm font-bold text-vailo-dark flex items-center gap-2">
+            <Wand2 size={16} className="text-vailo-teal" />
+            Smart import
           </h4>
-          <p className="text-xs text-vailo-teal-hover max-w-2xl">
-            Paste a Google Maps link below and click AI Magic Fill. We will extract the GPS coordinates and calculate the driving distance and time from this specific property listing!
+          <p className="text-sm text-gray-500 max-w-2xl leading-relaxed">
+            Paste a Google Maps link and use AI Magic Fill to pull name, coordinates, distance, and a
+            short guest-facing description for this listing.
           </p>
-        </div>
+        </AdminCard>
 
-        <div className="p-6 space-y-6 bg-white">
-          <div className="rounded-xl border border-vailo-teal/15 bg-vailo-teal/5 p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
-                  <Languages size={16} /> Content language
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Edit each enabled language. Configure languages in Property Overview.
-                </p>
+        <AdminCard className="p-5 sm:p-6 space-y-6">
+          {localeSettings.enabledLocales.length > 1 ? (
+            <div className="rounded-xl border border-[#e1e1e1] bg-vailo-surface-elevated/60 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-vailo-dark flex items-center gap-2">
+                    <Languages size={16} /> Content language
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Edit each enabled language. Configure languages in Settings.
+                  </p>
+                </div>
+                {localeEditor.contentLocale !== localeSettings.primaryLocale && (
+                  <AdminButton
+                    type="button"
+                    variant="secondary"
+                    onClick={handleAutoTranslateLocale}
+                    disabled={isLocaleTranslating}
+                  >
+                    {isLocaleTranslating ? (
+                      <Loader2Icon size={16} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                    Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
+                  </AdminButton>
+                )}
               </div>
-              {localeEditor.contentLocale !== localeSettings.primaryLocale && (
-                <button
-                  type="button"
-                  onClick={handleAutoTranslateLocale}
-                  disabled={isLocaleTranslating}
-                  className="flex items-center justify-center h-[38px] px-4 bg-white border border-vailo-teal/30 rounded-lg text-sm font-medium text-vailo-teal hover:bg-white/80 disabled:opacity-50"
-                >
-                  {isLocaleTranslating ? (
-                    <Loader2Icon size={16} className="mr-2 animate-spin" />
-                  ) : (
-                    <Sparkles size={16} className="mr-2" />
-                  )}
-                  Auto-translate from {localeSettings.primaryLocale.toUpperCase()}
-                </button>
-              )}
+              <ContentLocaleTabs
+                enabledLocales={localeSettings.enabledLocales}
+                primaryLocale={localeSettings.primaryLocale}
+                activeLocale={localeEditor.contentLocale}
+                onChange={localeEditor.setContentLocale}
+                languageOptions={languageOptions}
+              />
             </div>
-            <ContentLocaleTabs
-              enabledLocales={localeSettings.enabledLocales}
-              primaryLocale={localeSettings.primaryLocale}
-              activeLocale={localeEditor.contentLocale}
-              onChange={localeEditor.setContentLocale}
-              languageOptions={languageOptions}
-            />
-          </div>
+          ) : null}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
@@ -959,15 +1075,19 @@ export default function LocalGems() {
                   <MapPin className="absolute left-3 top-2.5 text-gray-400" size={18} />
                   <input type="url" required name="googleMapsUrl" value={formData.googleMapsUrl} onChange={handleChange} placeholder="https://www.google.com/maps/place/..." className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg admin-input outline-none bg-white" />
                 </div>
-                <button 
-                  type="button" 
-                  onClick={handleMagicFill} 
+                <AdminButton
+                  type="button"
+                  onClick={handleMagicFill}
                   disabled={isMagicFilling || !propertyAreaContext}
-                  className="flex items-center justify-center h-[42px] px-6 bg-gradient-to-r from-blue-600 to-indigo-600 border border-transparent rounded-lg text-white hover:opacity-90 font-medium transition-all shadow-sm disabled:opacity-50"
+                  className="h-[42px] shrink-0"
                 >
-                  {isMagicFilling ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}
-                  {isMagicFilling ? 'Filling...' : 'AI Magic Fill'}
-                </button>
+                  {isMagicFilling ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  {isMagicFilling ? 'Filling…' : 'AI Magic Fill'}
+                </AdminButton>
               </div>
               <p className="text-xs text-gray-500 mt-1.5 italic">Paste the FULL web URL to magically extract the name, distance, description, and rating.</p>
             </div>
@@ -1030,15 +1150,26 @@ export default function LocalGems() {
               <input type="text" required name="distanceTime" value={formData.distanceTime} onChange={handleChange} placeholder="e.g. 15 min" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
             </div>
 
-            {/* 6. VISIBLE LATITUDE & LONGITUDE */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
-              <input type="text" name="latitude" value={formData.latitude || ''} onChange={handleChange} placeholder="e.g. 35.5138" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
-              <input type="text" name="longitude" value={formData.longitude || ''} onChange={handleChange} placeholder="e.g. 24.0180" className="w-full px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none" />
+            {/* 6. Map pin (coordinates are pin-only, not typed) */}
+            <div className="md:col-span-2">
+              <ListingLocationPinMap
+                latitude={formData.latitude}
+                longitude={formData.longitude}
+                addressLine={formData.name}
+                city={propertyAreaContext?.areaName || ''}
+                country={propertyAreaContext?.country || ''}
+                onChange={({ latitude, longitude }) => {
+                  setFormData((prev) => ({ ...prev, latitude, longitude }));
+                  void resolveDrivingDistance(latitude, longitude).then((route) => {
+                    if (!route.distanceKm && !route.distanceTime) return;
+                    setFormData((prev) => ({
+                      ...prev,
+                      distanceKm: route.distanceKm || prev.distanceKm,
+                      distanceTime: route.distanceTime || prev.distanceTime,
+                    }));
+                  });
+                }}
+              />
             </div>
 
             <div className="md:col-span-2">
@@ -1120,39 +1251,23 @@ export default function LocalGems() {
               </div>
             </div>
 
-            {/* Toggles */}
-            <div className="md:col-span-2 flex flex-col sm:flex-row flex-wrap gap-6 pt-4 border-t border-gray-100">
-              <label className="flex items-center cursor-pointer">
-                <div className="relative flex items-center">
-                  <input type="checkbox" name="isLegitPick" checked={formData.isLegitPick} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded transition-all cursor-pointer" />
-                </div>
-                <div className="ml-3">
-                  <span className="block text-sm font-medium text-gray-900">Owner's Legit Pick</span>
-                  <span className="block text-xs text-gray-500">Highlight this as a top-tier recommendation.</span>
-                </div>
-              </label>
-
-              <label className="flex items-center cursor-pointer">
-                <div className="relative flex items-center">
-                  <input type="checkbox" name="isDailyTrip" checked={formData.isDailyTrip} onChange={handleChange} className="h-5 w-5 text-vailo-teal focus:ring-vailo-teal/20 focus:border-vailo-teal border-gray-300 rounded transition-all cursor-pointer" />
-                </div>
-                <div className="ml-3">
-                  <span className="block text-sm font-medium text-gray-900">Daily Trip</span>
-                  <span className="block text-xs text-gray-500">Tag this as a full-day excursion.</span>
-                </div>
-              </label>
-            </div>
-
           </div>
-        </div>
+        </AdminCard>
 
-        <div className="p-6 bg-gray-50 border-t border-gray-200 flex justify-end gap-4">
-          <button type="button" onClick={closeAndResetForm} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancel</button>          
-          
-          <button type="submit" disabled={isSubmitting || isUploadingImage} className="flex items-center px-5 py-2.5 text-sm font-medium text-white bg-vailo-teal hover:bg-vailo-teal-hover rounded-lg disabled:opacity-50 transition-colors shadow-sm">
-            {(isSubmitting || isUploadingImage) && <Loader2 size={16} className="mr-2 animate-spin" />}
-            {isUploadingImage ? 'Uploading Image...' : isSubmitting ? 'Saving...' : (editingGemId ? 'Update Gem' : 'Add Gem')}
-          </button>
+        <div className="flex flex-wrap justify-end gap-3">
+          <AdminButton type="button" variant="secondary" onClick={closeAndResetForm}>
+            Cancel
+          </AdminButton>
+          <AdminButton type="submit" disabled={isSubmitting || isUploadingImage}>
+            {(isSubmitting || isUploadingImage) && <Loader2 size={16} className="animate-spin" />}
+            {isUploadingImage
+              ? 'Uploading image…'
+              : isSubmitting
+                ? 'Saving…'
+                : editingGemId
+                  ? 'Update gem'
+                  : 'Add gem'}
+          </AdminButton>
         </div>
       </form>
     </div>

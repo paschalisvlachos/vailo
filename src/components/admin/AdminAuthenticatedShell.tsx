@@ -1,9 +1,10 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { signOut, type User } from 'firebase/auth';
 import { LogOut } from 'lucide-react';
 import Layout from './Layout';
 import Login from './Login';
 import { auth } from '../../lib/firebase';
+import { adminPath } from '../../lib/adminRoutes';
 import { AdminSessionProvider, useAdminSession } from '../../context/AdminSessionContext';
 import { AdminButton } from './AdminPageHeader';
 
@@ -11,7 +12,7 @@ function AdminSessionGate({ children }: { children: React.ReactNode }) {
   const { loading } = useAdminSession();
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-vailo-surface text-vailo-teal text-sm font-medium">
+      <div className="admin-auth min-h-screen flex items-center justify-center bg-vailo-surface text-vailo-teal text-sm font-medium">
         Loading your access…
       </div>
     );
@@ -20,13 +21,14 @@ function AdminSessionGate({ children }: { children: React.ReactNode }) {
 }
 
 function AdminAccountGate({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
   const { authUser, profile, profileError } = useAdminSession();
 
   if (authUser && !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-vailo-surface px-4">
-        <div className="max-w-md w-full bg-white border border-gray-100 rounded-2xl shadow-lg p-8 text-center">
-          <h2 className="text-xl font-bold text-vailo-dark font-luxury mb-2">
+      <div className="admin-auth min-h-screen flex items-center justify-center bg-vailo-surface px-4">
+        <div className="max-w-md w-full bg-white rounded shadow-[1px_1px_15px_rgba(0,0,0,0.1)] p-8 text-center">
+          <h2 className="text-xl font-semibold text-vailo-dark mb-2">
             {profileError ? 'Could not load your profile' : 'Account not set up'}
           </h2>
           <p className="text-gray-500 text-sm mb-4">
@@ -44,7 +46,11 @@ function AdminAccountGate({ children }: { children: React.ReactNode }) {
           <AdminButton
             type="button"
             variant="secondary"
-            onClick={() => void signOut(auth)}
+            onClick={() => {
+              void signOut(auth).then(() => {
+                navigate(adminPath('/properties'), { replace: true });
+              });
+            }}
             className="inline-flex items-center gap-2"
           >
             <LogOut size={16} />

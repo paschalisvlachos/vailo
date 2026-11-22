@@ -48,8 +48,8 @@ function coordsFromMapsUrl(url: string): { lat: number; lng: number } | null {
 
 /** Distance from property pin → gem (meters), or null if either side lacks coords. */
 export function distanceMetersFromProperty(
-  propertyLat: number | null | undefined,
-  propertyLng: number | null | undefined,
+  propertyLat: number | string | null | undefined,
+  propertyLng: number | string | null | undefined,
   gem: Pick<AreaLocalGemOption, 'latitude' | 'longitude' | 'googleMapsUrl'>
 ): number | null {
   const originLat = parseGemCoord(propertyLat);
@@ -198,6 +198,7 @@ export async function fetchNearestEssentialPlaces(input: {
           rating?: number | null;
           distanceMeters?: number | null;
           primaryType?: string;
+          userRatingCount?: number | null;
         } | null;
       }>;
     };

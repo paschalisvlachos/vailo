@@ -4,7 +4,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from 'fireb
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, cloudFunctions } from '../../../lib/firebase';
 import { useToast } from '../../../context/ToastContext';
-import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map, Loader2, Building, Sparkles, Copy, ClipboardPaste, X } from 'lucide-react';
+import { ArrowLeft, Plus, MapPin, Wand2, Star, Image as ImageIcon, Pencil, Trash2, Map as MapIcon, Loader2, Building, Sparkles, Copy, ClipboardPaste, X } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { httpsCallableMessage } from '../../../lib/callableError';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
@@ -745,7 +745,7 @@ export default function LocalGems() {
         <AdminPageHeader
           title="Local Gems"
           description="Curated places guests can explore near this property."
-          icon={<Map size={24} />}
+          icon={<MapIcon size={24} />}
         />
         <AdminEmptyState
           icon={<Building size={28} />}
@@ -769,7 +769,7 @@ export default function LocalGems() {
               ? `Recommendations for guests near ${propertyAreaContext.areaName}.`
               : 'Curated restaurants, beaches, and sights for your guests.'
           }
-          icon={<Map size={24} />}
+          icon={<MapIcon size={24} />}
           action={
             <div className="flex flex-wrap items-center gap-2">
               {copiedClip ? (
@@ -848,7 +848,7 @@ export default function LocalGems() {
 
         {gems.length === 0 ? (
           <AdminEmptyState
-            icon={<Map size={28} />}
+            icon={<MapIcon size={28} />}
             title="No local gems yet"
             description="Add restaurants, beaches, and sights so guests get a curated guide for this listing."
             action={

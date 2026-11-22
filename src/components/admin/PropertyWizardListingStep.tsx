@@ -18,7 +18,6 @@ import {
   EMPTY_WIZARD_LISTING,
   isWizardListingComplete,
   newWizardListingInternalRefCode,
-  normalizeWizardReferenceUrls,
   referenceUrlRowsWithTrailingBlank,
   wizardListingFieldDomId,
   type WizardListingDraft,

@@ -2,10 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../../lib/firebase';
-import { loadCountryNames } from '../../../lib/countryNames';
-import { resolveGooglePlaceIdFromDetails } from '../../../lib/geocoding';
 import {
   formatGuestSlug,
   getTypePublicSlug,
@@ -20,7 +17,6 @@ import {
 } from '../../../lib/guestPortalQrCode';
 import { useToast } from '../../../context/ToastContext';
 import { AdminButton } from '../../../components/admin/AdminPageHeader';
-import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import { adminPath } from '../../../lib/adminRoutes';
 import { DEFAULT_PRIMARY_LOCALE } from '../../../lib/propertyContentLocales';
@@ -32,17 +28,13 @@ import {
   ArrowLeft,
   Plus,
   Link2,
-  MapPin,
-  Wand2,
   Building,
   Pencil,
   Trash2,
   User,
   CalendarSync,
   Image as ImageIcon,
-  UploadCloud,
   Loader2,
-  MessageCircle,
   QrCode,
   Smartphone,
   Copy,
@@ -66,12 +58,7 @@ import {
   listingQuotaExceededMessage,
 } from '../../../lib/ownerListingQuota';
 import { useAdminSession } from '../../../context/AdminSessionContext';
-import {
-  formatICalSyncError,
-  formatICalSyncSuccessMessage,
-  isCalendarSyncEnabled,
-  syncPropertyTypeICalCallable,
-} from '../../../lib/icalSync';
+import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { clonePropertyListing } from '../../../lib/clonePropertyListing';
 import { deletePropertyListing } from '../../../lib/deletePropertyListing';
 import {
@@ -83,7 +70,6 @@ import {
   type CopiedPropertyListing,
 } from '../../../lib/propertyListingCopy';
 import { ensureAreaDocument } from '../../../lib/ensureAreaDocument';
-import MunicipalityAreaField from '../../../components/admin/MunicipalityAreaField';
 import PropertyWizardListingStep from '../../../components/admin/PropertyWizardListingStep';
 import HouseGuideImportPanel from '../../../components/admin/HouseGuideImportPanel';
 import AddPropertyGuestPortalPreview from '../../../components/admin/AddPropertyGuestPortalPreview';
@@ -127,7 +113,6 @@ export default function PropertyTypes() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [isSubmittingType, setIsSubmittingType] = useState(false);
-  const [isMagicFilling, setIsMagicFilling] = useState(false);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
   const [slugBeforeEdit, setSlugBeforeEdit] = useState('');
   
@@ -142,8 +127,6 @@ export default function PropertyTypes() {
   const [copiedListingClip, setCopiedListingClip] = useState<CopiedPropertyListing | null>(() =>
     readCopiedListing()
   );
-  const [isICalSyncing, setIsICalSyncing] = useState(false);
-  const coverPhotoInputRef = useRef<HTMLInputElement>(null);
 
   /** Add-listing wizard (same UX as Add Property → First listing). */
   const [listingDraft, setListingDraft] = useState<WizardListingDraft>(EMPTY_WIZARD_LISTING);
@@ -160,10 +143,6 @@ export default function PropertyTypes() {
     files: File[];
   } | null>(null);
 
-  // Master Area Database States
-  const [countries, setCountries] = useState<string[]>([]);
-  const [dbAreas, setDbAreas] = useState<string[]>([]);
-  
   const initialFormState = {
     listingUrl: '',
     airbnbUrl: '',
@@ -190,27 +169,6 @@ export default function PropertyTypes() {
     onboardingNotes: '',
   };
   const [typeFormData, setTypeFormData] = useState(initialFormState);
-
-  // 1. Load country list for admin selects
-  useEffect(() => {
-    loadCountryNames()
-      .then(setCountries)
-      .catch((err) => console.error('Failed to load countries:', err));
-  }, []);
-
-  // 2. Fetch Master Areas for selected Country
-  useEffect(() => {
-    if (!typeFormData.country) {
-      setDbAreas([]);
-      return;
-    }
-    const unsubscribe = onSnapshot(collection(db, 'countries', typeFormData.country, 'areas'), (snapshot) => {
-      const areasData = snapshot.docs.map(doc => doc.data().name);
-      areasData.sort((a, b) => a.localeCompare(b));
-      setDbAreas(areasData);
-    });
-    return () => unsubscribe();
-  }, [typeFormData.country]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -363,159 +321,6 @@ export default function PropertyTypes() {
 
       return newData;
     });
-  };
-
-  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!canEditUrlSlug) return;
-    setIsSlugManuallyEdited(true);
-    setTypeFormData({ ...typeFormData, urlSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '') });
-  };
-
-  const handleAutoFillMaps = async () => {
-    const url = typeFormData.googleMapsUrl.trim();
-    if (!url) {
-      toast.warning('Please paste a Google Maps link first.');
-      return;
-    }
-
-    const areaHint =
-      typeFormData.city ||
-      typeFormData.area ||
-      property?.area ||
-      property?.city ||
-      property?.country ||
-      '';
-
-    setIsMagicFilling(true);
-
-    try {
-      let searchQuery = url;
-      let placeNameFallback = '';
-
-      const nameMatch = url.match(/\/place\/([^/?@]+)/);
-      if (nameMatch?.[1]) {
-        placeNameFallback = decodeURIComponent(nameMatch[1].replace(/\+/g, ' '));
-        searchQuery = areaHint ? `${placeNameFallback} ${areaHint}` : placeNameFallback;
-      }
-
-      const functions = getFunctions();
-      const getGooglePlaceDetails = httpsCallable(functions, 'getGooglePlaceDetails');
-      const result = await getGooglePlaceDetails({
-        searchQuery,
-        area: areaHint,
-        usageCaller: PLACES_USAGE_CALLER.propertyTypes,
-      });
-      const googleData = result.data as {
-        name?: string;
-        rating?: number;
-        googlePlaceId?: string;
-        latitude?: number;
-        longitude?: number;
-        websiteUri?: string;
-        photoUrl?: string;
-        googleMapsUrl?: string;
-        addressLine?: string;
-        area?: string;
-        city?: string;
-        postCode?: string;
-        country?: string;
-      };
-
-      let mirroredPhotoUrl = googleData.photoUrl;
-      if (mirroredPhotoUrl) {
-        try {
-          mirroredPhotoUrl = await ensurePersistablePhotoUrl(mirroredPhotoUrl, {
-            googlePlaceId: googleData.googlePlaceId,
-          });
-        } catch (mirrorErr) {
-          console.warn('Magic Fill photo mirror failed:', mirrorErr);
-          toast.warning('Listing loaded, but the Google photo could not be stored. Upload a custom image.');
-          mirroredPhotoUrl = undefined;
-        }
-      }
-
-      const listingName = googleData.name || placeNameFallback;
-      const slugFromName = listingName
-        ? listingName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
-        : '';
-      const googleNeighborhood = googleData.area?.trim() || '';
-      const googleCity = googleData.city?.trim() || '';
-      const matchedMasterArea = dbAreas.find((a) => a.toLowerCase() === googleCity.toLowerCase());
-
-      setTypeFormData((prev) => ({
-        ...prev,
-        propertyTypeName: listingName || prev.propertyTypeName,
-        urlSlug:
-          canEditUrlSlug && !isSlugManuallyEdited && slugFromName ? slugFromName : prev.urlSlug,
-        latitude: googleData.latitude?.toString() || prev.latitude,
-        longitude: googleData.longitude?.toString() || prev.longitude,
-        googleMapsUrl: googleData.googleMapsUrl || url,
-        googleRating: googleData.rating != null ? String(googleData.rating) : prev.googleRating,
-        googlePlaceId:
-          resolveGooglePlaceIdFromDetails(
-            { googlePlaceId: googleData.googlePlaceId, googleMapsUrl: googleData.googleMapsUrl },
-            url
-          ) || prev.googlePlaceId,
-        listingUrl: googleData.websiteUri || prev.listingUrl,
-        addressLine: googleData.addressLine || prev.addressLine,
-        area: googleNeighborhood || prev.area,
-        city: matchedMasterArea || prev.city,
-        postCode: googleData.postCode || prev.postCode,
-        country: googleData.country || prev.country,
-        photoUrl: mirroredPhotoUrl || prev.photoUrl,
-      }));
-
-      if (mirroredPhotoUrl) {
-        setPhotoFile(null);
-        setPhotoPreview(mirroredPhotoUrl);
-      }
-
-      const resolvedPlaceId = resolveGooglePlaceIdFromDetails(
-        { googlePlaceId: googleData.googlePlaceId, googleMapsUrl: googleData.googleMapsUrl },
-        url
-      );
-      if (resolvedPlaceId) {
-        toast.success('Google Place ID captured for guest reviews.');
-      } else {
-        toast.warning(
-          'Coordinates and details were filled, but no Google Place ID was found. Use a full google.com/maps/place/… link if you need guest review links.'
-        );
-      }
-    } catch (error) {
-      console.error('Maps auto-fill error:', error);
-
-      const coordMatch =
-        url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
-        url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-      if (coordMatch) {
-        setTypeFormData((prev) => ({
-          ...prev,
-          latitude: coordMatch[1],
-          longitude: coordMatch[2],
-        }));
-        toast.info('Could not load full place details, but coordinates were extracted from the URL.');
-      } else {
-        toast.error(
-          'Could not process this link. Paste a full google.com/maps/place URL, maps.app.goo.gl, or share.google link.'
-        );
-      }
-    } finally {
-      setIsMagicFilling(false);
-    }
-  };
-
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setPhotoFile(file);
-      setPhotoPreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleRemovePhoto = () => {
-    setPhotoFile(null);
-    setPhotoPreview(null);
-    setTypeFormData(prev => ({ ...prev, photoUrl: '' }));
   };
 
   // --- CRUD OPERATIONS --- //
@@ -990,36 +795,6 @@ export default function PropertyTypes() {
       toast.error('Failed to save property listing.');
     } finally {
       setIsSubmittingType(false);
-    }
-  };
-
-  const handleICalSync = async () => {
-    if (!calendarSyncEnabled) {
-      toast.warning('Calendar sync is disabled for this property.');
-      return;
-    }
-    if (!typeFormData.iCalUrl?.trim()) {
-      toast.warning('Please enter a valid iCal URL first.');
-      return;
-    }
-    if (!editingTypeId) {
-      toast.warning('Save the listing first, then sync the calendar.');
-      return;
-    }
-
-    setIsICalSyncing(true);
-    try {
-      const result = await syncPropertyTypeICalCallable(
-        propertyId,
-        editingTypeId,
-        typeFormData.iCalUrl.trim()
-      );
-      toast.success(formatICalSyncSuccessMessage(result));
-    } catch (error) {
-      console.error('iCal sync error:', error);
-      toast.error(formatICalSyncError(error));
-    } finally {
-      setIsICalSyncing(false);
     }
   };
 

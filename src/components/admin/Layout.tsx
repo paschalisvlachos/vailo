@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
   Building2,
+  Briefcase,
   Users,
   LogOut,
   KeyRound,
@@ -66,6 +67,12 @@ const NAV_SECTIONS: { id: string; label: string; items: NavItemDef[] }[] = [
     id: 'general',
     label: 'General',
     items: [
+      {
+        icon: Briefcase,
+        label: 'Agencies',
+        to: adminPath('/agencies'),
+        help: 'Create and manage agency portfolios. Assign agents/owners and open each agency to edit identity and settings.',
+      },
       {
         icon: Building2,
         label: 'Property Listings',
@@ -167,6 +174,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     isPlatformAdmin,
     authUser,
     portfolioProperties,
+    selectedAgencyId,
+    selectedAgencyName,
+    selectAgency,
   } = useAdminSession();
   const mailboxUnreadCount = useAdminInboxUnreadCount(isPlatformAdmin);
   const location = useLocation();
@@ -326,19 +336,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         return sections;
       })()
     : (() => {
-        const routePropertyId = propertyIdFromAdminPath(location.pathname);
+        // Platform admin: “Your portfolio” only after explicitly selecting an agency.
         const agencyPropertyId =
-          routePropertyId || portfolioProperties[0]?.id || null;
+          selectedAgencyId &&
+          portfolioProperties.some((p) => p.id === selectedAgencyId)
+            ? selectedAgencyId
+            : null;
         if (!agencyPropertyId) return NAV_SECTIONS;
+
         const listingSuffix = propertyListingQuerySuffix(
           new URLSearchParams(location.search).get('listing')
         );
+        const portfolioLabel = selectedAgencyName
+          ? `Your portfolio · ${selectedAgencyName}`
+          : 'Your portfolio';
         const propertyItems: NavItemDef[] = [
+          {
+            icon: Briefcase,
+            label: 'Agency overview',
+            to: adminPath(
+              `/account/settings?agency=${encodeURIComponent(agencyPropertyId)}`
+            ),
+            help: 'Agency identity, assigned agent/owner, languages, and guest experience settings.',
+          },
           {
             icon: Building2,
             label: 'Property Listings',
-            to: adminPath('/properties'),
-            help: 'All property listings and guest portals.',
+            to: adminPath(`/properties/${agencyPropertyId}/types`),
+            help: 'Listings that belong to this agency.',
           },
           ...PROPERTY_ADMIN_SECTIONS.map((section) => ({
             icon: section.icon,
@@ -349,22 +374,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             help: section.help,
           })),
         ];
-        // Keep Property Listings under Your portfolio (not duplicated in General).
-        const generalWithoutListings = NAV_SECTIONS.map((section) =>
-          section.id === 'general'
-            ? {
-                ...section,
-                items: section.items.filter((item) => item.to !== adminPath('/properties')),
-              }
-            : section
-        );
         return [
-          ...generalWithoutListings,
           {
             id: 'this-property',
-            label: 'Your portfolio',
+            label: portfolioLabel,
             items: propertyItems,
           },
+          ...NAV_SECTIONS,
         ];
       })();
 
@@ -465,7 +481,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <nav className="flex-1 overflow-y-auto py-2">
       {navSections.map((section) => (
         <div key={section.id}>
-          <p className="admin-nav-section-title">{section.label}</p>
+          <div className="flex items-center justify-between gap-2 pr-2">
+            <p className="admin-nav-section-title min-w-0 truncate">{section.label}</p>
+            {isPlatformAdmin && section.id === 'this-property' && selectedAgencyId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  selectAgency(null);
+                  navigate(adminPath('/agencies'));
+                  setMobileOpen(false);
+                }}
+                className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-vailo-teal hover:text-vailo-teal-hover"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
           <div>
             {section.items.map((item) => (
               <NavItem
@@ -792,16 +823,31 @@ function NavItem({
   const search = location.search;
   const hrefPath = to.split('?')[0] || to;
   const hrefSearch = to.includes('?') ? `?${to.split('?')[1]}` : '';
+  const hrefParams = new URLSearchParams(hrefSearch);
+  const currentParams = new URLSearchParams(search);
+  const searchMatches =
+    !hrefSearch ||
+    [...hrefParams.entries()].every(([key, value]) => currentParams.get(key) === value);
   const isProviderProfileLink = /\/excursion-portal\/[^/]+$/.test(hrefPath);
+  // Legacy property shell URL — exact match only (not /types, /features, …).
+  const isPropertyShellLink = /\/admin\/properties\/[^/]+$/.test(hrefPath);
+  const isAgencySettingsLink =
+    hrefPath === adminPath('/account/settings') && hrefParams.has('agency');
   const isPropertiesIndex = hrefPath === adminPath('/properties');
   const isPropertyListingsLink = /\/admin\/properties\/[^/]+\/types$/.test(hrefPath);
-  const active =
-    to === ADMIN_BASE || to === adminPath('/dashboard') || isPropertiesIndex
+  const exactPathOnly =
+    to === ADMIN_BASE ||
+    to === adminPath('/dashboard') ||
+    isPropertiesIndex ||
+    isPropertyShellLink;
+  const active = isAgencySettingsLink
+    ? pathname === hrefPath && searchMatches
+    : exactPathOnly
       ? pathname === hrefPath
       : isPropertyListingsLink
-        ? pathname === hrefPath || pathname.startsWith(`${hrefPath}`)
+        ? pathname === hrefPath || pathname.startsWith(`${hrefPath}/`)
         : (pathname === hrefPath &&
-            (!hrefSearch || search === hrefSearch || search.startsWith(hrefSearch))) ||
+            (!hrefSearch || searchMatches)) ||
           (pathname.startsWith(`${hrefPath}/`) &&
             !(isProviderProfileLink && pathname.includes('/excursions')));
 

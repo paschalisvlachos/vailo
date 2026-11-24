@@ -32,6 +32,10 @@ import {
   type AdminScope,
   type OwnerProfile,
 } from '../lib/adminAccess';
+import {
+  readSelectedAgencyId,
+  writeSelectedAgencyId,
+} from '../lib/adminSelectedAgency';
 
 type AdminSessionContextValue = {
   authUser: User | null;
@@ -54,6 +58,13 @@ type AdminSessionContextValue = {
     propertyTypeName?: string;
     ownerId?: string;
   }[];
+  /**
+   * Platform admin only: explicitly selected agency shell id.
+   * “Your portfolio” sidebar appears only when this is set.
+   */
+  selectedAgencyId: string | null;
+  selectedAgencyName: string | null;
+  selectAgency: (agencyId: string | null) => void;
 };
 
 function formatFirestoreError(error: unknown): string {
@@ -118,6 +129,9 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
   >([]);
   const [dataReady, setDataReady] = useState(false);
   const [providersReady, setProvidersReady] = useState(false);
+  const [selectedAgencyId, setSelectedAgencyIdState] = useState<string | null>(() =>
+    readSelectedAgencyId()
+  );
   const [activeScope, setActiveScopeState] = useState<AdminScope | null>(null);
 
   useEffect(() => {
@@ -346,6 +360,26 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
     setActiveScopeState(scope);
   }, []);
 
+  // Drop stale selection if the agency was deleted.
+  useEffect(() => {
+    if (!selectedAgencyId || !dataReady) return;
+    if (properties.some((p) => p.id === selectedAgencyId)) return;
+    writeSelectedAgencyId(null);
+    setSelectedAgencyIdState(null);
+  }, [selectedAgencyId, properties, dataReady]);
+
+  const selectAgency = useCallback((agencyId: string | null) => {
+    const next = agencyId?.trim() || null;
+    writeSelectedAgencyId(next);
+    setSelectedAgencyIdState(next);
+  }, []);
+
+  const selectedAgencyName = useMemo(() => {
+    if (!selectedAgencyId) return null;
+    const hit = properties.find((p) => p.id === selectedAgencyId);
+    return hit?.propertyName?.trim() || null;
+  }, [selectedAgencyId, properties]);
+
   const loading =
     !authReady ||
     !profileReady ||
@@ -366,6 +400,9 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       isAgent: isAgent(profile),
       portfolioProperties: properties,
       portfolioTypes: types,
+      selectedAgencyId,
+      selectedAgencyName,
+      selectAgency,
     }),
     [
       authUser,
@@ -377,6 +414,9 @@ export function AdminSessionProvider({ children }: { children: ReactNode }) {
       setActiveScope,
       properties,
       types,
+      selectedAgencyId,
+      selectedAgencyName,
+      selectAgency,
     ]
   );
 

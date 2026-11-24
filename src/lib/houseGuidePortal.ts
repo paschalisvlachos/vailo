@@ -4,6 +4,12 @@ import {
   type HouseGuideFieldDef,
 } from './houseGuideCategories';
 import { getGuideTextValue } from './houseGuideLocales';
+import {
+  normalizeGuideEmergencyPinList,
+  normalizeGuidePlacePinList,
+  type GuideEmergencyPin,
+  type GuidePlacePin,
+} from './houseGuidePlacePins';
 import { resolveFeaturedDigest, normalizeLocaleCode } from './propertyContentLocales';
 import { ensureSourceUrlsInDigest } from './houseGuidePreviewAi';
 
@@ -40,6 +46,21 @@ export type FeaturedKey =
   | 'daily-needs'
   | 'transportation'
   | 'general-info';
+
+/** Featured sections that should list saved map/emergency pins in the guest UI. */
+export const FEATURED_KEYS_WITH_PLACE_PINS: FeaturedKey[] = [
+  'safety',
+  'daily-needs',
+  'transportation',
+  'waste',
+];
+
+const FEATURED_PIN_FIELD_IDS: Partial<Record<FeaturedKey, string[]>> = {
+  safety: ['emergencyContacts'],
+  'daily-needs': ['usefulLocations'],
+  transportation: ['transportationPlaces'],
+  waste: ['wasteLocations'],
+};
 
 export type FeaturedConfig = {
   id: FeaturedKey;
@@ -394,6 +415,53 @@ export type FeaturedPreviewRecord = {
 
 export type FeaturedPreviewsMap = Partial<Record<FeaturedKey, FeaturedPreviewRecord>>;
 
+/**
+ * Structured place pins for a featured section (Safety, Daily Needs, etc.).
+ * Used so guests see names/phones instead of bare “View more” map links.
+ */
+export function getFeaturedGuidePins(
+  key: FeaturedKey,
+  guideData: Record<string, unknown> | null | undefined
+): Array<GuidePlacePin | GuideEmergencyPin> {
+  if (!guideData) return [];
+  const fieldIds = FEATURED_PIN_FIELD_IDS[key];
+  if (!fieldIds?.length) return [];
+
+  const pins: Array<GuidePlacePin | GuideEmergencyPin> = [];
+  for (const fieldId of fieldIds) {
+    const raw = guideData[fieldId];
+    if (fieldId === 'emergencyContacts') {
+      pins.push(...normalizeGuideEmergencyPinList(raw));
+    } else {
+      pins.push(...normalizeGuidePlacePinList(raw));
+    }
+  }
+  return pins;
+}
+
+/** Collect nearby guide pins across Safety / Daily Needs / Transport for the map sheet. */
+export function collectGuestMapPins(
+  guideData: Record<string, unknown> | null | undefined
+): Array<GuidePlacePin | GuideEmergencyPin> {
+  if (!guideData) return [];
+  const seen = new Set<string>();
+  const out: Array<GuidePlacePin | GuideEmergencyPin> = [];
+  for (const key of FEATURED_KEYS_WITH_PLACE_PINS) {
+    for (const pin of getFeaturedGuidePins(key, guideData)) {
+      const dedupeKey = [
+        pin.googlePlaceId || '',
+        pin.mapsLink || '',
+        pin.title || '',
+        pin.phone || '',
+      ].join('|');
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push(pin);
+    }
+  }
+  return out;
+}
+
 /** Guest/admin digest with booking & timetable URLs from source when AI omitted them. */
 export function resolveFeaturedDigestForPortal(
   key: FeaturedKey,
@@ -404,6 +472,11 @@ export function resolveFeaturedDigestForPortal(
   reviewedLocales?: string[] | null
 ): string {
   const digest = resolveFeaturedDigest(record, locale, primaryLocale, reviewedLocales);
+  // Pin-heavy sections render structured lists separately — don't append bare map URLs
+  // that become anonymous “View more” chips in the guest UI.
+  if (FEATURED_KEYS_WITH_PLACE_PINS.includes(key)) {
+    return digest.trim();
+  }
   const source = buildSourceTextForFeaturedKey(
     key,
     guideData,

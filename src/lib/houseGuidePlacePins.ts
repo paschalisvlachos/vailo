@@ -101,3 +101,56 @@ export function normalizeGuideEmergencyPin(raw: unknown): GuideEmergencyPin | nu
   if (!pin.title && !pin.phone && !pin.mapsLink && !pin.photoUrl && !category) return null;
   return pin;
 }
+
+/** Display label for a pin — prefer real place name, then category/slot label. */
+export function guidePinDisplayTitle(pin: GuidePlacePin | GuideEmergencyPin): string {
+  const title = String(pin.title || '').trim();
+  const category =
+    'category' in pin && typeof pin.category === 'string' ? pin.category.trim() : '';
+  if (title && category && title !== category) return title;
+  return title || category || 'Place';
+}
+
+export function normalizeGuidePlacePinList(raw: unknown): GuidePlacePin[] {
+  if (!Array.isArray(raw)) return [];
+  const out: GuidePlacePin[] = [];
+  for (const entry of raw) {
+    const pin = normalizeGuidePlacePin(entry);
+    if (pin) out.push(pin);
+  }
+  return out;
+}
+
+export function normalizeGuideEmergencyPinList(raw: unknown): GuideEmergencyPin[] {
+  if (!Array.isArray(raw)) return [];
+  const out: GuideEmergencyPin[] = [];
+  for (const entry of raw) {
+    const pin = normalizeGuideEmergencyPin(entry);
+    if (pin) out.push(pin);
+  }
+  return out;
+}
+
+/** Pull lat/lng from pin fields or a Google Maps URL. */
+export function coordsFromGuidePin(
+  pin: Pick<GuidePlacePin, 'latitude' | 'longitude' | 'mapsLink'>
+): { lat: number; lng: number } | null {
+  const lat = asOptionalNumber(pin.latitude);
+  const lng = asOptionalNumber(pin.longitude);
+  if (lat != null && lng != null && !(lat === 0 && lng === 0)) {
+    return { lat, lng };
+  }
+  const raw = String(pin.mapsLink || '').trim();
+  if (!raw) return null;
+  const match =
+    raw.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+    raw.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+    raw.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (!match) return null;
+  const fromUrlLat = asOptionalNumber(match[1]);
+  const fromUrlLng = asOptionalNumber(match[2]);
+  if (fromUrlLat == null || fromUrlLng == null || (fromUrlLat === 0 && fromUrlLng === 0)) {
+    return null;
+  }
+  return { lat: fromUrlLat, lng: fromUrlLng };
+}

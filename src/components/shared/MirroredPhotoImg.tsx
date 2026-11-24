@@ -140,12 +140,15 @@ export default function MirroredPhotoImg({
     return <>{fallback}</>;
   }
 
+  // Google CDN photos need no-referrer; partner/WP hotlinks often require a normal referrer.
+  const needsNoReferrer = isGooglePlacesPhotoUrl(displaySrc) || isGoogleCdnPlacePhotoUrl(displaySrc);
+
   return (
     <img
       {...imgProps}
       src={displaySrc}
       alt={alt}
-      referrerPolicy="no-referrer"
+      {...(needsNoReferrer ? { referrerPolicy: 'no-referrer' as const } : {})}
       onError={() => setShowFallback(true)}
     />
   );

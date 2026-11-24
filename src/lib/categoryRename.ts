@@ -10,6 +10,7 @@ import {
 import { db } from './firebase';
 import {
   buildCategoryNamePayload,
+  categoryPrimaryName,
   renameValueInLocaleMap,
   patchLinkedExperienceTypes,
   patchLinkedGemCategory,
@@ -107,6 +108,26 @@ export async function renameLocalGemsCategory(
 
   if (updates.length > 0) await commitBatches(updates);
   return updates.length;
+}
+
+/** Fix known partner-category typos (e.g. Boat & Yatch → Boat & Yacht). */
+export async function repairPartnerCategorySpellings(
+  country: string,
+  areaId: string,
+  categories: Array<{ id: string; [key: string]: unknown }>
+): Promise<number> {
+  let fixed = 0;
+  for (const cat of categories) {
+    const primary = categoryPrimaryName(cat, AREA_CONTENT_PRIMARY_LOCALE).trim();
+    if (!primary || !/\bYatch\b/i.test(primary)) continue;
+    const next = primary.replace(/\bYatch\b/gi, (match) =>
+      match[0] === 'y' ? 'yacht' : 'Yacht'
+    );
+    if (next === primary) continue;
+    await renameFeaturesCategory(country, areaId, cat.id, primary, next);
+    fixed += 1;
+  }
+  return fixed;
 }
 
 export async function renameFeaturesCategory(

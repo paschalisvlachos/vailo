@@ -73,7 +73,7 @@ function ToastViewport({
 
   return (
     <div
-      className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 w-[min(100vw-2rem,24rem)] pointer-events-none"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-3 w-[min(100vw-2rem,24rem)] pointer-events-none"
       aria-live="polite"
       aria-relevant="additions"
     >
@@ -85,14 +85,14 @@ function ToastViewport({
           <div
             key={item.id}
             role="alert"
-            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border px-4 py-3.5 shadow-[0_12px_40px_-16px_rgba(5,31,38,0.35)] animate-toast-in ${styles.border} ${styles.bg}`}
+            className={`pointer-events-none flex items-start gap-3 rounded-2xl border px-4 py-3.5 shadow-[0_12px_40px_-16px_rgba(5,31,38,0.35)] animate-toast-in ${styles.border} ${styles.bg}`}
           >
             <Icon size={18} className={`shrink-0 mt-0.5 ${styles.iconClass}`} />
             <p className="flex-1 text-sm text-vailo-dark leading-relaxed">{item.message}</p>
             <button
               type="button"
               onClick={() => onDismiss(item.id)}
-              className="shrink-0 p-1 rounded-lg text-gray-400 hover:text-vailo-dark hover:bg-black/5 transition-colors"
+              className="pointer-events-auto shrink-0 p-1 rounded-lg text-gray-400 hover:text-vailo-dark hover:bg-black/5 transition-colors"
               aria-label="Dismiss notification"
             >
               <X size={16} />
@@ -114,7 +114,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const show = useCallback(
     (message: string, options?: ToastOptions) => {
       const variant = options?.variant ?? 'info';
-      const duration = options?.duration ?? (variant === 'error' ? 7000 : 5000);
+      const duration =
+        options?.duration ??
+        (variant === 'error' ? 7000 : variant === 'success' ? 2500 : 4000);
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
       setToasts((prev) => [...prev, { id, message, variant, duration }]);

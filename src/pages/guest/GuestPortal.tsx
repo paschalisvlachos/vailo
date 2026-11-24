@@ -861,7 +861,9 @@ function GuestPortalPage({
     () =>
       buildGuestWhatsAppLink(
         typeData?.whatsapp,
-        property?.propertyName || 'your stay',
+        String(typeData?.propertyTypeName || '').trim() ||
+          property?.propertyName ||
+          'your stay',
         typeData?.propertyTypeName
       ),
     [typeData?.whatsapp, typeData?.propertyTypeName, property?.propertyName]
@@ -906,6 +908,11 @@ function GuestPortalPage({
     const parts = [typeData?.area, typeData?.city, typeData?.country].filter(Boolean);
     return parts.join(', ');
   }, [typeData]);
+
+  const portalDisplayName =
+    String(typeData?.propertyTypeName || '').trim() ||
+    String(property?.propertyName || '').trim() ||
+    'your stay';
 
   const websiteUrl = useMemo(() => {
     const raw = String(typeData?.listingUrl || property?.listingUrl || '').trim();
@@ -1047,7 +1054,7 @@ function GuestPortalPage({
               setLocale={setLocale}
               localeOptions={localeOptions}
               isMobileFramePreview={isMobileFramePreview}
-              propertyName={property?.propertyName}
+              propertyName={portalDisplayName}
               propertyTypeName={typeData?.propertyTypeName}
               heroPhoto={heroPhoto}
               heroLocation={heroLocation}
@@ -1079,7 +1086,7 @@ function GuestPortalPage({
                     propertyLabel={
                       property?.propertyName && typeData?.propertyTypeName
                         ? `${property.propertyName} · ${typeData.propertyTypeName}`
-                        : property?.propertyName
+                        : portalDisplayName
                     }
                   />
                 ) : null
@@ -1196,7 +1203,7 @@ function GuestPortalPage({
               categoryCatalogDocs={categoryCatalogDocs}
               locationLabel={heroLocation}
               mapAreaHint={mapAreaHint}
-              propertyName={property?.propertyName}
+              propertyName={portalDisplayName}
               propertyId={propertyId || ''}
               typeId={typeId || ''}
               googlePlaceId={typeData?.googlePlaceId}
@@ -1227,7 +1234,7 @@ function GuestPortalPage({
               hasPropertyCoords={hasPropertyCoords}
               onOpenMap={() => setPropertyMapOpen(true)}
               websiteUrl={websiteUrl}
-              propertyName={property?.propertyName}
+              propertyName={portalDisplayName}
               propertyTypeName={typeData?.propertyTypeName}
               whatsappRaw={typeData?.whatsapp}
               locationLabel={heroLocation}

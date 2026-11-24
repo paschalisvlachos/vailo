@@ -26,12 +26,14 @@ import {
 } from 'lucide-react';
 import {
   getFeaturedConfig,
+  getFeaturedGuidePins,
   type FeaturedKey,
   type FeaturedPreviewsMap,
   resolveFeaturedDigestForPortal,
 } from '../../lib/houseGuidePortal';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { resolveFeaturedDigest, resolveFeaturedPreviewLine } from '../../lib/propertyContentLocales';
+import GuestFeaturedPlaceList from './GuestFeaturedPlaceList';
 import GuestLinkifiedText from './GuestLinkifiedText';
 
 const ICONS: Record<string, ReactNode> = {
@@ -108,7 +110,13 @@ export default function GuestFeaturedPreviewSheet({
         );
   }, [featuredKey, cfg, previews, guideData, locale, contentPrimaryLocale, contentReviewedLocales]);
 
-  const bodyText = digest.trim() || previewLine.trim();
+  const placePins = useMemo(
+    () => (featuredKey ? getFeaturedGuidePins(featuredKey, guideData) : []),
+    [featuredKey, guideData]
+  );
+
+  const bodyText = digest.trim() || (!placePins.length ? previewLine.trim() : '');
+  const hasBody = Boolean(bodyText || placePins.length);
 
   if (!featuredKey || !cfg) return null;
 
@@ -156,12 +164,17 @@ export default function GuestFeaturedPreviewSheet({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5">
-          {bodyText ? (
-            <GuestLinkifiedText
-              text={bodyText}
-              className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
-            />
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-4">
+          {hasBody ? (
+            <>
+              {bodyText ? (
+                <GuestLinkifiedText
+                  text={bodyText}
+                  className="text-base text-gray-600 whitespace-pre-wrap leading-relaxed"
+                />
+              ) : null}
+              <GuestFeaturedPlaceList pins={placePins} />
+            </>
           ) : (
             <p className="text-base text-gray-500 italic">
               Your host has not added details for this section yet.

@@ -254,18 +254,6 @@ function ServiceDetailSheet({
                 <ExternalLink size={16} className="text-gray-400" />
               </button>
             )}
-            {emailHref && (
-              <a
-                href={emailHref}
-                className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-colors"
-              >
-                <span className="flex items-center gap-2.5 text-[#051F26] font-semibold text-sm min-w-0">
-                  <Mail size={18} className="shrink-0 text-[#C5A059]" />
-                  <span className="truncate">{feature.email?.trim()}</span>
-                </span>
-                <ExternalLink size={16} className="text-gray-400 shrink-0 ml-2" />
-              </a>
-            )}
             {websiteUrl && (
               <button
                 type="button"
@@ -278,6 +266,18 @@ function ServiceDetailSheet({
                 </span>
                 <ExternalLink size={16} className="text-gray-400 shrink-0 ml-2" />
               </button>
+            )}
+            {emailHref && (
+              <a
+                href={emailHref}
+                className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white hover:border-[#C5A059]/40 hover:bg-[#C5A059]/5 transition-colors"
+              >
+                <span className="flex items-center gap-2.5 text-[#051F26] font-semibold text-sm min-w-0">
+                  <Mail size={18} className="shrink-0 text-[#C5A059]" />
+                  <span className="truncate">{feature.email?.trim()}</span>
+                </span>
+                <ExternalLink size={16} className="text-gray-400 shrink-0 ml-2" />
+              </a>
             )}
             {!hasContact && !voucherCode && (
               <p className="text-sm text-gray-500 text-center py-4">

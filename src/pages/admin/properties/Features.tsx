@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -34,6 +34,9 @@ import {
   normalizeCategoryMatchKey,
 } from '../../../lib/categoryLocale';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
+import { isPlacesApiMediaPhotoUrl } from '../../../lib/placePhotoResolver';
+import { resolvePropertyTypeAreaContext } from '../../../lib/listingAreaContext';
+import { seedNewAreaCategories } from '../../../lib/copyAreaCategories';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
 
 export default function Features() {
@@ -58,6 +61,8 @@ export default function Features() {
   
   const [features, setFeatures] = useState<any[]>([]);
   const [featuresCategories, setFeaturesCategories] = useState<any[]>([]);
+  const [categoriesReady, setCategoriesReady] = useState(false);
+  const categorySeedAttempted = useRef<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -161,33 +166,54 @@ export default function Features() {
     if (!propertyId) return;
 
     const fetchAreaContext = async () => {
-      let country = property?.country || 'Greece';
-      let areaName = property?.city || property?.area || '';
+      let country = String(property?.country || 'Greece').trim() || 'Greece';
+      let areaName = String(property?.city || property?.area || '').trim();
+
+      if (!areaName || propertyTypes.length > 0) {
+        const listing =
+          propertyTypes.find((t) => t.id === selectedTypeId) || propertyTypes[0];
+        if (listing) {
+          areaName = String(listing.city || listing.area || areaName || '').trim();
+          if (listing.country) country = String(listing.country).trim() || country;
+        }
+      }
 
       if (!areaName) {
         const typesSnap = await getDocs(collection(db, 'properties', propertyId, 'propertyTypes'));
         if (!typesSnap.empty) {
           const firstType = typesSnap.docs[0].data();
-          areaName = firstType.city || firstType.area || '';
-          if (firstType.country) country = firstType.country;
+          areaName = String(firstType.city || firstType.area || '').trim();
+          if (firstType.country) country = String(firstType.country).trim() || country;
         }
       }
 
-      if (areaName) {
+      if (!areaName) return;
+
+      const { ctx } = await resolvePropertyTypeAreaContext({ country, city: areaName });
+      if (ctx) {
         setPropertyAreaContext({
-          country: country,
-          areaName: areaName,
-          areaId: areaName.toLowerCase().replace(/\s+/g, '-')
+          country: ctx.country,
+          areaName: ctx.masterArea,
+          areaId: ctx.areaId,
         });
+        return;
       }
+
+      // Fallback slug only when Area Functionality has no matching doc yet.
+      setPropertyAreaContext({
+        country,
+        areaName,
+        areaId: areaName.toLowerCase().replace(/\s+/g, '-'),
+      });
     };
 
-    fetchAreaContext();
-  }, [property, propertyId]);
+    void fetchAreaContext();
+  }, [property, propertyId, propertyTypes, selectedTypeId]);
 
   useEffect(() => {
     if (!propertyAreaContext) return;
     const { country, areaId } = propertyAreaContext;
+    setCategoriesReady(false);
 
     const catUnsub = onSnapshot(collection(db, 'countries', country, 'areas', areaId, 'featuresCategories'), (snapshot) => {
       const fetchedCats = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -195,10 +221,36 @@ export default function Features() {
         featureCategoryPrimaryName(a).localeCompare(featureCategoryPrimaryName(b))
       );
       setFeaturesCategories(fetchedCats);
+      setCategoriesReady(true);
     });
 
     return () => { catUnsub(); };
   }, [propertyAreaContext]);
+
+  // Existing empty areas (e.g. Marbella) — copy partner/gem categories from a template once.
+  useEffect(() => {
+    if (!propertyAreaContext || !categoriesReady) return;
+    if (featuresCategories.length > 0) return;
+    const key = `${propertyAreaContext.country}/${propertyAreaContext.areaId}`;
+    if (categorySeedAttempted.current === key) return;
+    categorySeedAttempted.current = key;
+
+    void seedNewAreaCategories({
+      country: propertyAreaContext.country,
+      areaId: propertyAreaContext.areaId,
+    })
+      .then((seeded) => {
+        if (seeded.featuresAdded > 0) {
+          toast.success(
+            `Added ${seeded.featuresAdded} partner categor${seeded.featuresAdded === 1 ? 'y' : 'ies'} for ${propertyAreaContext.areaName}.`
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn('Auto-seed partner categories failed:', err);
+        categorySeedAttempted.current = '';
+      });
+  }, [propertyAreaContext, categoriesReady, featuresCategories.length, toast]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -420,8 +472,9 @@ export default function Features() {
       throw new Error('Select a property listing first.');
     }
     for (const draft of drafts) {
-      let photoUrl = draft.photoUrl || '';
-      if (photoUrl) {
+      const originalPhotoUrl = draft.photoUrl || '';
+      let photoUrl = originalPhotoUrl;
+      if (photoUrl && isPlacesApiMediaPhotoUrl(photoUrl)) {
         try {
           // eslint-disable-next-line no-await-in-loop
           photoUrl = await ensurePersistablePhotoUrl(photoUrl, {
@@ -429,7 +482,8 @@ export default function Features() {
             areaId: propertyAreaContext?.areaId,
           });
         } catch {
-          photoUrl = '';
+          // Keep the source URL so the guest portal can still try to render it.
+          photoUrl = originalPhotoUrl;
         }
       }
       const matchedCategories = matchPartnerCategories(draft.categories);
@@ -599,6 +653,14 @@ Return ONLY valid JSON with no markdown:
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedTypeId) {
+      toast.warning('Select a property listing first.');
+      return;
+    }
+    if (featuresCategories.length > 0 && normalizedFeatureCategories.length === 0) {
+      toast.warning('Select at least one partner category.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       let finalPhotoUrl = formData.photoUrl;
@@ -612,12 +674,17 @@ Return ONLY valid JSON with no markdown:
         );
         await uploadBytes(storageRef, customFile);
         finalPhotoUrl = await getDownloadURL(storageRef);
-      } else if (finalPhotoUrl) {
-        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
-          country: propertyAreaContext?.country,
-          areaId: propertyAreaContext?.areaId,
-          docId: editingFeatureId || undefined,
-        });
+      } else if (finalPhotoUrl && isPlacesApiMediaPhotoUrl(finalPhotoUrl)) {
+        // Only block save for Places media URLs that cannot render in <img>.
+        try {
+          finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+            country: propertyAreaContext?.country,
+            areaId: propertyAreaContext?.areaId,
+            docId: editingFeatureId || undefined,
+          });
+        } catch {
+          // Keep original URL — guest MirroredPhotoImg can still attempt recovery.
+        }
       }
 
       const featureData = {
@@ -631,11 +698,6 @@ Return ONLY valid JSON with no markdown:
         photoUrl: finalPhotoUrl,
         updatedAt: new Date().toISOString(),
       };
-
-      if (!selectedTypeId) {
-        toast.warning('Select a property listing first.');
-        return;
-      }
 
       if (editingFeatureId) {
         await updateDoc(
@@ -651,6 +713,7 @@ Return ONLY valid JSON with no markdown:
         await addDoc(featuresCollectionPath(selectedTypeId), featureData);
       }
 
+      toast.success(editingFeatureId ? 'Partner updated.' : 'Partner saved.');
       closeAndResetForm();
     } catch (error) { 
       toast.error("Failed to save feature."); 
@@ -691,6 +754,12 @@ Return ONLY valid JSON with no markdown:
     setEditingFeatureId(null);
     setAddEntryMethod('choose');
     setIsFormOpen(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById('partner-add-form')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
   };
 
   const handleAutoTranslateLocale = async () => {
@@ -872,7 +941,10 @@ Return ONLY valid JSON with no markdown:
       )}
 
       {isFormOpen && (
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div
+          id="partner-add-form"
+          className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-300"
+        >
           <div className="px-6 py-4 bg-vailo-teal/5 border-b border-vailo-teal/10 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-lg font-bold text-vailo-dark">

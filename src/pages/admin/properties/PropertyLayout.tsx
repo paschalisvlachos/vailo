@@ -24,6 +24,8 @@ export type PropertyRecord = {
   area?: string;
   city?: string;
   ownerId?: string;
+  /** Max property listings allowed for this agency portfolio (−1 = unlimited). */
+  maxListings?: number;
   listingUrl?: string;
   googleMapsUrl?: string;
   createdAt?: string;

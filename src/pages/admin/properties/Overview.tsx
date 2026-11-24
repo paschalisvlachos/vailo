@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import {
   collection,
   doc,
@@ -53,6 +53,11 @@ import { isCalendarSyncEnabled } from '../../../lib/icalSync';
 import { isPropertyReservationSplitEnabled } from '../../../lib/syncedBooking';
 import { buildOpenPortalInviteClipboardText } from '../../../lib/guestInviteEmailTemplate';
 import { buildGuestPortalPublicListingUrl } from '../../../lib/guestPortalQrCode';
+import {
+  formatMaxListingsLabel,
+  parseMaxListings,
+  UNLIMITED_LISTINGS,
+} from '../../../lib/ownerListingQuota';
 
 interface OwnerOption {
   id: string;
@@ -61,6 +66,7 @@ interface OwnerOption {
   company?: string;
   email?: string;
   phone?: string;
+  maxListings?: number;
 }
 
 type FormData = {
@@ -75,7 +81,16 @@ type FormData = {
   calendarSyncEnabled: boolean;
   reservationSplitEnabled: boolean;
   preArrivalCheckInEnabled: boolean;
+  /** '' | 'unlimited' | numeric string for limited capacity. */
+  maxListings: string;
 };
+
+function maxListingsFormValue(raw: unknown): string {
+  const parsed = parseMaxListings(raw);
+  if (parsed == null) return '';
+  if (parsed === UNLIMITED_LISTINGS) return 'unlimited';
+  return String(parsed);
+}
 
 function buildFormFromProperty(property: PropertyRecord): FormData {
   return {
@@ -90,6 +105,7 @@ function buildFormFromProperty(property: PropertyRecord): FormData {
     calendarSyncEnabled: isCalendarSyncEnabled(property),
     reservationSplitEnabled: property.reservationSplitEnabled === true,
     preArrivalCheckInEnabled: isPreArrivalCheckInEnabled(property),
+    maxListings: maxListingsFormValue(property.maxListings),
   };
 }
 
@@ -150,6 +166,7 @@ export default function Overview({
   const property = propertyProp ?? outlet?.property;
   const propertyId = propertyIdProp ?? outlet?.propertyId ?? '';
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isPlatformAdmin, profile } = useAdminSession();
   const { languages: platformLanguages, loading: platformLangsLoading } = usePlatformLanguages();
   const showLanguagesCategory = !platformLangsLoading && platformLanguages.length > 1;
@@ -158,7 +175,7 @@ export default function Overview({
     (settingsMode && Boolean(profile?.id && property?.ownerId === profile.id));
   const canEditGuestExperience = isPlatformAdmin || canEdit;
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(() => searchParams.get('edit') === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<FormData>(() =>
     buildFormFromProperty(property || { id: '' })
@@ -177,6 +194,41 @@ export default function Overview({
     if (!property) return;
     if (!isEditing) setFormData(buildFormFromProperty(property));
   }, [property, isEditing]);
+
+  // Agencies → Edit opens overview already in edit mode (`?edit=1`), without selecting portfolio.
+  useEffect(() => {
+    if (searchParams.get('edit') !== '1') return;
+    if (!canEdit || !property) return;
+    const owner = ownersList.find((o) => o.id === property.ownerId);
+    prevOwnerIdRef.current = property.ownerId || null;
+    const fromProperty = buildFormFromProperty(property);
+    setFormData({
+      ...fromProperty,
+      email: owner?.email || '',
+      phone: owner?.phone || '',
+      maxListings:
+        fromProperty.maxListings || maxListingsFormValue(owner?.maxListings),
+    });
+    setIsEditing(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, canEdit, property, setSearchParams, ownersList]);
+
+  // When capacity lives only on the assigned agent, prefill edit form once owner loads.
+  useEffect(() => {
+    if (!isEditing || !isPlatformAdmin) return;
+    setFormData((prev) => {
+      if (prev.maxListings) return prev;
+      const owner =
+        ownersList.find((o) => o.id === prev.ownerId) ||
+        ownersList.find((o) => o.id === property?.ownerId) ||
+        assignedOwner;
+      const fromOwner = maxListingsFormValue(owner?.maxListings);
+      if (!fromOwner) return prev;
+      return { ...prev, maxListings: fromOwner };
+    });
+  }, [isEditing, isPlatformAdmin, assignedOwner, ownersList, property?.ownerId]);
 
   useEffect(() => {
     const q = query(collection(db, 'owners'), where('role', 'in', [...PROPERTY_ASSIGNMENT_ROLES]));
@@ -295,10 +347,14 @@ export default function Overview({
     const owner =
       ownersList.find((o) => o.id === property.ownerId) || assignedOwner;
     prevOwnerIdRef.current = property.ownerId || null;
+    const fromProperty = buildFormFromProperty(property);
     setFormData({
-      ...buildFormFromProperty(property),
+      ...fromProperty,
       email: owner?.email || '',
       phone: owner?.phone || '',
+      // Fall back to assigned agent capacity when agency shell has none yet.
+      maxListings:
+        fromProperty.maxListings || maxListingsFormValue(owner?.maxListings),
     });
     setIsEditing(true);
   };
@@ -370,6 +426,21 @@ export default function Overview({
         );
         propertyPatch.internalRefCode = uniqueRef.value;
         propertyPatch.guestPortalAccessRequired = formData.guestPortalAccessRequired;
+
+        const capacity = parseMaxListings(
+          formData.maxListings === 'unlimited' ? 'unlimited' : formData.maxListings
+        );
+        if (capacity == null) {
+          toast.warning('Select listing capacity (limited or unlimited).');
+          setIsSaving(false);
+          return;
+        }
+        if (capacity !== UNLIMITED_LISTINGS && capacity < 1) {
+          toast.warning('Max listings must be at least 1.');
+          setIsSaving(false);
+          return;
+        }
+        propertyPatch.maxListings = capacity;
       }
       if (canEditGuestExperience) {
         propertyPatch.calendarSyncEnabled = formData.calendarSyncEnabled;
@@ -383,14 +454,25 @@ export default function Overview({
         ? formData.ownerId
         : property.ownerId || formData.ownerId;
       if (contactOwnerId) {
-        await updateDoc(doc(db, 'owners', contactOwnerId), {
+        const ownerPatch: Record<string, unknown> = {
           email: formData.email.trim(),
           phone: formData.phone.trim(),
           updatedAt: new Date().toISOString(),
-        });
+        };
+        if (isPlatformAdmin && propertyPatch.maxListings != null) {
+          ownerPatch.maxListings = propertyPatch.maxListings;
+        }
+        await updateDoc(doc(db, 'owners', contactOwnerId), ownerPatch);
         setAssignedOwner((prev) =>
           prev && prev.id === contactOwnerId
-            ? { ...prev, email: formData.email.trim(), phone: formData.phone.trim() }
+            ? {
+                ...prev,
+                email: formData.email.trim(),
+                phone: formData.phone.trim(),
+                ...(propertyPatch.maxListings != null
+                  ? { maxListings: propertyPatch.maxListings as number }
+                  : {}),
+              }
             : prev
         );
       }
@@ -603,6 +685,78 @@ export default function Overview({
                   ) : null}
                 </p>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <AdminLabel htmlFor="listingCapacityMode">Listing capacity *</AdminLabel>
+                  {isPlatformAdmin ? (
+                    <AdminSelect
+                      id="listingCapacityMode"
+                      value={
+                        formData.maxListings === 'unlimited'
+                          ? 'unlimited'
+                          : formData.maxListings === ''
+                            ? ''
+                            : 'limited'
+                      }
+                      onChange={(e) => {
+                        const mode = e.target.value;
+                        if (mode === 'unlimited') {
+                          setFormData((prev) => ({ ...prev, maxListings: 'unlimited' }));
+                        } else if (mode === 'limited') {
+                          setFormData((prev) => ({
+                            ...prev,
+                            maxListings:
+                              prev.maxListings && prev.maxListings !== 'unlimited'
+                                ? prev.maxListings
+                                : '1',
+                          }));
+                        } else {
+                          setFormData((prev) => ({ ...prev, maxListings: '' }));
+                        }
+                      }}
+                      required
+                    >
+                      <option value="" disabled>
+                        Select capacity…
+                      </option>
+                      <option value="unlimited">Unlimited</option>
+                      <option value="limited">Limited</option>
+                    </AdminSelect>
+                  ) : (
+                    <p className="font-medium text-vailo-dark bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
+                      {formatMaxListingsLabel(property.maxListings) ||
+                        formatMaxListingsLabel(assignedOwner?.maxListings) ||
+                        'Not set'}
+                    </p>
+                  )}
+                </div>
+                {isPlatformAdmin &&
+                formData.maxListings !== 'unlimited' &&
+                formData.maxListings !== '' ? (
+                  <div>
+                    <AdminLabel htmlFor="maxListings">Max property listings *</AdminLabel>
+                    <AdminInput
+                      id="maxListings"
+                      name="maxListings"
+                      type="number"
+                      min={1}
+                      step={1}
+                      required
+                      value={formData.maxListings}
+                      onChange={handleChange}
+                      placeholder="e.g. 3"
+                    />
+                  </div>
+                ) : (
+                  <div className="hidden sm:block" />
+                )}
+              </div>
+              <p className="text-xs text-gray-500 -mt-2">
+                How many property listings this agency portfolio may hold.
+                {isPlatformAdmin
+                  ? ' Also syncs to the assigned agent/owner capacity when set.'
+                  : null}
+              </p>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Location</p>
                 <p className="font-medium text-vailo-dark inline-flex items-center gap-1.5">
@@ -641,6 +795,14 @@ export default function Overview({
               <div>
                 <p className="text-xs text-gray-500 mb-1">URL slug</p>
                 <p className="font-medium text-vailo-dark font-mono text-sm">/{property.urlSlug || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Listing capacity</p>
+                <p className="font-medium text-vailo-dark">
+                  {formatMaxListingsLabel(property.maxListings) ||
+                    formatMaxListingsLabel(assignedOwner?.maxListings) ||
+                    'Not set'}
+                </p>
               </div>
               <div className="sm:col-span-2">
                 <p className="text-xs text-gray-500 mb-1">Location</p>

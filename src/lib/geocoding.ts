@@ -783,7 +783,10 @@ export function buildPreciseMapUrls(lat: number, lng: number) {
   };
 }
 
-/** iframe embed — prefer place listing (name / place id) over bare coordinates. */
+/**
+ * iframe embed without Maps Embed API key.
+ * Prefer lat/lng as `q=` — `q=place_id:…&output=embed` often fails and shows the whole world.
+ */
 export function buildGoogleMapsEmbedUrl(options: {
   title?: string;
   areaHint?: string;
@@ -793,20 +796,23 @@ export function buildGoogleMapsEmbedUrl(options: {
   googleMapsUrl?: string | null;
   zoom?: number;
 }): string {
-  const zoom = options.zoom ?? 14;
+  const zoom = Math.min(21, Math.max(1, options.zoom ?? 15));
   const lat = parseFloat(String(options.latitude ?? ''));
   const lng = parseFloat(String(options.longitude ?? ''));
-  const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
+  const hasCoords =
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    !(lat === 0 && lng === 0);
   const title = sanitizePlaceSearchTitle(String(options.title || '').trim());
   const areaHint = String(options.areaHint || '').trim();
 
-  const placeId = resolveGooglePlaceIdFromDetails({
-    googlePlaceId: options.googlePlaceId,
-    googleMapsUrl: options.googleMapsUrl,
-  });
-
-  if (placeId) {
-    return `https://www.google.com/maps?q=place_id:${encodeURIComponent(placeId)}&z=${zoom}&output=embed`;
+  // Coordinates are the most reliable free-embed query.
+  if (hasCoords) {
+    const label = title || areaHint;
+    const q = label
+      ? encodeURIComponent(`${lat},${lng} (${label})`)
+      : encodeURIComponent(`${lat},${lng}`);
+    return `https://maps.google.com/maps?q=${q}&hl=en&z=${zoom}&output=embed`;
   }
 
   const storedMapsUrl =
@@ -815,34 +821,19 @@ export function buildGoogleMapsEmbedUrl(options: {
       : '';
 
   if (storedMapsUrl && isDirectPlaceMapsUrl(storedMapsUrl)) {
-    const fromUrl = extractPlaceIdFromMapsUrl(storedMapsUrl);
-    if (fromUrl) {
-      return `https://www.google.com/maps?q=place_id:${encodeURIComponent(fromUrl)}&z=${zoom}&output=embed`;
-    }
     const pathName = storedMapsUrl.match(/\/place\/([^/?#]+)/)?.[1];
     if (pathName) {
       const label = decodeURIComponent(pathName.replace(/\+/g, ' '));
-      const q = encodeURIComponent(label);
-      const ll = hasCoords ? `&ll=${lat},${lng}` : '';
-      return `https://maps.google.com/maps?q=${q}${ll}&z=${zoom}&output=embed`;
+      return `https://maps.google.com/maps?q=${encodeURIComponent(label)}&hl=en&z=${zoom}&output=embed`;
     }
-  }
-
-  if (title && hasCoords) {
-    const q = encodeURIComponent(areaHint ? `${title}, ${areaHint}` : title);
-    return `https://maps.google.com/maps?q=${q}&ll=${lat},${lng}&z=${zoom}&output=embed`;
   }
 
   if (title) {
     const q = encodeURIComponent(areaHint ? `${title}, ${areaHint}` : title);
-    return `https://maps.google.com/maps?q=${q}&z=${zoom}&output=embed`;
+    return `https://maps.google.com/maps?q=${q}&hl=en&z=${zoom}&output=embed`;
   }
 
-  if (hasCoords) {
-    return `https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&output=embed`;
-  }
-
-  return `https://maps.google.com/maps?q=${encodeURIComponent(areaHint || 'Greece')}&z=${zoom}&output=embed`;
+  return `https://maps.google.com/maps?q=${encodeURIComponent(areaHint || 'Greece')}&hl=en&z=${zoom}&output=embed`;
 }
 
 function buildNavigateFromMapsUrl(

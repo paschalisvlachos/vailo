@@ -27,6 +27,7 @@ import {
 import {
   PORTAL_FEATURED_CAP,
   getFeaturedConfig,
+  getFeaturedGuidePins,
   type FeaturedKey,
   type FeaturedPreviewsMap,
   resolveFeaturedDigestForPortal,
@@ -34,6 +35,7 @@ import {
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { resolveFeaturedPreviewLine, resolveFeaturedDigest } from '../../lib/propertyContentLocales';
+import GuestFeaturedPlaceList from './GuestFeaturedPlaceList';
 import GuestLinkifiedText from './GuestLinkifiedText';
 
 type Props = {
@@ -130,6 +132,8 @@ export default function PropertyEssentials({
                 contentPrimaryLocale,
                 contentReviewedLocales
               );
+          const placePins = getFeaturedGuidePins(key, guideData);
+          const hasBody = Boolean(digest.trim() || placePins.length);
           const icon = ICONS[cfg.iconName] || <Sparkles size={18} />;
           const isOpen = openKey === key;
 
@@ -189,20 +193,25 @@ export default function PropertyEssentials({
 
               <div
                 className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                  isOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
+                  isOpen ? 'max-h-[min(70vh,1200px)] opacity-100 overflow-y-auto' : 'max-h-0 opacity-0'
                 }`}
               >
                 <div className={`pb-4 ${hideHeader ? 'px-3' : 'px-5'}`}>
-                  <div className={hideHeader ? 'pl-12' : undefined}>
-                    {digest ? (
-                      <GuestLinkifiedText
-                        text={digest}
-                        className={`whitespace-pre-wrap leading-relaxed break-words ${
-                          hideHeader
-                            ? 'text-[13px] text-[#7A7266]'
-                            : 'text-base text-gray-600'
-                        }`}
-                      />
+                  <div className={hideHeader ? 'pl-12 space-y-3' : 'space-y-3'}>
+                    {hasBody ? (
+                      <>
+                        {digest.trim() ? (
+                          <GuestLinkifiedText
+                            text={digest}
+                            className={`whitespace-pre-wrap leading-relaxed break-words ${
+                              hideHeader
+                                ? 'text-[13px] text-[#7A7266]'
+                                : 'text-base text-gray-600'
+                            }`}
+                          />
+                        ) : null}
+                        <GuestFeaturedPlaceList pins={placePins} compact={hideHeader} />
+                      </>
                     ) : (
                       <p
                         className={`italic ${

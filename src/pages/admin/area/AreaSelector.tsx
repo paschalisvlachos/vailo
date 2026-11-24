@@ -22,6 +22,9 @@ import {
 import AreaLanguagesCard from '../../../components/admin/AreaLanguagesCard';
 import AreaNeighborsCard from '../../../components/admin/AreaNeighborsCard';
 import { loadCountryNames } from '../../../lib/countryNames';
+import { areaIdFromName } from '../../../lib/ensureAreaDocument';
+import { seedNewAreaCategories } from '../../../lib/copyAreaCategories';
+import { clearPropertyTypeAreaContextCache } from '../../../lib/listingAreaContext';
 import AdminPageHeader, {
   AdminCard,
   AdminButton,
@@ -138,8 +141,8 @@ export default function AreaSelector() {
 
     setIsAddingArea(true);
     try {
-      const areaId = newAreaName.trim().toLowerCase().replace(/\s+/g, '-');
       const finalName = newAreaName.trim();
+      const areaId = areaIdFromName(finalName) || `area-${Date.now()}`;
       const now = new Date().toISOString();
 
       // Parent country docs must exist so prod→staging clone can discover area trees.
@@ -153,6 +156,24 @@ export default function AreaSelector() {
         name: finalName,
         createdAt: now,
       });
+      clearPropertyTypeAreaContextCache(selectedCountry, finalName);
+
+      try {
+        const seeded = await seedNewAreaCategories({
+          country: selectedCountry,
+          areaId,
+        });
+        if (seeded.featuresAdded > 0 || seeded.gemsAdded > 0) {
+          toast.success(
+            `Area added. Copied ${seeded.featuresAdded} partner and ${seeded.gemsAdded} gem categories.`
+          );
+        } else {
+          toast.success('Area added. Copy categories from another area if needed.');
+        }
+      } catch (seedErr) {
+        console.warn('Category seed failed for new area:', seedErr);
+        toast.success('Area added. Copy partner/gem categories from another area next.');
+      }
 
       setNewAreaName('');
       setSelectedAreaId(areaId);

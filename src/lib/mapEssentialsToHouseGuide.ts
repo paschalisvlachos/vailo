@@ -104,17 +104,21 @@ function matchEmergencyOption(label: string): string {
 }
 
 function usefulTitleForPlace(place: EssentialPlaceProposal): string {
+  const placeName = String(place.name || '').trim();
+  if (placeName) return placeName;
   const mapped = USEFUL_SLOT_TO_TITLE[place.slotId];
   if (mapped && HOUSE_GUIDE_USEFUL_MAP_OPTIONS.includes(mapped)) return mapped;
-  return place.name || place.label || 'Other';
+  return place.label || 'Other';
 }
 
 function transportTitleForPlace(place: EssentialPlaceProposal): string {
+  const placeName = String(place.name || '').trim();
+  if (placeName) return placeName;
   const mapped = TRANSPORT_SLOT_TO_TITLE[place.slotId];
   if (mapped && HOUSE_GUIDE_TRANSPORTATION_OPTIONS.includes(mapped)) return mapped;
   if (place.slotId === 'airport') return 'Airport';
   if (place.slotId === 'port') return 'Ferry Port';
-  return place.name || place.label || 'Other';
+  return place.label || 'Other';
 }
 
 function emergencyPhonesToContacts(

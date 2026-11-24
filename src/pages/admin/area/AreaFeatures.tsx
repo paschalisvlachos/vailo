@@ -18,6 +18,7 @@ import { useContentLocaleEditor } from '../../../hooks/useContentLocaleEditor';
 import { translateContentFields } from '../../../lib/adminContentTranslate';
 import { PLACES_USAGE_CALLER } from '../../../lib/placesApiUsageCallers';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
+import { isPlacesApiMediaPhotoUrl } from '../../../lib/placePhotoResolver';
 import MirroredPhotoImg from '../../../components/shared/MirroredPhotoImg';
 import {
   categoryPrimaryName,
@@ -256,8 +257,9 @@ export default function AreaFeatures() {
 
   const savePartnerDraftsBulk = async (drafts: PartnerImportDraft[]) => {
     for (const draft of drafts) {
-      let photoUrl = draft.photoUrl || '';
-      if (photoUrl) {
+      const originalPhotoUrl = draft.photoUrl || '';
+      let photoUrl = originalPhotoUrl;
+      if (photoUrl && isPlacesApiMediaPhotoUrl(photoUrl)) {
         try {
           // eslint-disable-next-line no-await-in-loop
           photoUrl = await ensurePersistablePhotoUrl(photoUrl, {
@@ -265,7 +267,7 @@ export default function AreaFeatures() {
             areaId,
           });
         } catch {
-          photoUrl = '';
+          photoUrl = originalPhotoUrl;
         }
       }
       const matchedCategories = matchPartnerCategories(draft.categories);
@@ -470,6 +472,10 @@ Return ONLY valid JSON with no markdown:
   // --- SUBMIT ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (featuresCategories.length > 0 && normalizedFeatureCategories.length === 0) {
+      toast.warning('Select at least one partner category.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       let finalPhotoUrl = formData.photoUrl;
@@ -478,12 +484,16 @@ Return ONLY valid JSON with no markdown:
         const storageRef = ref(storage, `areas/${decodedCountry}/${areaId}/features/${Date.now()}_${imageFile.name}`);
         await uploadBytes(storageRef, imageFile);
         finalPhotoUrl = await getDownloadURL(storageRef);
-      } else if (finalPhotoUrl) {
-        finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
-          country: decodedCountry,
-          areaId,
-          docId: editingFeatureId || undefined,
-        });
+      } else if (finalPhotoUrl && isPlacesApiMediaPhotoUrl(finalPhotoUrl)) {
+        try {
+          finalPhotoUrl = await ensurePersistablePhotoUrl(finalPhotoUrl, {
+            country: decodedCountry,
+            areaId,
+            docId: editingFeatureId || undefined,
+          });
+        } catch {
+          // Keep original URL.
+        }
       }
 
       const featureData = {
@@ -507,6 +517,7 @@ Return ONLY valid JSON with no markdown:
         await addDoc(collection(db, 'countries', decodedCountry, 'areas', areaId, 'areaFeatures'), featureData);
       }
 
+      toast.success(editingFeatureId ? 'Partner updated.' : 'Partner saved.');
       closeAndResetForm();
     } catch (error) { 
       toast.error("Failed to save feature."); 

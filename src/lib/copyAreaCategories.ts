@@ -4,6 +4,8 @@ import { categoryPrimaryName } from './categoryLocale';
 import { readParentCategoryId, isTopLevelCategory } from './categoryHierarchy';
 import { AREA_CONTENT_PRIMARY_LOCALE } from './propertyContentLocales';
 
+export type CategoryCollectionName = 'localGemsCategories' | 'featuresCategories';
+
 const BATCH_LIMIT = 400;
 
 export type CopyAreaCategoriesResult = {
@@ -25,8 +27,123 @@ function stripCategoryForCopy(data: Record<string, unknown>): Record<string, unk
  * Copy category documents from one area to another. Skips categories whose
  * English/primary name already exists on the target area. Preserves parent/subcategory links.
  */
+const PREFERRED_TEMPLATE_AREA_IDS = ['chania', 'heraklion', 'crete', 'rethymno'];
+
+async function countCategories(
+  country: string,
+  areaId: string,
+  collectionName: CategoryCollectionName
+): Promise<number> {
+  const snap = await getDocs(
+    collection(db, 'countries', country, 'areas', areaId, collectionName)
+  );
+  return snap.size;
+}
+
+/** Pick a category template area (same country first, then Greece defaults). */
+export async function findBestCategoryTemplateArea(params: {
+  preferredCountry: string;
+  collectionName: CategoryCollectionName;
+  excludeAreaId?: string;
+}): Promise<{ country: string; areaId: string; count: number } | null> {
+  const preferredCountry = params.preferredCountry.trim() || 'Greece';
+
+  const tryArea = async (country: string, areaId: string) => {
+    if (params.excludeAreaId && country === preferredCountry && areaId === params.excludeAreaId) {
+      return null;
+    }
+    const count = await countCategories(country, areaId, params.collectionName);
+    return count > 0 ? { country, areaId, count } : null;
+  };
+
+  // Fast path: known Crete hubs (most installs already have these seeded).
+  if (preferredCountry === 'Greece') {
+    for (const areaId of PREFERRED_TEMPLATE_AREA_IDS) {
+      const hit = await tryArea('Greece', areaId);
+      if (hit) return hit;
+    }
+  }
+
+  const areasSnap = await getDocs(collection(db, 'countries', preferredCountry, 'areas'));
+  let best: { country: string; areaId: string; count: number } | null = null;
+  for (const areaDoc of areasSnap.docs) {
+    const hit = await tryArea(preferredCountry, areaDoc.id);
+    if (!hit) continue;
+    if (!best || hit.count > best.count) best = hit;
+  }
+  if (best) return best;
+
+  if (preferredCountry !== 'Greece') {
+    for (const areaId of PREFERRED_TEMPLATE_AREA_IDS) {
+      const hit = await tryArea('Greece', areaId);
+      if (hit) return hit;
+    }
+    const greeceAreas = await getDocs(collection(db, 'countries', 'Greece', 'areas'));
+    for (const areaDoc of greeceAreas.docs) {
+      const hit = await tryArea('Greece', areaDoc.id);
+      if (!hit) continue;
+      if (!best || hit.count > best.count) best = hit;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * When a new area is created empty, copy partner + gem categories from the
+ * richest template area so Partners/Gems can be categorized immediately.
+ */
+export async function seedNewAreaCategories(params: {
+  country: string;
+  areaId: string;
+}): Promise<{ featuresAdded: number; gemsAdded: number }> {
+  const country = params.country.trim();
+  const areaId = params.areaId.trim();
+  if (!country || !areaId) return { featuresAdded: 0, gemsAdded: 0 };
+
+  const [featuresTemplate, gemsTemplate] = await Promise.all([
+    findBestCategoryTemplateArea({
+      preferredCountry: country,
+      collectionName: 'featuresCategories',
+      excludeAreaId: areaId,
+    }),
+    findBestCategoryTemplateArea({
+      preferredCountry: country,
+      collectionName: 'localGemsCategories',
+      excludeAreaId: areaId,
+    }),
+  ]);
+
+  let featuresAdded = 0;
+  let gemsAdded = 0;
+
+  if (featuresTemplate) {
+    const result = await copyAreaCategories({
+      collectionName: 'featuresCategories',
+      sourceCountry: featuresTemplate.country,
+      sourceAreaId: featuresTemplate.areaId,
+      targetCountry: country,
+      targetAreaId: areaId,
+    });
+    featuresAdded = result.added;
+  }
+
+  if (gemsTemplate) {
+    const result = await copyAreaCategories({
+      collectionName: 'localGemsCategories',
+      sourceCountry: gemsTemplate.country,
+      sourceAreaId: gemsTemplate.areaId,
+      targetCountry: country,
+      targetAreaId: areaId,
+    });
+    gemsAdded = result.added;
+  }
+
+  return { featuresAdded, gemsAdded };
+}
+
 export async function copyAreaCategories(params: {
-  collectionName: 'localGemsCategories' | 'featuresCategories';
+  collectionName: CategoryCollectionName;
   sourceCountry: string;
   sourceAreaId: string;
   targetCountry: string;

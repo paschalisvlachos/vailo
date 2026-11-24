@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import { collection, addDoc, updateDoc, doc, onSnapshot, query, where, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  where,
+  setDoc,
+} from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db } from '../../../lib/firebase';
 import {
@@ -16,7 +27,8 @@ import {
   guestPortalQrFilename,
 } from '../../../lib/guestPortalQrCode';
 import { useToast } from '../../../context/ToastContext';
-import { AdminButton } from '../../../components/admin/AdminPageHeader';
+import { AdminButton, AdminCard } from '../../../components/admin/AdminPageHeader';
+import GuestPortalPhonePreviewModal from '../../../components/admin/GuestPortalPhonePreviewModal';
 import { ensurePersistablePhotoUrl } from '../../../lib/adminPhotoUrl';
 import { adminPath } from '../../../lib/adminRoutes';
 import { DEFAULT_PRIMARY_LOCALE } from '../../../lib/propertyContentLocales';
@@ -29,13 +41,16 @@ import {
   Plus,
   Link2,
   Building,
+  Building2,
   Pencil,
   Trash2,
   User,
   CalendarSync,
   Image as ImageIcon,
+  LayoutGrid,
   Loader2,
   QrCode,
+  Rows3,
   Smartphone,
   Copy,
   Check,
@@ -55,7 +70,9 @@ import {
   countListingsTowardCapacity,
   creatorListingQuotaMessage,
   formatMaxListingsLabel,
+  hasConfiguredListingCapacity,
   listingQuotaExceededMessage,
+  summarizeListingCapacity,
 } from '../../../lib/ownerListingQuota';
 import { useAdminSession } from '../../../context/AdminSessionContext';
 import { isCalendarSyncEnabled } from '../../../lib/icalSync';
@@ -85,6 +102,9 @@ import {
   type WizardListingFieldKey,
 } from '../../../lib/wizardListingOnboarding';
 
+type ListingLayoutMode = 'rows' | 'boxes';
+const LISTING_LAYOUT_KEY = 'vailo_property_listings_layout';
+
 export default function PropertyTypes() {
   const { property, propertyId, propertyAccess, lockedListingId } =
     useOutletContext<PropertyOutletContext>();
@@ -104,6 +124,45 @@ export default function PropertyTypes() {
   
   const [propertyTypes, setPropertyTypes] = useState<any[]>([]);
   const [owners, setOwners] = useState<any[]>([]);
+  /** Assigned agency agent/owner — loaded separately (allocation picker only has role=owner). */
+  const [assignedManager, setAssignedManager] = useState<{
+    id: string;
+    maxListings?: number;
+  } | null>(null);
+  const [layoutMode, setLayoutMode] = useState<ListingLayoutMode>(() => {
+    try {
+      return localStorage.getItem(LISTING_LAYOUT_KEY) === 'boxes' ? 'boxes' : 'rows';
+    } catch {
+      return 'rows';
+    }
+  });
+  const [phonePreview, setPhonePreview] = useState<{
+    listingKey: string;
+    title: string;
+    url: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LISTING_LAYOUT_KEY, layoutMode);
+    } catch {
+      /* ignore */
+    }
+  }, [layoutMode]);
+
+  useEffect(() => {
+    if (!phonePreview) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPhonePreview(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [phonePreview]);
 
   const allocatableOwners = useMemo(
     () => ownersForAllocatedOwnerPicker(profile, owners),
@@ -189,6 +248,31 @@ export default function PropertyTypes() {
   }, []);
 
   useEffect(() => {
+    const ownerId = String(property?.ownerId || '').trim();
+    if (!ownerId) {
+      setAssignedManager(null);
+      return;
+    }
+    let cancelled = false;
+    getDoc(doc(db, 'owners', ownerId))
+      .then((snap) => {
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setAssignedManager(null);
+          return;
+        }
+        const data = snap.data() as { maxListings?: number };
+        setAssignedManager({ id: snap.id, maxListings: data.maxListings });
+      })
+      .catch(() => {
+        if (!cancelled) setAssignedManager(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [property?.ownerId]);
+
+  useEffect(() => {
     if (isFormOpen && !editingTypeId && !typeFormData.internalRefCode) {
       setTypeFormData(prev => ({ ...prev, internalRefCode: `TYP-${Math.random().toString(36).substring(2, 8).toUpperCase()}` }));
     }
@@ -198,6 +282,32 @@ export default function PropertyTypes() {
     if (!allowedTypeIds) return propertyTypes;
     return propertyTypes.filter((t) => allowedTypeIds.includes(t.id));
   }, [propertyTypes, allowedTypeIds]);
+
+  /** Agency portfolio capacity for this property shell (admin + assigned agent view). */
+  const agencyCapacity = useMemo(() => {
+    const maxRaw =
+      property?.maxListings != null && hasConfiguredListingCapacity(property.maxListings)
+        ? property.maxListings
+        : assignedManager?.maxListings;
+    const used = propertyTypes.length;
+    if (!hasConfiguredListingCapacity(maxRaw)) {
+      if (!isPlatformAdmin) return null;
+      return {
+        max: null as number | null,
+        unlimited: false,
+        used,
+        remaining: null as number | null,
+        canCreate: true,
+        configured: false,
+      };
+    }
+    return { ...summarizeListingCapacity(maxRaw, used), configured: true };
+  }, [
+    property?.maxListings,
+    assignedManager?.maxListings,
+    propertyTypes.length,
+    isPlatformAdmin,
+  ]);
 
   const openTypeEditor = (typeData: (typeof propertyTypes)[0]) => {
     if (isListingOnly && !propertyAccess.typeIds.includes(typeData.id)) {
@@ -829,16 +939,67 @@ export default function PropertyTypes() {
     toast.success('Guest portal URL copied.');
   };
 
+  const openPhonePreview = (type: (typeof propertyTypes)[0]) => {
+    const propSlug = formatGuestSlug(property.urlSlug);
+    const unitSlug = getTypePublicSlug(type);
+    if (!propSlug || !unitSlug) {
+      toast.warning('Set property and unit URL slugs before opening the portal.');
+      return;
+    }
+    const url = buildAdminGuestPortalPreviewUrl(
+      window.location.origin,
+      propSlug,
+      unitSlug,
+      type.id,
+      { mobileFrame: true }
+    );
+    setPhonePreview({
+      listingKey: `${propertyId}-${type.id}`,
+      title: type.propertyTypeName || 'Listing',
+      url,
+    });
+  };
+
   // --- RENDER LIST VIEW --- //
   if (!isFormOpen) {
     return (
       <div>
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <div>
             <h3 className="text-lg font-bold text-gray-900">Configured Property Listings</h3>
             <p className="text-sm text-gray-500">Manage individual units, rooms, or tiers within this property.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {visiblePropertyTypes.length > 0 ? (
+              <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('rows')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    layoutMode === 'rows'
+                      ? 'bg-vailo-teal text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="List as rows"
+                >
+                  <Rows3 size={14} />
+                  Rows
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode('boxes')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    layoutMode === 'boxes'
+                      ? 'bg-vailo-teal text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title="List as boxes"
+                >
+                  <LayoutGrid size={14} />
+                  Boxes
+                </button>
+              </div>
+            ) : null}
             {isPlatformAdmin && copiedListingClip && !isListingOnly && (
               <AdminButton
                 type="button"
@@ -855,12 +1016,74 @@ export default function PropertyTypes() {
               </AdminButton>
             )}
             {!isListingOnly && (
-              <AdminButton type="button" variant="accent" onClick={openAddListingWizard}>
+              <AdminButton
+                type="button"
+                variant="accent"
+                onClick={openAddListingWizard}
+                disabled={
+                  !isPlatformAdmin &&
+                  agencyCapacity != null &&
+                  agencyCapacity.configured &&
+                  !agencyCapacity.canCreate
+                }
+                title={
+                  !isPlatformAdmin &&
+                  agencyCapacity != null &&
+                  agencyCapacity.configured &&
+                  !agencyCapacity.canCreate
+                    ? 'Listing capacity reached for this agency'
+                    : undefined
+                }
+              >
                 <Plus size={18} /> Add Property Listing
               </AdminButton>
             )}
           </div>
         </div>
+
+        {agencyCapacity && (
+          <AdminCard className="p-4 sm:p-5 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">
+                  Capacity
+                </p>
+                <p className="text-xl font-bold text-vailo-dark">
+                  {!agencyCapacity.configured
+                    ? 'Not set'
+                    : agencyCapacity.unlimited
+                      ? 'Unlimited'
+                      : formatMaxListingsLabel(agencyCapacity.max)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">
+                  Listings used
+                </p>
+                <p className="text-xl font-bold text-vailo-dark tabular-nums">
+                  {agencyCapacity.used}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">
+                  Remaining
+                </p>
+                <p className="text-xl font-bold text-vailo-dark tabular-nums">
+                  {!agencyCapacity.configured
+                    ? '—'
+                    : agencyCapacity.unlimited
+                      ? 'Unlimited'
+                      : agencyCapacity.remaining}
+                </p>
+              </div>
+            </div>
+            {!agencyCapacity.configured && isPlatformAdmin ? (
+              <p className="text-xs text-gray-500 mt-3">
+                Set listing capacity in Agency overview / Edit settings.
+              </p>
+            ) : null}
+          </AdminCard>
+        )}
 
         {isPlatformAdmin && copiedListingClip && (
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-vailo-teal/20 bg-vailo-teal/5 px-4 py-3">
@@ -902,16 +1125,181 @@ export default function PropertyTypes() {
             <p className="text-gray-900 font-medium">No property listings found</p>
             <p className="text-gray-500 text-sm mt-1">Add your first room, villa, or suite listing to get started.</p>
           </div>
+        ) : layoutMode === 'rows' ? (
+          <div className="grid gap-3">
+            {visiblePropertyTypes.map((type) => {
+              const assignedOwner = owners.find((o) => o.id === type.ownerId);
+              const portalUrl = buildGuestPortalPublicListingUrl(property, type);
+
+              return (
+                <AdminCard key={type.id} className="overflow-hidden">
+                  <div className="flex">
+                    <div className="w-1.5 shrink-0 bg-vailo-teal" aria-hidden />
+                    <div className="flex-1 min-w-0 p-4 flex flex-col lg:flex-row lg:items-center gap-4">
+                      {type.photoUrl ? (
+                        <img
+                          src={type.photoUrl}
+                          alt=""
+                          className="h-14 w-20 rounded-lg object-cover shrink-0 border border-gray-100"
+                        />
+                      ) : (
+                        <div className="h-14 w-20 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
+                          <Building2 size={18} className="text-gray-300" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEditClick(type)}
+                            className="font-semibold text-vailo-teal hover:underline text-left"
+                          >
+                            {type.propertyTypeName}
+                          </button>
+                          {type.internalRefCode ? (
+                            <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                              {type.internalRefCode}
+                            </span>
+                          ) : null}
+                          {type.iCalUrl ? (
+                            <span
+                              className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded border ${
+                                calendarSyncEnabled
+                                  ? 'text-green-700 bg-green-50 border-green-100'
+                                  : 'text-gray-500 bg-gray-50 border-gray-200 opacity-60'
+                              }`}
+                            >
+                              <CalendarSync size={11} className="mr-1" />
+                              {calendarSyncEnabled ? 'iCal' : 'iCal off'}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-1 mt-1 min-w-0">
+                          <p className="text-sm text-gray-500 truncate flex-1">
+                            {portalUrl || 'Set property and unit URL slugs'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => copyListingUrl(type)}
+                            className="p-1 text-gray-400 hover:text-vailo-teal shrink-0"
+                            title="Copy guest portal URL"
+                          >
+                            {copiedUrlTypeId === type.id ? (
+                              <Check size={14} className="text-emerald-600" />
+                            ) : (
+                              <Copy size={14} />
+                            )}
+                          </button>
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {assignedOwner ? (
+                            <span className="inline-flex items-center gap-1">
+                              <User size={11} />
+                              {assignedOwner.fullName}
+                            </span>
+                          ) : (
+                            <span className="italic text-gray-400">No owner assigned</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleEditClick(type)}
+                          className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark"
+                        >
+                          <Pencil size={14} className="mr-1.5" /> Edit
+                        </button>
+                        {!isListingOnly && (
+                          <button
+                            type="button"
+                            onClick={() => void handleCloneClick(type)}
+                            disabled={cloningTypeId === type.id}
+                            className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark disabled:opacity-50"
+                          >
+                            {cloningTypeId === type.id ? (
+                              <Loader2 size={14} className="mr-1.5 animate-spin" />
+                            ) : (
+                              <Copy size={14} className="mr-1.5" />
+                            )}
+                            Clone
+                          </button>
+                        )}
+                        {isPlatformAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyListingForPaste(type)}
+                            disabled={copyingListingId === type.id}
+                            className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark disabled:opacity-50"
+                            title="Copy entire listing to paste into another property"
+                          >
+                            {copyingListingId === type.id ? (
+                              <Loader2 size={14} className="mr-1.5 animate-spin" />
+                            ) : (
+                              <ClipboardCopy size={14} className="mr-1.5" />
+                            )}
+                            Copy listing
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadQr(type)}
+                          disabled={qrDownloadingId === type.id}
+                          className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark disabled:opacity-50"
+                        >
+                          {qrDownloadingId === type.id ? (
+                            <Loader2 size={14} className="mr-1.5 animate-spin" />
+                          ) : (
+                            <QrCode size={14} className="mr-1.5" />
+                          )}
+                          Download QR
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openPhonePreview(type)}
+                          className={`p-2 rounded-lg ${
+                            phonePreview?.listingKey === `${propertyId}-${type.id}`
+                              ? 'text-vailo-teal bg-vailo-teal/10'
+                              : 'text-vailo-teal hover:bg-vailo-teal/5'
+                          }`}
+                          title="Guest portal preview"
+                        >
+                          <Smartphone size={18} />
+                        </button>
+                        {!isListingOnly && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(type.id, type.propertyTypeName)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                            title="Delete listing"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </AdminCard>
+              );
+            })}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {visiblePropertyTypes.map(type => {
-              const assignedOwner = owners.find(o => o.id === type.ownerId);
-              
+            {visiblePropertyTypes.map((type) => {
+              const assignedOwner = owners.find((o) => o.id === type.ownerId);
+
               return (
-                <div key={type.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow group bg-white flex flex-col">
+                <div
+                  key={type.id}
+                  className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow group bg-white flex flex-col"
+                >
                   {type.photoUrl ? (
                     <div className="h-32 w-full bg-gray-100 relative">
-                      <img src={type.photoUrl} alt={type.propertyTypeName} className="w-full h-full object-cover" />
+                      <img
+                        src={type.photoUrl}
+                        alt={type.propertyTypeName}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   ) : (
                     <div className="h-16 w-full bg-gray-50 flex items-center justify-center border-b border-gray-100">
@@ -922,11 +1310,14 @@ export default function PropertyTypes() {
                   <div className="p-5 flex flex-col flex-1">
                     <div className="flex justify-between items-start mb-3">
                       <h4 className="font-bold text-gray-900">{type.propertyTypeName}</h4>
-                      <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">{type.internalRefCode}</span>
+                      <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
+                        {type.internalRefCode}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1 mb-3 min-w-0">
                       <p className="text-sm text-gray-500 truncate flex-1">
-                        {buildGuestPortalPublicListingUrl(property, type) || 'Set property and unit URL slugs'}
+                        {buildGuestPortalPublicListingUrl(property, type) ||
+                          'Set property and unit URL slugs'}
                       </p>
                       <button
                         type="button"
@@ -942,7 +1333,7 @@ export default function PropertyTypes() {
                         )}
                       </button>
                     </div>
-                    
+
                     {type.iCalUrl && (
                       <div
                         className={`mb-3 flex items-center text-xs font-medium px-2 py-1 rounded w-max border ${
@@ -955,7 +1346,7 @@ export default function PropertyTypes() {
                         {calendarSyncEnabled ? 'iCal linked' : 'iCal (sync disabled)'}
                       </div>
                     )}
-                    
+
                     <div className="flex-1">
                       {assignedOwner ? (
                         <p className="text-sm text-gray-700 flex items-center bg-gray-50 p-2 rounded-lg border border-gray-100 mb-4 w-max">
@@ -966,9 +1357,13 @@ export default function PropertyTypes() {
                         <p className="text-sm text-gray-400 italic mb-4">No owner assigned</p>
                       )}
                     </div>
-                    
+
                     <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100 mt-auto">
-                      <button onClick={() => handleEditClick(type)} className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => handleEditClick(type)}
+                        className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors"
+                      >
                         <Pencil size={14} className="mr-1.5" /> Edit
                       </button>
                       {!isListingOnly && (
@@ -1004,7 +1399,7 @@ export default function PropertyTypes() {
                       )}
                       <button
                         type="button"
-                        onClick={() => handleDownloadQr(type)}
+                        onClick={() => void handleDownloadQr(type)}
                         disabled={qrDownloadingId === type.id}
                         className="flex items-center text-sm font-medium text-vailo-teal hover:text-vailo-dark transition-colors disabled:opacity-50"
                         title={buildGuestPortalPublicListingUrl(property, type) || undefined}
@@ -1019,26 +1414,22 @@ export default function PropertyTypes() {
                       <div className="flex items-center gap-1 ml-auto">
                         <button
                           type="button"
-                          onClick={() => {
-                            const propSlug = formatGuestSlug(property.urlSlug);
-                            const unitSlug = getTypePublicSlug(type);
-                            if (!propSlug || !unitSlug) return;
-                            const url = buildAdminGuestPortalPreviewUrl(
-                              window.location.origin,
-                              propSlug,
-                              unitSlug,
-                              type.id,
-                              { mobileFrame: true }
-                            );
-                            window.open(url, '_blank');
-                          }}
-                          className="p-2 text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5 rounded-lg transition-colors"
-                          title="Open phone portal preview"
+                          onClick={() => openPhonePreview(type)}
+                          className={`p-2 rounded-lg transition-colors ${
+                            phonePreview?.listingKey === `${propertyId}-${type.id}`
+                              ? 'text-vailo-teal bg-vailo-teal/10'
+                              : 'text-vailo-teal hover:text-vailo-dark hover:bg-vailo-teal/5'
+                          }`}
+                          title="Guest portal preview"
                         >
                           <Smartphone size={18} />
                         </button>
                         {!isListingOnly && (
-                          <button onClick={() => handleDeleteClick(type.id, type.propertyTypeName)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(type.id, type.propertyTypeName)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
                             <Trash2 size={16} />
                           </button>
                         )}
@@ -1050,6 +1441,17 @@ export default function PropertyTypes() {
             })}
           </div>
         )}
+
+        {phonePreview
+          ? createPortal(
+              <GuestPortalPhonePreviewModal
+                title={phonePreview.title}
+                url={phonePreview.url}
+                onClose={() => setPhonePreview(null)}
+              />,
+              document.body
+            )
+          : null}
       </div>
     );
   }

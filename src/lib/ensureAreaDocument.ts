@@ -1,5 +1,6 @@
 import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { seedNewAreaCategories } from './copyAreaCategories';
 import { clearPropertyTypeAreaContextCache } from './listingAreaContext';
 
 export function areaIdFromName(name: string): string {
@@ -59,6 +60,12 @@ export async function ensureAreaDocument(params: {
   );
   await setDoc(doc(db, 'countries', country, 'areas', areaId), payload, { merge: true });
   clearPropertyTypeAreaContextCache(country, areaName);
+
+  try {
+    await seedNewAreaCategories({ country, areaId });
+  } catch (err) {
+    console.warn('Failed to seed categories for new area:', err);
+  }
 
   return { country, areaId, areaName, created: true };
 }

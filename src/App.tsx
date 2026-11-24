@@ -11,6 +11,7 @@ import PropertyFormPage from "./pages/admin/properties/PropertyFormPage";
 import AddPropertySetupPage from "./pages/admin/properties/AddPropertySetupPage";
 import OwnersPage from "./pages/admin/OwnersPage";
 import OwnerFormPage from "./pages/admin/OwnerFormPage";
+import AgenciesPage from "./pages/admin/AgenciesPage";
 import PropertyLayout from "./pages/admin/properties/PropertyLayout";
 import Overview from "./pages/admin/properties/Overview";
 import PropertyTypes from "./pages/admin/properties/PropertyTypes";
@@ -205,6 +206,7 @@ export default function App() {
             <Route path="analytics" element={<PropertyAnalytics />} />
           </Route>
 
+          <Route path="agencies" element={<PlatformAdminOnly><AgenciesPage /></PlatformAdminOnly>} />
           <Route path="owners" element={<AgentOwnersGuard><OwnersPage /></AgentOwnersGuard>} />
           <Route path="add-owner" element={<AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard>} />
           <Route path="owners/:id/edit" element={<AgentOwnersGuard><OwnerFormPage /></AgentOwnersGuard>} />

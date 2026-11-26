@@ -2,8 +2,9 @@ import { getGenerativeModel, type Content } from 'firebase/ai';
 import { ai } from './firebase';
 import { guestAiLanguageBlock } from './guestAiLanguage';
 import type { ConciergeRecommendation, ConciergeStructuredReply } from './conciergeRecommendations';
+import { GUEST_CHAT_GEMINI_MODEL } from './geminiModels';
 
-export const CONCIERGE_CHAT_MODEL = 'gemini-3.5-flash';
+export const CONCIERGE_CHAT_MODEL = GUEST_CHAT_GEMINI_MODEL;
 
 export type ConciergeChatMessage = {
   id: string;

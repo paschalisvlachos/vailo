@@ -24,7 +24,7 @@ export async function translateContentFields(
   const payload = entries.map(([k, v]) => `[${k}]\n${v.trim()}`).join('\n\n');
 
   try {
-    const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+    const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
     const result = await model.generateContent(
       `You are a professional hospitality translator. Translate each labeled block from ${sourceLabel} (${source}) to ${targetLabel} (${target}).
 

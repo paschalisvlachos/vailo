@@ -10,6 +10,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   setDoc,
@@ -48,6 +49,8 @@ export type CreatePropertyFromAddDraftInput = {
   agencyName?: string;
   /** End-owner self-allocate on the listing. */
   listingOwnerId?: string;
+  /** Attach listing under an existing parent property (agency portfolio). */
+  existingPropertyId?: string;
 };
 
 export type CreatePropertyFromAddDraftResult = {
@@ -169,7 +172,15 @@ export async function createPropertyFromAddDraft(
   let propertyId: string;
   let propertySlug: string;
 
-  if (input.ownerId) {
+  const existingPropertyId = String(input.existingPropertyId || '').trim();
+  if (existingPropertyId) {
+    const shellSnap = await getDoc(doc(db, 'properties', existingPropertyId));
+    if (!shellSnap.exists()) {
+      throw new Error('Selected parent property was not found.');
+    }
+    propertyId = existingPropertyId;
+    propertySlug = formatGuestSlug(String(shellSnap.data()?.urlSlug || existingPropertyId));
+  } else if (input.ownerId) {
     const shell = await resolveAgencyPortfolioShell({
       ownerId: input.ownerId,
       agencyName: input.agencyName || '',
@@ -261,6 +272,7 @@ export async function createPropertyFromAddDraft(
       wifiName: listingDraft.wifiName.trim(),
       wifiPassword: listingDraft.wifiPassword.trim(),
       whatsapp: listingDraft.whatsapp.trim(),
+      phone: String(listingDraft.phone || '').trim(),
       internalRefCode:
         listingDraft.internalRefCode.trim() ||
         `TYP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,

@@ -10,6 +10,7 @@ import { resolveSearchAreaContext } from '../../lib/searchAreaContext';
 import type { ListingAreaContext } from '../../lib/listingAreaContext';
 import { getGenerativeModel } from "firebase/ai";
 import { ai } from '../../lib/firebase';
+import { GUEST_CHAT_GEMINI_MODEL } from '../../lib/geminiModels';
 import {
   resolveCustomLocation,
   enrichPlanWithMapLinks,
@@ -170,7 +171,7 @@ interface Message {
 type Step = 'LOCATION' | 'CATEGORIES' | 'DISTANCE' | 'TIME' | 'DONE';
 type InteractionMode = 'wizard' | 'chat';
 
-const AI_EXPERT_GEMINI_MODEL = 'gemini-3.5-flash';
+const AI_EXPERT_GEMINI_MODEL = GUEST_CHAT_GEMINI_MODEL;
 const CONCIERGE_AI_TIMEOUT_MS = 45_000;
 
 /**

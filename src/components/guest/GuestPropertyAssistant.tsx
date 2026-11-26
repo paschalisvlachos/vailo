@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getGenerativeModel, type Content, type Part } from 'firebase/ai';
 import {
   ArrowLeft,
   AlertTriangle,
@@ -12,12 +11,16 @@ import {
   X,
   Bot,
 } from 'lucide-react';
-import { ai } from '../../lib/firebase';
 import { openExternalUrl } from '../../lib/geocoding';
 import { useGuestAnalytics } from '../../context/GuestAnalyticsContext';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { buildPropertyAssistantSystemPrompt } from '../../lib/guestPropertyAssistantPrompt';
-import { escalateAssistantQuestionCallable } from '../../lib/guestPortalCallables';
+import {
+  askGuestPropertyAssistantCallable,
+  escalateAssistantQuestionCallable,
+  type GuestPropertyAssistantChatPart,
+} from '../../lib/guestPortalCallables';
+import { httpsCallableMessage } from '../../lib/callableError';
 import { buildGuestWhatsAppLink } from '../../lib/whatsappLink';
 import {
   buildApplianceReferenceUserBlock,
@@ -292,10 +295,10 @@ export default function GuestPropertyAssistant({
     }
   };
 
-  const buildHistoryParts = (history: ChatMessage[]): Content[] =>
+  const buildHistoryContents = (history: ChatMessage[]) =>
     history.map((msg) => ({
-      role: msg.role === 'model' ? ('model' as const) : ('user' as const),
-      parts: [{ text: msg.text || '' }] as Part[],
+      role: (msg.role === 'model' ? 'model' : 'user') as 'user' | 'model',
+      parts: [{ text: msg.text || '' }] as GuestPropertyAssistantChatPart[],
     }));
 
   const triggerEscalation = async (
@@ -392,29 +395,21 @@ export default function GuestPropertyAssistant({
     setIsSending(true);
 
     try {
-      const model = getGenerativeModel(ai, {
-        model: 'gemini-2.5-flash',
-        systemInstruction: { role: 'system', parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          temperature: 0.55,
-        },
-      });
+      if (!propertyId || !typeId) {
+        throw new Error('Missing property context for assistant.');
+      }
 
-      const chat = model.startChat({
-        history: buildHistoryParts(messages),
-      });
-
-      const parts: Part[] = [];
+      const parts: GuestPropertyAssistantChatPart[] = [];
       if (pendingImageSnapshot?.dataUrl) {
         const inline = stripDataUrlPrefix(pendingImageSnapshot.dataUrl);
         if (inline) {
-          parts.push({ inlineData: { mimeType: inline.mimeType, data: inline.data } } as Part);
+          parts.push({ inlineData: { mimeType: inline.mimeType, data: inline.data } });
         }
       }
       let userText =
         trimmed || 'Please review this image and help me with my property.';
 
-      if (trimmed && propertyId && typeId) {
+      if (trimmed) {
         const guideRecord =
           guide && typeof guide === 'object'
             ? (guide as Record<string, unknown>)
@@ -454,10 +449,15 @@ export default function GuestPropertyAssistant({
         }
       }
 
-      parts.push({ text: userText } as Part);
+      parts.push({ text: userText });
 
-      const result = await chat.sendMessage(parts);
-      const responseText = (result.response.text() || '').trim();
+      const result = await askGuestPropertyAssistantCallable({
+        propertyId,
+        typeId,
+        systemInstruction: systemPrompt,
+        contents: [...buildHistoryContents(messages), { role: 'user', parts }],
+      });
+      const responseText = (result.text || '').trim();
       const showEscalation = assistantReplyNeedsEscalation(responseText);
 
       const replyText =
@@ -490,7 +490,9 @@ export default function GuestPropertyAssistant({
       }
     } catch (err) {
       console.error('assistant error:', err);
-      setError("Something went wrong. Please try again in a moment.");
+      setError(
+        httpsCallableMessage(err, 'Something went wrong. Please try again in a moment.')
+      );
       setMessages((prev) => prev.slice(0, -1));
       setInput(trimmed);
       setPendingImage(pendingImageSnapshot);

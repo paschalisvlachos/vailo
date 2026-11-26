@@ -169,6 +169,10 @@ const CATEGORY_TAG_ALIASES: Record<string, string[]> = {
   traditional: ['traditional', 'taverna'],
   culture: ['culture', 'cultural', 'sightseeing', 'museum'],
   beach: ['beach', 'beaches'],
+  kids: ['kidsactivities', 'kidsactivitiesplaygrounds', 'playground', 'playgrounds', 'children', 'family'],
+  kidsactivities: ['kids', 'kidsactivitiesplaygrounds', 'playground', 'playgrounds'],
+  kidsactivitiesplaygrounds: ['kids', 'kidsactivities', 'playground', 'playgrounds'],
+  playground: ['kids', 'kidsactivities', 'playgrounds'],
 };
 
 function categoryAliasKeys(matchKey: string): string[] {
@@ -386,6 +390,40 @@ function resolveGemCategoryPrimary(
   return resolveCategoryToPrimary(label, catalogDocs, primaryLocale);
 }
 
+/**
+ * Loose equality for category primaries (Coffee↔Cafe, Vinery↔Winery, Kids Activities↔Kids).
+ * Used when Explore chips and gem tags normalize to different catalog duplicates.
+ */
+export function categoryPrimariesLooselyMatch(
+  left: string,
+  right: string,
+  catalogDocs: Record<string, unknown>[] = [],
+  primaryLocale = 'en'
+): boolean {
+  const a = (left || '').trim();
+  const b = (right || '').trim();
+  if (!a || !b) return false;
+  if (a.toLowerCase() === b.toLowerCase()) return true;
+
+  if (catalogDocs.length > 0) {
+    const resolvedA = resolveCategoryTagToPrimary(a, catalogDocs, primaryLocale);
+    const resolvedB = resolveCategoryTagToPrimary(b, catalogDocs, primaryLocale);
+    if (resolvedA && resolvedB && resolvedA.toLowerCase() === resolvedB.toLowerCase()) {
+      return true;
+    }
+    if (resolvedA && resolvedA.toLowerCase() === b.toLowerCase()) return true;
+    if (resolvedB && resolvedB.toLowerCase() === a.toLowerCase()) return true;
+  }
+
+  const keyA = normalizeCategoryMatchKey(a);
+  const keyB = normalizeCategoryMatchKey(b);
+  if (!keyA || !keyB) return false;
+  if (keyA === keyB) return true;
+  const aliasesA = categoryAliasKeys(keyA);
+  const aliasesB = categoryAliasKeys(keyB);
+  return aliasesA.includes(keyB) || aliasesB.includes(keyA) || aliasesA.some((x) => aliasesB.includes(x));
+}
+
 /** Match a local gem to a canonical category primary (handles EN/EL labels, multi-category). */
 export function gemBelongsToCategory(
   gem: Record<string, unknown>,
@@ -394,10 +432,10 @@ export function gemBelongsToCategory(
   primaryLocale: string,
   guestLocale?: string
 ): boolean {
-  const target = (categoryPrimary || '').trim().toLowerCase();
+  const target = (categoryPrimary || '').trim();
   if (!target) return false;
-  return gemCategoryPrimaries(gem, catalogDocs, primaryLocale, guestLocale).some(
-    (p) => p.toLowerCase() === target
+  return gemCategoryPrimaries(gem, catalogDocs, primaryLocale, guestLocale).some((p) =>
+    categoryPrimariesLooselyMatch(p, target, catalogDocs, primaryLocale)
   );
 }
 

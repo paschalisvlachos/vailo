@@ -671,7 +671,7 @@ export default function PropertyWizardListingStep({
               onChange={(e) => patch({ wifiPassword: e.target.value })}
             />
           </div>
-          <div className="md:col-span-2">
+          <div>
             <AdminLabel htmlFor="whatsapp">WhatsApp</AdminLabel>
             <div className="relative">
               <MessageCircle className="absolute left-3 top-2.5 text-gray-400" size={18} />
@@ -680,14 +680,24 @@ export default function PropertyWizardListingStep({
                 type="tel"
                 value={value.whatsapp}
                 onChange={(e) => patch({ whatsapp: e.target.value })}
-                placeholder="+30 69… (shown to guests as a contact button)"
+                placeholder="+30 69… (guest WhatsApp button)"
                 className="pl-10"
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              When filled in, guests see a WhatsApp button on the portal to message you directly.
-            </p>
           </div>
+          <div>
+            <AdminLabel htmlFor="phone">Phone</AdminLabel>
+            <AdminInput
+              id="phone"
+              type="tel"
+              value={value.phone || ''}
+              onChange={(e) => patch({ phone: e.target.value })}
+              placeholder="+30 … (optional call number)"
+            />
+          </div>
+          <p className="md:col-span-2 text-xs text-gray-500 -mt-1">
+            WhatsApp opens chat on the portal. Phone shows a call link when set.
+          </p>
         </div>
       </div>
 

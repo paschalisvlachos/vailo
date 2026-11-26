@@ -317,7 +317,7 @@ export default function AreaLocalGems() {
       if (!finalDescription) {
         try {
           const prompt = `Act as a luxury travel concierge for ${decodedArea}, ${decodedCountry}. Write a short, engaging 2-sentence description for a local spot called "${googleData.name || placeNameFallback}". Tell guests why they should visit. Return ONLY the description text, no quotes.`;
-          const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+          const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
           const aiResult = await model.generateContent(prompt);
           finalDescription = aiResult.response.text().trim();
         } catch (e) {

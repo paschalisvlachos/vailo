@@ -5,6 +5,8 @@
 
 export type GuidePlacePin = {
   title: string;
+  /** Business / place name when `title` is a category type (Daily Needs select). */
+  placeName?: string;
   mapsLink: string;
   phone?: string;
   address?: string;
@@ -24,6 +26,7 @@ export type GuideEmergencyPin = GuidePlacePin & {
 export function emptyGuidePlacePin(): GuidePlacePin {
   return {
     title: '',
+    placeName: '',
     mapsLink: '',
     phone: '',
     address: '',
@@ -60,7 +63,8 @@ function asOptionalNumber(value: unknown): number | null {
 export function normalizeGuidePlacePin(raw: unknown): GuidePlacePin | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
-  const title = asTrimmedString(row.title ?? row.name);
+  const title = asTrimmedString(row.title);
+  const placeName = asTrimmedString(row.placeName ?? (row.name && !row.title ? row.name : ''));
   const mapsLink = asTrimmedString(row.mapsLink ?? row.googleMapsUrl);
   const phone = asTrimmedString(row.phone ?? row.phoneNumber);
   const address = asTrimmedString(row.address);
@@ -71,12 +75,13 @@ export function normalizeGuidePlacePin(raw: unknown): GuidePlacePin | null {
   const latitude = asOptionalNumber(row.latitude);
   const longitude = asOptionalNumber(row.longitude);
 
-  if (!title && !mapsLink && !phone && !address && !photoUrl) return null;
+  if (!title && !placeName && !mapsLink && !phone && !address && !photoUrl) return null;
 
   const pin: GuidePlacePin = {
-    title,
+    title: title || placeName,
     mapsLink,
   };
+  if (placeName) pin.placeName = placeName;
   if (phone) pin.phone = phone;
   if (address) pin.address = address;
   if (photoUrl) pin.photoUrl = photoUrl;
@@ -104,9 +109,11 @@ export function normalizeGuideEmergencyPin(raw: unknown): GuideEmergencyPin | nu
 
 /** Display label for a pin — prefer real place name, then category/slot label. */
 export function guidePinDisplayTitle(pin: GuidePlacePin | GuideEmergencyPin): string {
+  const placeName = String(pin.placeName || '').trim();
   const title = String(pin.title || '').trim();
   const category =
     'category' in pin && typeof pin.category === 'string' ? pin.category.trim() : '';
+  if (placeName) return placeName;
   if (title && category && title !== category) return title;
   return title || category || 'Place';
 }

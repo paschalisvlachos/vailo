@@ -46,7 +46,7 @@ export default function AppCodeKnowledge() {
       id: 'welcome',
       role: 'assistant',
       text:
-        'Ask anything about how the Vailo app works. Answers are grounded in an indexed snapshot of the codebase (Gemini; default gemini-2.5-flash).',
+        'Ask anything about how the Vailo app works. Answers are grounded in an indexed snapshot of the codebase (Gemini; default gemini-3.8-flash).',
     },
   ]);
   const [input, setInput] = useState('');
@@ -132,7 +132,7 @@ export default function AppCodeKnowledge() {
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-vailo-teal bg-vailo-teal/10 px-3 py-1.5 rounded-full">
             <Code2 size={14} />
             {meta?.ready
-              ? `${meta.fileCount} files · ${meta.model ?? 'gemini-2.5-flash'} · ${meta.builtAt ? new Date(meta.builtAt).toLocaleDateString() : 'indexed'}`
+              ? `${meta.fileCount} files · ${meta.model ?? 'gemini-3.8-flash'} · ${meta.builtAt ? new Date(meta.builtAt).toLocaleDateString() : 'indexed'}`
               : 'Index not deployed'}
           </span>
         }

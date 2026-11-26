@@ -52,7 +52,7 @@ export default function AiGapAnalyzer() {
     setMessages([]);
 
     try {
-      const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+      const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
       const featureNames =
         features.length > 0 ? features.map((f) => f.name).join(', ') : 'None added yet';
 
@@ -84,7 +84,7 @@ export default function AiGapAnalyzer() {
     setIsGenerating(true);
 
     try {
-      const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+      const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
       const history = messages
         .map((m) => `${m.role === 'ai' ? 'Consultant' : 'Host'}: ${m.text}`)
         .join('\n\n');

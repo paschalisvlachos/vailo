@@ -52,7 +52,7 @@ import { AdminButton } from '../../../components/admin/AdminPageHeader';
 export default function AddPropertySetupPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { profile, portfolioProperties, portfolioTypes } = useAdminSession();
+  const { profile, portfolioProperties, portfolioTypes, selectedAgencyId } = useAdminSession();
   const isCapacityUser = profile?.role === 'agent' || profile?.role === 'owner';
   const [draft, setDraft] = useState<AddPropertyDraft>(() => {
     const stored = readAddPropertyDraft();
@@ -63,7 +63,11 @@ export default function AddPropertySetupPage() {
     ) {
       return stored;
     }
-    return emptyAddPropertyDraft();
+    const fresh = emptyAddPropertyDraft();
+    if (selectedAgencyId) {
+      fresh.targetPropertyId = selectedAgencyId;
+    }
+    return fresh;
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [onboardingFiles, setOnboardingFiles] = useState<File[]>([]);
@@ -393,6 +397,7 @@ export default function AddPropertySetupPage() {
         ownerId: isCapacityUser && profile?.id ? profile.id : undefined,
         agencyName: isCapacityUser ? agencyName : agencyName || undefined,
         listingOwnerId: profile?.role === 'owner' && profile.id ? profile.id : undefined,
+        existingPropertyId: draft.targetPropertyId || undefined,
       });
 
       const seedPatch = houseGuideSeedToFormPatch(houseGuideSeed);
@@ -520,6 +525,39 @@ export default function AddPropertySetupPage() {
 
           {setupStep === 'listing' ? (
             <>
+              {portfolioProperties.length > 0 ? (
+                <div className="mb-5 rounded-2xl border border-slate-100 bg-white p-4 sm:p-5">
+                  <label
+                    htmlFor="targetPropertyId"
+                    className="block text-sm font-bold text-vailo-dark mb-1.5"
+                  >
+                    Parent agency / portfolio
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2.5">
+                    Choose which parent property this listing belongs to. Leave empty only if you
+                    want a new parent shell.
+                  </p>
+                  <select
+                    id="targetPropertyId"
+                    value={draft.targetPropertyId}
+                    onChange={(e) =>
+                      persist({ ...draft, listingDraft, targetPropertyId: e.target.value })
+                    }
+                    className="w-full max-w-xl rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-vailo-dark outline-none focus:ring-2 focus:ring-vailo-teal/30"
+                  >
+                    <option value="">
+                      {isCapacityUser
+                        ? 'Default portfolio (auto)'
+                        : 'Create new parent property'}
+                    </option>
+                    {portfolioProperties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.propertyName || p.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <PropertyWizardListingStep
                 value={listingDraft}
                 onChange={patchListing}

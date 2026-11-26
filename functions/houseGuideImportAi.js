@@ -2,8 +2,8 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const axios = require("axios");
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
-const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+const DEFAULT_MODEL = "gemini-3.8-flash";
+const FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"];
 const MAX_INLINE_BYTES = 8 * 1024 * 1024;
 const MAX_PARTS = 16;
 const MAX_URL_FETCHES = 8;
@@ -100,6 +100,81 @@ function htmlToPlainText(html) {
     .trim();
 }
 
+function isAirbnbLoginWall(finalUrl, html) {
+  const url = String(finalUrl || "").toLowerCase();
+  const body = String(html || "").toLowerCase();
+  if (/\/login(\?|$)/.test(url) || url.includes("safety-net=true")) return true;
+  if (
+    body.includes("airbnb.com/login") &&
+    (body.includes("safety-net") || body.includes("log in") || body.includes("sign up"))
+  ) {
+    // Thin login shells are usually short; full listings are large.
+    const plain = htmlToPlainText(html);
+    if (plain.length < 1200) return true;
+  }
+  return false;
+}
+
+/**
+ * Pull embedded listing JSON (Airbnb __NEXT_DATA__, JSON-LD, etc.) before scripts are stripped.
+ * Returns readable text when structured data is present.
+ */
+function extractEmbeddedListingText(html) {
+  const raw = String(html || "");
+  const chunks = [];
+
+  const nextData = raw.match(
+    /<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i
+  );
+  if (nextData?.[1]) {
+    try {
+      const parsed = JSON.parse(nextData[1]);
+      const asText = JSON.stringify(parsed);
+      if (asText.length > 200) chunks.push(asText);
+    } catch {
+      /* ignore malformed next data */
+    }
+  }
+
+  const jsonLdBlocks = [...raw.matchAll(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  )];
+  for (const match of jsonLdBlocks) {
+    const body = String(match[1] || "").trim();
+    if (body.length > 40) chunks.push(body);
+  }
+
+  // Airbnb sometimes embeds niobeClientData / deferred state blobs.
+  const dataBlobs = [...raw.matchAll(
+    /<script[^>]*>([\s\S]*?(?:listing|sectioned_description|amenities|house_rules)[\s\S]*?)<\/script>/gi
+  )];
+  for (const match of dataBlobs.slice(0, 4)) {
+    const body = String(match[1] || "").trim();
+    if (body.length > 400 && body.length < 500000) {
+      chunks.push(body.slice(0, 80000));
+    }
+  }
+
+  if (!chunks.length) return "";
+  return chunks
+    .join("\n\n")
+    .replace(/\\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function htmlToImportText(html) {
+  const embedded = extractEmbeddedListingText(html);
+  const visible = htmlToPlainText(html);
+  if (embedded && embedded.length > visible.length) {
+    return `${visible}\n\nEMBEDDED_LISTING_DATA:\n${embedded}`.trim();
+  }
+  if (embedded) {
+    return `${visible}\n\nEMBEDDED_LISTING_DATA:\n${embedded}`.trim();
+  }
+  return visible;
+}
+
 function isMapsPlaceUrl(url) {
   try {
     const u = new URL(url);
@@ -131,6 +206,67 @@ function isLikelyOtaHost(url) {
   }
 }
 
+async function fetchUrlSourceOnce(url) {
+  const res = await axios.get(url, {
+    timeout: 20000,
+    maxRedirects: 5,
+    responseType: "text",
+    headers: {
+      // Browser-like headers reduce 403s on some hotel sites; OTAs still often block bots.
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9,el;q=0.8",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    },
+    validateStatus: (status) => status >= 200 && status < 400,
+  });
+
+  const finalUrl = String(res.request?.res?.responseUrl || res.config?.url || url);
+  const contentType = String(res.headers["content-type"] || "").toLowerCase();
+  const raw = String(res.data || "");
+  const isHtml = contentType.includes("html") || raw.includes("<html");
+
+  if (isHtml && isAirbnbLoginWall(finalUrl, raw)) {
+    return {
+      ok: false,
+      blocked: true,
+      chars: 0,
+      text: "",
+      note:
+        "Airbnb temporarily blocked automated reading (login / safety-net). Wait a bit, or paste the listing text (Ctrl+A, Ctrl+C) into AI Import.",
+    };
+  }
+
+  let text = "";
+  if (isHtml) {
+    text = htmlToImportText(raw);
+  } else {
+    text = raw.replace(/\s+/g, " ").trim();
+  }
+
+  // Title-only / meta-only responses (common when Airbnb serves a JS shell).
+  if (!text || text.length < 80 || (isLikelyOtaHost(url) && text.length < 600)) {
+    return {
+      ok: false,
+      blocked: isLikelyOtaHost(url),
+      chars: text.length,
+      text: "",
+      note: isLikelyOtaHost(url)
+        ? `Airbnb/OTA returned only ${text.length || 0} characters (bot wall or JS shell). Paste the listing text or upload a PDF/screenshot instead.`
+        : "Page returned almost no readable text (JS-only page or bot wall). Paste the useful text or upload a file instead.",
+    };
+  }
+
+  if (text.length > MAX_PAGE_CHARS) {
+    text = `${text.slice(0, MAX_PAGE_CHARS)}\n…[truncated]`;
+  }
+
+  return { ok: true, blocked: false, chars: text.length, text, note: `Fetched ${text.length} characters` };
+}
+
 async function fetchUrlSource(entry) {
   const id = String(entry?.id || "").trim();
   const url = String(entry?.url || "").trim();
@@ -160,82 +296,66 @@ async function fetchUrlSource(entry) {
     };
   }
 
-  try {
-    const res = await axios.get(url, {
-      timeout: 20000,
-      maxRedirects: 5,
-      responseType: "text",
-      headers: {
-        // Browser-like headers reduce 403s on some hotel sites; OTAs still often block bots.
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,el;q=0.8",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-      validateStatus: (status) => status >= 200 && status < 400,
-    });
+  const attempts = isLikelyOtaHost(url) ? 3 : 1;
+  let last = null;
 
-    const contentType = String(res.headers["content-type"] || "").toLowerCase();
-    let text = "";
-    if (contentType.includes("html") || String(res.data || "").includes("<html")) {
-      text = htmlToPlainText(res.data);
-    } else {
-      text = String(res.data || "").replace(/\s+/g, " ").trim();
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await fetchUrlSourceOnce(url);
+      last = result;
+      if (result.ok) {
+        return {
+          id,
+          url,
+          label,
+          status: "ok",
+          note:
+            attempts > 1 && attempt > 0
+              ? `${result.note} (after ${attempt + 1} tries)`
+              : result.note,
+          textPreview: result.text,
+        };
+      }
+      // Don't burn retries on a confirmed login wall — same result next try.
+      if (result.blocked && /login|safety-net/i.test(result.note || "")) {
+        break;
+      }
+      if (attempt < attempts - 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(1200 * (attempt + 1));
+      }
+    } catch (err) {
+      const status = err?.response?.status;
+      const timedOut = /timeout/i.test(String(err?.message || ""));
+      let note = String(err?.message || "Fetch failed");
+      if (status === 403 || status === 401) {
+        note = isLikelyOtaHost(url)
+          ? `Site blocked our fetch (HTTP ${status}). OTAs usually require you to paste notes or upload a PDF.`
+          : `Site blocked our fetch (HTTP ${status}). Try pasting the page text or uploading a file.`;
+      } else if (timedOut) {
+        note = isLikelyOtaHost(url)
+          ? "Timed out — this OTA is slow or blocking bots. Paste listing text or upload a file instead."
+          : "Timed out waiting for the page. Paste the text or upload a file instead.";
+      } else if (status) {
+        note = `HTTP ${status} while fetching page`;
+      }
+      last = { ok: false, blocked: true, chars: 0, text: "", note };
+      if (attempt < attempts - 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(1200 * (attempt + 1));
+      }
     }
-
-    // Tiny payloads usually mean a JS shell / bot wall, not real content.
-    if (!text || text.length < 80) {
-      return {
-        id,
-        url,
-        label,
-        status: "failed",
-        note: isLikelyOtaHost(url)
-          ? "OTA listing blocked bots (Airbnb/Booking/Hotels often do). Paste the listing text or upload a PDF/screenshot instead."
-          : "Page returned almost no readable text (JS-only page or bot wall). Paste the useful text or upload a file instead.",
-        textPreview: "",
-      };
-    }
-
-    if (text.length > MAX_PAGE_CHARS) {
-      text = `${text.slice(0, MAX_PAGE_CHARS)}\n…[truncated]`;
-    }
-
-    return {
-      id,
-      url,
-      label,
-      status: "ok",
-      note: `Fetched ${text.length} characters`,
-      textPreview: text,
-    };
-  } catch (err) {
-    const status = err?.response?.status;
-    const timedOut = /timeout/i.test(String(err?.message || ""));
-    let note = String(err?.message || "Fetch failed");
-    if (status === 403 || status === 401) {
-      note = isLikelyOtaHost(url)
-        ? `Site blocked our fetch (HTTP ${status}). OTAs usually require you to paste notes or upload a PDF.`
-        : `Site blocked our fetch (HTTP ${status}). Try pasting the page text or uploading a file.`;
-    } else if (timedOut) {
-      note = isLikelyOtaHost(url)
-        ? "Timed out — this OTA is slow or blocking bots. Paste listing text or upload a file instead."
-        : "Timed out waiting for the page. Paste the text or upload a file instead.";
-    } else if (status) {
-      note = `HTTP ${status} while fetching page`;
-    }
-    return {
-      id,
-      url,
-      label,
-      status: "failed",
-      note,
-      textPreview: "",
-    };
   }
+
+  return {
+    id,
+    url,
+    label,
+    status: "failed",
+    note: last?.note || "Fetch failed",
+    textPreview: "",
+  };
 }
 
 function sleep(ms) {

@@ -228,6 +228,35 @@ export async function getGuestApplianceGuideCallable(
   return res.data;
 }
 
+export type GuestPropertyAssistantChatPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+export type GuestPropertyAssistantChatRequest = {
+  propertyId: string;
+  typeId: string;
+  systemInstruction: string;
+  contents: Array<{
+    role: 'user' | 'model';
+    parts: GuestPropertyAssistantChatPart[];
+  }>;
+};
+
+export type GuestPropertyAssistantChatResponse = {
+  text: string;
+  model?: string;
+};
+
+export async function askGuestPropertyAssistantCallable(
+  req: GuestPropertyAssistantChatRequest
+): Promise<GuestPropertyAssistantChatResponse> {
+  const res = await httpsCallable<
+    GuestPropertyAssistantChatRequest,
+    GuestPropertyAssistantChatResponse
+  >(cloudFunctions, 'askGuestPropertyAssistant', { timeout: 90000 })(req);
+  return res.data;
+}
+
 export async function logGuestPortalAnalyticsCallable(params: {
   propertyId: string;
   typeId: string;

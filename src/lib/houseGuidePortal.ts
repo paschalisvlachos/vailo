@@ -484,5 +484,8 @@ export function resolveFeaturedDigestForPortal(
     locale,
     primaryLocale
   );
-  return ensureSourceUrlsInDigest(digest, source);
+  const withUrls = ensureSourceUrlsInDigest(digest, source);
+  // If AI preview is missing/failed, show the host's source text instead of an empty state.
+  if (withUrls.trim()) return withUrls;
+  return source.trim();
 }

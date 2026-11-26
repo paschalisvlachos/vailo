@@ -90,6 +90,8 @@ type Props = {
   portalFeatures: GuestPortalFeature[];
   onServiceDetailOpenChange: (open: boolean) => void;
   legalFooter?: ReactNode;
+  areaCountry?: string | null;
+  areaId?: string | null;
 };
 
 function extractTimeFromText(text: string, allowBareHour = false): string | null {
@@ -198,6 +200,8 @@ export default function GuestPortalHome(props: Props) {
     portalFeatures,
     onServiceDetailOpenChange,
     legalFooter,
+    areaCountry,
+    areaId,
   } = props;
 
   const { contentPrimaryLocale } = useGuestLocale();
@@ -616,6 +620,12 @@ export default function GuestPortalHome(props: Props) {
               propertyName={propertyName || 'your stay'}
               propertyTypeName={propertyTypeName}
               onDetailOpenChange={onServiceDetailOpenChange}
+              mirrorContext={{
+                country: areaCountry,
+                areaId,
+                propertyId,
+                propertyTypeId: typeId,
+              }}
             />
           </section>
         )}

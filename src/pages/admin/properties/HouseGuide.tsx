@@ -101,6 +101,7 @@ type PropertyType = {
   wifiName?: string;
   wifiPassword?: string;
   whatsapp?: string;
+  phone?: string;
   internalRefCode?: string;
 };
 
@@ -287,6 +288,7 @@ export default function HouseGuide() {
       wifiName: selectedListing.wifiName || '',
       wifiPassword: selectedListing.wifiPassword || '',
       whatsapp: selectedListing.whatsapp || '',
+      phone: selectedListing.phone || '',
       internalRefCode: selectedListing.internalRefCode || '',
     };
     setWizardImportSeed(buildListingOnboardingSeedText(draft));
@@ -770,7 +772,7 @@ export default function HouseGuide() {
     // Dynamic Array Rendering
     const items: ArrayItem[] = Array.isArray(value) ? value : [];
     const handleAdd = (emptyObj: ArrayItem) => setFormData({ ...formData, [field.id]: [...items, emptyObj] });
-    const handleUpdate = (index: number, key: string, val: string) => {
+    const handleUpdate = (index: number, key: string, val: string | number | null) => {
       const newItems = [...items];
       newItems[index] = { ...newItems[index], [key]: val };
       setFormData({ ...formData, [field.id]: newItems });
@@ -814,20 +816,29 @@ export default function HouseGuide() {
                     </div>
                     <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {field.options && field.options.length > 0 ? (
-                        <select
-                          value={pin.title}
-                          onChange={(e) => handleUpdate(idx, 'title', e.target.value)}
-                          className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]"
-                        >
-                          <option value="" disabled>
-                            Select type…
-                          </option>
-                          {field.options.map((o) => (
-                            <option key={o} value={o}>
-                              {o}
+                        <>
+                          <select
+                            value={pin.title}
+                            onChange={(e) => handleUpdate(idx, 'title', e.target.value)}
+                            className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]"
+                          >
+                            <option value="" disabled>
+                              Select type…
                             </option>
-                          ))}
-                        </select>
+                            {field.options.map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Place name"
+                            value={pin.placeName || ''}
+                            onChange={(e) => handleUpdate(idx, 'placeName', e.target.value)}
+                            className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]"
+                          />
+                        </>
                       ) : (
                         <input
                           type="text"
@@ -859,6 +870,40 @@ export default function HouseGuide() {
                           value={pin.mapsLink}
                           onChange={(e) => handleUpdate(idx, 'mapsLink', e.target.value)}
                           className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C]"
+                        />
+                      </div>
+                      <div className="sm:col-span-2 grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Latitude (optional)"
+                          value={pin.latitude != null ? String(pin.latitude) : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (!raw) {
+                              handleUpdate(idx, 'latitude', null);
+                              return;
+                            }
+                            const n = Number(raw);
+                            handleUpdate(idx, 'latitude', Number.isFinite(n) ? n : raw);
+                          }}
+                          className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C] font-mono"
+                        />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Longitude (optional)"
+                          value={pin.longitude != null ? String(pin.longitude) : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            if (!raw) {
+                              handleUpdate(idx, 'longitude', null);
+                              return;
+                            }
+                            const n = Number(raw);
+                            handleUpdate(idx, 'longitude', Number.isFinite(n) ? n : raw);
+                          }}
+                          className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#0B4F5C] font-mono"
                         />
                       </div>
                       <input
@@ -1420,8 +1465,9 @@ export default function HouseGuide() {
                 <AdminButton
                   type="button"
                   onClick={async () => {
+                    // Keep the editor open after save — featured AI preview refresh can take
+                    // several seconds and auto-close felt like the modal "closed by itself".
                     await saveToFirebase({ category: quickEditCategory });
-                    setQuickEditCategory(null);
                   }}
                   disabled={isSubmitting}
                 >

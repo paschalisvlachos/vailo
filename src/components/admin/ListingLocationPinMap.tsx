@@ -174,7 +174,17 @@ export default function ListingLocationPinMap({
       });
     });
 
-    map.flyTo([nextLat, nextLng], zoom, { animate: true, duration: 0.55 });
+    // Avoid re-zooming on every click/drag when already close enough — only pan.
+    const currentZoom = map.getZoom();
+    const needsZoomIn = currentZoom < zoom - 0.6;
+    if (source === 'user' && !needsZoomIn) {
+      map.panTo([nextLat, nextLng], { animate: true, duration: 0.25 });
+    } else {
+      map.flyTo([nextLat, nextLng], Math.max(currentZoom, zoom), {
+        animate: true,
+        duration: 0.45,
+      });
+    }
     onChangeRef.current({
       latitude: nextLat.toFixed(6),
       longitude: nextLng.toFixed(6),
@@ -280,7 +290,12 @@ export default function ListingLocationPinMap({
         longitude: pos.lng.toFixed(6),
       });
     });
-    map.flyTo([lat, lng], PIN_ZOOM, { animate: true, duration: 0.55 });
+    const currentZoom = map.getZoom();
+    if (currentZoom >= PIN_ZOOM - 0.6) {
+      map.panTo([lat, lng], { animate: true, duration: 0.25 });
+    } else {
+      map.flyTo([lat, lng], PIN_ZOOM, { animate: true, duration: 0.45 });
+    }
     requestAnimationFrame(() => map.invalidateSize());
   }, [hasPin, lat, lng]);
 
@@ -381,12 +396,36 @@ export default function ListingLocationPinMap({
               <Loader2 size={12} className="animate-spin" />
               {status === 'locating' ? 'Locating…' : 'Updating pin…'}
             </p>
-          ) : (
-            <p className="text-[11px] font-mono text-gray-500 tabular-nums">
-              {hasPin ? `${lat!.toFixed(5)}, ${lng!.toFixed(5)}` : 'No pin yet'}
-            </p>
-          )}
+          ) : null}
         </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            Latitude
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={latitude}
+            onChange={(e) => onChange({ latitude: e.target.value, longitude })}
+            placeholder="e.g. 35.5138"
+            className="mt-1 w-full rounded-lg border border-[#e1e1e1] px-2.5 py-1.5 text-xs font-mono text-vailo-dark outline-none focus:ring-2 focus:ring-vailo-teal/30"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            Longitude
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={longitude}
+            onChange={(e) => onChange({ latitude, longitude: e.target.value })}
+            placeholder="e.g. 24.0180"
+            className="mt-1 w-full rounded-lg border border-[#e1e1e1] px-2.5 py-1.5 text-xs font-mono text-vailo-dark outline-none focus:ring-2 focus:ring-vailo-teal/30"
+          />
+        </label>
       </div>
       <div
         ref={mapElRef}

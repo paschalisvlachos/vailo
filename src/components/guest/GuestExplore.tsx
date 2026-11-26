@@ -19,7 +19,7 @@ import GuestLanguageMenu from './GuestLanguageMenu';
 import PickSaveButton from './PickSaveButton';
 import MirroredPhotoImg from '../shared/MirroredPhotoImg';
 import { useGuestLocale } from '../../context/GuestLocaleContext';
-import { gemCategoryPrimaries } from '../../lib/categoryLocale';
+import { categoryPrimariesLooselyMatch, gemCategoryPrimaries } from '../../lib/categoryLocale';
 import type { CategoryOption } from '../../lib/categoryHierarchy';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import type { SavedLocalGemInput } from '../../lib/savedLocalGems';
@@ -93,10 +93,17 @@ function categoryIconFor(label: string): CategoryIcon {
   return MapPin;
 }
 
-function gemMatchesCategory(gemPrimaries: string[], categoryPrimary: string): boolean {
-  const needle = categoryPrimary.trim().toLowerCase();
+function gemMatchesCategory(
+  gemPrimaries: string[],
+  categoryPrimary: string,
+  catalogDocs: Record<string, unknown>[],
+  primaryLocale: string
+): boolean {
+  const needle = categoryPrimary.trim();
   if (!needle) return false;
-  return gemPrimaries.some((p) => p.trim().toLowerCase() === needle);
+  return gemPrimaries.some((p) =>
+    categoryPrimariesLooselyMatch(p, needle, catalogDocs, primaryLocale)
+  );
 }
 
 function gemToSaveInput(
@@ -166,7 +173,14 @@ export default function GuestExplore({
 
   const categoriesWithListings = useMemo(() => {
     const fromCatalog = categoryOptions.filter((cat) =>
-      enriched.some((item) => gemMatchesCategory(item.categories, cat.primary))
+      enriched.some((item) =>
+        gemMatchesCategory(
+          item.categories,
+          cat.primary,
+          categoryCatalogDocs,
+          contentPrimaryLocale
+        )
+      )
     );
     if (fromCatalog.length > 0) return fromCatalog;
 
@@ -180,7 +194,7 @@ export default function GuestExplore({
       }
     }
     return Array.from(seen.values());
-  }, [categoryOptions, enriched]);
+  }, [categoryOptions, enriched, categoryCatalogDocs, contentPrimaryLocale]);
 
   const toggleCategory = (primary: string) => {
     setSelectedPrimaries((prev) => {
@@ -197,13 +211,22 @@ export default function GuestExplore({
     const source = allSelected
       ? categoriesWithListings
       : categoriesWithListings.filter((cat) =>
-          selectedPrimaries.some((p) => p.toLowerCase() === cat.primary.toLowerCase())
+          selectedPrimaries.some((p) =>
+            categoryPrimariesLooselyMatch(p, cat.primary, categoryCatalogDocs, contentPrimaryLocale)
+          )
         );
 
     return source.map((cat) => ({
       category: cat,
       items: enriched
-        .filter((item) => gemMatchesCategory(item.categories, cat.primary))
+        .filter((item) =>
+          gemMatchesCategory(
+            item.categories,
+            cat.primary,
+            categoryCatalogDocs,
+            contentPrimaryLocale
+          )
+        )
         .sort((a, b) => {
           const da = Number(a.gem.distanceKm);
           const db = Number(b.gem.distanceKm);
@@ -215,7 +238,14 @@ export default function GuestExplore({
           return a.title.localeCompare(b.title);
         }),
     }));
-  }, [allSelected, selectedPrimaries, categoriesWithListings, enriched]);
+  }, [
+    allSelected,
+    selectedPrimaries,
+    categoriesWithListings,
+    enriched,
+    categoryCatalogDocs,
+    contentPrimaryLocale,
+  ]);
 
   const heroPhoto = useMemo(() => {
     const withPhoto = gems.filter((g) => typeof g.photoUrl === 'string' && g.photoUrl.trim());

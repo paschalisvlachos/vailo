@@ -385,11 +385,15 @@ export default function HouseGuideImportPanel({
       });
 
       if (fromWizard) {
-        const highAssignments = analyzed.assignments.filter((a) => a.confidence === 'high');
-        if (highAssignments.length > 0) {
+        // Auto-apply high + medium so wizard step 3 actually persists content.
+        // Low-confidence rows stay out until reviewed in the full House Guide editor.
+        const autoAssignments = analyzed.assignments.filter(
+          (a) => a.confidence === 'high' || a.confidence === 'medium'
+        );
+        if (autoAssignments.length > 0) {
           const next = applyHouseGuideImport(
             formData,
-            highAssignments.map((a) => ({ ...a, enabled: true })),
+            autoAssignments.map((a) => ({ ...a, enabled: true })),
             [],
             contentLocale,
             primaryLocale
@@ -407,7 +411,7 @@ export default function HouseGuideImportPanel({
           }));
         const anyUrlOk = urlStatuses.some((u) => u.status === 'ok');
         setWizardUrlStatuses(urlStatuses);
-        setWizardFoundNothing(highAssignments.length === 0 && !anyUrlOk);
+        setWizardFoundNothing(autoAssignments.length === 0 && !anyUrlOk);
         setResult(null);
         setShowPlacementReview(false);
         setRecoveryDrafts({});

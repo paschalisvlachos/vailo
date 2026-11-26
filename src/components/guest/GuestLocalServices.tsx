@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { doc, updateDoc } from 'firebase/firestore';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   Anchor,
@@ -11,6 +12,7 @@ import {
   Globe,
   Mail,
   MessageCircle,
+  Phone,
   Sparkles,
   Ticket,
   UtensilsCrossed,
@@ -29,6 +31,7 @@ import { useGuestLocale } from '../../context/GuestLocaleContext';
 import { guestUiT } from '../../lib/guestLocaleUi';
 import { resolveLocalizedString } from '../../lib/propertyContentLocales';
 import { GUEST_PORTAL_Z } from '../../lib/guestPortalLayers';
+import { db } from '../../lib/firebase';
 import MirroredPhotoImg from '../shared/MirroredPhotoImg';
 export type GuestPortalFeature = {
   id: string;
@@ -38,10 +41,19 @@ export type GuestPortalFeature = {
   photoUrl?: string;
   categories?: string[];
   whatsapp?: string;
+  phoneNumber?: string;
   email?: string;
   website?: string;
   voucherCode?: string;
   isLocal?: boolean;
+  googlePlaceId?: string;
+};
+
+type PartnerMirrorContext = {
+  country?: string | null;
+  areaId?: string | null;
+  propertyId?: string | null;
+  propertyTypeId?: string | null;
 };
 
 type Props = {
@@ -53,6 +65,7 @@ type Props = {
   layout?: 'list' | 'carousel';
   /** When layout is carousel — show vertical list like Explore “See all”. */
   carouselExpanded?: boolean;
+  mirrorContext?: PartnerMirrorContext;
 };
 
 function featureTitle(
@@ -112,16 +125,41 @@ function ContactTag({
   );
 }
 
+function partnerPhotoMirrorProps(
+  feature: GuestPortalFeature,
+  mirrorContext?: PartnerMirrorContext,
+  onPhotoMirrored?: (featureId: string, firebaseUrl: string) => void
+) {
+  return {
+    mirrorContext: {
+      country: mirrorContext?.country || undefined,
+      areaId: mirrorContext?.areaId || undefined,
+      docId: feature.id,
+      googlePlaceId:
+        typeof feature.googlePlaceId === 'string' ? feature.googlePlaceId : null,
+      propertyId: mirrorContext?.propertyId || undefined,
+      propertyTypeId: mirrorContext?.propertyTypeId || undefined,
+    },
+    onMirrored: (firebaseUrl: string) => {
+      onPhotoMirrored?.(feature.id, firebaseUrl);
+    },
+  };
+}
+
 function ServiceDetailSheet({
   feature,
   propertyName,
   propertyTypeName,
   onClose,
+  mirrorContext,
+  onPhotoMirrored,
 }: {
   feature: GuestPortalFeature;
   propertyName: string;
   propertyTypeName?: string;
   onClose: () => void;
+  mirrorContext?: PartnerMirrorContext;
+  onPhotoMirrored?: (featureId: string, firebaseUrl: string) => void;
 }) {
   const { locale, contentPrimaryLocale } = useGuestLocale();
   const [copiedVoucher, setCopiedVoucher] = useState(false);
@@ -140,7 +178,9 @@ function ServiceDetailSheet({
   const emailHref = buildServiceEmailLink(feature.email, inquiryMessage, emailSubject);
   const voucherCode = feature.voucherCode?.trim() || '';
   const websiteUrl = serviceWebsiteUrl(feature.website);
-  const hasContact = !!(whatsappHref || emailHref || websiteUrl);
+  const phoneDigits = normalizeWhatsAppPhone(feature.phoneNumber || '');
+  const phoneHref = phoneDigits ? `tel:+${phoneDigits}` : '';
+  const hasContact = !!(whatsappHref || emailHref || websiteUrl || phoneHref);
 
   const copyVoucherCode = () => {
     if (!voucherCode || typeof navigator === 'undefined') return;
@@ -193,7 +233,7 @@ function ServiceDetailSheet({
                 src={feature.photoUrl}
                 alt=""
                 className="w-full h-full object-cover"
-                mirrorContext={{ docId: feature.id }}
+                {...partnerPhotoMirrorProps(feature, mirrorContext, onPhotoMirrored)}
                 fallback={
                   <div className="w-full h-full flex items-center justify-center text-[#C5A059] min-h-[140px]">
                     <Sparkles size={36} />
@@ -254,6 +294,18 @@ function ServiceDetailSheet({
                 <ExternalLink size={16} className="text-gray-400" />
               </button>
             )}
+            {phoneHref && (
+              <a
+                href={phoneHref}
+                className="flex items-center justify-between w-full px-4 py-3.5 rounded-xl border border-gray-200 bg-white hover:border-[#0B4F5C]/30 hover:bg-[#0B4F5C]/5 transition-colors"
+              >
+                <span className="flex items-center gap-2.5 text-[#0B4F5C] font-semibold text-sm">
+                  <Phone size={18} />
+                  Call
+                </span>
+                <ExternalLink size={16} className="text-gray-400" />
+              </a>
+            )}
             {websiteUrl && (
               <button
                 type="button"
@@ -298,34 +350,66 @@ export default function GuestLocalServices({
   onDetailOpenChange,
   layout = 'list',
   carouselExpanded = false,
+  mirrorContext,
 }: Props) {
   const { locale, contentPrimaryLocale } = useGuestLocale();
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [selected, setSelected] = useState<GuestPortalFeature | null>(null);
+  const [photoOverrides, setPhotoOverrides] = useState<Record<string, string>>({});
 
   useEffect(() => {
     onDetailOpenChange?.(selected != null);
   }, [selected, onDetailOpenChange]);
 
+  const persistMirroredPhoto = useCallback(
+    (featureId: string, firebaseUrl: string) => {
+      setPhotoOverrides((prev) =>
+        prev[featureId] === firebaseUrl ? prev : { ...prev, [featureId]: firebaseUrl }
+      );
+      const propertyId = mirrorContext?.propertyId;
+      const propertyTypeId = mirrorContext?.propertyTypeId;
+      if (!propertyId || !propertyTypeId || !firebaseUrl) return;
+      void updateDoc(
+        doc(db, 'properties', propertyId, 'propertyTypes', propertyTypeId, 'features', featureId),
+        { photoUrl: firebaseUrl, updatedAt: new Date().toISOString() }
+      ).catch(() => {
+        /* best-effort persist — UI already uses override */
+      });
+    },
+    [mirrorContext?.propertyId, mirrorContext?.propertyTypeId]
+  );
+
+  const featuresWithPhotos = useMemo(
+    () =>
+      features.map((f) =>
+        photoOverrides[f.id] ? { ...f, photoUrl: photoOverrides[f.id] } : f
+      ),
+    [features, photoOverrides]
+  );
+
   const categories = useMemo(
-    () => ['All', ...Array.from(new Set(features.map((f) => f.categories?.[0]).filter(Boolean)))],
-    [features]
+    () =>
+      [
+        'All',
+        ...Array.from(new Set(featuresWithPhotos.map((f) => f.categories?.[0]).filter(Boolean))),
+      ],
+    [featuresWithPhotos]
   );
 
   const filtered = useMemo(
     () =>
       categoryFilter === 'All'
-        ? features
-        : features.filter((f) => f.categories?.[0] === categoryFilter),
-    [features, categoryFilter]
+        ? featuresWithPhotos
+        : featuresWithPhotos.filter((f) => f.categories?.[0] === categoryFilter),
+    [featuresWithPhotos, categoryFilter]
   );
 
-  if (features.length === 0) return null;
+  if (featuresWithPhotos.length === 0) return null;
 
   if (layout === 'carousel') {
     return (
       <FeatureCarousel
-        features={features}
+        features={featuresWithPhotos}
         locale={locale}
         contentPrimaryLocale={contentPrimaryLocale}
         onSelect={setSelected}
@@ -334,6 +418,8 @@ export default function GuestLocalServices({
         propertyName={propertyName}
         propertyTypeName={propertyTypeName}
         expanded={carouselExpanded}
+        mirrorContext={mirrorContext}
+        onPhotoMirrored={persistMirroredPhoto}
       />
     );
   }
@@ -382,6 +468,7 @@ export default function GuestLocalServices({
             const category = feature.categories?.[0] || 'Service';
             const CatIcon = categoryIcon(category);
             const hasWhatsApp = !!normalizeWhatsAppPhone(feature.whatsapp || '');
+            const hasPhone = !!normalizeWhatsAppPhone(feature.phoneNumber || '');
             const hasEmail = !!(feature.email?.trim() && feature.email.includes('@'));
             const hasVoucher = !!feature.voucherCode?.trim();
             const hasWebsite = !!serviceWebsiteUrl(feature.website);
@@ -403,7 +490,7 @@ export default function GuestLocalServices({
                         src={feature.photoUrl}
                         alt=""
                         className="h-full w-full object-cover"
-                        mirrorContext={{ docId: feature.id }}
+                        {...partnerPhotoMirrorProps(feature, mirrorContext, persistMirroredPhoto)}
                         fallback={
                           <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
                             <Sparkles size={22} />
@@ -425,7 +512,7 @@ export default function GuestLocalServices({
                         {listDescription}
                       </p>
                     )}
-                    {(hasWhatsApp || hasEmail || hasVoucher || hasWebsite) && (
+                    {(hasWhatsApp || hasPhone || hasEmail || hasVoucher || hasWebsite) && (
                       <div className="flex flex-wrap gap-1.5">
                         {hasVoucher && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 bg-amber-50 text-amber-800 border border-amber-200/80">
@@ -434,6 +521,12 @@ export default function GuestLocalServices({
                           </span>
                         )}
                         {hasWhatsApp && <ContactTag kind="whatsapp" label="WhatsApp" />}
+                        {hasPhone && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 bg-[#0B4F5C]/8 text-[#0B4F5C] border border-[#0B4F5C]/15">
+                            <Phone size={11} />
+                            Phone
+                          </span>
+                        )}
                         {hasEmail && <ContactTag kind="email" label="Email" />}
                         {hasWebsite && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 bg-[#0B4F5C]/8 text-[#0B4F5C] border border-[#0B4F5C]/15">
@@ -459,6 +552,8 @@ export default function GuestLocalServices({
             propertyName={propertyName}
             propertyTypeName={propertyTypeName}
             onClose={() => setSelected(null)}
+            mirrorContext={mirrorContext}
+            onPhotoMirrored={persistMirroredPhoto}
           />,
           document.body
         )}
@@ -479,6 +574,8 @@ function FeatureCarousel({
   propertyName,
   propertyTypeName,
   expanded = false,
+  mirrorContext,
+  onPhotoMirrored,
 }: {
   features: GuestPortalFeature[];
   locale: string;
@@ -489,6 +586,8 @@ function FeatureCarousel({
   propertyName: string;
   propertyTypeName?: string;
   expanded?: boolean;
+  mirrorContext?: PartnerMirrorContext;
+  onPhotoMirrored?: (featureId: string, firebaseUrl: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -529,6 +628,8 @@ function FeatureCarousel({
         subtitle={subtitle}
         layout={expanded ? 'vertical' : 'horizontal'}
         onSelect={() => onSelect(feature)}
+        mirrorContext={mirrorContext}
+        onPhotoMirrored={onPhotoMirrored}
       />
     );
   });
@@ -575,6 +676,8 @@ function FeatureCarousel({
             propertyName={propertyName}
             propertyTypeName={propertyTypeName}
             onClose={onCloseSelected}
+            mirrorContext={mirrorContext}
+            onPhotoMirrored={onPhotoMirrored}
           />,
           document.body
         )}
@@ -588,12 +691,16 @@ function FeatureCard({
   subtitle,
   layout,
   onSelect,
+  mirrorContext,
+  onPhotoMirrored,
 }: {
   feature: GuestPortalFeature;
   title: string;
   subtitle: string;
   layout: 'horizontal' | 'vertical';
   onSelect: () => void;
+  mirrorContext?: PartnerMirrorContext;
+  onPhotoMirrored?: (featureId: string, firebaseUrl: string) => void;
 }) {
   const vertical = layout === 'vertical';
 
@@ -619,7 +726,7 @@ function FeatureCard({
             src={feature.photoUrl}
             alt=""
             className="h-full w-full object-cover"
-            mirrorContext={{ docId: feature.id }}
+            {...partnerPhotoMirrorProps(feature, mirrorContext, onPhotoMirrored)}
             fallback={
               <div className="h-full w-full flex items-center justify-center text-[#C5A059]">
                 <Sparkles size={26} />

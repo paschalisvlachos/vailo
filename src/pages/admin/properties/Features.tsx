@@ -569,7 +569,7 @@ Read the place name and Google type carefully.
 Return ONLY valid JSON with no markdown:
 {"categories":["Exact Category Name"],"description":"Your 2 sentence description"}`;
 
-        const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+        const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
         const aiResult = await model.generateContent(prompt);
         const rawText = aiResult.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(rawText);
@@ -634,7 +634,7 @@ Return ONLY valid JSON with no markdown:
       const cats = formData.categories.join(' and ');
       const area = propertyAreaContext?.areaName || "the local area";
       const prompt = `Write a short, luxurious 2-sentence description for a ${cats || 'feature'} called "${formData.name}" located in ${area}. Make it sound exclusive and appealing to high-end travelers. No quotes.`;
-      const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
+      const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
       const result = await model.generateContent(prompt);
       const desc = result.response.text().trim();
       setFormData(prev => ({ ...prev, description: desc }));
@@ -1247,6 +1247,26 @@ Return ONLY valid JSON with no markdown:
                         setFormData({...formData, photoUrl: url}); 
                       } 
                     }} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-vailo-teal/5 file:text-vailo-teal-hover hover:file:bg-vailo-teal/10 cursor-pointer mb-4" />
+
+                    <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                      Or paste photo URL
+                    </label>
+                    <input
+                      type="url"
+                      value={
+                        formData.photoUrl && !formData.photoUrl.startsWith('blob:')
+                          ? formData.photoUrl
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const url = e.target.value.trim();
+                        setCustomFile(null);
+                        setCustomPreview(null);
+                        setFormData({ ...formData, photoUrl: url });
+                      }}
+                      placeholder="https://…"
+                      className="w-full mb-4 px-3 py-2 border border-gray-300 rounded-lg admin-input outline-none text-sm"
+                    />
                     
                     {/* Selectable Thumbnail Gallery */}
                     {(availableMasterPhotos.length > 0 || googlePhoto || customPreview) && (

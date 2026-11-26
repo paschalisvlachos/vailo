@@ -2895,7 +2895,7 @@ exports.getAllTrailsTrailDetails = onCall(
   getAllTrailsTrailDetailsHandler
 );
 
-/** Platform admin: Q&A grounded in indexed Vailo source code (Gemini; default gemini-2.5-flash). */
+/** Platform admin: Q&A grounded in indexed Vailo source code (Gemini; default gemini-3.8-flash). */
 exports.askAppCodeKnowledge = onCall(
   {
     timeoutSeconds: 120,
@@ -2941,6 +2941,9 @@ registerICalSync({ firestore, logger, firebaseExports: exports });
 
 const { registerGuestApplianceGuide } = require("./guestApplianceGuide");
 registerGuestApplianceGuide({ firestore, firebaseExports: exports });
+
+const { registerGuestPropertyAssistantChat } = require("./guestPropertyAssistantChat");
+registerGuestPropertyAssistantChat({ firebaseExports: exports });
 
 const { registerHouseGuideImportAi } = require("./houseGuideImportAi");
 registerHouseGuideImportAi({ firebaseExports: exports });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  categoryPrimariesLooselyMatch,
   normalizeCategoryMatchKey,
   normalizeCategorySelectionList,
   resolveCategoryTagToPrimary,
@@ -65,5 +66,13 @@ describe('category import tag matching', () => {
         'en'
       )
     ).toEqual(['Cafe', 'Winery', 'Breakfast / Brunch']);
+  });
+
+  it('loosely matches Coffee↔Cafe, Vinery↔Winery, Kids Activities↔Kids', () => {
+    expect(categoryPrimariesLooselyMatch('Coffee', 'Cafe', heraklionCatalog, 'en')).toBe(true);
+    expect(categoryPrimariesLooselyMatch('Vinery', 'Winery', heraklionCatalog, 'en')).toBe(true);
+    expect(
+      categoryPrimariesLooselyMatch('Kids Activities / Playgrounds', 'Kids', [], 'en')
+    ).toBe(true);
   });
 });

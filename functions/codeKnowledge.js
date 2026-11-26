@@ -8,7 +8,7 @@ const INDEX_PATH = path.join(__dirname, "data", "codeKnowledgeIndex.json");
 const TOP_K = 14;
 const MAX_CONTEXT_CHARS = 48000;
 /** Free-tier friendly default; override with GEMINI_CODE_KNOWLEDGE_MODEL (e.g. gemini-2.5-pro when billing is on). */
-const DEFAULT_CODE_KNOWLEDGE_MODEL = "gemini-2.5-flash";
+const DEFAULT_CODE_KNOWLEDGE_MODEL = "gemini-3.8-flash";
 
 function resolveCodeKnowledgeModel() {
   const configured = String(process.env.GEMINI_CODE_KNOWLEDGE_MODEL || "").trim();
@@ -300,7 +300,7 @@ ${question}`;
     const detail = apiMsg || err?.message || "Unknown error";
     logger.error("askAppCodeKnowledge failed:", err?.response?.data || err);
     const quotaHint = isQuotaOrRateLimitError(err)
-      ? " Enable billing on Google AI Studio or set GEMINI_CODE_KNOWLEDGE_MODEL=gemini-2.5-flash in functions/.env."
+      ? " Enable billing on Google AI Studio or set GEMINI_CODE_KNOWLEDGE_MODEL=gemini-3.8-flash in functions/.env."
       : "";
     throw new HttpsError(
       "internal",

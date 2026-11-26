@@ -4,6 +4,7 @@ import { getGenerativeModel } from 'firebase/ai';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import { ai, db } from '../../lib/firebase';
 import { GUEST_ISSUE_MAX_LENGTH } from '../../lib/guestIssues';
+import { GUEST_CHAT_GEMINI_MODEL } from '../../lib/geminiModels';
 
 type GuideContext = {
   checkIn?: string;
@@ -75,7 +76,7 @@ GUEST REPORTS THIS PROBLEM:
 Give practical immediate steps the guest can try right now (2–4 short paragraphs). Be calm and clear. If it sounds like an emergency (fire, gas, medical), tell them to call local emergency services first, then the host.
 Return plain text only — no markdown.`;
 
-      const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+      const model = getGenerativeModel(ai, { model: GUEST_CHAT_GEMINI_MODEL });
       const result = await model.generateContent(prompt);
       const responseText = result.response.text().trim();
 

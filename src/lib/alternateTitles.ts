@@ -290,7 +290,7 @@ STRICT RULES:
 Return ONLY a JSON string array, no markdown.`;
 
   try {
-    const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+    const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();
     const jsonMatch = text.match(/\[[\s\S]*\]/);

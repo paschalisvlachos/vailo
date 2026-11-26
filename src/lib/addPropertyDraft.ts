@@ -28,6 +28,8 @@ export type AddPropertyAreaContext = {
 
 export type AddPropertyDraft = {
   listingDraft: WizardListingDraft;
+  /** Existing parent property (agency portfolio) to attach the listing under. */
+  targetPropertyId: string;
   photoPreview: string | null;
   setupStep: AddPropertySetupStep;
   areaContext: AddPropertyAreaContext | null;
@@ -52,6 +54,7 @@ export type AddPropertyDraft = {
 export function emptyAddPropertyDraft(): AddPropertyDraft {
   return {
     listingDraft: { ...EMPTY_WIZARD_LISTING, referenceUrls: [''] },
+    targetPropertyId: '',
     photoPreview: null,
     setupStep: 'listing',
     areaContext: null,
@@ -93,6 +96,7 @@ export function readAddPropertyDraft(): AddPropertyDraft {
           ? parsed.listingDraft.referenceUrls
           : [''],
       },
+      targetPropertyId: String(parsed.targetPropertyId || '').trim(),
       setupStep: normalizeSetupStep(parsed.setupStep),
       areaContext: parsed.areaContext || null,
       selectedLocalGemIds: Array.isArray(parsed.selectedLocalGemIds)

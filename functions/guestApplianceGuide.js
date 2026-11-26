@@ -5,7 +5,7 @@ const {
   isBookingPortalAccessAllowed,
 } = require("./guestPortalBookingAccess");
 
-const APPLIANCE_MODEL = "gemini-2.5-flash";
+const APPLIANCE_MODEL = "gemini-3.8-flash";
 
 async function getSession(firestore, propertyId, sessionId) {
   const snap = await firestore

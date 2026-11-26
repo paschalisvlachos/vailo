@@ -2,8 +2,8 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const axios = require("axios");
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
-const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+const DEFAULT_MODEL = "gemini-3.8-flash";
+const FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"];
 const GEMINI_MAX_ATTEMPTS_PER_MODEL = 3;
 const MAX_PAGE_CHARS = 14000;
 const MAX_EXTRACT_URLS = 6;

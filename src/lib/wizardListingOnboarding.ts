@@ -21,6 +21,8 @@ export type WizardListingDraft = {
   wifiName: string;
   wifiPassword: string;
   whatsapp: string;
+  /** Optional voice/SMS number shown to guests alongside WhatsApp. */
+  phone: string;
   internalRefCode: string;
 };
 
@@ -44,6 +46,7 @@ export const EMPTY_WIZARD_LISTING: WizardListingDraft = {
   wifiName: '',
   wifiPassword: '',
   whatsapp: '',
+  phone: '',
   internalRefCode: '',
 };
 

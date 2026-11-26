@@ -768,6 +768,7 @@ export default function PropertyFormPage() {
             wifiName: listingDraft.wifiName.trim(),
             wifiPassword: listingDraft.wifiPassword.trim(),
             whatsapp: listingDraft.whatsapp.trim(),
+            phone: String(listingDraft.phone || '').trim(),
             internalRefCode:
               listingDraft.internalRefCode.trim() ||
               `TYP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,

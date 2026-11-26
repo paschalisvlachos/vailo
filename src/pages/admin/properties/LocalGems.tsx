@@ -509,12 +509,8 @@ export default function LocalGems() {
       const resolvedName = primaryName || formData.name;
       const resolvedDescription = primaryDescription || formData.description;
 
-      localeEditor.setContentLocale(localeSettings.primaryLocale);
-      localeEditor.applyPrimaryFields({
-        name: resolvedName,
-        description: resolvedDescription,
-      });
-
+      // Set coordinates first so ListingLocationPinMap does not Nominatim-geocode
+      // the place name and briefly flash a wrong pin.
       setFormData((prev) => ({
         ...prev,
         name: resolvedName || prev.name,
@@ -530,6 +526,12 @@ export default function LocalGems() {
         googleMapsUrl: resolvedMapsUrl || prev.googleMapsUrl,
         photoUrl: googleData.photoUrl || prev.photoUrl,
       }));
+
+      localeEditor.setContentLocale(localeSettings.primaryLocale);
+      localeEditor.applyPrimaryFields({
+        name: resolvedName,
+        description: resolvedDescription,
+      });
 
       if (googleData.photoUrl) {
         setGooglePhoto(googleData.photoUrl);

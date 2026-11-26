@@ -10,7 +10,7 @@ export async function answerWebKnowledgeQuestion(
   corpus: string,
   question: string
 ): Promise<string> {
-  const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+  const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
   const prompt = `You are Vailo's internal assistant for staff questions about the Vailo website and platform.
 
 Rules:
@@ -35,7 +35,7 @@ export async function draftClientKnowledgeAnswer(
   question: string,
   existingStaffAnswer?: string
 ): Promise<string> {
-  const model = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+  const model = getGenerativeModel(ai, { model: 'gemini-3.8-flash' });
   const prompt = `You help Vailo hospitality staff prepare answers to questions from property owners, managers, and partners (B2B clients).
 
 Use the platform knowledge below when relevant. You may add reasonable hospitality SaaS context, but prefer facts from the knowledge base.

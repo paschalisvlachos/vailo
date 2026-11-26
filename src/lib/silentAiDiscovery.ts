@@ -15,10 +15,11 @@ import { persistUnverifiedAiMentions } from './guestDiscoveredPlaces';
 import { resolvePlacePhoto } from './placePhotoResolver';
 import { titleMatchesCatalogEntry } from './alternateTitles';
 import { namesLikelySame, normalizePlaceName } from './placeNameUtils';
+import { VAILO_GEMINI_FLASH } from './geminiModels';
 
 const SILENT_AI_LOG = '[Vailo silent AI]';
 
-const SILENT_DISCOVERY_MODEL = 'gemini-3.5-flash';
+const SILENT_DISCOVERY_MODEL = VAILO_GEMINI_FLASH;
 const CANDIDATES_PER_CATEGORY = 8;
 
 type KnownPlaceRow = {

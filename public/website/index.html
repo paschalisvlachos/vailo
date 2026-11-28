@@ -84,7 +84,11 @@
           { "@type": "Question", "name": "Πώς λειτουργεί ο AI concierge με τον ψηφιακό οδηγό σπιτιού;", "acceptedAnswer": { "@type": "Answer", "text": "Ο AI βοηθός βασίζεται στον οδηγό σπιτιού που ρυθμίζετε — κανόνες, συσκευές, check-in, parking. Απαντά στα ελληνικά ή σε άλλες γλώσσες, από το δικό σας περιεχόμενο." }},
           { "@type": "Question", "name": "Μπορώ να διαχειριστώ πολλά καταλύματα;", "acceptedAnswer": { "@type": "Answer", "text": "Ναι. Το Vailo φτιάχτηκε για χαρτοφυλάκια. Κάθε αγγελία έχει δική της πύλη, QR και οδηγό — από ένα admin dashboard." }},
           { "@type": "Question", "name": "Υποστηρίζει πολλές γλώσσες;", "acceptedAnswer": { "@type": "Answer", "text": "Η πύλη επισκεπτών και ο AI βοηθός υποστηρίζουν πολλές γλώσσες. Μπορείτε να δώσετε περιεχόμενο στις γλώσσες των επισκεπτών σας." }},
-          { "@type": "Question", "name": "Πώς ξεκινάω;", "acceptedAnswer": { "@type": "Answer", "text": "Ζητήστε παρουσίαση και θα σας καθοδηγήσουμε. Υπάρχοντες συνεργάτες μπορούν να συνδεθούν απευθείας στο admin για ρύθμιση και δημοσίευση πυλών." }}
+          { "@type": "Question", "name": "Πώς ξεκινάω;", "acceptedAnswer": { "@type": "Answer", "text": "Ζητήστε παρουσίαση και θα σας καθοδηγήσουμε. Υπάρχοντες συνεργάτες μπορούν να συνδεθούν απευθείας στο admin για ρύθμιση και δημοσίευση πυλών." }},
+          { "@type": "Question", "name": "Πότε αποκτούν πρόσβαση οι επισκέπτες στην πύλη;", "acceptedAnswer": { "@type": "Answer", "text": "Οι επισκέπτες λαμβάνουν το link της πύλης μόλις επιβεβαιωθεί η κράτηση. Στο κατάλυμα, μπορούν επίσης να σκανάρουν ένα QR code που οδηγεί στην ίδια πύλη." }},
+          { "@type": "Question", "name": "Πώς λειτουργούν οι προμήθειες σε τοπικές υπηρεσίες και εκδρομές;", "acceptedAnswer": { "@type": "Answer", "text": "Οι συνεργάτες και πάροχοι εκδρομών κρατούν το 100% του δικού τους περιθωρίου — το Vailo δεν κόβει προμήθεια από τη δική τους τιμή. Όπου το Vailo έχει δικό του περιθώριο παραπομπής, μοιραζόμαστε το ένα τρίτο με εσάς, τον ιδιοκτήτη ή διαχειριστή." }},
+          { "@type": "Question", "name": "Μπορεί ο AI βοηθός να απαντήσει σε οτιδήποτε, ή μόνο σε ό,τι έχω ρυθμίσει;", "acceptedAnswer": { "@type": "Answer", "text": "Ο AI βοηθός απαντά μόνο βάσει του οδηγού σπιτιού και του περιεχομένου που έχετε ρυθμίσει. Δεν επινοεί πληροφορίες για το κατάλυμά σας και, όταν δεν γνωρίζει κάτι, το δηλώνει αντί να μαντεύει." }},
+          { "@type": "Question", "name": "Έχει κάθε κατάλυμα τη δική του πύλη και branding;", "acceptedAnswer": { "@type": "Answer", "text": "Ναι. Κάθε αγγελία αποκτά μοναδική πύλη, QR code και οδηγό σπιτιού — με τις δικές της φωτογραφίες και τόνο — ακόμη κι όταν διαχειρίζεστε τα πάντα κεντρικά από ένα admin." }}
         ]
       }
     ]
@@ -1009,9 +1013,145 @@
       line-height: 1.7;
     }
     .faq-item.open .faq-a {
-      max-height: 200px;
+      max-height: 320px;
       padding-bottom: 20px;
     }
+
+    /* ── Feature pillars extra ── */
+    .feature-card { display: flex; flex-direction: column; }
+    .feature-card p { flex: 1; }
+    .feature-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--teal);
+      transition: color 0.2s, gap 0.2s;
+    }
+    .feature-link:hover { color: var(--gold); gap: 9px; }
+
+    /* ── Guest journey ── */
+    .journey-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+    .journey-card {
+      position: relative;
+      padding: 26px 24px;
+      border-radius: var(--radius);
+      background: var(--white);
+      border: 1px solid var(--border);
+      transition: box-shadow 0.3s, transform 0.3s;
+    }
+    .journey-card:hover { box-shadow: var(--shadow-sm); transform: translateY(-4px); }
+    .journey-num {
+      position: absolute;
+      top: 22px;
+      right: 22px;
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--gold);
+    }
+    .journey-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(197,160,89,0.16), rgba(197,160,89,0.06));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      color: var(--gold);
+    }
+    .journey-icon svg { width: 22px; height: 22px; }
+    .journey-card h4 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--teal-dark);
+      margin-bottom: 8px;
+      padding-right: 24px;
+    }
+    .journey-card p { font-size: 0.875rem; color: var(--text-muted); line-height: 1.6; }
+
+    /* ── Pricing ── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    .pricing-card {
+      padding: 36px 30px;
+      border-radius: var(--radius-lg);
+      background: var(--white);
+      border: 1px solid var(--border);
+      transition: box-shadow 0.3s, transform 0.3s;
+    }
+    .pricing-card:hover { box-shadow: var(--shadow-sm); transform: translateY(-4px); }
+    .pricing-card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 13px;
+      background: rgba(197,160,89,0.15);
+      color: var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+    }
+    .pricing-card-icon svg { width: 24px; height: 24px; }
+    .pricing-card h3 {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      color: var(--teal-dark);
+      margin-bottom: 10px;
+    }
+    .pricing-card p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.65; }
+    .pricing-actions {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .pricing-note {
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    .pricing-note a { color: var(--teal); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+    /* ── FAQ categories ── */
+    .faq-filters {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 36px;
+    }
+    .faq-chip {
+      padding: 8px 18px;
+      border-radius: 999px;
+      border: 1.5px solid var(--border);
+      background: var(--white);
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .faq-chip:hover { border-color: var(--gold); color: var(--teal-dark); }
+    .faq-chip.active {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: var(--white);
+    }
+    .faq-item[hidden] { display: none; }
 
     /* ── CTA ── */
     .cta {
@@ -1318,6 +1458,8 @@
     @media (max-width: 960px) {
       .hero-grid, .reveal-grid, .audience-grid { grid-template-columns: 1fr; }
       .features-grid { grid-template-columns: 1fr 1fr; }
+      .journey-grid { grid-template-columns: 1fr 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
       .steps { grid-template-columns: 1fr; gap: 40px; }
       .outcomes-grid { grid-template-columns: 1fr 1fr; }
       .analytics-layout { grid-template-columns: 1fr; }
@@ -1442,6 +1584,7 @@
     @media (max-width: 640px) {
       .features-grid { grid-template-columns: 1fr; }
       .outcomes-grid { grid-template-columns: 1fr; }
+      .journey-grid { grid-template-columns: 1fr; }
       section { padding: 64px 0; }
       .audience-card { padding: 28px; }
       .form-row { grid-template-columns: 1fr; }
@@ -1456,11 +1599,11 @@
         <img src="/vailoLogo.png" alt="" width="36" height="36" onerror="this.style.display='none'" />
       </a>
       <ul class="nav-links" id="navLinks">
-        <li><a href="#product" data-i18n="nav.product">Προϊόν</a></li>
-        <li><a href="#owners" data-i18n="nav.owners">Για ιδιοκτήτες</a></li>
-        <li><a href="#managers" data-i18n="nav.managers">Για διαχειριστές</a></li>
-        <li><a href="#how" data-i18n="nav.how">Πώς λειτουργεί</a></li>
+        <li><a href="#features" data-i18n="nav.features">Δυνατότητες</a></li>
+        <li><a href="#solutions" data-i18n="nav.solutions">Λύσεις</a></li>
+        <li><a href="#journey" data-i18n="nav.journey">Διαδρομή επισκέπτη</a></li>
         <li><a href="#analytics" data-i18n="nav.analytics">Στατιστικά</a></li>
+        <li><a href="#pricing" data-i18n="nav.pricing">Τιμολόγηση</a></li>
         <li><a href="#faq" data-i18n="nav.faq">Συχνές ερωτήσεις</a></li>
         <li><a href="#" data-open-contact data-i18n="nav.contact">Επικοινωνία</a></li>
         <li class="nav-login-mobile">
@@ -1548,6 +1691,93 @@
       </div>
     </div>
   </div>
+
+  <section class="outcomes">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow" data-i18n="outcomes.eyebrow">Ο αντίκτυπος</p>
+        <h2 class="section-title" data-i18n="outcomes.title">Φιλοξενία που κλιμακώνεται με χάρη</h2>
+      </div>
+      <div class="outcomes-grid">
+        <div class="outcome fade-up">
+          <strong>↓</strong>
+          <span data-i18n="outcomes.o1">Επαναλαμβανόμενα μηνύματα πριν &amp; κατά τη διαμονή</span>
+        </div>
+        <div class="outcome fade-up">
+          <strong>↑</strong>
+          <span data-i18n="outcomes.o2">Ικανοποίηση επισκεπτών &amp; ετοιμότητα για κριτικές</span>
+        </div>
+        <div class="outcome fade-up">
+          <strong>↑</strong>
+          <span data-i18n="outcomes.o3">Ορατότητα &amp; κρατήσεις τοπικών συνεργατών</span>
+        </div>
+        <div class="outcome fade-up">
+          <strong>→</strong>
+          <span data-i18n="outcomes.o4">Συνεπής εμπειρία σε κάθε κατάλυμα</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow" data-i18n="features.eyebrow">Ό,τι χρειάζεστε</p>
+        <h2 class="section-title" data-i18n="features.title">Όλα όσα χρειάζεστε για μια καλύτερη εμπειρία επισκεπτών</h2>
+        <p class="section-lead" data-i18n="features.lead">Έξι βασικές δυνατότητες — από τον ψηφιακό οδηγό σπιτιού μέχρι τα τοπικά έσοδα — όλες μέσα σε μία branded πύλη επισκεπτών.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h4 data-i18n="features.f1Title">AI βοηθός διακοπών</h4>
+          <p data-i18n="features.f1P">Απαντά άμεσα σε ερωτήσεις οδηγού — συσκευές, κανόνες, πάρκινγκ, checkout — στη γλώσσα του επισκέπτη.</p>
+          <a href="#analytics" class="feature-link" data-i18n="features.learnMore">Μάθετε περισσότερα →</a>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <h4 data-i18n="features.f2Title">Ζήστε σαν ντόπιος</h4>
+          <p data-i18n="features.f2P">Προγράμματα ημέρας και προτάσεις κατηγοριών με AI — παραλίες, φαγητό, πολιτισμός — προσαρμοσμένα στην περιοχή.</p>
+          <a href="#journey" class="feature-link" data-i18n="features.learnMore">Μάθετε περισσότερα →</a>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+          </div>
+          <h4 data-i18n="features.f3Title">Ψηφιακός οδηγός σπιτιού</h4>
+          <p data-i18n="features.f3P">Δομημένα essentials, highlights και επεκτάσιμο περιεχόμενο — πάντα ενημερωμένο, ποτέ χαμένο στο chat.</p>
+          <a href="#journey" class="feature-link" data-i18n="features.learnMore">Μάθετε περισσότερα →</a>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <h4 data-i18n="features.f4Title">Τοπικές υπηρεσίες</h4>
+          <p data-i18n="features.f4P">Προωθήστε ελεγμένους συνεργάτες — μεταφορές, σεφ, σκάφη, wellness — με WhatsApp ή email.</p>
+          <a href="#journey" class="feature-link" data-i18n="features.learnMore">Μάθετε περισσότερα →</a>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20M2 12h20"/></svg>
+          </div>
+          <h4 data-i18n="features.f5Title">Εκδρομές &amp; εμπειρίες</h4>
+          <p data-i18n="features.f5P">Οι επισκέπτες περιηγούνται και κλείνουν τοπικές εκδρομές — με διαθεσιμότητα, τιμές και άμεση επιβεβαίωση.</p>
+          <a href="#journey" class="feature-link" data-i18n="features.learnMore">Μάθετε περισσότερα →</a>
+        </div>
+        <div class="feature-card fade-up">
+          <div class="feature-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h4 data-i18n="features.f6Title">Πρόσβαση &amp; απόρρητο</h4>
+          <p data-i18n="features.f6P">Ασφαλής πρόσβαση, νομική συμμόρφωση και αναφορά προβλημάτων — επαγγελματικό από το πρώτο scan μέχρι το checkout.</p>
+          <a href="#solutions" class="feature-link" data-i18n="features.learnMore">Μάθετε περισσότερα →</a>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <section class="reveal" id="product">
     <div class="container reveal-grid">
@@ -1651,7 +1881,75 @@
     </div>
   </section>
 
-  <section id="owners">
+    <section id="journey">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow" data-i18n="journey.eyebrow">Η διαδρομή του επισκέπτη</p>
+        <h2 class="section-title" data-i18n="journey.title">Από την κράτηση μέχρι το review — όλα σε ένα ταξίδι</h2>
+        <p class="section-lead" data-i18n="journey.lead">Το Vailo συνοδεύει κάθε επισκέπτη σε κάθε βήμα — πριν, κατά και μετά τη διαμονή — ενώ εσείς κρατάτε τον έλεγχο.</p>
+      </div>
+      <div class="journey-grid">
+        <div class="journey-card fade-up">
+          <span class="journey-num">01</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.07 0l1.93-1.93a5 5 0 00-7.07-7.07L10.5 5.5"/><path d="M14 11a5 5 0 00-7.07 0L5 12.93a5 5 0 007.07 7.07L13.5 18.5"/></svg>
+          </div>
+          <h4 data-i18n="journey.s1Title">Σύνδεσμος από την κράτηση</h4>
+          <p data-i18n="journey.s1P">Μόλις επιβεβαιωθεί η κράτηση, ο επισκέπτης λαμβάνει το link της πύλης — έτοιμος πριν καν φτάσει.</p>
+        </div>
+        <div class="journey-card fade-up">
+          <span class="journey-num">02</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </div>
+          <h4 data-i18n="journey.s2Title">Άφιξη με QR</h4>
+          <p data-i18n="journey.s2P">Στο κατάλυμα, ένα QR code ανοίγει την ίδια πύλη άμεσα — χωρίς λήψη εφαρμογής.</p>
+        </div>
+        <div class="journey-card fade-up">
+          <span class="journey-num">03</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+          </div>
+          <h4 data-i18n="journey.s3Title">Απαντήσεις από τον οδηγό σπιτιού</h4>
+          <p data-i18n="journey.s3P">Wi‑Fi, check-in, κανόνες και συσκευές — όλα δομημένα και άμεσα διαθέσιμα, χωρίς μήνυμα στον οικοδεσπότη.</p>
+        </div>
+        <div class="journey-card fade-up">
+          <span class="journey-num">04</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h4 data-i18n="journey.s4Title">AI chat 24/7</h4>
+          <p data-i18n="journey.s4P">Όταν ο οδηγός δεν αρκεί, ο AI βοηθός απαντά άμεσα, στη γλώσσα του επισκέπτη, βασισμένος στο δικό σας περιεχόμενο.</p>
+        </div>
+        <div class="journey-card fade-up">
+          <span class="journey-num">05</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <h4 data-i18n="journey.s5Title">Τοπικοί θησαυροί</h4>
+          <p data-i18n="journey.s5P">Το «Ζήστε σαν ντόπιος» προτείνει παραλίες, φαγητό και εμπειρίες προσαρμοσμένες στην περιοχή του καταλύματος.</p>
+        </div>
+        <div class="journey-card fade-up">
+          <span class="journey-num">06</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20M2 12h20"/></svg>
+          </div>
+          <h4 data-i18n="journey.s6Title">Συνεργάτες &amp; εκδρομές</h4>
+          <p data-i18n="journey.s6P">Οι επισκέπτες εξερευνούν και κλείνουν επιλεγμένες τοπικές υπηρεσίες και εκδρομές μέσα από την ίδια πύλη.</p>
+        </div>
+        <div class="journey-card fade-up">
+          <span class="journey-num">07</span>
+          <div class="journey-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          </div>
+          <h4 data-i18n="journey.s7Title">Feedback loop από τα analytics</h4>
+          <p data-i18n="journey.s7P">Μετά τη διαμονή, τα analytics δείχνουν τι λειτούργησε — ώστε να βελτιώνετε τον οδηγό και τις προτάσεις για τον επόμενο επισκέπτη.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="solutions">
     <div class="container">
       <div class="section-header center fade-up">
         <p class="section-eyebrow" data-i18n="audience.eyebrow">Φτιαγμένο για την επιχείρησή σας</p>
@@ -1661,7 +1959,7 @@
         </p>
       </div>
       <div class="audience-grid">
-        <article class="audience-card owners fade-up">
+        <article class="audience-card owners fade-up" id="owners">
           <div class="audience-icon">
             <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>
           </div>
@@ -1723,113 +2021,6 @@
             </li>
           </ul>
         </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="features">
-    <div class="container">
-      <div class="section-header center fade-up">
-        <p class="section-eyebrow" data-i18n="features.eyebrow">Δυνατότητες πλατφόρμας</p>
-        <h2 class="section-title" data-i18n="features.title">Όλα όσα χρειάζονται οι επισκέπτες Airbnb &amp; βίλας — σε μία πύλη</h2>
-      </div>
-      <div class="features-grid">
-        <div class="feature-card fade-up">
-          <div class="feature-icon">
-            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          </div>
-          <h4 data-i18n="features.f1Title">AI βοηθός διακοπών</h4>
-          <p data-i18n="features.f1P">Απαντά άμεσα σε ερωτήσεις οδηγού — συσκευές, κανόνες, πάρκινγκ, checkout — στη γλώσσα του επισκέπτη.</p>
-        </div>
-        <div class="feature-card fade-up">
-          <div class="feature-icon">
-            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          </div>
-          <h4 data-i18n="features.f2Title">Ζήστε σαν ντόπιος</h4>
-          <p data-i18n="features.f2P">Προγράμματα ημέρας και προτάσεις κατηγοριών με AI — παραλίες, φαγητό, πολιτισμός — προσαρμοσμένα στην περιοχή.</p>
-        </div>
-        <div class="feature-card fade-up">
-          <div class="feature-icon">
-            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-          </div>
-          <h4 data-i18n="features.f3Title">Ψηφιακός οδηγός σπιτιού</h4>
-          <p data-i18n="features.f3P">Δομημένα essentials, highlights και επεκτάσιμο περιεχόμενο — πάντα ενημερωμένο, ποτέ χαμένο στο chat.</p>
-        </div>
-        <div class="feature-card fade-up">
-          <div class="feature-icon">
-            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-          </div>
-          <h4 data-i18n="features.f4Title">Τοπικές υπηρεσίες</h4>
-          <p data-i18n="features.f4P">Προωθήστε ελεγμένους συνεργάτες — μεταφορές, σεφ, σκάφη, wellness — με WhatsApp ή email.</p>
-        </div>
-        <div class="feature-card fade-up">
-          <div class="feature-icon">
-            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 000 20M2 12h20"/></svg>
-          </div>
-          <h4 data-i18n="features.f5Title">Εκδρομές &amp; εμπειρίες</h4>
-          <p data-i18n="features.f5P">Οι επισκέπτες περιηγούνται και κλείνουν τοπικές εκδρομές — με διαθεσιμότητα, τιμές και άμεση επιβεβαίωση.</p>
-        </div>
-        <div class="feature-card fade-up">
-          <div class="feature-icon">
-            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          </div>
-          <h4 data-i18n="features.f6Title">Πρόσβαση &amp; απόρρητο</h4>
-          <p data-i18n="features.f6P">Ασφαλής πρόσβαση, νομική συμμόρφωση και αναφορά προβλημάτων — επαγγελματικό από το πρώτο scan μέχρι το checkout.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="how">
-    <div class="container">
-      <div class="section-header center fade-up">
-        <p class="section-eyebrow" data-i18n="how.eyebrow">Πώς λειτουργεί</p>
-        <h2 class="section-title" data-i18n="how.title">Live σε τρία βήματα</h2>
-        <p class="section-lead" data-i18n="how.lead">Από τη ρύθμιση μέχρι το πρώτο scan — το Vailo σχεδιάστηκε για γρήγορο launch και ελάχιστη προσπάθεια.</p>
-      </div>
-      <div class="steps">
-        <div class="step fade-up">
-          <div class="step-num">1</div>
-          <h4 data-i18n="how.s1Title">Ρυθμίστε την πύλη σας</h4>
-          <p data-i18n="how.s1P">Προσθέστε κατάλυμα, οδηγό σπιτιού, φωτογραφίες και τοπικές προτάσεις στο admin του Vailo.</p>
-        </div>
-        <div class="step fade-up">
-          <div class="step-num">2</div>
-          <h4 data-i18n="how.s2Title">Μοιραστείτε με επισκέπτες</h4>
-          <p data-i18n="how.s2P">Εκτυπώστε το QR, βάλτε τον σύνδεσμο στην επιβεβαίωση κράτησης ή στον φάκελο υποδοχής.</p>
-        </div>
-        <div class="step fade-up">
-          <div class="step-num">3</div>
-          <h4 data-i18n="how.s3Title">Αφήστε το Vailo να φιλοξενεί</h4>
-          <p data-i18n="how.s3P">Οι επισκέπτες εξυπηρετούν τον εαυτό τους. Εσείς μένετε ενημερωμένοι. Η διαμονή γίνεται effortless — και για τις δύο πλευρές.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="outcomes">
-    <div class="container">
-      <div class="section-header center fade-up">
-        <p class="section-eyebrow" data-i18n="outcomes.eyebrow">Ο αντίκτυπος</p>
-        <h2 class="section-title" data-i18n="outcomes.title">Φιλοξενία που κλιμακώνεται με χάρη</h2>
-      </div>
-      <div class="outcomes-grid">
-        <div class="outcome fade-up">
-          <strong>↓</strong>
-          <span data-i18n="outcomes.o1">Επαναλαμβανόμενα μηνύματα πριν &amp; κατά τη διαμονή</span>
-        </div>
-        <div class="outcome fade-up">
-          <strong>↑</strong>
-          <span data-i18n="outcomes.o2">Ικανοποίηση επισκεπτών &amp; ετοιμότητα για κριτικές</span>
-        </div>
-        <div class="outcome fade-up">
-          <strong>↑</strong>
-          <span data-i18n="outcomes.o3">Ορατότητα &amp; κρατήσεις τοπικών συνεργατών</span>
-        </div>
-        <div class="outcome fade-up">
-          <strong>→</strong>
-          <span data-i18n="outcomes.o4">Συνεπής εμπειρία σε κάθε κατάλυμα</span>
-        </div>
       </div>
     </div>
   </section>
@@ -1912,47 +2103,126 @@
     </div>
   </section>
 
+    <section id="pricing">
+    <div class="container">
+      <div class="section-header center fade-up">
+        <p class="section-eyebrow" data-i18n="pricing.eyebrow">Τιμολόγηση</p>
+        <h2 class="section-title" data-i18n="pricing.title">Τιμολόγηση που ταιριάζει στο χαρτοφυλάκιό σας</h2>
+        <p class="section-lead" data-i18n="pricing.lead">Κάθε ιδιοκτήτης και κάθε χαρτοφυλάκιο είναι διαφορετικό — γι' αυτό δεν έχουμε ενιαία τιμή βιτρίνας. Ζητήστε παρουσίαση και θα σας προτείνουμε πλάνο προσαρμοσμένο στα καταλύματά σας.</p>
+      </div>
+      <div class="pricing-grid">
+        <article class="pricing-card fade-up">
+          <div class="pricing-card-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h3 data-i18n="pricing.card1Title">Παρουσίαση &amp; προσαρμοσμένο πλάνο</h3>
+          <p data-i18n="pricing.card1P">Χωρίς αυτόματο checkout. Σας δείχνουμε την πλατφόρμα live και προτείνουμε πλάνο ανάλογα με τον αριθμό καταλυμάτων σας.</p>
+        </article>
+        <article class="pricing-card fade-up">
+          <div class="pricing-card-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <h3 data-i18n="pricing.card2Title">Χωρίς κρυφές χρεώσεις</h3>
+          <p data-i18n="pricing.card2P">Ό,τι συμφωνηθεί είναι ξεκάθαρο εξαρχής — χωρίς προσθήκες έκπληξη στο τέλος του μήνα.</p>
+        </article>
+        <article class="pricing-card fade-up">
+          <div class="pricing-card-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3"/></svg>
+          </div>
+          <h3 data-i18n="pricing.card3Title">Κλιμακώνεται από μία βίλα σε πρακτορείο</h3>
+          <p data-i18n="pricing.card3P">Είτε έχετε ένα κατάλυμα είτε διαχειρίζεστε εκατοντάδες, το Vailo προσαρμόζεται στο μέγεθος του χαρτοφυλακίου σας.</p>
+        </article>
+      </div>
+      <div class="pricing-actions fade-up">
+        <a
+          href="/vailo-demo/villa-vailo?typeId=Kjtkq2IVUEB84CQAo30B&adminPreview=1&previewFrame=mobile"
+          class="btn btn-gold"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-i18n="pricing.ctaDemo"
+        >Δείτε demo</a>
+        <button type="button" class="btn btn-primary" data-open-contact data-i18n="pricing.ctaPresentation">Ζητήστε παρουσίαση</button>
+      </div>
+      <p class="pricing-note fade-up" data-i18n-html="pricing.partnerNote">Είστε ήδη συνεργάτης; <a href="/admin">Συνδεθείτε στο admin</a>.</p>
+    </div>
+  </section>
+
   <section id="faq">
     <div class="container">
       <div class="section-header center fade-up">
         <p class="section-eyebrow" data-i18n="faq.eyebrow">Ερωτήσεις</p>
         <h2 class="section-title" data-i18n="faq.title">Συχνές ερωτήσεις</h2>
       </div>
+      <div class="faq-filters fade-up" role="group" aria-label="Filter FAQs">
+        <button type="button" class="faq-chip active" data-faq-filter="all" data-i18n="faq.catAll">Όλα</button>
+        <button type="button" class="faq-chip" data-faq-filter="product" data-i18n="faq.catProduct">Προϊόν</button>
+        <button type="button" class="faq-chip" data-faq-filter="ai" data-i18n="faq.catAi">AI</button>
+        <button type="button" class="faq-chip" data-faq-filter="portfolio" data-i18n="faq.catPortfolio">Χαρτοφυλάκιο</button>
+        <button type="button" class="faq-chip" data-faq-filter="getting-started" data-i18n="faq.catGettingStarted">Ξεκινώντας</button>
+      </div>
       <div class="faq-list fade-up">
-        <div class="faq-item">
+        <div class="faq-item" data-category="product">
           <button class="faq-q" type="button">
             <span data-i18n="faq.q1">Χρειάζεται εφαρμογή για επισκέπτες Airbnb ή βίλας;</span>
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <div class="faq-a" data-i18n="faq.a1">Όχι. Το Vailo είναι πύλη επισκεπτών στον browser — σκανάρουν QR ή ανοίγουν link. Μπορούν να την προσθέσουν στην αρχική οθόνη σαν εφαρμογή, χωρίς App Store.</div>
         </div>
-        <div class="faq-item">
+        <div class="faq-item" data-category="ai">
           <button class="faq-q" type="button">
             <span data-i18n="faq.q2">Πώς λειτουργεί ο AI concierge με τον ψηφιακό οδηγό σπιτιού;</span>
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <div class="faq-a" data-i18n="faq.a2">Ο AI βοηθός βασίζεται στον οδηγό σπιτιού που ρυθμίζετε — κανόνες, συσκευές, check-in, parking. Απαντά στα ελληνικά ή σε άλλες γλώσσες, από το δικό σας περιεχόμενο.</div>
         </div>
-        <div class="faq-item">
+        <div class="faq-item" data-category="portfolio">
           <button class="faq-q" type="button">
             <span data-i18n="faq.q3">Μπορώ να διαχειριστώ πολλά καταλύματα;</span>
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <div class="faq-a" data-i18n="faq.a3">Ναι. Το Vailo φτιάχτηκε για χαρτοφυλάκια. Κάθε αγγελία έχει δική της πύλη, QR και οδηγό — από ένα admin dashboard.</div>
         </div>
-        <div class="faq-item">
+        <div class="faq-item" data-category="product">
           <button class="faq-q" type="button">
             <span data-i18n="faq.q4">Υποστηρίζει πολλές γλώσσες;</span>
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <div class="faq-a" data-i18n="faq.a4">Η πύλη επισκεπτών και ο AI βοηθός υποστηρίζουν πολλές γλώσσες. Μπορείτε να δώσετε περιεχόμενο στις γλώσσες των επισκεπτών σας.</div>
         </div>
-        <div class="faq-item">
+        <div class="faq-item" data-category="getting-started">
           <button class="faq-q" type="button">
             <span data-i18n="faq.q5">Πώς ξεκινάω;</span>
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <div class="faq-a" data-i18n="faq.a5">Ζητήστε παρουσίαση και θα σας καθοδηγήσουμε. Υπάρχοντες συνεργάτες μπορούν να συνδεθούν απευθείας στο admin για ρύθμιση και δημοσίευση πυλών.</div>
+        </div>
+        <div class="faq-item" data-category="getting-started">
+          <button class="faq-q" type="button">
+            <span data-i18n="faq.q6">Πότε αποκτούν πρόσβαση οι επισκέπτες στην πύλη;</span>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a" data-i18n="faq.a6">Οι επισκέπτες λαμβάνουν το link της πύλης μόλις επιβεβαιωθεί η κράτηση. Στο κατάλυμα, μπορούν επίσης να σκανάρουν ένα QR code που οδηγεί στην ίδια πύλη.</div>
+        </div>
+        <div class="faq-item" data-category="portfolio">
+          <button class="faq-q" type="button">
+            <span data-i18n="faq.q7">Πώς λειτουργούν οι προμήθειες σε τοπικές υπηρεσίες και εκδρομές;</span>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a" data-i18n="faq.a7">Οι συνεργάτες και πάροχοι εκδρομών κρατούν το 100% του δικού τους περιθωρίου — το Vailo δεν κόβει προμήθεια από τη δική τους τιμή. Όπου το Vailo έχει δικό του περιθώριο παραπομπής, μοιραζόμαστε το ένα τρίτο με εσάς, τον ιδιοκτήτη ή διαχειριστή.</div>
+        </div>
+        <div class="faq-item" data-category="ai">
+          <button class="faq-q" type="button">
+            <span data-i18n="faq.q8">Μπορεί ο AI βοηθός να απαντήσει σε οτιδήποτε, ή μόνο σε ό,τι έχω ρυθμίσει;</span>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a" data-i18n="faq.a8">Ο AI βοηθός απαντά μόνο βάσει του οδηγού σπιτιού και του περιεχομένου που έχετε ρυθμίσει. Δεν επινοεί πληροφορίες για το κατάλυμά σας και, όταν δεν γνωρίζει κάτι, το δηλώνει αντί να μαντεύει.</div>
+        </div>
+        <div class="faq-item" data-category="product">
+          <button class="faq-q" type="button">
+            <span data-i18n="faq.q9">Έχει κάθε κατάλυμα τη δική του πύλη και branding;</span>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="faq-a" data-i18n="faq.a9">Ναι. Κάθε αγγελία αποκτά μοναδική πύλη, QR code και οδηγό σπιτιού — με τις δικές της φωτογραφίες και τόνο — ακόμη κι όταν διαχειρίζεστε τα πάντα κεντρικά από ένα admin.</div>
         </div>
       </div>
     </div>
@@ -1987,9 +2257,10 @@
           <p data-i18n="footer.tagline">Το μέλλον της φιλοξενίας.</p>
         </div>
         <ul class="footer-links">
-          <li><a href="#product" data-i18n="footer.product">Προϊόν</a></li>
-          <li><a href="#owners" data-i18n="footer.owners">Ιδιοκτήτες</a></li>
-          <li><a href="#managers" data-i18n="footer.managers">Διαχειριστές</a></li>
+          <li><a href="#features" data-i18n="footer.features">Δυνατότητες</a></li>
+          <li><a href="#solutions" data-i18n="footer.solutions">Λύσεις</a></li>
+          <li><a href="#pricing" data-i18n="footer.pricing">Τιμολόγηση</a></li>
+          <li><a href="#faq" data-i18n="footer.faq">Συχνές ερωτήσεις</a></li>
           <li><a href="#" data-open-contact data-i18n="footer.contact">Επικοινωνία</a></li>
           <li><a href="/admin" data-i18n="footer.admin">Admin</a></li>
         </ul>
@@ -2139,6 +2410,18 @@
         const wasOpen = item.classList.contains('open');
         document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
         if (!wasOpen) item.classList.add('open');
+      });
+    });
+
+    document.querySelectorAll('.faq-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const filter = chip.getAttribute('data-faq-filter');
+        document.querySelectorAll('.faq-chip').forEach(c => c.classList.toggle('active', c === chip));
+        document.querySelectorAll('.faq-item').forEach(item => {
+          const matches = filter === 'all' || item.getAttribute('data-category') === filter;
+          item.hidden = !matches;
+          if (!matches) item.classList.remove('open');
+        });
       });
     });
 

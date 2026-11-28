@@ -20,7 +20,11 @@
     "analytics": "Analytics",
     "faq": "FAQ",
     "contact": "Contact",
-    "login": "Platform login"
+    "login": "Platform login",
+    "features": "Features",
+    "solutions": "Solutions",
+    "journey": "Guest journey",
+    "pricing": "Pricing"
   },
   "hero": {
     "eyebrow": "Guest experience platform",
@@ -107,8 +111,10 @@
     "b5": "Consistent brand experience across every unit you operate"
   },
   "features": {
-    "eyebrow": "Platform capabilities",
-    "title": "Everything guests expect — nothing they have to hunt for",
+    "eyebrow": "Everything you need",
+    "title": "Everything you need to run a better guest experience",
+    "lead": "Six core capabilities — from the digital house guide to local revenue — all inside one branded guest portal.",
+    "learnMore": "Learn more →",
     "f1Title": "AI vacation assistant",
     "f1P": "Answers house-guide questions instantly — appliances, rules, parking, checkout — in the guest's language.",
     "f2Title": "Live like a local",
@@ -132,6 +138,25 @@
     "s2P": "Print the QR code, add the link to your booking confirmation, or place it in the welcome folder.",
     "s3Title": "Let Vailo host",
     "s3P": "Guests self-serve. You stay informed. The stay feels effortless — on both sides."
+  },
+  "journey": {
+    "eyebrow": "The guest journey",
+    "title": "From booking to review — one connected journey",
+    "lead": "Vailo stays with every guest at each step — before, during, and after the stay — while you stay in control.",
+    "s1Title": "Booking-day link",
+    "s1P": "As soon as the booking is confirmed, guests get their portal link — ready before they even arrive.",
+    "s2Title": "QR code arrival",
+    "s2P": "At the property, a QR code opens the same portal instantly — no app download needed.",
+    "s3Title": "House guide answers",
+    "s3P": "Wi‑Fi, check-in, rules, and appliances — structured and available instantly, no message to the host required.",
+    "s4Title": "AI chat, 24/7",
+    "s4P": "When the guide isn't enough, the AI assistant answers instantly, in the guest's language, grounded in your content.",
+    "s5Title": "Local gems",
+    "s5P": "Live like a local suggests beaches, dining, and experiences tailored to the property's area.",
+    "s6Title": "Partners & excursions",
+    "s6P": "Guests browse and book vetted local services and excursions right inside the portal.",
+    "s7Title": "Analytics feedback loop",
+    "s7P": "After the stay, analytics show what worked — so you can improve the guide and recommendations for the next guest."
   },
   "outcomes": {
     "eyebrow": "The impact",
@@ -167,9 +192,28 @@
     "c6P": "Full event history per guest — from first scan to last action during the stay.",
     "c6Tag": "Event timeline"
   },
+  "pricing": {
+    "eyebrow": "Pricing",
+    "title": "Pricing that fits your portfolio",
+    "lead": "Every owner and portfolio is different — so we don't publish a one-size-fits-all price tag. Request a presentation and we'll recommend a plan that fits your properties.",
+    "card1Title": "Presentation-based, tailored plans",
+    "card1P": "No automatic checkout. We walk you through the platform live and recommend a plan based on your number of properties.",
+    "card2Title": "No hidden fees",
+    "card2P": "What we agree on is clear from day one — no surprise line items at the end of the month.",
+    "card3Title": "Scales from one villa to agencies",
+    "card3P": "Whether you run a single villa or manage hundreds of units, Vailo scales with the size of your portfolio.",
+    "ctaDemo": "View a demo",
+    "ctaPresentation": "Request a presentation",
+    "partnerNote": "Already a partner? <a href=\"/admin\">Log in to admin</a>."
+  },
   "faq": {
     "eyebrow": "Questions",
     "title": "Common questions",
+    "catAll": "All",
+    "catProduct": "Product",
+    "catAi": "AI",
+    "catPortfolio": "Portfolio",
+    "catGettingStarted": "Getting started",
     "q1": "Do guests need to download an app?",
     "a1": "No. Vailo runs in the browser. Guests can add it to their home screen for one-tap access — it feels like an app without the App Store.",
     "q2": "How does the AI know about my property?",
@@ -179,7 +223,15 @@
     "q4": "Is it available in multiple languages?",
     "a4": "The guest portal and AI assistant support multiple languages. You can provide content in the locales your guests speak most.",
     "q5": "How do I get started?",
-    "a5": "Request a presentation and we'll walk you through setup. Existing partners can log in directly to the platform admin to configure properties and publish guest portals."
+    "a5": "Request a presentation and we'll walk you through setup. Existing partners can log in directly to the platform admin to configure properties and publish guest portals.",
+    "q6": "When do guests get access to the portal?",
+    "a6": "Guests receive the portal link as soon as the booking is confirmed. At the property, they can also scan a QR code that leads to the same portal.",
+    "q7": "How do commissions work for local partners and excursions?",
+    "a7": "Partners and excursion providers keep 100% of their own margin — Vailo doesn't take a cut from their price. Where Vailo earns its own referral margin, we share one third of it with you, the property owner or manager.",
+    "q8": "Can the AI assistant answer anything, or only what I configure?",
+    "a8": "The AI assistant only answers based on the house guide and content you configure. It won't invent information about your property, and it says so when it doesn't know something instead of guessing.",
+    "q9": "Does each property get its own portal and branding?",
+    "a9": "Yes. Every listing gets a unique portal, QR code, and house guide — with its own photos and tone — even when you manage everything centrally from one admin."
   },
   "cta": {
     "title": "Ready to elevate every stay?",
@@ -196,7 +248,11 @@
     "contact": "Contact",
     "admin": "Admin",
     "copyright": "© 2026 Vailo. All rights reserved.",
-    "craft": "Crafted for hosts who care about the details."
+    "craft": "Crafted for hosts who care about the details.",
+    "features": "Features",
+    "solutions": "Solutions",
+    "pricing": "Pricing",
+    "faq": "FAQ"
   },
   "contact": {
     "close": "Close contact form",

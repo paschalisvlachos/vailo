@@ -40,7 +40,7 @@
   function buildStructuredData(dict, locale) {
     var url = pageUrl(locale);
     var faq = [];
-    for (var i = 1; i <= 5; i++) {
+    for (var i = 1; i <= 9; i++) {
       var q = get(dict, 'faq.q' + i);
       var a = get(dict, 'faq.a' + i);
       if (q && a) {
